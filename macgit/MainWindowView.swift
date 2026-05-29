@@ -7,9 +7,17 @@
 
 import SwiftUI
 
+struct WindowWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct MainWindowView: View {
     let repositoryURL: URL
     @State private var selectedItem: SidebarItem? = .fileStatus
+    @State private var windowWidth: CGFloat = 0
 
     var body: some View {
         NavigationSplitView {
@@ -29,17 +37,17 @@ struct MainWindowView: View {
                 }
             }
         }
+        .overlay(
+            GeometryReader { geo in
+                Color.clear.preference(key: WindowWidthKey.self, value: geo.size.width)
+            }
+        )
+        .onPreferenceChange(WindowWidthKey.self) { newWidth in
+            windowWidth = newWidth
+        }
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                HStack(spacing: 4) {
-                    toolbarButton(icon: "checkmark", label: "Commit", action: {})
-                    toolbarButton(icon: "arrow.down.to.line", label: "Pull", action: {})
-                    toolbarButton(icon: "arrow.up.to.line", label: "Push", action: {})
-                    toolbarButton(icon: "arrow.down.circle", label: "Fetch", action: {})
-                    toolbarButton(icon: "arrow.triangle.branch", label: "Branch", action: {})
-                    toolbarButton(icon: "arrow.triangle.merge", label: "Merge", action: {})
-                    toolbarButton(icon: "archivebox", label: "Stash", action: {})
-                }
+                leftToolbar
             }
 
             ToolbarItem(placement: .principal) {
@@ -55,21 +63,74 @@ struct MainWindowView: View {
             }
 
             ToolbarItem(placement: .automatic) {
-                HStack(spacing: 4) {
-                    toolbarButton(icon: "network", label: "Remote", action: {})
-                    toolbarButton(icon: "folder", label: "Finder", action: {})
-                    toolbarButton(icon: "terminal", label: "Terminal", action: {})
-                    toolbarButton(icon: "gear", label: "Settings", action: {})
-                }
+                toolbarButton(icon: "network", label: "Remote", action: {})
+            }
+            ToolbarItem(placement: .automatic) {
+                toolbarButton(icon: "folder", label: "Finder", action: {})
+            }
+            ToolbarItem(placement: .automatic) {
+                toolbarButton(icon: "terminal", label: "Terminal", action: {})
+            }
+            ToolbarItem(placement: .automatic) {
+                toolbarButton(icon: "gear", label: "Settings", action: {})
             }
         }
         .navigationTitle("")
         .frame(minWidth: 900, minHeight: 600)
     }
+
+    @ViewBuilder
+    private var leftToolbar: some View {
+        if windowWidth > 1000 {
+            HStack(spacing: 2) {
+                toolbarButton(icon: "checkmark", label: "Commit", action: {})
+                toolbarButton(icon: "arrow.down.to.line", label: "Pull", action: {})
+                toolbarButton(icon: "arrow.up.to.line", label: "Push", action: {})
+                toolbarButton(icon: "arrow.down.circle", label: "Fetch", action: {})
+                toolbarButton(icon: "arrow.triangle.branch", label: "Branch", action: {})
+                toolbarButton(icon: "arrow.triangle.merge", label: "Merge", action: {})
+                toolbarButton(icon: "archivebox", label: "Stash", action: {})
+            }
+        } else if windowWidth > 800 {
+            HStack(spacing: 2) {
+                toolbarButton(icon: "checkmark", label: "Commit", action: {})
+                toolbarButton(icon: "arrow.down.to.line", label: "Pull", action: {})
+                toolbarButton(icon: "arrow.up.to.line", label: "Push", action: {})
+                toolbarButton(icon: "arrow.down.circle", label: "Fetch", action: {})
+                moreMenu
+            }
+        } else {
+            HStack(spacing: 2) {
+                toolbarButton(icon: "checkmark", label: "Commit", action: {})
+                moreMenu
+            }
+        }
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            if windowWidth <= 800 {
+                Button("Pull", action: {})
+                Button("Push", action: {})
+                Button("Fetch", action: {})
+            }
+            if windowWidth <= 1000 {
+                Button("Branch", action: {})
+                Button("Merge", action: {})
+                Button("Stash", action: {})
+            }
+        } label: {
+            ToolbarButtonLabel(icon: "ellipsis", label: "More")
+        }
+        .help("More Actions")
+    }
 }
 
-func toolbarButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
+struct ToolbarButtonLabel: View {
+    let icon: String
+    let label: String
+
+    var body: some View {
         VStack(spacing: 1) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .medium))
@@ -77,6 +138,12 @@ func toolbarButton(icon: String, label: String, action: @escaping () -> Void) ->
                 .font(.system(size: 9))
         }
         .frame(minWidth: 44)
+    }
+}
+
+func toolbarButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        ToolbarButtonLabel(icon: icon, label: label)
     }
     .help(label)
 }
