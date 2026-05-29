@@ -30,19 +30,55 @@ struct MainWindowView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text(repositoryURL.lastPathComponent)
-                    .font(.headline)
-            }
             ToolbarItem(placement: .navigation) {
-                Button(action: {}) {
-                    Image(systemName: "arrow.clockwise")
+                HStack(spacing: 4) {
+                    toolbarButton(icon: "checkmark", label: "Commit", action: {})
+                    toolbarButton(icon: "arrow.down.to.line", label: "Pull", action: {})
+                    toolbarButton(icon: "arrow.up.to.line", label: "Push", action: {})
+                    toolbarButton(icon: "arrow.down.circle", label: "Fetch", action: {})
+                    toolbarButton(icon: "arrow.triangle.branch", label: "Branch", action: {})
+                    toolbarButton(icon: "arrow.triangle.merge", label: "Merge", action: {})
+                    toolbarButton(icon: "archivebox", label: "Stash", action: {})
                 }
-                .help("Refresh")
+            }
+
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 6) {
+                    Image("code-branch")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 18, height: 18)
+                    Text(repositoryURL.lastPathComponent)
+                        .font(.headline)
+                }
+                .padding(.horizontal, 12)
+            }
+
+            ToolbarItem(placement: .automatic) {
+                HStack(spacing: 4) {
+                    toolbarButton(icon: "network", label: "Remote", action: {})
+                    toolbarButton(icon: "folder", label: "Finder", action: {})
+                    toolbarButton(icon: "terminal", label: "Terminal", action: {})
+                    toolbarButton(icon: "gear", label: "Settings", action: {})
+                }
             }
         }
+        .navigationTitle("")
         .frame(minWidth: 900, minHeight: 600)
     }
+}
+
+func toolbarButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        VStack(spacing: 1) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .medium))
+            Text(label)
+                .font(.system(size: 9))
+        }
+        .frame(minWidth: 44)
+    }
+    .help(label)
 }
 
 struct FileStatusView: View {
