@@ -479,7 +479,9 @@ struct FileStatusView: View {
                 signOff: signOffCommit
             )
             if pushAfterCommit {
-                try await GitStatusService.shared.push(in: repositoryURL)
+                let branch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
+                let options = GitStatusService.PushOptions(remote: "origin", branches: [branch], pushTags: false)
+                try await GitStatusService.shared.push(options: options, in: repositoryURL)
             }
             await MainActor.run {
                 commitMessage = ""

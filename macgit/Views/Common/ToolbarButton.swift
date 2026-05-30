@@ -20,9 +20,18 @@ struct ToolbarButtonLabel: View {
     }
 }
 
-func toolbarButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+func toolbarButton(icon: String, label: String, isLoading: Bool = false, disabled: Bool = false, action: @escaping () -> Void) -> some View {
     Button(action: action) {
-        ToolbarButtonLabel(icon: icon, label: label)
+        ZStack {
+            ToolbarButtonLabel(icon: icon, label: label)
+                .opacity(isLoading ? 0.3 : 1.0)
+
+            if isLoading {
+                ProgressView()
+                    .scaleEffect(0.6)
+            }
+        }
     }
     .help(label)
+    .disabled(disabled || isLoading)
 }

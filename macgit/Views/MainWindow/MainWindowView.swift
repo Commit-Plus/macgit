@@ -17,6 +17,8 @@ struct MainWindowView: View {
     @State private var selectedItem: SidebarItem? = .fileStatus
     @State private var windowWidth: CGFloat = 0
     @State private var showingCommitSheet = false
+    @State private var showingPullSheet = false
+    @State private var showingPushSheet = false
     @StateObject private var syncState = SyncState()
 
     var body: some View {
@@ -94,6 +96,11 @@ struct MainWindowView: View {
         }, message: {
             Text(syncState.conflictMessage ?? "Merge conflicts detected.")
         })
+        .alert("Info", isPresented: $syncState.showingInfo, actions: {
+            Button("OK", role: .cancel) {}
+        }, message: {
+            Text(syncState.infoMessage ?? "")
+        })
         .sheet(isPresented: $showingCommitSheet) {
             CommitSheetView { message in
                 Task {
@@ -101,31 +108,46 @@ struct MainWindowView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingPullSheet) {
+            PullSheetView(repositoryURL: repositoryURL) { remote, branch, options in
+                Task {
+                    await syncState.performPull(remote: remote, branch: branch, options: options, repositoryURL: repositoryURL)
+                }
+            }
+        }
+        .sheet(isPresented: $showingPushSheet) {
+            PushSheetView(repositoryURL: repositoryURL) { options in
+                Task {
+                    await syncState.performPush(options: options, repositoryURL: repositoryURL)
+                }
+            }
+        }
     }
 
     @ViewBuilder
     private var leftToolbar: some View {
+        let syncing = syncState.isAnySyncing
         if windowWidth > 1000 {
             HStack(spacing: 2) {
-                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, action: { showCommitSheetIfNoConflicts() })
-                BadgeToolbarButton(icon: "arrow.down.to.line", label: "Pull", badgeCount: syncState.pullBadgeCount, action: { performPull() })
-                BadgeToolbarButton(icon: "arrow.up.to.line", label: "Push", badgeCount: syncState.pushBadgeCount, action: { performPush() })
-                toolbarButton(icon: "arrow.down.circle", label: "Fetch", action: { performFetch() })
+                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, isLoading: syncState.isCommitting, disabled: syncing, action: { showCommitSheetIfNoConflicts() })
+                BadgeToolbarButton(icon: "arrow.down.to.line", label: "Pull", badgeCount: syncState.pullBadgeCount, isLoading: syncState.isPulling, disabled: syncing, action: { showingPullSheet = true })
+                BadgeToolbarButton(icon: "arrow.up.to.line", label: "Push", badgeCount: syncState.pushBadgeCount, isLoading: syncState.isPushing, disabled: syncing, action: { showingPushSheet = true })
+                toolbarButton(icon: "arrow.down.circle", label: "Fetch", isLoading: syncState.isFetching, disabled: syncing, action: { performFetch() })
                 toolbarButton(icon: "arrow.triangle.branch", label: "Branch", action: {})
                 toolbarButton(icon: "arrow.triangle.merge", label: "Merge", action: {})
                 toolbarButton(icon: "archivebox", label: "Stash", action: {})
             }
         } else if windowWidth > 800 {
             HStack(spacing: 2) {
-                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, action: { showCommitSheetIfNoConflicts() })
-                BadgeToolbarButton(icon: "arrow.down.to.line", label: "Pull", badgeCount: syncState.pullBadgeCount, action: { performPull() })
-                BadgeToolbarButton(icon: "arrow.up.to.line", label: "Push", badgeCount: syncState.pushBadgeCount, action: { performPush() })
-                toolbarButton(icon: "arrow.down.circle", label: "Fetch", action: { performFetch() })
+                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, isLoading: syncState.isCommitting, disabled: syncing, action: { showCommitSheetIfNoConflicts() })
+                BadgeToolbarButton(icon: "arrow.down.to.line", label: "Pull", badgeCount: syncState.pullBadgeCount, isLoading: syncState.isPulling, disabled: syncing, action: { showingPullSheet = true })
+                BadgeToolbarButton(icon: "arrow.up.to.line", label: "Push", badgeCount: syncState.pushBadgeCount, isLoading: syncState.isPushing, disabled: syncing, action: { showingPushSheet = true })
+                toolbarButton(icon: "arrow.down.circle", label: "Fetch", isLoading: syncState.isFetching, disabled: syncing, action: { performFetch() })
                 moreMenu
             }
         } else {
             HStack(spacing: 2) {
-                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, action: { showCommitSheetIfNoConflicts() })
+                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, isLoading: syncState.isCommitting, disabled: syncing, action: { showCommitSheetIfNoConflicts() })
                 moreMenu
             }
         }
@@ -133,10 +155,14 @@ struct MainWindowView: View {
 
     private var moreMenu: some View {
         Menu {
+            let syncing = syncState.isAnySyncing
             if windowWidth <= 800 {
-                Button("Pull") { performPull() }
-                Button("Push") { performPush() }
+                Button("Pull") { showingPullSheet = true }
+                    .disabled(syncing)
+                Button("Push") { showingPushSheet = true }
+                    .disabled(syncing)
                 Button("Fetch") { performFetch() }
+                    .disabled(syncing)
             }
             if windowWidth <= 1000 {
                 Button("Branch", action: {})
@@ -156,18 +182,6 @@ struct MainWindowView: View {
         }
     }
 
-    private func performPush() {
-        Task {
-            await syncState.performPush(repositoryURL: repositoryURL)
-        }
-    }
-
-    private func performPull() {
-        Task {
-            await syncState.performPull(repositoryURL: repositoryURL)
-        }
-    }
-
     private func performFetch() {
         Task {
             await syncState.performFetch(repositoryURL: repositoryURL)
@@ -175,12 +189,6 @@ struct MainWindowView: View {
     }
 
     private func commitFromToolbar(message: String) async {
-        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        do {
-            try await GitStatusService.shared.commit(message: message, in: repositoryURL)
-            await syncState.refresh(repositoryURL: repositoryURL)
-        } catch {
-            syncState.showError(error.localizedDescription)
-        }
+        await syncState.performCommit(message: message, repositoryURL: repositoryURL)
     }
 }

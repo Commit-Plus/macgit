@@ -14,6 +14,16 @@ class SyncState: ObservableObject {
     @Published var showingError: Bool = false
     @Published var conflictMessage: String? = nil
     @Published var showingConflict: Bool = false
+    @Published var infoMessage: String? = nil
+    @Published var showingInfo: Bool = false
+    @Published var isCommitting: Bool = false
+    @Published var isPushing: Bool = false
+    @Published var isPulling: Bool = false
+    @Published var isFetching: Bool = false
+
+    var isAnySyncing: Bool {
+        isCommitting || isPushing || isPulling || isFetching
+    }
 
     private var backgroundTask: Task<Void, Never>? = nil
 
@@ -57,6 +67,11 @@ class SyncState: ObservableObject {
         showingConflict = true
     }
 
+    func showInfo(_ message: String) {
+        infoMessage = message
+        showingInfo = true
+    }
+
     func checkConflicts(repositoryURL: URL) async -> Bool {
         let hasConflicts = await GitStatusService.shared.hasConflicts(in: repositoryURL)
         if hasConflicts {
@@ -65,21 +80,37 @@ class SyncState: ObservableObject {
         return hasConflicts
     }
 
-    func performPush(repositoryURL: URL) async {
+    func performPush(options: GitStatusService.PushOptions, repositoryURL: URL) async {
         if await checkConflicts(repositoryURL: repositoryURL) { return }
+        await MainActor.run { isPushing = true }
+        defer { Task { @MainActor in isPushing = false } }
         do {
-            try await GitStatusService.shared.push(in: repositoryURL)
+            let output = try await GitStatusService.shared.push(options: options, in: repositoryURL)
             await refresh(repositoryURL: repositoryURL)
+            let trimmed = output.lowercased()
+            if trimmed.contains("everything up-to-date") || trimmed.contains("everything up to date") {
+                showInfo("Everything up-to-date.")
+            } else {
+                showInfo("Push completed successfully.")
+            }
         } catch {
             showError(error.localizedDescription)
         }
     }
 
-    func performPull(repositoryURL: URL) async {
+    func performPull(remote: String, branch: String, options: GitStatusService.PullOptions, repositoryURL: URL) async {
         if await checkConflicts(repositoryURL: repositoryURL) { return }
+        await MainActor.run { isPulling = true }
+        defer { Task { @MainActor in isPulling = false } }
         do {
-            try await GitStatusService.shared.pull(in: repositoryURL)
+            let output = try await GitStatusService.shared.pull(remote: remote, branch: branch, options: options, in: repositoryURL)
             await refresh(repositoryURL: repositoryURL)
+            let trimmed = output.lowercased()
+            if trimmed.contains("already up to date") || trimmed.contains("already up-to-date") {
+                showInfo("Already up to date.")
+            } else {
+                showInfo("Pull completed successfully.")
+            }
         } catch {
             let message = error.localizedDescription
             if message.uppercased().contains("CONFLICT") {
@@ -91,8 +122,27 @@ class SyncState: ObservableObject {
     }
 
     func performFetch(repositoryURL: URL) async {
+        await MainActor.run { isFetching = true }
+        defer { Task { @MainActor in isFetching = false } }
+        let before = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
         do {
             try await GitStatusService.shared.fetch(in: repositoryURL)
+            let after = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
+            await refresh(repositoryURL: repositoryURL)
+            if after.behind <= before.behind {
+                showInfo("No new changes on remote.")
+            }
+        } catch {
+            showError(error.localizedDescription)
+        }
+    }
+
+    func performCommit(message: String, repositoryURL: URL) async {
+        await MainActor.run { isCommitting = true }
+        defer { Task { @MainActor in isCommitting = false } }
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        do {
+            try await GitStatusService.shared.commit(message: message, in: repositoryURL)
             await refresh(repositoryURL: repositoryURL)
         } catch {
             showError(error.localizedDescription)

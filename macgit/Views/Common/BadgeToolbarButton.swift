@@ -9,6 +9,8 @@ struct BadgeToolbarButton: View {
     let icon: String
     let label: String
     let badgeCount: Int
+    let isLoading: Bool
+    let disabled: Bool
     let action: () -> Void
 
     private var badgeText: String {
@@ -23,8 +25,9 @@ struct BadgeToolbarButton: View {
             ZStack(alignment: .topTrailing) {
                 ToolbarButtonLabel(icon: icon, label: label)
                     .frame(minWidth: 44)
+                    .opacity(isLoading ? 0.3 : 1.0)
 
-                if badgeCount > 0 {
+                if badgeCount > 0 && !isLoading {
                     Text(badgeText)
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(.white)
@@ -38,18 +41,25 @@ struct BadgeToolbarButton: View {
                         )
                         .offset(x: 8, y: -4)
                 }
+
+                if isLoading {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         }
         .help(label)
         .buttonStyle(.plain)
+        .disabled(disabled || isLoading)
     }
 }
 
 #Preview {
     HStack {
-        BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: 3, action: {})
-        BadgeToolbarButton(icon: "arrow.up.to.line", label: "Push", badgeCount: 105, action: {})
-        BadgeToolbarButton(icon: "arrow.down.to.line", label: "Pull", badgeCount: 0, action: {})
+        BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: 3, isLoading: false, disabled: false, action: {})
+        BadgeToolbarButton(icon: "arrow.up.to.line", label: "Push", badgeCount: 105, isLoading: true, disabled: false, action: {})
+        BadgeToolbarButton(icon: "arrow.down.to.line", label: "Pull", badgeCount: 0, isLoading: false, disabled: true, action: {})
     }
     .padding()
 }
