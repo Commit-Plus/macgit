@@ -69,6 +69,7 @@ struct PullSheetView: View {
                                 .font(.system(size: 13))
                             HStack(spacing: 8) {
                                 Picker("", selection: $selectedBranch) {
+                                    Text("Select a branch").tag("")
                                     ForEach(remoteBranches, id: \.self) { branch in
                                         Text(branch).tag(branch)
                                     }
@@ -172,11 +173,11 @@ struct PullSheetView: View {
         let branches = await GitStatusService.shared.remoteBranches(remote: remote, in: repositoryURL)
         await MainActor.run {
             remoteBranches = branches
-            // Default to branch matching local branch name, or first available
+            // Auto-select remote branch matching local branch if it exists
             if let match = branches.first(where: { $0 == localBranch }) {
                 selectedBranch = match
             } else {
-                selectedBranch = branches.first ?? ""
+                selectedBranch = ""
             }
         }
     }

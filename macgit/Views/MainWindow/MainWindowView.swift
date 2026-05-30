@@ -29,16 +29,26 @@ struct MainWindowView: View {
             SidebarView(selection: $selectedItem)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
         } detail: {
-            Group {
-                switch selectedItem {
-                case .fileStatus:
-                    FileStatusView(repositoryURL: repositoryURL, syncState: syncState)
-                case .history:
-                    HistoryView(repositoryURL: repositoryURL)
-                case .search:
-                    SearchView(repositoryURL: repositoryURL)
-                case .none:
-                    EmptyStateView(message: "Select an item from the sidebar")
+            VStack(spacing: 0) {
+                Color(nsColor: .controlBackgroundColor)
+                    .frame(height: 1)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(.separator)
+                            .frame(height: 0.5)
+                    }
+
+                Group {
+                    switch selectedItem {
+                    case .fileStatus:
+                        FileStatusView(repositoryURL: repositoryURL, syncState: syncState)
+                    case .history:
+                        HistoryView(repositoryURL: repositoryURL)
+                    case .search:
+                        SearchView(repositoryURL: repositoryURL)
+                    case .none:
+                        EmptyStateView(message: "Select an item from the sidebar")
+                    }
                 }
             }
         }
