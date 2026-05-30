@@ -20,7 +20,9 @@ struct FileStatusView: View {
     @State private var amendLastCommit = false
     @State private var bypassHooks = false
     @State private var signOffCommit = false
+    @State private var pushAfterCommit = false
     @State private var commitAuthor: String?
+    @State private var currentBranch: String?
 
     private var changedFiles: [StatusFile] {
         gitStatus.unstaged + gitStatus.untracked
@@ -275,6 +277,9 @@ struct FileStatusView: View {
                     if commitAuthor == nil {
                         commitAuthor = await GitStatusService.shared.gitUser(in: repositoryURL)
                     }
+                    if currentBranch == nil {
+                        currentBranch = await GitStatusService.shared.currentBranch(in: repositoryURL)
+                    }
                 }
             }
 
@@ -332,6 +337,10 @@ struct FileStatusView: View {
                     .font(.system(size: 11, weight: .medium))
                     .toggleStyle(.checkbox)
 
+                Toggle("Push changes immediately to \(currentBranch ?? "current branch")", isOn: $pushAfterCommit)
+                    .font(.system(size: 11, weight: .medium))
+                    .toggleStyle(.checkbox)
+
                 Spacer()
 
                 Button("Cancel") {
@@ -365,11 +374,15 @@ struct FileStatusView: View {
                 noVerify: bypassHooks,
                 signOff: signOffCommit
             )
+            if pushAfterCommit {
+                try await GitStatusService.shared.push(in: repositoryURL)
+            }
             await MainActor.run {
                 commitMessage = ""
                 amendLastCommit = false
                 bypassHooks = false
                 signOffCommit = false
+                pushAfterCommit = false
                 withAnimation(.easeInOut(duration: 0.15)) {
                     isCommitBarExpanded = false
                 }
@@ -411,7 +424,7 @@ struct FileStatusView: View {
         case .added:
             return "plus.circle.fill"
         case .staged:
-            return "checkmark.circle.fill"
+            return "pencil.circle.fill"
         case .modified:
             return "pencil.circle.fill"
         case .deleted:
@@ -425,9 +438,9 @@ struct FileStatusView: View {
 
     private func fileColor(for file: StatusFile) -> Color {
         switch file.status {
-        case .added, .staged:
+        case .added:
             return .green
-        case .modified:
+        case .staged, .modified:
             return .orange
         case .deleted:
             return .red

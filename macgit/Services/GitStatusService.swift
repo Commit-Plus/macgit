@@ -282,6 +282,17 @@ actor GitStatusService {
         return "\(n) <\(e)>"
     }
 
+    func currentBranch(in repositoryURL: URL) async -> String? {
+        let branch = (try? await runGit(arguments: ["branch", "--show-current"], in: repositoryURL))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let b = branch, !b.isEmpty else { return nil }
+        return b
+    }
+
+    func push(in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["push"], in: repositoryURL)
+    }
+
     func diff(for file: StatusFile, in repositoryURL: URL) async throws -> [DiffHunk] {
         // Untracked file → read directly and show all lines as added (green)
         if file.status == .untracked {
