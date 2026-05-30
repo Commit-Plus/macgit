@@ -171,30 +171,48 @@ struct FileStatusView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showingError = false
-    @State private var showingCommitSheet = false
+
+    @State private var isCommitBarExpanded = false
+    @State private var commitMessage = ""
+    @State private var amendLastCommit = false
+    @State private var bypassHooks = false
+    @State private var signOffCommit = false
+    @State private var commitAuthor: String?
 
     private var changedFiles: [StatusFile] {
         gitStatus.unstaged + gitStatus.untracked
     }
 
+    private var hasChanges: Bool {
+        !gitStatus.isEmpty
+    }
+
+    private var canCommit: Bool {
+        !commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !gitStatus.staged.isEmpty
+    }
+
     var body: some View {
         Group {
-            if isLoading && gitStatus.isEmpty {
+            if isLoading && !hasChanges {
                 ProgressView("Loading status…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if gitStatus.isEmpty {
+            } else if !hasChanges {
                 EmptyStateView(
                     icon: "doc.text.magnifyingglass",
                     message: "No changes",
                     detail: "Working directory is clean"
                 )
             } else {
-                HSplitView {
-                    fileListPanel
-                        .frame(minWidth: 220, idealWidth: 320, maxWidth: 500)
+                VStack(spacing: 0) {
+                    HSplitView {
+                        fileListPanel
+                            .frame(minWidth: 220, idealWidth: 320, maxWidth: 500)
 
-                    diffPanel
-                        .frame(minWidth: 300)
+                        diffPanel
+                            .frame(minWidth: 300)
+                    }
+
+                    commitBar
                 }
             }
         }
@@ -202,13 +220,6 @@ struct FileStatusView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .task {
             await loadStatus()
-        }
-        .sheet(isPresented: $showingCommitSheet) {
-            CommitSheetView { message in
-                Task {
-                    await commit(message: message)
-                }
-            }
         }
         .alert("Error", isPresented: $showingError, actions: {
             Button("OK", role: .cancel) {}
@@ -220,20 +231,46 @@ struct FileStatusView: View {
     private var fileListPanel: some View {
         List(selection: $selectedFile) {
             if !gitStatus.staged.isEmpty {
-                Section("Staged") {
+                Section {
                     ForEach(gitStatus.staged) { file in
                         fileRow(file: file, isStaged: true)
                             .tag(file)
                     }
+                } header: {
+                    HStack(spacing: 8) {
+                        Text("Staged")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.none)
+                        Spacer()
+                        Button("Unstage All") {
+                            Task { await unstageAll() }
+                        }
+                        .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 10))
+                    }
+                    .padding(.horizontal, 4)
                 }
             }
 
             if !changedFiles.isEmpty {
-                Section("Changed") {
+                Section {
                     ForEach(changedFiles) { file in
                         fileRow(file: file, isStaged: false)
                             .tag(file)
                     }
+                } header: {
+                    HStack(spacing: 8) {
+                        Text("Changed")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.none)
+                        Spacer()
+                        Button("Stage All") {
+                            Task { await stageAll() }
+                        }
+                        .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 10))
+                    }
+                    .padding(.horizontal, 4)
                 }
             }
         }
@@ -241,7 +278,7 @@ struct FileStatusView: View {
     }
 
     private func fileRow(file: StatusFile, isStaged: Bool) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Toggle("", isOn: Binding(
                 get: { isStaged },
                 set: { newValue in
@@ -259,27 +296,30 @@ struct FileStatusView: View {
 
             Image(systemName: fileIcon(for: file))
                 .foregroundStyle(fileColor(for: file))
-                .font(.system(size: 14))
+                .font(.system(size: 14, weight: .medium))
+                .frame(width: 18)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(file.displayName)
                     .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
                 if let original = file.originalPath {
                     Text("\(original) → \(file.path)")
-                        .font(.caption)
+                        .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 } else {
                     Text(file.directory)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 }
             }
 
             Spacer()
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
+        .padding(.horizontal, 2)
         .contentShape(Rectangle())
         .onTapGesture {
             selectedFile = file
@@ -293,19 +333,23 @@ struct FileStatusView: View {
         Group {
             if let file = selectedFile {
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack {
+                    HStack(spacing: 8) {
                         Image(systemName: fileIcon(for: file))
                             .foregroundStyle(fileColor(for: file))
+                            .font(.system(size: 16, weight: .medium))
                         Text(file.path)
-                            .font(.headline)
+                            .font(.system(size: 14, weight: .semibold))
                             .lineLimit(1)
                         Spacer()
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(Color(nsColor: .controlBackgroundColor))
-
-                    Divider()
+                    .background(.ultraThinMaterial)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(.separator)
+                            .frame(height: 0.5)
+                    }
 
                     if file.isImage {
                         imagePreview(file: file)
@@ -332,6 +376,166 @@ struct FileStatusView: View {
                     message: "Select a file",
                     detail: "Click a file on the left to see its diff"
                 )
+            }
+        }
+    }
+
+    private var commitBar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if isCommitBarExpanded {
+                expandedCommitBar
+            } else {
+                collapsedCommitBar
+            }
+        }
+        .background(.regularMaterial)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(.separator)
+                .frame(height: 0.5)
+        }
+    }
+
+    private var collapsedCommitBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "person.circle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Image(systemName: "pencil")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+
+                TextField("Commit message", text: $commitMessage)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .disabled(true)
+
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.background)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(.separator.opacity(0.45), lineWidth: 0.5)
+            )
+            .shadow(color: .black.opacity(0.03), radius: 1, x: 0, y: 1)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isCommitBarExpanded = true
+                }
+                Task {
+                    if commitAuthor == nil {
+                        commitAuthor = await GitStatusService.shared.gitUser(in: repositoryURL)
+                    }
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private var expandedCommitBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Top row: author + options
+            HStack(spacing: 10) {
+                Image(systemName: "person.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.secondary)
+
+                Text(commitAuthor ?? "Committer")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                Menu {
+                    Toggle("Amend last commit", isOn: $amendLastCommit)
+                    Toggle("Bypass commit hooks", isOn: $bypassHooks)
+                    Toggle("Sign off", isOn: $signOffCommit)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Commit Options")
+                            .font(.system(size: 11, weight: .medium))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                    }
+                }
+                .buttonStyle(GlassButtonStyle(tint: .secondary, fontSize: 10))
+            }
+
+            // Message editor
+            TextEditor(text: $commitMessage)
+                .font(.system(size: 13))
+                .lineSpacing(2)
+                .frame(minHeight: 48, maxHeight: 100)
+                .padding(6)
+                .background(.background)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(.separator.opacity(0.45), lineWidth: 0.5)
+                )
+
+            // Bottom row: toggles + buttons
+            HStack(spacing: 12) {
+                Toggle("Amend last commit", isOn: $amendLastCommit)
+                    .font(.system(size: 11, weight: .medium))
+                    .toggleStyle(.checkbox)
+
+                Spacer()
+
+                Button("Cancel") {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isCommitBarExpanded = false
+                    }
+                }
+                .buttonStyle(GlassButtonStyle(tint: .secondary, fontSize: 12))
+
+                Button("Commit") {
+                    Task {
+                        await performCommit()
+                    }
+                }
+                .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 12))
+                .disabled(!canCommit)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private func performCommit() async {
+        let message = commitMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else { return }
+        do {
+            try await GitStatusService.shared.commit(
+                message: message,
+                in: repositoryURL,
+                amend: amendLastCommit,
+                noVerify: bypassHooks,
+                signOff: signOffCommit
+            )
+            await MainActor.run {
+                commitMessage = ""
+                amendLastCommit = false
+                bypassHooks = false
+                signOffCommit = false
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isCommitBarExpanded = false
+                }
+            }
+            await loadStatus()
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
             }
         }
     }
@@ -452,6 +656,28 @@ struct FileStatusView: View {
     private func commit(message: String) async {
         do {
             try await GitStatusService.shared.commit(message: message, in: repositoryURL)
+            await loadStatus()
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+
+    private func stageAll() async {
+        guard !changedFiles.isEmpty else { return }
+        do {
+            try await GitStatusService.shared.stageAll(files: changedFiles, in: repositoryURL)
+            await loadStatus()
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+
+    private func unstageAll() async {
+        guard !gitStatus.staged.isEmpty else { return }
+        do {
+            try await GitStatusService.shared.unstageAll(files: gitStatus.staged, in: repositoryURL)
             await loadStatus()
         } catch {
             errorMessage = error.localizedDescription

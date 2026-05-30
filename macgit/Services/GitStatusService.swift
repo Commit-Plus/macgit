@@ -241,6 +241,20 @@ actor GitStatusService {
         _ = try await runGit(arguments: ["reset", "HEAD", "--", file.path], in: repositoryURL)
     }
 
+    func stageAll(files: [StatusFile], in repositoryURL: URL) async throws {
+        guard !files.isEmpty else { return }
+        var arguments = ["add", "--"]
+        arguments.append(contentsOf: files.map(\.path))
+        _ = try await runGit(arguments: arguments, in: repositoryURL)
+    }
+
+    func unstageAll(files: [StatusFile], in repositoryURL: URL) async throws {
+        guard !files.isEmpty else { return }
+        var arguments = ["reset", "HEAD", "--"]
+        arguments.append(contentsOf: files.map(\.path))
+        _ = try await runGit(arguments: arguments, in: repositoryURL)
+    }
+
     func discard(file: StatusFile, in repositoryURL: URL) async throws {
         if file.status == .untracked {
             // Remove untracked file from filesystem
@@ -251,8 +265,21 @@ actor GitStatusService {
         }
     }
 
-    func commit(message: String, in repositoryURL: URL) async throws {
-        _ = try await runGit(arguments: ["commit", "-m", message], in: repositoryURL)
+    func commit(message: String, in repositoryURL: URL, amend: Bool = false, noVerify: Bool = false, signOff: Bool = false) async throws {
+        var arguments = ["commit", "-m", message]
+        if amend { arguments.append("--amend") }
+        if noVerify { arguments.append("--no-verify") }
+        if signOff { arguments.append("--signoff") }
+        _ = try await runGit(arguments: arguments, in: repositoryURL)
+    }
+
+    func gitUser(in repositoryURL: URL) async -> String? {
+        let name = (try? await runGit(arguments: ["config", "user.name"], in: repositoryURL))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = (try? await runGit(arguments: ["config", "user.email"], in: repositoryURL))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let n = name, !n.isEmpty, let e = email, !e.isEmpty else { return nil }
+        return "\(n) <\(e)>"
     }
 
     func diff(for file: StatusFile, in repositoryURL: URL) async throws -> [DiffHunk] {
