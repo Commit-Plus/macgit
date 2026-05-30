@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		6A843CA52FC5342F0031F230 /* macgit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = macgit.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6A843CA52FC5342F0031F230 /* macgit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = macgit.app; path = MacGit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -265,7 +265,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.thanhtran.macgit;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = MacGit;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -296,7 +296,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.thanhtran.macgit;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = MacGit;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

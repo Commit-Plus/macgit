@@ -23,7 +23,7 @@ struct RepoPickerView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(.secondary)
 
-            Text("Welcome to macgit")
+            Text("Welcome to MacGit")
                 .font(.largeTitle)
                 .fontWeight(.semibold)
 
