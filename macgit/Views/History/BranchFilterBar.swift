@@ -8,8 +8,12 @@ import SwiftUI
 struct BranchFilterBar: View {
     @Binding var showAllBranches: Bool
     let graphWidth: CGFloat
+    @Binding var messageWidth: CGFloat
+    @Binding var authorWidth: CGFloat
+    @Binding var dateWidth: CGFloat
+    @Binding var commitWidth: CGFloat
     let onChange: () -> Void
-    
+
     var body: some View {
         HStack(spacing: 0) {
             // Branch filter dropdown
@@ -23,7 +27,7 @@ struct BranchFilterBar: View {
             .padding(.leading, 8)
 
             // Column headers aligned with CommitRowView
-            HStack(spacing: 8) {
+            HStack(spacing: 0) {
                 Color.clear
                     .frame(width: graphWidth, height: 16)
                     .fixedSize()
@@ -32,7 +36,9 @@ struct BranchFilterBar: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
-                    .frame(minWidth: 120, alignment: .leading)
+                    .frame(width: messageWidth, alignment: .leading)
+
+                ColumnResizer(width: $messageWidth)
 
                 Spacer(minLength: 8)
 
@@ -40,19 +46,23 @@ struct BranchFilterBar: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
-                    .frame(minWidth: 80, maxWidth: 140, alignment: .leading)
+                    .frame(width: authorWidth, alignment: .leading)
+
+                ColumnResizer(width: $authorWidth)
 
                 Text("Date")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
-                    .frame(minWidth: 60, maxWidth: 80, alignment: .trailing)
+                    .frame(width: dateWidth, alignment: .trailing)
+
+                ColumnResizer(width: $dateWidth)
 
                 Text("Commit")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
-                    .frame(width: 60, alignment: .trailing)
+                    .frame(width: commitWidth, alignment: .trailing)
             }
             .padding(.leading, 8)
         }
@@ -67,5 +77,45 @@ struct BranchFilterBar: View {
         .onChange(of: showAllBranches) { _, _ in
             onChange()
         }
+    }
+}
+
+struct ColumnResizer: View {
+    @Binding var width: CGFloat
+    @State private var lastX: CGFloat = 0
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(width: 6)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.resizeLeftRight.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        if lastX == 0 {
+                            lastX = value.startLocation.x
+                        }
+                        let delta = value.location.x - lastX
+                        width = max(40, width + delta)
+                        lastX = value.location.x
+                    }
+                    .onEnded { _ in
+                        lastX = 0
+                    }
+            )
+            .overlay(
+                Rectangle()
+                    .fill(.separator)
+                    .frame(width: 1)
+                    .frame(maxHeight: .infinity)
+            )
     }
 }

@@ -15,13 +15,24 @@ struct HistoryView: View {
     @State private var selectedFile: CommitFileChange? = nil
     @State private var diffHunks: [DiffHunk] = []
     @State private var showAllBranches = true
+    @State private var messageColumnWidth: CGFloat = 200
+    @State private var authorColumnWidth: CGFloat = 120
+    @State private var dateColumnWidth: CGFloat = 80
+    @State private var commitColumnWidth: CGFloat = 70
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showingError = false
     
     var body: some View {
         VStack(spacing: 0) {
-            BranchFilterBar(showAllBranches: $showAllBranches, graphWidth: graphWidth) {
+            BranchFilterBar(
+                showAllBranches: $showAllBranches,
+                graphWidth: graphWidth,
+                messageWidth: $messageColumnWidth,
+                authorWidth: $authorColumnWidth,
+                dateWidth: $dateColumnWidth,
+                commitWidth: $commitColumnWidth
+            ) {
                 Task { await loadHistory() }
             }
             
@@ -93,7 +104,15 @@ struct HistoryView: View {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if let layout = graphLayout {
                             ForEach(Array(layout.nodes.enumerated()), id: \.element.id) { index, node in
-                                CommitRowView(node: node, graphWidth: graphWidth, isSelected: selectedCommit?.hash == node.commit.hash)
+                                CommitRowView(
+                                    node: node,
+                                    graphWidth: graphWidth,
+                                    isSelected: selectedCommit?.hash == node.commit.hash,
+                                    messageWidth: messageColumnWidth,
+                                    authorWidth: authorColumnWidth,
+                                    dateWidth: dateColumnWidth,
+                                    commitWidth: commitColumnWidth
+                                )
                                     .id(node.commit.hash)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
