@@ -87,7 +87,7 @@ struct MainWindowView: View {
                 toolbarButton(icon: "folder", label: "Finder", action: showInFinder)
             }
             ToolbarItem(placement: .automatic) {
-                toolbarButton(icon: "terminal", label: "Terminal", action: {})
+                toolbarButton(icon: "terminal", label: "Terminal", action: openTerminal)
             }
             ToolbarItem(placement: .automatic) {
                 toolbarButton(icon: "gear", label: "Settings", action: {})
@@ -249,6 +249,17 @@ struct MainWindowView: View {
 
     private func showInFinder() {
         NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: repositoryURL.path)
+    }
+
+    private func openTerminal() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-a", "Terminal", repositoryURL.path]
+        do {
+            try process.run()
+        } catch {
+            print("Failed to open Terminal: \(error)")
+        }
     }
 
     private func browserURL(from remoteURLString: String) -> URL? {
