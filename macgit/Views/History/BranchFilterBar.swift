@@ -82,7 +82,7 @@ struct BranchFilterBar: View {
 
 struct ColumnResizer: View {
     @Binding var width: CGFloat
-    @State private var lastX: CGFloat = 0
+    @State private var initialWidth: CGFloat = 0
 
     var body: some View {
         Rectangle()
@@ -100,15 +100,13 @@ struct ColumnResizer: View {
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in
-                        if lastX == 0 {
-                            lastX = value.startLocation.x
+                        if initialWidth == 0 {
+                            initialWidth = width
                         }
-                        let delta = value.location.x - lastX
-                        width = max(40, width + delta)
-                        lastX = value.location.x
+                        width = max(40, initialWidth + value.translation.width)
                     }
                     .onEnded { _ in
-                        lastX = 0
+                        initialWidth = 0
                     }
             )
             .overlay(
