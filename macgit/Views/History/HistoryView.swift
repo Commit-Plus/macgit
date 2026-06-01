@@ -21,7 +21,7 @@ struct HistoryView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            BranchFilterBar(showAllBranches: $showAllBranches) {
+            BranchFilterBar(showAllBranches: $showAllBranches, graphWidth: graphWidth) {
                 Task { await loadHistory() }
             }
             

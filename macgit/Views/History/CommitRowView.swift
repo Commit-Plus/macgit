@@ -62,7 +62,8 @@ struct CommitRowView: View {
                 .lineLimit(1)
                 .frame(width: 60, alignment: .trailing)
         }
-        .padding(.horizontal, 8)
+        .padding(.leading, 8)
+        .padding(.trailing, 16)
         .frame(height: 32)
         .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .contentShape(Rectangle())
