@@ -7,6 +7,7 @@ import SwiftUI
 
 struct HistoryView: View {
     let repositoryURL: URL
+    let selectedBranch: String?
     
     @State private var commits: [Commit] = []
     @State private var graphLayout: CommitGraphLayout? = nil
@@ -22,6 +23,12 @@ struct HistoryView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showingError = false
+    @State private var scrollTarget: String? = nil
+    
+    init(repositoryURL: URL, selectedBranch: String? = nil) {
+        self.repositoryURL = repositoryURL
+        self.selectedBranch = selectedBranch
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -53,10 +60,14 @@ struct HistoryView: View {
                 )
             }
         }
+        .id("history")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .task {
             await loadHistory()
+            if let branch = selectedBranch {
+                await selectBranchTip(branch)
+            }
         }
         .onChange(of: selectedCommit) { _, newCommit in
             Task {
@@ -67,6 +78,10 @@ struct HistoryView: View {
             Task {
                 await loadDiff(for: newFile, in: selectedCommit)
             }
+        }
+        .task(id: selectedBranch) {
+            guard let branch = selectedBranch else { return }
+            await selectBranchTip(branch)
         }
         .alert("Error", isPresented: $showingError, actions: {
             Button("OK", role: .cancel) {}
@@ -109,6 +124,7 @@ struct HistoryView: View {
                                     dateWidth: dateColumnWidth,
                                     commitWidth: commitColumnWidth
                                 )
+                                    .id(node.commit.hash)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
                                         selectedCommit = node.commit
@@ -120,6 +136,12 @@ struct HistoryView: View {
                         }
                     }
                     .padding(.leading, 4)
+                }
+            }
+            .onChange(of: scrollTarget) { _, target in
+                guard let target else { return }
+                withAnimation(.easeOut(duration: 0.3)) {
+                    proxy.scrollTo(target, anchor: .center)
                 }
             }
         }
@@ -283,6 +305,22 @@ struct HistoryView: View {
             await MainActor.run {
                 errorMessage = error.localizedDescription
                 showingError = true
+            }
+        }
+    }
+
+    private func selectBranchTip(_ branch: String) async {
+        // Wait up to 2 seconds for history to load if it hasn't yet
+        var attempts = 0
+        while graphLayout == nil && attempts < 40 {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            attempts += 1
+        }
+        guard let tipHash = await GitStatusService.shared.tipHash(for: branch, in: repositoryURL) else { return }
+        await MainActor.run {
+            if let node = graphLayout?.nodes.first(where: { $0.commit.hash == tipHash }) {
+                selectedCommit = node.commit
+                scrollTarget = node.commit.hash
             }
         }
     }

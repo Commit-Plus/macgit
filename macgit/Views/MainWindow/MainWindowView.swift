@@ -14,7 +14,7 @@ struct WindowWidthKey: PreferenceKey {
 
 struct MainWindowView: View {
     let repositoryURL: URL
-    @State private var selectedItem: SidebarItem? = .fileStatus
+    @State private var selectedItem: SidebarSelection? = .item(.fileStatus)
     @State private var windowWidth: CGFloat = 0
     @State private var showingCommitSheet = false
     @State private var showingPullSheet = false
@@ -23,14 +23,24 @@ struct MainWindowView: View {
     @State private var showingBranchSheet = false
     @State private var showingMergeSheet = false
     @State private var showingStashSheet = false
+    @State private var showingCheckoutConfirmation = false
+    @State private var branchToCheckout: String = ""
     @StateObject private var syncState = SyncState()
     @State private var repoIconName: String = "code-branch"
     @State private var remoteURLString: String = ""
+    @State private var selectedBranchName: String? = nil
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(selection: $selectedItem)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
+            SidebarView(
+                repositoryURL: repositoryURL,
+                selection: $selectedItem,
+                onRequestCheckout: { branch in
+                    branchToCheckout = branch
+                    showingCheckoutConfirmation = true
+                }
+            )
+            .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
         } detail: {
             VStack(spacing: 0) {
                 Color(nsColor: .controlBackgroundColor)
@@ -43,11 +53,11 @@ struct MainWindowView: View {
 
                 Group {
                     switch selectedItem {
-                    case .fileStatus:
+                    case .item(.fileStatus):
                         FileStatusView(repositoryURL: repositoryURL, syncState: syncState)
-                    case .history:
-                        HistoryView(repositoryURL: repositoryURL)
-                    case .search:
+                    case .item(.history), .branch:
+                        HistoryView(repositoryURL: repositoryURL, selectedBranch: selectedBranchName)
+                    case .item(.search):
                         SearchView(repositoryURL: repositoryURL)
                     case .none:
                         EmptyStateView(message: "Select an item from the sidebar")
@@ -102,6 +112,13 @@ struct MainWindowView: View {
             if !remoteURLString.isEmpty {
                 self.remoteURLString = remoteURLString
                 repoIconName = determineRepoIconName(from: remoteURLString)
+            }
+        }
+        .onChange(of: selectedItem) { _, newItem in
+            if case .branch(let name) = newItem {
+                selectedBranchName = name
+            } else {
+                selectedBranchName = nil
             }
         }
         .onDisappear {
@@ -168,6 +185,13 @@ struct MainWindowView: View {
             StashSheetView { options in
                 Task {
                     await syncState.performStash(options: options, repositoryURL: repositoryURL)
+                }
+            }
+        }
+        .sheet(isPresented: $showingCheckoutConfirmation) {
+            CheckoutConfirmationSheet(branchName: branchToCheckout) { stash in
+                Task {
+                    await performCheckout(branch: branchToCheckout, stash: stash)
                 }
             }
         }
@@ -240,6 +264,29 @@ struct MainWindowView: View {
 
     private func commitFromToolbar(message: String) async {
         await syncState.performCommit(message: message, repositoryURL: repositoryURL)
+    }
+
+    private func performCheckout(branch: String, stash: Bool) async {
+        do {
+            if stash {
+                try await GitStatusService.shared.stash(
+                    options: GitStatusService.StashOptions(
+                        message: "Stashed before switching to \(branch)",
+                        keepIndex: false
+                    ),
+                    in: repositoryURL
+                )
+            }
+            try await GitStatusService.shared.checkoutCommit(branch, in: repositoryURL)
+            await syncState.refresh(repositoryURL: repositoryURL)
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+        } catch {
+            syncState.showError(error.localizedDescription)
+        }
     }
 
     private func openRemoteURL() {

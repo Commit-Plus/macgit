@@ -564,9 +564,25 @@ actor GitStatusService {
             "--date=iso-strict",
             "-n", "500"
         ])
+        let output = (try? await runGit(arguments: arguments, in: repositoryURL)) ?? ""
+        return parseCommitLog(output)
+    }
+
+    func commitHistory(branch: String, in repositoryURL: URL) async -> [Commit] {
+        let arguments = [
+            "log", branch,
+            "--format=%H%x00%P%x00%s%x00%an%x00%ae%x00%ad%x00%D",
+            "--date=iso-strict",
+            "-n", "500"
+        ]
 
         let output = (try? await runGit(arguments: arguments, in: repositoryURL)) ?? ""
         return parseCommitLog(output)
+    }
+
+    func tipHash(for branch: String, in repositoryURL: URL) async -> String? {
+        let output = (try? await runGit(arguments: ["rev-parse", branch], in: repositoryURL))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return output?.isEmpty == false ? output : nil
     }
 
     func changedFiles(in commit: String, in repositoryURL: URL) async -> [CommitFileChange] {

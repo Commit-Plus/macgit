@@ -11,17 +11,19 @@ The system SHALL provide a main application window with a left sidebar and a rig
 - **THEN** the picker closes and a window with a left sidebar and right detail panel is displayed
 
 ### Requirement: Sidebar Navigation
-The system SHALL provide a left sidebar with workspace navigation items.
+The system SHALL provide a left sidebar with workspace navigation items. The BRANCHES section SHALL display the local branch tree instead of a disabled placeholder.
 
 #### Scenario: Sidebar items visible
 - **WHEN** the main window is active
 - **THEN** the sidebar contains at minimum the following sections and items:
   - **WORKSPACE**: File status, History, Search
-  - Placeholder sections (collapsed or disabled) for Branches, Tags, Remotes, Stashes, Submodules, Subtrees
+  - **BRANCHES**: Live tree of local branches (hierarchical by `/` delimiter)
+  - Placeholder sections (collapsed or disabled) for Tags, Remotes, Stashes, Submodules, Subtrees
 
 #### Scenario: Sidebar selection updates detail
 - **WHEN** the user selects an item in the sidebar
 - **THEN** the right panel updates to show the corresponding content view
+- **AND** selecting a branch navigates to the History view filtered by that branch
 
 ### Requirement: macOS 26 Native Styling
 The system SHALL apply macOS 26-style visual design across the main window.
@@ -41,9 +43,9 @@ The system SHALL display placeholder content in the right panel for each impleme
 - **WHEN** the user selects "File status" in the sidebar
 - **THEN** the right panel shows a placeholder indicating file status content will appear here
 
-#### Scenario: History placeholder
+#### Scenario: History view
 - **WHEN** the user selects "History" in the sidebar
-- **THEN** the right panel shows a placeholder indicating commit history content will appear here
+- **THEN** the right panel shows the commit history view with branch graph, commit list, and diff viewer
 
 #### Scenario: Search placeholder
 - **WHEN** the user selects "Search" in the sidebar
@@ -142,4 +144,51 @@ The system SHALL provide a modal dialog when the user clicks the Merge toolbar b
 #### Scenario: Cancel Merge dialog
 - **WHEN** the user clicks Cancel in the Merge dialog
 - **THEN** the dialog closes and no Git command is executed
+
+### Requirement: Branch Selection Navigation
+The system SHALL navigate to the History view filtered to the selected branch when the user single-clicks a branch leaf in the sidebar.
+
+#### Scenario: Single click branch shows filtered history
+- **WHEN** the user single-clicks a branch named `feat/test-new-branch` in the sidebar
+- **THEN** the right panel shows the History view
+- **AND** the commit list is filtered to commits reachable from that branch only
+
+### Requirement: Branch Checkout
+The system SHALL check out a branch when the user double-clicks it in the sidebar. Double-clicking the currently checked-out branch SHALL be a no-op.
+
+#### Scenario: Double click checks out branch
+- **GIVEN** the current branch is `main`
+- **WHEN** the user double-clicks `feat/test-new-branch` in the sidebar
+- **THEN** the system runs `git checkout feat/test-new-branch`
+- **AND** the sidebar updates to show `feat/test-new-branch` as the current branch
+
+#### Scenario: Double click current branch is no-op
+- **GIVEN** the current branch is `main`
+- **WHEN** the user double-clicks `main` in the sidebar
+- **THEN** no Git command is executed
+- **AND** the UI state remains unchanged
+
+### Requirement: Branch Context Menu
+The system SHALL display a context menu on right-clicking a branch in the sidebar with the following actions: Checkout, Merge into current, Rebase current onto, Fetch, Push to, Track Remote Branch, Diff Against Current, Rename, Delete, Copy Branch Name to Clipboard, and Create Pull Request.
+
+#### Scenario: Context menu appears on right click
+- **WHEN** the user right-clicks a branch in the sidebar
+- **THEN** a context menu appears with the listed branch actions
+
+#### Scenario: Checkout from context menu
+- **WHEN** the user selects "Checkout" from the context menu
+- **THEN** the system checks out the selected branch
+
+#### Scenario: Delete from context menu
+- **WHEN** the user selects "Delete" from the context menu
+- **THEN** the system deletes the selected branch using the existing delete-branch flow
+
+### Requirement: Current Branch Visual Indicator
+The system SHALL visually indicate the currently checked-out branch in the sidebar with a circle icon and bold text.
+
+#### Scenario: Current branch highlighted
+- **GIVEN** the current branch is `main`
+- **WHEN** the sidebar branch tree is rendered
+- **THEN** the `main` item displays a filled circle icon to its left
+- **AND** the `main` text uses a bold font weight
 

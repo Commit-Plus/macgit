@@ -7,6 +7,11 @@
 
 import SwiftUI
 
+enum SidebarSelection: Hashable {
+    case item(SidebarItem)
+    case branch(String)
+}
+
 enum SidebarItem: String, CaseIterable, Identifiable {
     case fileStatus = "File status"
     case history = "History"
@@ -42,19 +47,68 @@ enum SidebarSection: String, CaseIterable {
     }
 }
 
+struct BranchNode: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let fullPath: String
+    let isFolder: Bool
+    var children: [BranchNode]
+}
+
+struct BranchRowItem: Identifiable {
+    let id: UUID
+    let name: String
+    let fullPath: String
+    let isFolder: Bool
+    let indent: Int
+}
+
 struct SidebarView: View {
-    @Binding var selection: SidebarItem?
+    let repositoryURL: URL
+    @Binding var selection: SidebarSelection?
+    let onRequestCheckout: (String) -> Void
+
+    @State private var branchNodes: [BranchNode] = []
+    @State private var currentBranch: String = ""
+    @State private var expandedFolders: Set<String> = []
+    @State private var isLoadingBranches = false
+
+    // Alerts
+    @State private var errorMessage: String = ""
+    @State private var showingError = false
+    @State private var branchToDelete: String?
+    @State private var showingDeleteConfirmation = false
 
     var body: some View {
         List(selection: $selection) {
+            // WORKSPACE section
             Section(SidebarSection.workspace.rawValue) {
                 ForEach(SidebarSection.workspace.items) { item in
                     Label(item.rawValue, systemImage: item.icon)
-                        .tag(item)
+                        .tag(SidebarSelection.item(item))
                 }
             }
 
-            ForEach(SidebarSection.allCases.dropFirst(), id: \.self) { section in
+            // BRANCHES section
+            Section(SidebarSection.branches.rawValue) {
+                if isLoadingBranches && branchNodes.isEmpty {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 4)
+                } else if branchNodes.isEmpty {
+                    Text("No branches")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(visibleBranchRows) { row in
+                        branchRowView(for: row)
+                    }
+                }
+            }
+
+            // Other placeholder sections
+            ForEach(SidebarSection.allCases.dropFirst(2), id: \.self) { section in
                 Section(section.rawValue) {
                     Text("Coming soon")
                         .font(.caption)
@@ -64,5 +118,267 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .task {
+            await loadBranches()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { _ in
+            Task { await loadBranches() }
+        }
+        .alert("Error", isPresented: $showingError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage)
+        }
+        .alert("Delete Branch", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                if let branch = branchToDelete {
+                    Task { await deleteBranch(branch) }
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete the branch '\(branchToDelete ?? "")'?")
+        }
     }
+
+    // MARK: - Tree Flattening
+
+    private var visibleBranchRows: [BranchRowItem] {
+        var rows: [BranchRowItem] = []
+        func traverse(_ nodes: [BranchNode], indent: Int) {
+            for node in nodes {
+                rows.append(BranchRowItem(
+                    id: node.id,
+                    name: node.name,
+                    fullPath: node.fullPath,
+                    isFolder: node.isFolder,
+                    indent: indent
+                ))
+                if node.isFolder && expandedFolders.contains(node.fullPath) {
+                    traverse(node.children, indent: indent + 1)
+                }
+            }
+        }
+        traverse(branchNodes, indent: 0)
+        return rows
+    }
+
+    // MARK: - Row Rendering
+
+    @ViewBuilder
+    private func branchRowView(for row: BranchRowItem) -> some View {
+        let baseView = HStack(spacing: 4) {
+            // Indentation
+            HStack(spacing: 0) {
+                ForEach(0..<row.indent, id: \.self) { _ in
+                    Color.clear
+                        .frame(width: 16)
+                }
+            }
+
+            // Icon
+            if row.isFolder {
+                Image(systemName: expandedFolders.contains(row.fullPath) ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, alignment: .center)
+            } else {
+                if row.fullPath == currentBranch {
+                    Image(systemName: "circle.fill")
+                        .font(.system(size: 7))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 16, alignment: .center)
+                } else {
+                    Color.clear
+                        .frame(width: 16)
+                }
+            }
+
+            // Name
+            Text(row.name)
+                .font(.system(size: 12))
+                .fontWeight(row.fullPath == currentBranch && !row.isFolder ? .bold : .regular)
+                .lineLimit(1)
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+
+        if row.isFolder {
+            baseView
+                .onTapGesture {
+                    toggleFolder(row.fullPath)
+                }
+        } else {
+            baseView
+                .tag(SidebarSelection.branch(row.fullPath))
+                .onTapGesture {
+                    selection = .branch(row.fullPath)
+                }
+                .onTapGesture(count: 2) {
+                    if row.fullPath != currentBranch {
+                        onRequestCheckout(row.fullPath)
+                    }
+                }
+                .contextMenu {
+                    branchContextMenu(for: row.fullPath)
+                }
+        }
+    }
+
+    private func toggleFolder(_ path: String) {
+        if expandedFolders.contains(path) {
+            expandedFolders.remove(path)
+        } else {
+            expandedFolders.insert(path)
+        }
+    }
+
+    // MARK: - Context Menu
+
+    @ViewBuilder
+    private func branchContextMenu(for branch: String) -> some View {
+        Button("Checkout \(branch)") {
+            onRequestCheckout(branch)
+        }
+        .disabled(branch == currentBranch)
+
+        Divider()
+
+        Button("Merge \(branch) into \(currentBranch)") {}
+            .disabled(true)
+        Button("Rebase current changes onto \(branch)") {}
+            .disabled(true)
+
+        Divider()
+
+        Button("Fetch \(branch)") {}
+            .disabled(true)
+        Menu("Push to") {
+            Text("No remotes configured")
+        }
+        .disabled(true)
+        Menu("Track Remote Branch") {
+            Text("No remotes configured")
+        }
+        .disabled(true)
+
+        Divider()
+
+        Button("Diff Against Current") {}
+            .disabled(true)
+
+        Divider()
+
+        Button("Rename...") {}
+            .disabled(true)
+        Button("Delete \(branch)") {
+            branchToDelete = branch
+            showingDeleteConfirmation = true
+        }
+        .disabled(branch == currentBranch)
+
+        Divider()
+
+        Button("Copy Branch Name to Clipboard") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(branch, forType: .string)
+        }
+
+        Divider()
+
+        Button("Create Pull Request...") {}
+            .disabled(true)
+    }
+
+    // MARK: - Actions
+
+    private func deleteBranch(_ branch: String) async {
+        do {
+            _ = try await GitStatusService.shared.deleteBranch(name: branch, force: false, in: repositoryURL)
+            NotificationCenter.default.post(name: .repositoryDidChange, object: nil, userInfo: ["repositoryURL": repositoryURL])
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    // MARK: - Data Loading
+
+    private func loadBranches() async {
+        isLoadingBranches = true
+        defer { isLoadingBranches = false }
+        let locals = await GitStatusService.shared.localBranches(in: repositoryURL)
+        let current = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
+        let tree = buildBranchTree(from: locals)
+        let allFolders = collectFolderPaths(from: tree)
+        await MainActor.run {
+            branchNodes = tree
+            currentBranch = current
+            // Expand all folders by default on first load
+            if expandedFolders.isEmpty {
+                expandedFolders = allFolders
+            }
+        }
+    }
+
+    // MARK: - Tree Builder
+
+    private func buildBranchTree(from branches: [String], prefix: String = "") -> [BranchNode] {
+        var groups = [String: [String]]()
+        var leaves = Set<String>()
+
+        for branch in branches {
+            let relative = prefix.isEmpty ? branch : String(branch.dropFirst(prefix.count + 1))
+            if let slashIndex = relative.firstIndex(of: "/") {
+                let first = String(relative[..<slashIndex])
+                let rest = String(relative[relative.index(after: slashIndex)...])
+                let childBranch = prefix.isEmpty ? branch : "\(prefix)/\(rest)"
+                groups[first, default: []].append(childBranch)
+            } else {
+                leaves.insert(relative)
+            }
+        }
+
+        var nodes: [BranchNode] = []
+
+        for (name, childBranches) in groups.sorted(by: { $0.key < $1.key }) {
+            let fullPath = prefix.isEmpty ? name : "\(prefix)/\(name)"
+            var children = buildBranchTree(from: childBranches, prefix: fullPath)
+            if leaves.remove(name) != nil {
+                children.insert(
+                    BranchNode(name: name, fullPath: fullPath, isFolder: false, children: []),
+                    at: 0
+                )
+            }
+            nodes.append(BranchNode(name: name, fullPath: fullPath, isFolder: true, children: children))
+        }
+
+        for leaf in leaves.sorted() {
+            let fullPath = prefix.isEmpty ? leaf : "\(prefix)/\(leaf)"
+            nodes.append(BranchNode(name: leaf, fullPath: fullPath, isFolder: false, children: []))
+        }
+
+        return nodes
+    }
+
+    private func collectFolderPaths(from nodes: [BranchNode]) -> Set<String> {
+        var paths = Set<String>()
+        for node in nodes {
+            if node.isFolder {
+                paths.insert(node.fullPath)
+                paths.formUnion(collectFolderPaths(from: node.children))
+            }
+        }
+        return paths
+    }
+}
+
+#Preview {
+    SidebarView(
+        repositoryURL: URL(fileURLWithPath: "/tmp"),
+        selection: .constant(nil),
+        onRequestCheckout: { _ in }
+    )
 }
