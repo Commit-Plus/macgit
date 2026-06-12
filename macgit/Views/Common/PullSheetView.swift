@@ -8,6 +8,7 @@ import SwiftUI
 struct PullSheetView: View {
     @Environment(\.dismiss) private var dismiss
     let repositoryURL: URL
+    let preselectedBranch: String?
     let onPull: (String, String, GitStatusService.PullOptions) -> Void
 
     @State private var remotes: [String] = []
@@ -173,8 +174,10 @@ struct PullSheetView: View {
         let branches = await GitStatusService.shared.remoteBranches(remote: remote, in: repositoryURL)
         await MainActor.run {
             remoteBranches = branches
-            // Auto-select remote branch matching local branch if it exists
-            if let match = branches.first(where: { $0 == localBranch }) {
+            // Auto-select preselected branch, then fall back to matching local branch
+            if let preselected = preselectedBranch, branches.contains(preselected) {
+                selectedBranch = preselected
+            } else if let match = branches.first(where: { $0 == localBranch }) {
                 selectedBranch = match
             } else {
                 selectedBranch = ""

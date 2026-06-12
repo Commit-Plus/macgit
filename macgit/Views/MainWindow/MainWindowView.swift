@@ -31,6 +31,7 @@ struct MainWindowView: View {
     @State private var repoIconName: String = "code-branch"
     @State private var remoteURLString: String = ""
     @State private var selectedBranchName: String? = nil
+    @State private var pullPreselectedBranch: String? = nil
 
     var body: some View {
         NavigationSplitView {
@@ -45,6 +46,10 @@ struct MainWindowView: View {
                         branchToCheckout = ref
                         showingCheckoutConfirmation = true
                     }
+                },
+                onRequestPullBranch: { branch in
+                    pullPreselectedBranch = branch
+                    showingPullSheet = true
                 }
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
@@ -156,7 +161,7 @@ struct MainWindowView: View {
             }
         }
         .sheet(isPresented: $showingPullSheet) {
-            PullSheetView(repositoryURL: repositoryURL) { remote, branch, options in
+            PullSheetView(repositoryURL: repositoryURL, preselectedBranch: pullPreselectedBranch) { remote, branch, options in
                 Task {
                     await syncState.performPull(remote: remote, branch: branch, options: options, repositoryURL: repositoryURL)
                 }

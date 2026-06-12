@@ -68,6 +68,7 @@ struct SidebarView: View {
     let repositoryURL: URL
     @Binding var selection: SidebarSelection?
     let onRequestCheckout: (String) -> Void
+    let onRequestPullBranch: (String) -> Void
 
     @State private var branchNodes: [BranchNode] = []
     @State private var currentBranch: String = ""
@@ -440,8 +441,10 @@ struct SidebarView: View {
 
         Divider()
 
-        Button("Fetch \(branch)") {}
-            .disabled(true)
+        Button("Fetch \(branch)") {
+            onRequestPullBranch(branch)
+        }
+        .disabled(branchSyncStatus[branch]?.behind == 0)
         Menu("Push to") {
             Text("No remotes configured")
         }
@@ -606,6 +609,7 @@ struct SidebarView: View {
     SidebarView(
         repositoryURL: URL(fileURLWithPath: "/tmp"),
         selection: .constant(nil),
-        onRequestCheckout: { _ in }
+        onRequestCheckout: { _ in },
+        onRequestPullBranch: { _ in }
     )
 }
