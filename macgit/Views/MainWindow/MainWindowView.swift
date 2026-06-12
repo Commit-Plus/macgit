@@ -38,8 +38,8 @@ struct MainWindowView: View {
             SidebarView(
                 repositoryURL: repositoryURL,
                 selection: $selectedItem,
-                onRequestCheckout: { ref in
-                    if case .tag = selectedItem {
+                onRequestCheckout: { ref, isTag in
+                    if isTag {
                         tagToCheckout = ref
                         showingDetachedHeadConfirmation = true
                     } else {

@@ -88,6 +88,9 @@ struct ContentView: View {
             appState.hasOpenRepository = repositoryURL != nil
             handlePendingWindowFlags()
         }
+        .overlay(
+            WindowCloseButtonModifier(isVisible: repositoryURL == nil)
+        )
     }
 
     private func handlePendingWindowFlags() {
@@ -140,6 +143,43 @@ struct ContentView: View {
         if let action = pendingAction {
             performAction(action, inNewWindow: true)
             pendingAction = nil
+        }
+    }
+}
+
+struct WindowCloseButtonModifier: NSViewRepresentable {
+    let isVisible: Bool
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.isHidden = true
+        DispatchQueue.main.async {
+            context.coordinator.update(window: view.window)
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.update(window: nsView.window)
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isVisible: isVisible)
+    }
+    
+    class Coordinator {
+        var isVisible: Bool
+        
+        init(isVisible: Bool) {
+            self.isVisible = isVisible
+        }
+        
+        func update(window: NSWindow?) {
+            guard let window = window else { return }
+            if let closeButton = window.standardWindowButton(.closeButton) {
+                closeButton.isHidden = !isVisible
+                closeButton.isEnabled = isVisible
+            }
         }
     }
 }

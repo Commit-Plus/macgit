@@ -67,7 +67,7 @@ struct BranchRowItem: Identifiable {
 struct SidebarView: View {
     let repositoryURL: URL
     @Binding var selection: SidebarSelection?
-    let onRequestCheckout: (String) -> Void
+    let onRequestCheckout: (String, Bool) -> Void
     let onRequestPullBranch: (String) -> Void
 
     @State private var branchNodes: [BranchNode] = []
@@ -314,7 +314,7 @@ struct SidebarView: View {
                 }
                 .onTapGesture(count: 2) {
                     if row.fullPath != currentBranch {
-                        onRequestCheckout(row.fullPath)
+                        onRequestCheckout(row.fullPath, false)
                     }
                 }
                 .contextMenu {
@@ -364,7 +364,7 @@ struct SidebarView: View {
                     selection = .tag(row.fullPath)
                 }
                 .onTapGesture(count: 2) {
-                    onRequestCheckout(row.fullPath)
+                    onRequestCheckout(row.fullPath, true)
                 }
                 .contextMenu {
                     Button("Copy Tag Name to Clipboard") {
@@ -428,7 +428,7 @@ struct SidebarView: View {
     @ViewBuilder
     private func branchContextMenu(for branch: String) -> some View {
         Button("Checkout \(branch)") {
-            onRequestCheckout(branch)
+            onRequestCheckout(branch, false)
         }
         .disabled(branch == currentBranch)
 
@@ -609,7 +609,7 @@ struct SidebarView: View {
     SidebarView(
         repositoryURL: URL(fileURLWithPath: "/tmp"),
         selection: .constant(nil),
-        onRequestCheckout: { _ in },
+        onRequestCheckout: { _, _ in },
         onRequestPullBranch: { _ in }
     )
 }
