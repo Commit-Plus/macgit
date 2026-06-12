@@ -77,6 +77,9 @@ struct SidebarView: View {
     @State private var isLoadingTags = false
     @State private var expandedTagFolders: Set<String> = []
 
+    // Section expansion states
+    @State private var sectionStates: SidebarSectionState = SidebarSectionState()
+
     // Alerts
     @State private var errorMessage: String = ""
     @State private var showingError = false
@@ -94,39 +97,47 @@ struct SidebarView: View {
             }
 
             // BRANCHES section
-            Section(SidebarSection.branches.rawValue) {
-                if isLoadingBranches && branchNodes.isEmpty {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                } else if branchNodes.isEmpty {
-                    Text("No branches")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(visibleBranchRows) { row in
-                        branchRowView(for: row)
+            Section {
+                if sectionStates.branchesExpanded {
+                    if isLoadingBranches && branchNodes.isEmpty {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 4)
+                    } else if branchNodes.isEmpty {
+                        Text("No branches")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(visibleBranchRows) { row in
+                            branchRowView(for: row)
+                        }
                     }
                 }
+            } header: {
+                sectionHeader(SidebarSection.branches, isExpanded: sectionStates.branchesExpanded)
             }
 
             // TAGS section
-            Section(SidebarSection.tags.rawValue) {
-                if isLoadingTags && tagNodes.isEmpty {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                } else if tagNodes.isEmpty {
-                    Text("No tags")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(visibleTagRows) { row in
-                        tagRowView(for: row)
+            Section {
+                if sectionStates.tagsExpanded {
+                    if isLoadingTags && tagNodes.isEmpty {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 4)
+                    } else if tagNodes.isEmpty {
+                        Text("No tags")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(visibleTagRows) { row in
+                            tagRowView(for: row)
+                        }
                     }
                 }
+            } header: {
+                sectionHeader(SidebarSection.tags, isExpanded: sectionStates.tagsExpanded)
             }
 
             // Other placeholder sections
@@ -141,6 +152,7 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .task {
+            loadSectionStates()
             await loadBranches()
             await loadTags()
         }
@@ -165,6 +177,37 @@ struct SidebarView: View {
         } message: {
             Text("Are you sure you want to delete the branch '\(branchToDelete ?? "")'?")
         }
+    }
+
+    // MARK: - Section Header
+
+    @ViewBuilder
+    private func sectionHeader(_ section: SidebarSection, isExpanded: Bool) -> some View {
+        HStack {
+            Text(section.rawValue)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 4)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            toggleSection(section)
+        }
+    }
+
+    private func loadSectionStates() {
+        let path = repositoryURL.path
+        sectionStates = SidebarSettingsStore.shared.state(for: path)
+    }
+
+    private func toggleSection(_ section: SidebarSection) {
+        let path = repositoryURL.path
+        SidebarSettingsStore.shared.toggleSection(section, for: path)
+        sectionStates = SidebarSettingsStore.shared.state(for: path)
     }
 
     // MARK: - Tree Flattening
