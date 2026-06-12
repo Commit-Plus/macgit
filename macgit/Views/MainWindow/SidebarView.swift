@@ -71,6 +71,7 @@ struct SidebarView: View {
 
     @State private var branchNodes: [BranchNode] = []
     @State private var currentBranch: String = ""
+    @State private var branchSyncStatus: [String: BranchSyncStatus] = [:]
     @State private var expandedFolders: Set<String> = []
     @State private var isLoadingBranches = false
     @State private var tagNodes: [BranchNode] = []
@@ -462,9 +463,19 @@ struct SidebarView: View {
         let current = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
         let tree = buildBranchTree(from: locals)
         let allFolders = collectFolderPaths(from: tree)
+
+        // Fetch sync status for each branch
+        var syncMap: [String: BranchSyncStatus] = [:]
+        for branch in locals {
+            if let status = await GitStatusService.shared.branchSyncStatus(for: branch, in: repositoryURL) {
+                syncMap[branch] = status
+            }
+        }
+
         await MainActor.run {
             branchNodes = tree
             currentBranch = current
+            branchSyncStatus = syncMap
             // Expand all folders by default on first load
             if expandedFolders.isEmpty {
                 expandedFolders = allFolders
