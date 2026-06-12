@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		6A843CA52FC5342F0031F230 /* macgit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = macgit.app; path = "Commit+.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6A843CB82FC5342F0031F230 /* macgitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = macgitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +17,28 @@
 			path = macgit;
 			sourceTree = "<group>";
 		};
+		6A843CB92FC5342F0031F230 /* macgitTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = macgitTests;
+			sourceTree = "<group>";
+			exceptions = (
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		6A843CA22FC5342F0031F230 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6A843CBB2FC5342F0031F230 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +52,7 @@
 			isa = PBXGroup;
 			children = (
 				6A843CA72FC5342F0031F230 /* macgit */,
+				6A843CB92FC5342F0031F230 /* macgitTests */,
 				6A843CA62FC5342F0031F230 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +61,7 @@
 			isa = PBXGroup;
 			children = (
 				6A843CA52FC5342F0031F230 /* macgit.app */,
+				6A843CB82FC5342F0031F230 /* macgitTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +91,28 @@
 			productReference = 6A843CA52FC5342F0031F230 /* macgit.app */;
 			productType = "com.apple.product-type.application";
 		};
+		6A843CBC2FC5342F0031F230 /* macgitTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6A843CC12FC5342F0031F230 /* Build configuration list for PBXNativeTarget "macgitTests" */;
+			buildPhases = (
+				6A843CBA2FC5342F0031F230 /* Sources */,
+				6A843CBB2FC5342F0031F230 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6A843CBD2FC5342F0031F230 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				6A843CB92FC5342F0031F230 /* macgitTests */,
+			);
+			name = macgitTests;
+			packageProductDependencies = (
+			);
+			productName = macgitTests;
+			productReference = 6A843CB82FC5342F0031F230 /* macgitTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +125,10 @@
 				TargetAttributes = {
 					6A843CA42FC5342F0031F230 = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					6A843CBC2FC5342F0031F230 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 6A843CA42FC5342F0031F230;
 					};
 				};
 			};
@@ -100,6 +147,7 @@
 			projectRoot = "";
 			targets = (
 				6A843CA42FC5342F0031F230 /* macgit */,
+				6A843CBC2FC5342F0031F230 /* macgitTests */,
 			);
 		};
 /* End PBXProject section */
@@ -122,7 +170,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6A843CBA2FC5342F0031F230 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		6A843CBD2FC5342F0031F230 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6A843CA42FC5342F0031F230 /* macgit */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		6A843CB32FC534310031F230 /* Debug */ = {
@@ -265,6 +327,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.thanhtran.macgit;
+				PRODUCT_MODULE_NAME = macgit;
 				PRODUCT_NAME = "Commit+";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -296,6 +359,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.thanhtran.macgit;
+				PRODUCT_MODULE_NAME = macgit;
 				PRODUCT_NAME = "Commit+";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -304,6 +368,52 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		6A843CBF2FC5342F0031F230 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RK79HKY5GW;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.thanhtran.macgitTests;
+				PRODUCT_NAME = macgitTests;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Commit+.app/Contents/MacOS/Commit+";
+			};
+			name = Debug;
+		};
+		6A843CC02FC5342F0031F230 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RK79HKY5GW;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.thanhtran.macgitTests;
+				PRODUCT_NAME = macgitTests;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Commit+.app/Contents/MacOS/Commit+";
 			};
 			name = Release;
 		};
@@ -324,6 +434,15 @@
 			buildConfigurations = (
 				6A843CB62FC534310031F230 /* Debug */,
 				6A843CB72FC534310031F230 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6A843CC12FC5342F0031F230 /* Build configuration list for PBXNativeTarget "macgitTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6A843CBF2FC5342F0031F230 /* Debug */,
+				6A843CC02FC5342F0031F230 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
