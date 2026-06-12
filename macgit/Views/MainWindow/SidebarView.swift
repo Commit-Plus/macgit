@@ -505,6 +505,7 @@ struct SidebarView: View {
 
         // Fetch sync status for each branch in parallel
         var syncMap: [String: BranchSyncStatus] = [:]
+        print("[loadBranches] Fetching sync status for \(locals.count) branches")
         await withTaskGroup(of: (String, BranchSyncStatus)?.self) { group in
             for branch in locals {
                 group.addTask {
@@ -517,14 +518,17 @@ struct SidebarView: View {
             for await result in group {
                 if let (branch, status) = result {
                     syncMap[branch] = status
+                    print("[loadBranches] Got sync status for \(branch): ahead=\(status.ahead), behind=\(status.behind)")
                 }
             }
         }
+        print("[loadBranches] syncMap has \(syncMap.count) entries")
 
         await MainActor.run {
             branchNodes = tree
             currentBranch = current
             branchSyncStatus = syncMap
+            print("[loadBranches] Updated branchSyncStatus with \(syncMap.count) entries")
             // Expand all folders by default on first load
             if expandedFolders.isEmpty {
                 expandedFolders = allFolders

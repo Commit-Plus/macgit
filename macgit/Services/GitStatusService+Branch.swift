@@ -68,6 +68,7 @@ extension GitStatusService {
         // Check if branch has an upstream
         let upstream = await upstreamBranch(for: branch, in: repositoryURL)
         guard let upstreamRef = upstream, !upstreamRef.isEmpty else {
+            print("[branchSyncStatus] No upstream for branch: \(branch)")
             return nil
         }
 
@@ -79,6 +80,7 @@ extension GitStatusService {
         ))?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard let line = output, !line.isEmpty else {
+            print("[branchSyncStatus] Empty output for branch: \(branch), upstream: \(upstreamRef)")
             return nil
         }
 
@@ -86,6 +88,7 @@ extension GitStatusService {
         guard parts.count == 2,
               let behind = Int(parts[0]),
               let ahead = Int(parts[1]) else {
+            print("[branchSyncStatus] Invalid output for branch: \(branch), output: \(line)")
             return nil
         }
 
@@ -94,6 +97,7 @@ extension GitStatusService {
             return nil
         }
 
+        print("[branchSyncStatus] Branch: \(branch), upstream: \(upstreamRef), ahead: \(ahead), behind: \(behind)")
         return BranchSyncStatus(ahead: ahead, behind: behind)
     }
 

@@ -19,4 +19,13 @@ final class BranchSyncStatusTests: XCTestCase {
         // For now, we verify the model exists and compiles.
         XCTAssertTrue(true)
     }
+
+    func testBranchSyncStatusForMainBranch() async {
+        let repoURL = URL(fileURLWithPath: "/Users/thanhtran/Project/macgit")
+        let status = await GitStatusService.shared.branchSyncStatus(for: "main", in: repoURL)
+        // In the current repo, main is ahead of origin/main by 9 commits
+        XCTAssertNotNil(status)
+        XCTAssertEqual(status?.ahead, 9)
+        XCTAssertEqual(status?.behind, 0)
+    }
 }
