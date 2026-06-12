@@ -55,7 +55,7 @@ struct MainWindowView: View {
                     switch selectedItem {
                     case .item(.fileStatus):
                         FileStatusView(repositoryURL: repositoryURL, syncState: syncState)
-                    case .item(.history), .branch:
+                    case .item(.history), .branch, .tag:
                         HistoryView(repositoryURL: repositoryURL, selectedBranch: selectedBranchName)
                     case .item(.search):
                         SearchView(repositoryURL: repositoryURL)
@@ -116,6 +116,8 @@ struct MainWindowView: View {
         }
         .onChange(of: selectedItem) { _, newItem in
             if case .branch(let name) = newItem {
+                selectedBranchName = name
+            } else if case .tag(let name) = newItem {
                 selectedBranchName = name
             } else {
                 selectedBranchName = nil

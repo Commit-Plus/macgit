@@ -10,6 +10,7 @@ import SwiftUI
 enum SidebarSelection: Hashable {
     case item(SidebarItem)
     case branch(String)
+    case tag(String)
 }
 
 enum SidebarItem: String, CaseIterable, Identifiable {
@@ -72,6 +73,9 @@ struct SidebarView: View {
     @State private var currentBranch: String = ""
     @State private var expandedFolders: Set<String> = []
     @State private var isLoadingBranches = false
+    @State private var tagNodes: [BranchNode] = []
+    @State private var isLoadingTags = false
+    @State private var expandedTagFolders: Set<String> = []
 
     // Alerts
     @State private var errorMessage: String = ""
@@ -107,8 +111,26 @@ struct SidebarView: View {
                 }
             }
 
+            // TAGS section
+            Section(SidebarSection.tags.rawValue) {
+                if isLoadingTags && tagNodes.isEmpty {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 4)
+                } else if tagNodes.isEmpty {
+                    Text("No tags")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(visibleTagRows) { row in
+                        tagRowView(for: row)
+                    }
+                }
+            }
+
             // Other placeholder sections
-            ForEach(SidebarSection.allCases.dropFirst(2), id: \.self) { section in
+            ForEach(SidebarSection.allCases.dropFirst(3), id: \.self) { section in
                 Section(section.rawValue) {
                     Text("Coming soon")
                         .font(.caption)
@@ -120,9 +142,13 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .task {
             await loadBranches()
+            await loadTags()
         }
         .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { _ in
-            Task { await loadBranches() }
+            Task {
+                await loadBranches()
+                await loadTags()
+            }
         }
         .alert("Error", isPresented: $showingError) {
             Button("OK", role: .cancel) {}
@@ -160,6 +186,26 @@ struct SidebarView: View {
             }
         }
         traverse(branchNodes, indent: 0)
+        return rows
+    }
+
+    private var visibleTagRows: [BranchRowItem] {
+        var rows: [BranchRowItem] = []
+        func traverse(_ nodes: [BranchNode], indent: Int) {
+            for node in nodes {
+                rows.append(BranchRowItem(
+                    id: node.id,
+                    name: node.name,
+                    fullPath: node.fullPath,
+                    isFolder: node.isFolder,
+                    indent: indent
+                ))
+                if node.isFolder && expandedTagFolders.contains(node.fullPath) {
+                    traverse(node.children, indent: indent + 1)
+                }
+            }
+        }
+        traverse(tagNodes, indent: 0)
         return rows
     }
 
@@ -225,11 +271,71 @@ struct SidebarView: View {
         }
     }
 
+    @ViewBuilder
+    private func tagRowView(for row: BranchRowItem) -> some View {
+        let baseView = HStack(spacing: 4) {
+            HStack(spacing: 0) {
+                ForEach(0..<row.indent, id: \.self) { _ in
+                    Color.clear
+                        .frame(width: 16)
+                }
+            }
+
+            if row.isFolder {
+                Image(systemName: expandedTagFolders.contains(row.fullPath) ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, alignment: .center)
+            } else {
+                Image(systemName: "tag")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, alignment: .center)
+            }
+
+            Text(row.name)
+                .font(.system(size: 12))
+                .lineLimit(1)
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+
+        if row.isFolder {
+            baseView
+                .onTapGesture {
+                    toggleTagFolder(row.fullPath)
+                }
+        } else {
+            baseView
+                .tag(SidebarSelection.tag(row.fullPath))
+                .onTapGesture {
+                    selection = .tag(row.fullPath)
+                }
+                .onTapGesture(count: 2) {
+                    onRequestCheckout(row.fullPath)
+                }
+                .contextMenu {
+                    Button("Copy Tag Name to Clipboard") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(row.fullPath, forType: .string)
+                    }
+                }
+        }
+    }
+
     private func toggleFolder(_ path: String) {
         if expandedFolders.contains(path) {
             expandedFolders.remove(path)
         } else {
             expandedFolders.insert(path)
+        }
+    }
+
+    private func toggleTagFolder(_ path: String) {
+        if expandedTagFolders.contains(path) {
+            expandedTagFolders.remove(path)
+        } else {
+            expandedTagFolders.insert(path)
         }
     }
 
@@ -319,6 +425,20 @@ struct SidebarView: View {
             // Expand all folders by default on first load
             if expandedFolders.isEmpty {
                 expandedFolders = allFolders
+            }
+        }
+    }
+
+    private func loadTags() async {
+        isLoadingTags = true
+        defer { isLoadingTags = false }
+        let tags = await GitStatusService.shared.tags(in: repositoryURL)
+        let tree = buildBranchTree(from: tags)
+        let allFolders = collectFolderPaths(from: tree)
+        await MainActor.run {
+            tagNodes = tree
+            if expandedTagFolders.isEmpty {
+                expandedTagFolders = allFolders
             }
         }
     }
