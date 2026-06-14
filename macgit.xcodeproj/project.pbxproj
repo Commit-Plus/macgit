@@ -6,6 +6,16 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		6ADE73B32FDC12DF00A4E999 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6A843C9D2FC5342F0031F230 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6A843CA42FC5342F0031F230;
+			remoteInfo = macgit;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		6A843CA52FC5342F0031F230 /* macgit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = macgit.app; path = "Commit+.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6A843CB82FC5342F0031F230 /* macgitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = macgitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -21,12 +31,6 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = macgitTests;
 			sourceTree = "<group>";
-			exceptions = (
-			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
@@ -183,6 +187,7 @@
 		6A843CBD2FC5342F0031F230 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 6A843CA42FC5342F0031F230 /* macgit */;
+			targetProxy = 6ADE73B32FDC12DF00A4E999 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 

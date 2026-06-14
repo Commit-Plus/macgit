@@ -5,6 +5,92 @@
 
 import SwiftUI
 
+final class ResizableCursorSplitView: NSSplitView {
+    private static let cursorHitSlop: CGFloat = 8
+
+    static func dividerCursor(forSplitViewIsVertical isVertical: Bool) -> NSCursor {
+        isVertical ? .resizeLeftRight : .resizeUpDown
+    }
+
+    static func dividerCursorRect(for dividerRect: NSRect, splitViewIsVertical isVertical: Bool) -> NSRect {
+        if isVertical {
+            dividerRect.insetBy(dx: -cursorHitSlop, dy: 0)
+        } else {
+            dividerRect.insetBy(dx: 0, dy: -cursorHitSlop)
+        }
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+
+        let dividerCount = max(arrangedSubviews.count - 1, 0)
+        guard dividerCount > 0 else { return }
+
+        let cursor = Self.dividerCursor(forSplitViewIsVertical: isVertical)
+        for dividerIndex in 0..<dividerCount {
+            addCursorRect(
+                Self.dividerCursorRect(
+                    for: dividerRect(at: dividerIndex),
+                    splitViewIsVertical: isVertical
+                ),
+                cursor: cursor
+            )
+        }
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if containsDividerCursorRect(point) {
+            return self
+        }
+
+        return super.hitTest(point)
+    }
+
+    private func containsDividerCursorRect(_ point: NSPoint) -> Bool {
+        let dividerCount = max(arrangedSubviews.count - 1, 0)
+        guard dividerCount > 0 else { return false }
+
+        return (0..<dividerCount).contains { dividerIndex in
+            Self.dividerCursorRect(
+                for: dividerRect(at: dividerIndex),
+                splitViewIsVertical: isVertical
+            ).contains(point)
+        }
+    }
+
+    private func dividerRect(at dividerIndex: Int) -> NSRect {
+        let leadingSubview = arrangedSubviews[dividerIndex]
+
+        if isVertical {
+            return NSRect(
+                x: leadingSubview.frame.maxX,
+                y: bounds.minY,
+                width: dividerThickness,
+                height: bounds.height
+            )
+        } else {
+            return NSRect(
+                x: bounds.minX,
+                y: leadingSubview.frame.maxY,
+                width: bounds.width,
+                height: dividerThickness
+            )
+        }
+    }
+}
+
+// MARK: - Split View Configuration
+
+func configurePersistentSplitView(
+    _ splitView: NSSplitView,
+    autosaveName: String,
+    isVertical: Bool
+) {
+    splitView.isVertical = isVertical
+    splitView.dividerStyle = .thin
+    splitView.autosaveName = autosaveName
+}
+
 // MARK: - Persistent VSplit (vertical divider, top/bottom)
 
 struct PersistentVSplit<Top: View, Bottom: View>: NSViewControllerRepresentable {
@@ -25,13 +111,17 @@ struct PersistentVSplit<Top: View, Bottom: View>: NSViewControllerRepresentable 
         let topController = NSHostingController(rootView: top())
         let bottomController = NSHostingController(rootView: bottom())
 
-        context.coordinator.topController = topController
-        context.coordinator.bottomController = bottomController
+        let coordinator = context.coordinator
+        coordinator.topController = topController
+        coordinator.bottomController = bottomController
 
         let splitController = NSSplitViewController()
-        splitController.splitView.isVertical = false
-        splitController.splitView.dividerStyle = .thin
-        splitController.splitView.autosaveName = autosaveName
+        splitController.splitView = ResizableCursorSplitView()
+        configurePersistentSplitView(
+            splitController.splitView,
+            autosaveName: autosaveName,
+            isVertical: false
+        )
 
         let topItem = NSSplitViewItem(viewController: topController)
         let bottomItem = NSSplitViewItem(viewController: bottomController)
@@ -68,13 +158,17 @@ struct PersistentHSplit<Left: View, Right: View>: NSViewControllerRepresentable 
         let leftController = NSHostingController(rootView: left())
         let rightController = NSHostingController(rootView: right())
 
-        context.coordinator.leftController = leftController
-        context.coordinator.rightController = rightController
+        let coordinator = context.coordinator
+        coordinator.leftController = leftController
+        coordinator.rightController = rightController
 
         let splitController = NSSplitViewController()
-        splitController.splitView.isVertical = true
-        splitController.splitView.dividerStyle = .thin
-        splitController.splitView.autosaveName = autosaveName
+        splitController.splitView = ResizableCursorSplitView()
+        configurePersistentSplitView(
+            splitController.splitView,
+            autosaveName: autosaveName,
+            isVertical: true
+        )
 
         let leftItem = NSSplitViewItem(viewController: leftController)
         let rightItem = NSSplitViewItem(viewController: rightController)

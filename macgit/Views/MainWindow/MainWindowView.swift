@@ -116,6 +116,7 @@ struct MainWindowView: View {
             }
         }
         .navigationTitle("")
+        .focusedValue(\.toolbarAction, toolbarActionBinding)
         .frame(minWidth: 900, minHeight: 600)
         .task {
             await syncState.refresh(repositoryURL: repositoryURL)
@@ -274,8 +275,10 @@ struct MainWindowView: View {
                     .disabled(syncing || syncState.stashableCount == 0)
             }
         } label: {
-            ToolbarButtonLabel(icon: "ellipsis", label: "")
+            ToolbarButtonLabel(icon: "ellipsis", label: "More")
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .help("More Actions")
     }
 
@@ -365,5 +368,38 @@ struct MainWindowView: View {
         }
 
         return URL(string: cleaned)
+    }
+
+    private var toolbarActionBinding: Binding<ToolbarAction> {
+        Binding(
+            get: { .commit },
+            set: { newValue in
+                handleToolbarAction(newValue)
+            }
+        )
+    }
+
+    private func handleToolbarAction(_ action: ToolbarAction) {
+        let syncing = syncState.isAnySyncing
+        switch action {
+        case .commit:
+            if !syncing && syncState.stagedBadgeCount > 0 {
+                showCommitSheetIfNoConflicts()
+            }
+        case .pull:
+            if !syncing { showingPullSheet = true }
+        case .push:
+            if !syncing { showingPushSheet = true }
+        case .fetch:
+            if !syncing { showingFetchSheet = true }
+        case .branch:
+            showingBranchSheet = true
+        case .merge:
+            if !syncing { showingMergeSheet = true }
+        case .stash:
+            if !syncing && syncState.stashableCount > 0 {
+                showingStashSheet = true
+            }
+        }
     }
 }
