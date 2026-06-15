@@ -78,7 +78,7 @@ extension GitStatusService {
             return true
         })
         
-        return results
+        return Array(results.prefix(20))
     }
     
     private func parseSearchCommits(_ raw: String) -> [SearchResult] {
