@@ -36,8 +36,7 @@ struct SearchModalView: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
-        .frame(width: 640, height: min(max(120, CGFloat(60 + coordinator.results.count * 44)), 500))
-        .frame(maxHeight: 500)
+        .frame(maxWidth: 640, maxHeight: 500)
         .onAppear {
             isSearchFieldFocused = true
         }
@@ -70,6 +69,7 @@ struct SearchModalView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 18))
                 .foregroundStyle(.secondary)
+                .accessibilityLabel("Search")
             
             TextField("Search commits, files, branches...", text: $coordinator.query)
                 .font(.system(size: 16))
@@ -81,6 +81,7 @@ struct SearchModalView: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 16))
                         .foregroundStyle(.secondary)
+                        .accessibilityLabel("Clear search")
                 }
                 .buttonStyle(.plain)
             }
@@ -152,9 +153,6 @@ struct SearchModalView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             Spacer()
-            Text("⌘⏎ Jump to Commit")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -181,7 +179,7 @@ struct SearchModalView: View {
 }
 
 struct ResultSection: Identifiable {
-    let id = UUID()
+    var id: String { type.rawValue }
     let type: SearchResultType
     let results: [SearchResult]
 }
