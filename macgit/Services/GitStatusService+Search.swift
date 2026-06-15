@@ -44,21 +44,31 @@ extension GitStatusService {
             ],
             in: repositoryURL
         )) ?? ""
-        results.append(contentsOf: parseSearchCommits(logOutput, type: .messageMatch))
+        results.append(contentsOf: parseSearchCommits(logOutput))
         
         // Search by hash prefix
-        let hashOutput = (try? await runGit(
-            arguments: [
-                "log", "--all", "--oneline",
-                "--format=" + format,
-                "--date=short",
-                "-n", "20"
-            ],
+        let allHashesOutput = (try? await runGit(
+            arguments: ["log", "--all", "--format=%H"],
             in: repositoryURL
         )) ?? ""
-        let hashMatches = parseSearchCommits(hashOutput, type: .hashMatch).filter {
-            $0.title.lowercased().hasPrefix(query) || $0.subtitle.lowercased().contains(query)
+        let matchingHashes = allHashesOutput.split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.lowercased().hasPrefix(query) }
+            .prefix(20)
+        
+        var hashMatches: [SearchResult] = []
+        if !matchingHashes.isEmpty {
+            let hashOutput = (try? await runGit(
+                arguments: [
+                    "log", "--no-walk",
+                    "--format=" + format,
+                    "--date=short"
+                ] + Array(matchingHashes),
+                in: repositoryURL
+            )) ?? ""
+            hashMatches = parseSearchCommits(hashOutput)
         }
+        
         // Avoid duplicates
         let existingHashes = Set(results.compactMap { r -> String? in
             if case .showCommit(let h) = r.action { return h } else { return nil }
@@ -71,8 +81,9 @@ extension GitStatusService {
         return results
     }
     
-    private func parseSearchCommits(_ raw: String, type: CommitMatchType) -> [SearchResult] {
-        let dateFormatter = ISO8601DateFormatter()
+    private func parseSearchCommits(_ raw: String) -> [SearchResult] {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
         var results: [SearchResult] = []
         for line in raw.split(separator: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -97,8 +108,6 @@ extension GitStatusService {
         }
         return results
     }
-    
-    private enum CommitMatchType { case messageMatch, hashMatch }
     
     private func searchFiles(query: String, in repositoryURL: URL) async -> [SearchResult] {
         let output = (try? await runGit(
@@ -155,14 +164,23 @@ extension GitStatusService {
             in: repositoryURL
         )) ?? ""
         
+        let remotesOutput = (try? await runGit(
+            arguments: ["remote"],
+            in: repositoryURL
+        )) ?? ""
+        let remotes = remotesOutput.split(separator: "\n").map {
+            String($0).trimmingCharacters(in: .whitespaces)
+        }.filter { !$0.isEmpty }
+        
         return output.split(separator: "\n").compactMap { line in
             let name = String(line).trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty, name.lowercased().contains(query) else { return nil }
-            let isRemote = name.hasPrefix("remotes/")
-            let displayName = isRemote ? String(name.dropFirst("remotes/".count)) : name
+            let isRemote = remotes.contains { remote in
+                name.hasPrefix("\(remote)/")
+            }
             return SearchResult(
                 type: .branch,
-                title: displayName,
+                title: name,
                 subtitle: isRemote ? "Remote" : "Local",
                 action: .checkoutBranch(name),
                 badge: isRemote ? "Remote" : nil
@@ -172,15 +190,16 @@ extension GitStatusService {
     
     private func searchTags(query: String, in repositoryURL: URL) async -> [SearchResult] {
         let output = (try? await runGit(
-            arguments: ["tag", "-l", "*\(query)*", "--format=%(refname:short)"],
+            arguments: ["tag", "-l", "--format=%(refname:short)"],
             in: repositoryURL
         )) ?? ""
         
+        let matchingTags = output.split(separator: "\n").map {
+            String($0).trimmingCharacters(in: .whitespaces)
+        }.filter { !$0.isEmpty && $0.lowercased().contains(query) }
+        
         var results: [SearchResult] = []
-        for line in output.split(separator: "\n") {
-            let name = String(line).trimmingCharacters(in: .whitespaces)
-            guard !name.isEmpty else { continue }
-            
+        for name in matchingTags {
             // Get commit hash for the tag
             let hash = (try? await runGit(
                 arguments: ["rev-list", "-n", "1", name],
