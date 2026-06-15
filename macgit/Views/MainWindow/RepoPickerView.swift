@@ -33,6 +33,22 @@ enum RepoPickerSortOption: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum RepoPickerFilterType: String, CaseIterable, Identifiable {
+    case github = "GitHub"
+    case gitlab = "GitLab"
+    case bitbucket = "Bitbucket"
+
+    var id: String { rawValue }
+
+    var iconName: String {
+        switch self {
+        case .github: return "github"
+        case .gitlab: return "gitlab"
+        case .bitbucket: return "bitbucket"
+        }
+    }
+}
+
 struct RepoPickerView: View {
     @ObservedObject private var store = RecentRepositoriesStore.shared
     @State private var showingCloneSheet = false
@@ -40,6 +56,7 @@ struct RepoPickerView: View {
     @State private var showingError = false
     @State private var searchText = ""
     @State private var sortOption: RepoPickerSortOption = .lastOpened
+    @State private var selectedFilterTypes: Set<RepoPickerFilterType> = []
     @State private var repoIcons: [URL: String] = [:]
     @State private var rowStates: [URL: RepoPickerRowState] = [:]
 
@@ -56,6 +73,8 @@ struct RepoPickerView: View {
             from: store.repositories,
             searchText: searchText,
             sortOption: sortOption,
+            selectedFilterTypes: selectedFilterTypes,
+            repoIcons: repoIcons,
             rowStates: rowStates
         )
     }
@@ -67,7 +86,8 @@ struct RepoPickerView: View {
             recentRepositoriesSection
             Spacer(minLength: 0)
         }
-        .frame(minWidth: 700, minHeight: 520, alignment: .top)
+        .frame(minWidth: 500, maxWidth: 700, minHeight: 520, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .padding(24)
         .task(id: showCloneSheetInitially) {
             if showCloneSheetInitially {
@@ -91,21 +111,31 @@ struct RepoPickerView: View {
         from repositories: [RecentRepository],
         searchText: String,
         sortOption: RepoPickerSortOption,
+        selectedFilterTypes: Set<RepoPickerFilterType>,
+        repoIcons: [URL: String],
         rowStates: [URL: RepoPickerRowState]
     ) -> [RecentRepository] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let filtered = repositories.filter { repo in
-            guard !query.isEmpty else { return true }
+            if !query.isEmpty {
+                let haystack = [
+                    repo.name,
+                    repo.url.path,
+                    rowStates[repo.url]?.currentBranch ?? ""
+                ]
+                    .joined(separator: " ")
+                    .lowercased()
 
-            let haystack = [
-                repo.name,
-                repo.url.path,
-                rowStates[repo.url]?.currentBranch ?? ""
-            ]
-                .joined(separator: " ")
-                .lowercased()
+                guard haystack.contains(query) else { return false }
+            }
 
-            return haystack.contains(query)
+            if !selectedFilterTypes.isEmpty {
+                let iconName = repoIcons[repo.url] ?? "code-branch"
+                let type = RepoPickerFilterType.allCases.first { $0.iconName == iconName }
+                guard let type = type, selectedFilterTypes.contains(type) else { return false }
+            }
+
+            return true
         }
 
         switch sortOption {
@@ -171,9 +201,33 @@ struct RepoPickerView: View {
                 .disabled(store.repositories.isEmpty)
 
             Menu {
-                Picker("Sort", selection: $sortOption) {
-                    ForEach(RepoPickerSortOption.allCases) { option in
-                        Text(option.rawValue).tag(option)
+                Section("Sort") {
+                    Picker("", selection: $sortOption) {
+                        ForEach(RepoPickerSortOption.allCases) { option in
+                            Text(option.rawValue).tag(option)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                }
+
+                Section("Filter by Type") {
+                    ForEach(RepoPickerFilterType.allCases) { type in
+                        Toggle(isOn: Binding(
+                            get: { selectedFilterTypes.contains(type) },
+                            set: { isOn in
+                                if isOn {
+                                    selectedFilterTypes.insert(type)
+                                } else {
+                                    selectedFilterTypes.remove(type)
+                                }
+                            }
+                        )) {
+                            HStack(spacing: 8) {
+                                Image(nsImage: menuIconImage(for: type.iconName))
+                                Text(type.rawValue)
+                            }
+                        }
                     }
                 }
             } label: {
@@ -355,6 +409,17 @@ struct RepoPickerView: View {
             formatter.dateStyle = .medium
             formatter.timeStyle = .none
             return formatter.string(from: date)
+        }
+    }
+
+    private func menuIconImage(for iconName: String) -> NSImage {
+        guard let original = NSImage(named: NSImage.Name(iconName)) else {
+            return NSImage()
+        }
+        let size = NSSize(width: 14, height: 14)
+        return NSImage(size: size, flipped: false) { rect in
+            original.draw(in: rect, from: NSRect(origin: .zero, size: original.size), operation: .sourceOver, fraction: 1.0)
+            return true
         }
     }
 
