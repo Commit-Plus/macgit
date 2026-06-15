@@ -8,3 +8,4 @@
 {"source":"user-event","type":"click","text":"3\n    \n      Branches\n      Search local and remote branch names. Show branch name, remote tracking info, and branch type.","choice":"branches","id":null,"timestamp":1781520254134}
 {"source":"user-event","type":"click","text":"4\n    \n      Tags\n      Search tag names. Show tag name and associated commit info.","choice":"tags","id":null,"timestamp":1781520254901}
 {"type":"screen-added","file":"/Users/thanhtran/Project/macgit/.superpowers/brainstorm/72713-1781520129/content/waiting.html"}
+{"type":"server-stopped","reason":"idle timeout"}

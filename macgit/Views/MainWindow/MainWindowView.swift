@@ -37,7 +37,30 @@ struct MainWindowView: View {
     @State private var showingSearchModal = false
 
     var body: some View {
-        rootView
+        ZStack {
+            rootView
+            
+            if showingSearchModal {
+                ZStack {
+                    Color.black.opacity(0.15)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            showingSearchModal = false
+                        }
+                    
+                    SearchModalView(
+                        repositoryURL: repositoryURL,
+                        onDismiss: { showingSearchModal = false },
+                        onSelect: { action in
+                            handleSearchAction(action)
+                            showingSearchModal = false
+                        }
+                    )
+                    .padding(.top, 80)
+                }
+                .transition(.opacity)
+            }
+        }
         .overlay(
             GeometryReader { geo in
                 Color.clear.preference(key: WindowWidthKey.self, value: geo.size.width)
@@ -118,28 +141,6 @@ struct MainWindowView: View {
             sidebarPane
         } detail: {
             detailPane
-        }
-        .overlay {
-            if showingSearchModal {
-                ZStack {
-                    Color.black.opacity(0.15)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            showingSearchModal = false
-                        }
-
-                    SearchModalView(
-                        repositoryURL: repositoryURL,
-                        onDismiss: { showingSearchModal = false },
-                        onSelect: { action in
-                            handleSearchAction(action)
-                            showingSearchModal = false
-                        }
-                    )
-                    .padding(.top, 80)
-                }
-                .transition(.opacity)
-            }
         }
     }
 
