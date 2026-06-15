@@ -48,7 +48,7 @@ extension GitStatusService {
         
         // Search by hash prefix
         let allHashesOutput = (try? await runGit(
-            arguments: ["log", "--all", "--format=%H"],
+            arguments: ["log", "--all", "--format=%H", "-n", "200"],
             in: repositoryURL
         )) ?? ""
         let matchingHashes = allHashesOutput.split(separator: "\n")
@@ -185,7 +185,7 @@ extension GitStatusService {
                 action: .checkoutBranch(name),
                 badge: isRemote ? "Remote" : nil
             )
-        }
+        }.prefix(20).map { $0 }
     }
     
     private func searchTags(query: String, in repositoryURL: URL) async -> [SearchResult] {
@@ -197,6 +197,7 @@ extension GitStatusService {
         let matchingTags = output.split(separator: "\n").map {
             String($0).trimmingCharacters(in: .whitespaces)
         }.filter { !$0.isEmpty && $0.lowercased().contains(query) }
+        .prefix(20)
         
         var results: [SearchResult] = []
         for name in matchingTags {
