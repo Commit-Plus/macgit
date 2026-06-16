@@ -26,6 +26,7 @@ struct FileStatusView: View {
     @State private var currentBranch: String?
     @State private var recentCommits: [(hash: String, message: String)] = []
     @State private var ignoreTargetFile: StatusFile? = nil
+    @State private var mergeToolFile: StatusFile? = nil
 
     private var changedFiles: [StatusFile] {
         gitStatus.unstaged + gitStatus.untracked
@@ -93,6 +94,20 @@ struct FileStatusView: View {
                 },
                 onCancel: {
                     ignoreTargetFile = nil
+                }
+            )
+        }
+        .sheet(item: $mergeToolFile) { file in
+            let allConflictFiles = (gitStatus.staged + gitStatus.unstaged + gitStatus.untracked)
+                .filter { $0.status == .conflict }
+            ConflictMergeToolView(
+                allConflictFiles: allConflictFiles,
+                repositoryURL: repositoryURL,
+                onResolved: {
+                    Task {
+                        await loadStatus()
+                        await syncState?.refresh(repositoryURL: repositoryURL)
+                    }
                 }
             )
         }
@@ -251,11 +266,14 @@ struct FileStatusView: View {
 
                 if file.status == .conflict {
                     Menu("Resolve Conflicts") {
-                        Button("Resolve Using 'Ours'") {
+                        Button("Use Current Version") {
                             Task { await resolveConflict(file: file, using: .ours) }
                         }
-                        Button("Resolve Using 'Theirs'") {
+                        Button("Use Incoming Version") {
                             Task { await resolveConflict(file: file, using: .theirs) }
+                        }
+                        Button("Resolve Manually…") {
+                            mergeToolFile = file
                         }
                     }
                 }
@@ -306,11 +324,14 @@ struct FileStatusView: View {
 
             if file.status == .conflict {
                 Menu("Resolve Conflicts") {
-                    Button("Resolve Using 'Ours'") {
+                    Button("Use Current Version") {
                         Task { await resolveConflict(file: file, using: .ours) }
                     }
-                    Button("Resolve Using 'Theirs'") {
+                    Button("Use Incoming Version") {
                         Task { await resolveConflict(file: file, using: .theirs) }
+                    }
+                    Button("Resolve Manually…") {
+                        mergeToolFile = file
                     }
                 }
             }
