@@ -10,10 +10,12 @@ final class RepoPickerViewTests: XCTestCase {
             from: [older, newer],
             searchText: "",
             sortOption: .lastOpened,
+            selectedFilterTypes: [],
+            repoIcons: [:],
             rowStates: [:]
         )
 
-        XCTAssertEqual(visible.map(\.name), ["Alpha", "Zeta"])
+        XCTAssertEqual(visible.map { $0.name }, ["Alpha", "Zeta"])
     }
 
     func testVisibleRepositoriesSortsByNameWhenRequested() {
@@ -24,10 +26,12 @@ final class RepoPickerViewTests: XCTestCase {
             from: [zebra, alpha],
             searchText: "",
             sortOption: .name,
+            selectedFilterTypes: [],
+            repoIcons: [:],
             rowStates: [:]
         )
 
-        XCTAssertEqual(visible.map(\.name), ["Alpha", "zebra"])
+        XCTAssertEqual(visible.map { $0.name }, ["Alpha", "zebra"])
     }
 
     func testVisibleRepositoriesMatchesBranchAndPathSearchText() {
@@ -50,17 +54,21 @@ final class RepoPickerViewTests: XCTestCase {
             from: [worktreeRepo, docsRepo],
             searchText: "repo-picker",
             sortOption: .lastOpened,
+            selectedFilterTypes: [],
+            repoIcons: [:],
             rowStates: rowStates
         )
         let pathMatch = RepoPickerView.visibleRepositories(
             from: [worktreeRepo, docsRepo],
             searchText: "notes/docs",
             sortOption: .lastOpened,
+            selectedFilterTypes: [],
+            repoIcons: [:],
             rowStates: rowStates
         )
 
-        XCTAssertEqual(branchMatch.map(\.name), ["Workbench"])
-        XCTAssertEqual(pathMatch.map(\.name), ["Docs"])
+        XCTAssertEqual(branchMatch.map { $0.name }, ["Workbench"])
+        XCTAssertEqual(pathMatch.map { $0.name }, ["Docs"])
     }
 
     private func makeRepository(name: String, path: String, lastOpened: Date) -> RecentRepository {

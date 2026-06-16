@@ -53,10 +53,16 @@ class SyncState: ObservableObject {
         }
     }
 
-    func startBackgroundSync(repositoryURL: URL) {
+    func startBackgroundSync(repositoryURL: URL, settings: RepoSettings) {
         stopBackgroundSync()
         backgroundTask = Task {
             while !Task.isCancelled {
+                if settings.autoFetchEnabled {
+                    try? await GitStatusService.shared.fetch(
+                        options: GitStatusService.FetchOptions(),
+                        in: repositoryURL
+                    )
+                }
                 await refresh(repositoryURL: repositoryURL)
                 try? await Task.sleep(nanoseconds: 60_000_000_000) // 60 seconds
             }

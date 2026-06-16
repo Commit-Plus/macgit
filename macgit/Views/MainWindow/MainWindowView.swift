@@ -14,6 +14,8 @@ struct WindowWidthKey: PreferenceKey {
 
 struct MainWindowView: View {
     let repositoryURL: URL
+    private let repoSettingsStore = RepoSettingsStore.shared
+    private let fileService = RepositorySettingsFileService()
     @State private var selectedItem: SidebarSelection? = .item(.fileStatus)
     @State private var windowWidth: CGFloat = 0
     @State private var showingCommitSheet = false
@@ -35,6 +37,8 @@ struct MainWindowView: View {
     @State private var selectedBranchName: String? = nil
     @State private var pullPreselectedBranch: String? = nil
     @State private var showingSearchModal = false
+    @State private var showingRepositorySettings = false
+    @State private var repoSettings = RepoSettings.defaults(currentBranch: nil, remotes: [])
 
     var body: some View {
         ZStack {
@@ -110,6 +114,7 @@ struct MainWindowView: View {
         .sheet(isPresented: $showingBranchSheet) { branchSheet }
         .sheet(isPresented: $showingMergeSheet) { mergeSheet }
         .sheet(isPresented: $showingStashSheet) { stashSheet }
+        .sheet(isPresented: $showingRepositorySettings) { repositorySettingsSheet }
         .sheet(isPresented: stashActionSheetBinding) { stashActionSheet }
         .sheet(isPresented: $showingCheckoutConfirmation) {
             CheckoutConfirmationSheet(branchName: branchToCheckout) { stash in
@@ -129,6 +134,7 @@ struct MainWindowView: View {
             Text("Are you sure you want to checkout '\(tagToCheckout)'?\n\nDoing so will make your working copy a 'detached HEAD', which means you won't be on a branch anymore. If you want to commit after this you'll probably want to either checkout a branch again, or create a new branch. Is this ok?")
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            guard repoSettings.refreshOnAppActive else { return }
             Task {
                 await syncState.refresh(repositoryURL: repositoryURL)
             }
@@ -159,7 +165,13 @@ struct MainWindowView: View {
             onRequestCheckout: { ref, isTag in
                 if isTag {
                     tagToCheckout = ref
-                    showingDetachedHeadConfirmation = true
+                    if repoSettings.confirmDetachedHeadCheckout {
+                        showingDetachedHeadConfirmation = true
+                    } else {
+                        Task {
+                            await performTagCheckout(tag: ref)
+                        }
+                    }
                 } else {
                     branchToCheckout = ref
                     showingCheckoutConfirmation = true
@@ -228,7 +240,7 @@ struct MainWindowView: View {
         }
 
         ToolbarItem(placement: .automatic) {
-            toolbarButton(icon: "network", label: "Remote", disabled: remoteURLString.isEmpty, action: openRemoteURL)
+            toolbarButton(icon: "network", label: "Remote", disabled: remoteURLString.isEmpty, action: { openRemoteURL() })
         }
         ToolbarItem(placement: .automatic) {
             toolbarButton(icon: "folder", label: "Finder", action: showInFinder)
@@ -237,7 +249,7 @@ struct MainWindowView: View {
             toolbarButton(icon: "terminal", label: "Terminal", action: openTerminal)
         }
         ToolbarItem(placement: .automatic) {
-            toolbarButton(icon: "gear", label: "Settings", action: {})
+            toolbarButton(icon: "gear", label: "Settings", action: { showingRepositorySettings = true })
         }
     }
 
@@ -252,7 +264,12 @@ struct MainWindowView: View {
 
     @ViewBuilder
     private var pullSheet: some View {
-        PullSheetView(repositoryURL: repositoryURL, preselectedBranch: pullPreselectedBranch) { remote, branch, options in
+        PullSheetView(
+            repositoryURL: repositoryURL,
+            preselectedRemote: repoSettings.defaultRemoteName,
+            preselectedBranch: resolvedPullPreselectedBranch(),
+            defaultPullStrategy: repoSettings.pullStrategy
+        ) { remote, branch, options in
             Task {
                 await syncState.performPull(remote: remote, branch: branch, options: options, repositoryURL: repositoryURL)
             }
@@ -319,14 +336,42 @@ struct MainWindowView: View {
         }
     }
 
+    @ViewBuilder
+    private var repositorySettingsSheet: some View {
+        RepositorySettingsSheetView(
+            repositoryURL: repositoryURL,
+            initialSettings: repoSettings,
+            onSave: { newSettings in
+                repoSettings = newSettings
+                repoSettingsStore.update(for: repositoryURL.path, settings: newSettings)
+                syncState.startBackgroundSync(repositoryURL: repositoryURL, settings: newSettings)
+                Task {
+                    await refreshRemotePresentation(for: newSettings.defaultRemoteName)
+                }
+            },
+            onOpenGitIgnore: openGitIgnoreFile,
+            onOpenGitConfig: openGitConfigFile,
+            onOpenRemoteURL: { remote in
+                openRemoteURL(remote: remote)
+            }
+        )
+    }
+
     private func performInitialLoad() async {
-        await syncState.refresh(repositoryURL: repositoryURL)
-        syncState.startBackgroundSync(repositoryURL: repositoryURL)
-        let remoteURLString = await GitStatusService.shared.remoteURL(remote: "origin", in: repositoryURL)
-        if !remoteURLString.isEmpty {
-            self.remoteURLString = remoteURLString
-            repoIconName = determineRepoIconName(from: remoteURLString)
+        async let loadedRemotes = GitStatusService.shared.remotes(in: repositoryURL)
+        async let loadedCurrentBranch = GitStatusService.shared.currentBranch(in: repositoryURL)
+        let (remotes, currentBranch) = await (loadedRemotes, loadedCurrentBranch)
+        let loadedSettings = repoSettingsStore.settings(
+            for: repositoryURL.path,
+            currentBranch: currentBranch,
+            remotes: remotes
+        )
+        await MainActor.run {
+            repoSettings = loadedSettings
         }
+        await syncState.refresh(repositoryURL: repositoryURL)
+        syncState.startBackgroundSync(repositoryURL: repositoryURL, settings: loadedSettings)
+        await refreshRemotePresentation(for: loadedSettings.defaultRemoteName)
     }
 
     @ViewBuilder
@@ -423,6 +468,12 @@ struct MainWindowView: View {
     }
 
     private func requestStashAction(ref: String, action: StashAction) {
+        if action == .delete && !repoSettings.confirmDestructiveStashActions {
+            Task {
+                await performStashAction(ref: ref, action: action, deleteAfterApplying: false)
+            }
+            return
+        }
         pendingStashRef = ref
         pendingStashAction = action
     }
@@ -471,7 +522,23 @@ struct MainWindowView: View {
         }
     }
 
-    private func openRemoteURL() {
+    private func openRemoteURL(remote: String? = nil) {
+        if let remote {
+            Task {
+                let remoteValue = await GitStatusService.shared.remoteURL(remote: remote, in: repositoryURL)
+                guard let url = browserURL(from: remoteValue) else {
+                    _ = await MainActor.run {
+                        syncState.showInfo("Could not find a remote URL for '\(remote)'.")
+                    }
+                    return
+                }
+                _ = await MainActor.run {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            return
+        }
+
         guard let url = browserURL(from: remoteURLString) else { return }
         NSWorkspace.shared.open(url)
     }
@@ -489,6 +556,48 @@ struct MainWindowView: View {
         } catch {
             print("Failed to open Terminal: \(error)")
         }
+    }
+
+    private func openGitIgnoreFile() {
+        do {
+            let fileURL = try fileService.prepareGitIgnore(in: repositoryURL)
+            NSWorkspace.shared.open(fileURL)
+        } catch {
+            syncState.showError(error.localizedDescription)
+        }
+    }
+
+    private func openGitConfigFile() {
+        guard let fileURL = fileService.gitConfigURL(in: repositoryURL) else {
+            syncState.showInfo("Could not find .git/config for this repository.")
+            return
+        }
+        NSWorkspace.shared.open(fileURL)
+    }
+
+    private func refreshRemotePresentation(for preferredRemote: String?) async {
+        let fallbackRemote = await GitStatusService.shared.remotes(in: repositoryURL).first
+        let remote = preferredRemote ?? fallbackRemote
+        guard let remote else {
+            await MainActor.run {
+                remoteURLString = ""
+                repoIconName = "code-branch"
+            }
+            return
+        }
+
+        let remoteURL = await GitStatusService.shared.remoteURL(remote: remote, in: repositoryURL)
+        await MainActor.run {
+            remoteURLString = remoteURL
+            repoIconName = remoteURL.isEmpty ? "code-branch" : determineRepoIconName(from: remoteURL)
+        }
+    }
+
+    private func resolvedPullPreselectedBranch() -> String? {
+        if repoSettings.defaultPullBranch.isEmpty {
+            return pullPreselectedBranch
+        }
+        return repoSettings.defaultPullBranch
     }
 
     private func browserURL(from remoteURLString: String) -> URL? {

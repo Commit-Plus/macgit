@@ -8,7 +8,9 @@ import SwiftUI
 struct PullSheetView: View {
     @Environment(\.dismiss) private var dismiss
     let repositoryURL: URL
+    let preselectedRemote: String?
     let preselectedBranch: String?
+    let defaultPullStrategy: PullStrategy
     let onPull: (String, String, GitStatusService.PullOptions) -> Void
 
     @State private var remotes: [String] = []
@@ -153,8 +155,9 @@ struct PullSheetView: View {
 
         await MainActor.run {
             remotes = currentRemotes
-            selectedRemote = currentRemotes.first ?? ""
+            selectedRemote = preselectedRemote.flatMap { currentRemotes.contains($0) ? $0 : nil } ?? currentRemotes.first ?? ""
             localBranch = currentLocal
+            rebaseInstead = defaultPullStrategy == .rebase
         }
 
         if !selectedRemote.isEmpty {
