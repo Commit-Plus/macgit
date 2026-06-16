@@ -13,6 +13,7 @@ enum SidebarSelection: Hashable {
     case tag(String)
     case remoteBranch(String)
     case stash(String)
+    case head(String)
 }
 
 enum SidebarItem: String, CaseIterable, Identifiable {
@@ -78,6 +79,7 @@ struct SidebarView: View {
 
     @State private var branchNodes: [BranchNode] = []
     @State private var currentBranch: String = ""
+    @State private var headHash: String = ""
     @State private var branchSyncStatus: [String: BranchSyncStatus] = [:]
     @State private var expandedFolders: Set<String> = []
     @State private var isLoadingBranches = false
@@ -151,6 +153,9 @@ struct SidebarView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
+                        if currentBranch.isEmpty && !headHash.isEmpty {
+                            headRowView
+                        }
                         ForEach(visibleBranchRows) { row in
                             branchRowView(for: row)
                         }
@@ -363,6 +368,40 @@ struct SidebarView: View {
     }
 
     // MARK: - Row Rendering
+
+    @ViewBuilder
+    private var headRowView: some View {
+        HStack(spacing: 4) {
+            HStack(spacing: 0) {
+                Color.clear
+                    .frame(width: 16)
+            }
+
+            Image(systemName: "circle.fill")
+                .font(.system(size: 7))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 16, alignment: .center)
+
+            Text("HEAD")
+                .font(.system(size: 12, weight: .bold))
+                .lineLimit(1)
+
+            if !headHash.isEmpty {
+                Text(headHash)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .tag(SidebarSelection.head(headHash))
+        .onTapGesture {
+            selection = .head(headHash)
+        }
+    }
 
     @ViewBuilder
     private func branchRowView(for row: BranchRowItem) -> some View {
@@ -711,7 +750,9 @@ struct SidebarView: View {
         defer { isLoadingBranches = false }
         let locals = await GitStatusService.shared.localBranches(in: repositoryURL)
         let current = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
-        let tree = SidebarTreeBuilder.buildTree(from: locals)
+        // Filter out HEAD entries (e.g., from detached HEAD state)
+        let filteredLocals = locals.filter { $0 != "HEAD" && !$0.contains("HEAD detached") }
+        let tree = SidebarTreeBuilder.buildTree(from: filteredLocals)
         let allFolders = collectFolderPaths(from: tree)
 
         // Fetch sync status for each branch in parallel
@@ -735,9 +776,19 @@ struct SidebarView: View {
         }
         print("[loadBranches] syncMap has \(syncMap.count) entries")
 
+        // Fetch HEAD hash when in detached HEAD state
+        var headHashValue: String = ""
+        if current.isEmpty {
+            let hash = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
+            if let hash = hash {
+                headHashValue = String(hash.prefix(7))
+            }
+        }
+
         await MainActor.run {
             branchNodes = tree
             currentBranch = current
+            headHash = headHashValue
             branchSyncStatus = syncMap
             print("[loadBranches] Updated branchSyncStatus with \(syncMap.count) entries")
             // Keep folders collapsed by default on first load

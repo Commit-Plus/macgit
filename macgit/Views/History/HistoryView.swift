@@ -31,6 +31,28 @@ struct HistoryView: View {
     @State private var rowFrames: [String: CGRect] = [:]
     @State private var paging = HistoryPagingState(pageSize: HistoryView.historyPageSize)
     
+    // MARK: - Context menu confirmation / sheet state
+    @State private var showingResetConfirmation = false
+    @State private var showingRevertConfirmation = false
+    @State private var showingTagSheet = false
+    @State private var showingBranchSheet = false
+    @State private var tagNameInput = ""
+    @State private var branchNameInput = ""
+    @State private var checkoutNewBranch = true
+    @State private var pendingCommit: Commit? = nil
+    
+    // MARK: - Checkout confirmation state
+    @State private var showingCheckoutConfirmation = false
+    @State private var discardLocalChanges = false
+    @State private var resetMode: ResetMode = .mixed
+    @State private var currentBranchName: String = ""
+    
+    // MARK: - Merge / Rebase confirmation state
+    @State private var showingMergeConfirmation = false
+    @State private var showingRebaseConfirmation = false
+    @State private var mergeCommitImmediately = true
+    @State private var mergeIncludeMessages = true
+    
     init(repositoryURL: URL, selectedBranch: String? = nil) {
         self.repositoryURL = repositoryURL
         self.selectedBranch = selectedBranch
@@ -92,11 +114,274 @@ struct HistoryView: View {
         .task(id: historyLoadKey) {
             await loadHistory(reset: true)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { notification in
+            if let url = notification.userInfo?["repositoryURL"] as? URL,
+               url == repositoryURL {
+                Task {
+                    await loadHistory(reset: true)
+                }
+            }
+        }
         .alert("Error", isPresented: $showingError, actions: {
             Button("OK", role: .cancel) {}
         }, message: {
             Text(errorMessage ?? "An unknown error occurred")
         })
+        .sheet(isPresented: $showingResetConfirmation) {
+            resetSheet
+        }
+        .alert("Reverse this commit?", isPresented: $showingRevertConfirmation, actions: {
+            Button("Cancel", role: .cancel) {}
+            Button("Revert") {
+                Task {
+                    await performRevert()
+                }
+            }
+        }, message: {
+            Text("This will create a new commit that undoes the changes in \(pendingCommit?.shortHash ?? "").")
+        })
+        .sheet(isPresented: $showingTagSheet) {
+            tagSheet
+        }
+        .sheet(isPresented: $showingBranchSheet) {
+            branchSheet
+        }
+        .sheet(isPresented: $showingMergeConfirmation) {
+            mergeConfirmationSheet
+        }
+        .sheet(isPresented: $showingRebaseConfirmation) {
+            rebaseConfirmationSheet
+        }
+        .sheet(isPresented: $showingCheckoutConfirmation) {
+            checkoutConfirmationSheet
+        }
+    }
+    
+    // MARK: - Sheets
+    
+    private var tagSheet: some View {
+        VStack(spacing: 16) {
+            Text("Create Tag")
+                .font(.title2)
+                .fontWeight(.semibold)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Tag name:")
+                    .font(.system(size: 13))
+                TextField("Enter tag name...", text: $tagNameInput)
+                    .textFieldStyle(.roundedBorder)
+            }
+            
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    showingTagSheet = false
+                }
+                .keyboardShortcut(.cancelAction)
+                
+                Button("Create Tag") {
+                    Task { await performCreateTag() }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(tagNameInput.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 320, idealWidth: 360)
+    }
+    
+    private var branchSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Create Branch")
+                .font(.title2)
+                .fontWeight(.semibold)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("From commit:")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Text("\(pendingCommit?.shortHash ?? "") : \(pendingCommit?.message ?? "")")
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Branch name:")
+                    .font(.system(size: 13))
+                TextField("Enter branch name...", text: $branchNameInput)
+                    .textFieldStyle(.roundedBorder)
+            }
+            
+            Toggle("Checkout new branch", isOn: $checkoutNewBranch)
+                .toggleStyle(.checkbox)
+                .font(.system(size: 12))
+            
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    showingBranchSheet = false
+                }
+                .keyboardShortcut(.cancelAction)
+                
+                Button("Create Branch") {
+                    Task { await performCreateBranch() }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(branchNameInput.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 360, idealWidth: 420)
+    }
+    
+    private var resetSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Reset to this commit?")
+                .font(.title2)
+                .fontWeight(.semibold)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 0) {
+                    Text("This will reset '")
+                        .font(.system(size: 13))
+                    Text(currentBranchName.isEmpty ? "current branch" : currentBranchName)
+                        .font(.system(size: 13, weight: .bold))
+                    Text("' to:")
+                        .font(.system(size: 13))
+                }
+                Text("\(pendingCommit?.shortHash ?? "") : \(pendingCommit?.message ?? "")")
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Reset mode:")
+                    .font(.system(size: 13))
+                
+                Picker("", selection: $resetMode) {
+                    Text("Soft – keep all local changes").tag(ResetMode.soft)
+                    Text("Mixed – keep working copy but reset index").tag(ResetMode.mixed)
+                    Text("Hard – discard all working copy changes").tag(ResetMode.hard)
+                }
+                .pickerStyle(.radioGroup)
+                .font(.system(size: 12))
+            }
+            
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    showingResetConfirmation = false
+                }
+                .keyboardShortcut(.cancelAction)
+                
+                Button("Reset", role: .destructive) {
+                    Task { await performReset() }
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 360, idealWidth: 420)
+    }
+    
+    private var mergeConfirmationSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Confirm Merge")
+                .font(.title2)
+                .fontWeight(.semibold)
+            
+            Text("Are you sure you want to merge into your current branch?")
+                .font(.system(size: 13))
+            
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Commit merged changes immediately", isOn: $mergeCommitImmediately)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12))
+                Toggle("Include messages from commits being merged in merge commit", isOn: $mergeIncludeMessages)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12))
+            }
+            
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    showingMergeConfirmation = false
+                }
+                .keyboardShortcut(.cancelAction)
+                
+                Button("OK") {
+                    Task { await performMerge() }
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 380, idealWidth: 460)
+    }
+    
+    private var rebaseConfirmationSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Confirm Rebase")
+                .font(.title2)
+                .fontWeight(.semibold)
+            
+            Text("Are you sure you want to rebase your current changes on to '\(pendingCommit?.shortHash ?? "")'?")
+                .font(.system(size: 13))
+            
+            Text("Make sure your changes have not been pushed to anyone else.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    showingRebaseConfirmation = false
+                }
+                .keyboardShortcut(.cancelAction)
+                
+                Button("OK") {
+                    Task { await performRebase() }
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 360, idealWidth: 420)
+    }
+    
+    private var checkoutConfirmationSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Confirm change working copy")
+                .font(.title2)
+                .fontWeight(.semibold)
+            
+            Text("Are you sure you want to checkout '\(pendingCommit?.shortHash ?? "")'?")
+                .font(.system(size: 13))
+            
+            Text("Doing so will make your working copy a 'detached HEAD', which means you won't be on a branch anymore. If you want to commit after this you'll probably want to either checkout a branch again, or create a new branch. Is this ok?")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            
+            Toggle("Discard local changes", isOn: $discardLocalChanges)
+                .toggleStyle(.checkbox)
+                .font(.system(size: 12))
+            
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    showingCheckoutConfirmation = false
+                }
+                .keyboardShortcut(.cancelAction)
+                
+                Button("OK") {
+                    Task { await performCheckoutCommit() }
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 360, idealWidth: 420)
     }
     
     // MARK: - Top Panel
@@ -240,8 +525,13 @@ struct HistoryView: View {
                                                 }
                                             )
                                             .contentShape(Rectangle())
-                                            .onTapGesture {
+                                            .onClick(left: {
                                                 selectedCommit = node.commit
+                                            }, right: {
+                                                selectedCommit = node.commit
+                                            })
+                                            .contextMenu {
+                                                commitContextMenu(for: node.commit)
                                             }
                                             .onAppear {
                                                 if index == layout.nodes.count - 1 {
@@ -249,9 +539,6 @@ struct HistoryView: View {
                                                         await loadOlderHistoryIfNeeded()
                                                     }
                                                 }
-                                            }
-                                            .contextMenu {
-                                                commitContextMenu(for: node.commit)
                                             }
                                         }
                                     }
@@ -417,12 +704,61 @@ struct HistoryView: View {
     private func commitContextMenu(for commit: Commit) -> some View {
         Group {
             Button("Checkout Commit") {
-                Task { await checkoutCommit(commit) }
+                pendingCommit = commit
+                discardLocalChanges = false
+                showingCheckoutConfirmation = true
             }
             Button("Cherry Pick") {
                 Task { await cherryPickCommit(commit) }
             }
+            
             Divider()
+            
+            Button("Merge...") {
+                pendingCommit = commit
+                mergeCommitImmediately = true
+                mergeIncludeMessages = true
+                showingMergeConfirmation = true
+            }
+            Button("Rebase...") {
+                pendingCommit = commit
+                showingRebaseConfirmation = true
+            }
+            
+            Divider()
+            
+            Button("Tag...") {
+                pendingCommit = commit
+                tagNameInput = ""
+                showingTagSheet = true
+            }
+            Button("Branch...") {
+                pendingCommit = commit
+                branchNameInput = ""
+                checkoutNewBranch = true
+                showingBranchSheet = true
+            }
+            
+            Divider()
+            
+            Button("Reset to this commit") {
+                pendingCommit = commit
+                resetMode = .mixed
+                Task {
+                    let branch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
+                    await MainActor.run {
+                        currentBranchName = branch
+                        showingResetConfirmation = true
+                    }
+                }
+            }
+            Button("Reverse commit...") {
+                pendingCommit = commit
+                showingRevertConfirmation = true
+            }
+            
+            Divider()
+            
             Button("Copy Hash") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(commit.hash, forType: .string)
@@ -567,9 +903,24 @@ struct HistoryView: View {
         }
     }
     
-    private func checkoutCommit(_ commit: Commit) async {
+    private func performCheckoutCommit() async {
+        guard let commit = pendingCommit else { return }
         do {
-            try await GitStatusService.shared.checkoutCommit(commit.hash, in: repositoryURL)
+            try await GitStatusService.shared.checkoutCommit(
+                commit.hash,
+                force: discardLocalChanges,
+                in: repositoryURL
+            )
+            await MainActor.run {
+                pendingCommit = nil
+                discardLocalChanges = false
+                showingCheckoutConfirmation = false
+            }
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
         } catch {
             await MainActor.run {
                 errorMessage = error.localizedDescription
@@ -581,6 +932,162 @@ struct HistoryView: View {
     private func cherryPickCommit(_ commit: Commit) async {
         do {
             try await GitStatusService.shared.cherryPickCommit(commit.hash, in: repositoryURL)
+            await MainActor.run {
+                NotificationCenter.default.post(
+                    name: .repositoryDidChange,
+                    object: nil,
+                    userInfo: ["repositoryURL": repositoryURL]
+                )
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    private func performMerge() async {
+        guard let commit = pendingCommit else { return }
+        do {
+            try await GitStatusService.shared.mergeCommit(
+                commit.hash,
+                noCommit: !mergeCommitImmediately,
+                log: mergeIncludeMessages,
+                in: repositoryURL
+            )
+            await MainActor.run {
+                pendingCommit = nil
+                showingMergeConfirmation = false
+                NotificationCenter.default.post(
+                    name: .repositoryDidChange,
+                    object: nil,
+                    userInfo: ["repositoryURL": repositoryURL]
+                )
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    private func performRebase() async {
+        guard let commit = pendingCommit else { return }
+        do {
+            try await GitStatusService.shared.rebaseCommit(commit.hash, in: repositoryURL)
+            await MainActor.run {
+                pendingCommit = nil
+                showingRebaseConfirmation = false
+                NotificationCenter.default.post(
+                    name: .repositoryDidChange,
+                    object: nil,
+                    userInfo: ["repositoryURL": repositoryURL]
+                )
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    private func performReset() async {
+        guard let commit = pendingCommit else { return }
+        do {
+            try await GitStatusService.shared.resetToCommit(commit.hash, mode: resetMode, in: repositoryURL)
+            await MainActor.run {
+                pendingCommit = nil
+                showingResetConfirmation = false
+                NotificationCenter.default.post(
+                    name: .repositoryDidChange,
+                    object: nil,
+                    userInfo: ["repositoryURL": repositoryURL]
+                )
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    private func performRevert() async {
+        guard let commit = pendingCommit else { return }
+        do {
+            try await GitStatusService.shared.revertCommit(commit.hash, in: repositoryURL)
+            await MainActor.run {
+                pendingCommit = nil
+                showingRevertConfirmation = false
+                NotificationCenter.default.post(
+                    name: .repositoryDidChange,
+                    object: nil,
+                    userInfo: ["repositoryURL": repositoryURL]
+                )
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    private func performCreateTag() async {
+        guard let commit = pendingCommit else { return }
+        let name = tagNameInput.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        do {
+            try await GitStatusService.shared.createTag(
+                name: name,
+                commit: commit.hash,
+                annotated: false,
+                message: nil,
+                in: repositoryURL
+            )
+            await MainActor.run {
+                tagNameInput = ""
+                pendingCommit = nil
+                showingTagSheet = false
+                NotificationCenter.default.post(
+                    name: .repositoryDidChange,
+                    object: nil,
+                    userInfo: ["repositoryURL": repositoryURL]
+                )
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    private func performCreateBranch() async {
+        guard let commit = pendingCommit else { return }
+        let name = branchNameInput.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        do {
+            _ = try await GitStatusService.shared.createBranch(
+                name: name,
+                checkout: checkoutNewBranch,
+                commit: commit.hash,
+                in: repositoryURL
+            )
+            await MainActor.run {
+                branchNameInput = ""
+                checkoutNewBranch = true
+                pendingCommit = nil
+                showingBranchSheet = false
+                NotificationCenter.default.post(
+                    name: .repositoryDidChange,
+                    object: nil,
+                    userInfo: ["repositoryURL": repositoryURL]
+                )
+            }
         } catch {
             await MainActor.run {
                 errorMessage = error.localizedDescription

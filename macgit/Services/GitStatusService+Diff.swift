@@ -80,15 +80,62 @@ extension GitStatusService {
         return changes
     }
 
-    func checkoutCommit(_ commit: String, in repositoryURL: URL) async throws {
-        _ = try await runGit(arguments: ["checkout", commit], in: repositoryURL)
+    func checkoutCommit(_ commit: String, force: Bool = false, in repositoryURL: URL) async throws {
+        var arguments = ["checkout"]
+        if force { arguments.append("-f") }
+        arguments.append(commit)
+        _ = try await runGit(arguments: arguments, in: repositoryURL)
     }
 
     func cherryPickCommit(_ commit: String, in repositoryURL: URL) async throws {
         _ = try await runGit(arguments: ["cherry-pick", commit], in: repositoryURL)
     }
 
+    func mergeCommit(_ commit: String, noCommit: Bool = false, log: Bool = false, in repositoryURL: URL) async throws {
+        var arguments = ["merge"]
+        if noCommit { arguments.append("--no-commit") }
+        if log { arguments.append("--log") }
+        arguments.append(commit)
+        _ = try await runGit(arguments: arguments, in: repositoryURL)
+    }
+
+    func rebaseCommit(_ commit: String, in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["rebase", commit], in: repositoryURL)
+    }
+
+    func resetToCommit(_ commit: String, mode: ResetMode, in repositoryURL: URL) async throws {
+        let flag: String
+        switch mode {
+        case .soft: flag = "--soft"
+        case .mixed: flag = "--mixed"
+        case .hard: flag = "--hard"
+        }
+        _ = try await runGit(arguments: ["reset", flag, commit], in: repositoryURL)
+    }
+
+    func revertCommit(_ commit: String, in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["revert", commit], in: repositoryURL)
+    }
+
+    func createTag(name: String, commit: String, annotated: Bool, message: String?, in repositoryURL: URL) async throws {
+        var arguments = ["tag"]
+        if annotated {
+            arguments.append("-a")
+        }
+        arguments.append(name)
+        if annotated, let message = message, !message.isEmpty {
+            arguments.append("-m")
+            arguments.append(message)
+        }
+        arguments.append(commit)
+        _ = try await runGit(arguments: arguments, in: repositoryURL)
+    }
+
     private func isStashRef(_ ref: String) -> Bool {
         ref.hasPrefix("stash@{")
     }
+}
+
+enum ResetMode {
+    case soft, mixed, hard
 }

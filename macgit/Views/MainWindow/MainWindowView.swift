@@ -226,7 +226,7 @@ struct MainWindowView: View {
             switch selectedItem {
             case .item(.fileStatus):
                 FileStatusView(repositoryURL: repositoryURL, syncState: syncState)
-            case .item(.history), .branch, .tag, .remoteBranch:
+            case .item(.history), .branch, .tag, .remoteBranch, .head:
                 HistoryView(repositoryURL: repositoryURL, selectedBranch: selectedBranchName)
             case .stash(let ref):
                 StashView(repositoryURL: repositoryURL, stashRef: ref)

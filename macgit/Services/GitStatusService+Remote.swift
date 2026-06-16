@@ -84,6 +84,18 @@ extension GitStatusService {
         return url
     }
 
+    func addRemote(name: String, url: String, in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["remote", "add", name, url], in: repositoryURL)
+    }
+
+    func removeRemote(name: String, in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["remote", "remove", name], in: repositoryURL)
+    }
+
+    func setRemoteURL(name: String, url: String, in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["remote", "set-url", name, url], in: repositoryURL)
+    }
+
     private func remoteBranchRef(from upstreamRef: String) -> (remote: String, branch: String)? {
         let parts = upstreamRef.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
         guard parts.count == 2 else { return nil }

@@ -14,10 +14,14 @@ struct CommitRowView: View {
     let dateWidth: CGFloat
     let commitWidth: CGFloat
 
-    private var relativeDate: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: node.commit.date, relativeTo: Date())
+    private var authorText: String {
+        "\(node.commit.author) <\(node.commit.email)>"
+    }
+
+    private var formattedDate: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm d MMM yyyy"
+        return formatter.string(from: node.commit.date)
     }
 
     var body: some View {
@@ -45,14 +49,14 @@ struct CommitRowView: View {
             .frame(width: messageWidth, alignment: .leading)
 
             // Author
-            Text(node.commit.author)
+            Text(authorText)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .frame(width: authorWidth, alignment: .leading)
 
             // Date
-            Text(relativeDate)
+            Text(formattedDate)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -72,7 +76,7 @@ struct CommitRowView: View {
         .padding(.leading, 8)
         .padding(.trailing, 16)
         .frame(height: 24)
-        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
         .contentShape(Rectangle())
     }
 }
