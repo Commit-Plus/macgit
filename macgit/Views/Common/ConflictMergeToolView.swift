@@ -20,6 +20,8 @@ struct ConflictMergeToolView: View {
     @State private var showingError = false
     @State private var selectedConflictIndex = 0
     @State private var hasUnsavedChanges = false
+    @State private var showingCloseConfirmation = false
+    @State private var sidebarCollapsed = false
 
     init(allConflictFiles: [StatusFile], repositoryURL: URL, onResolved: @escaping () -> Void) {
         self.allConflictFiles = allConflictFiles
@@ -29,7 +31,7 @@ struct ConflictMergeToolView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: sidebarVisibility) {
             fileSidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
         } detail: {
@@ -37,6 +39,28 @@ struct ConflictMergeToolView: View {
         }
         .frame(minWidth: 1200, idealWidth: 1400, maxWidth: .infinity)
         .frame(minHeight: 800, idealHeight: 900, maxHeight: .infinity)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                HStack(spacing: 8) {
+                    // Close button (traffic light style)
+                    Button(action: { requestClose() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Close")
+
+                    // Sidebar toggle
+                    Button(action: { sidebarCollapsed.toggle() }) {
+                        Image(systemName: sidebarCollapsed ? "sidebar.right" : "sidebar.left")
+                            .font(.system(size: 13))
+                    }
+                    .buttonStyle(.plain)
+                    .help(sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar")
+                }
+            }
+        }
         .task {
             await loadDocument(for: selectedFile)
         }
@@ -45,6 +69,14 @@ struct ConflictMergeToolView: View {
         }, message: {
             Text(errorMessage ?? "An unknown error occurred")
         })
+        .alert("Unsaved Changes", isPresented: $showingCloseConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Discard Changes", role: .destructive) {
+                dismiss()
+            }
+        } message: {
+            Text("You have unsaved conflict resolutions. Are you sure you want to close and discard your changes?")
+        }
         .onChange(of: selectedFile) { _, newFile in
             if hasUnsavedChanges {
                 // In a real app, show confirmation here. For now, just proceed.
@@ -52,6 +84,23 @@ struct ConflictMergeToolView: View {
             Task {
                 await loadDocument(for: newFile)
             }
+        }
+    }
+
+    private var sidebarVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { sidebarCollapsed ? .detailOnly : .all },
+            set: { newValue in
+                sidebarCollapsed = (newValue == .detailOnly)
+            }
+        )
+    }
+
+    private func requestClose() {
+        if hasUnsavedChanges {
+            showingCloseConfirmation = true
+        } else {
+            dismiss()
         }
     }
 
