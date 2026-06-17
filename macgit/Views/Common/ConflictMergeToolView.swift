@@ -29,8 +29,10 @@ struct ConflictMergeToolView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
+        NavigationSplitView {
             fileSidebar
+                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
+        } detail: {
             mainContent
         }
         .frame(minWidth: 1200, idealWidth: 1400, maxWidth: .infinity)
@@ -82,7 +84,6 @@ struct ConflictMergeToolView: View {
             }
         }
         .listStyle(.sidebar)
-        .frame(minWidth: 200, idealWidth: 220, maxWidth: 260)
     }
 
     // MARK: - Main Content
