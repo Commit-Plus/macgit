@@ -100,6 +100,11 @@ struct FileStatusView: View {
         .sheet(item: $mergeToolFile) { file in
             let allConflictFiles = (gitStatus.staged + gitStatus.unstaged + gitStatus.untracked)
                 .filter { $0.status == .conflict }
+                .reduce(into: [String: StatusFile]()) { dict, file in
+                    dict[file.path] = file
+                }
+                .values
+                .sorted { $0.path < $1.path }
             ConflictMergeToolView(
                 allConflictFiles: allConflictFiles,
                 repositoryURL: repositoryURL,
