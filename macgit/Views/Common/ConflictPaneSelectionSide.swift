@@ -12,4 +12,13 @@ enum ConflictPaneSelectionSide {
             return "Current"
         }
     }
+
+    var resolution: ConflictSectionResolution {
+        switch self {
+        case .incoming:
+            return .incoming
+        case .current:
+            return .current
+        }
+    }
 }

@@ -164,7 +164,11 @@ struct ConflictMergeToolView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
-            HStack {
+            HStack(spacing: 6) {
+                if let selectionSide {
+                    headerSelectionControl(for: selectionSide)
+                }
+
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -293,6 +297,21 @@ struct ConflictMergeToolView: View {
 
     // MARK: - Helpers
 
+    private func headerSelectionControl(for side: ConflictPaneSelectionSide) -> some View {
+        let selected = allConflictsSelected(side)
+
+        return Button(
+            "Select all \(side.title) conflict blocks",
+            systemImage: selected ? "checkmark.square.fill" : "square"
+        ) {
+            selectAllConflicts(side)
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.plain)
+        .foregroundStyle(selected ? Color.accentColor : .secondary)
+        .accessibilityValue(selected ? "Selected" : "Not selected")
+    }
+
     private func resolvedCount(in document: ConflictResolutionDocument) -> Int {
         document.sections.filter { $0.isConflict && $0.resolution != .manual }.count
     }
@@ -347,6 +366,19 @@ struct ConflictMergeToolView: View {
         }
 
         selectedConflictIndex = sectionIndex
+        hasUnsavedChanges = true
+        self.document = document
+    }
+
+    private func allConflictsSelected(_ side: ConflictPaneSelectionSide) -> Bool {
+        document?.allConflictsUse(side.resolution) ?? false
+    }
+
+    private func selectAllConflicts(_ side: ConflictPaneSelectionSide) {
+        guard var document else { return }
+
+        document.selectAllConflicts(side.resolution)
+        selectedConflictIndex = document.sections.firstIndex { $0.isConflict } ?? selectedConflictIndex
         hasUnsavedChanges = true
         self.document = document
     }

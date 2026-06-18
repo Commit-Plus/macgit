@@ -130,6 +130,19 @@ struct ConflictResolutionDocument: Equatable {
         sections.map(\.resolvedText).joined()
     }
 
+    func allConflictsUse(_ resolution: ConflictSectionResolution) -> Bool {
+        let conflictSections = sections.filter(\.isConflict)
+        guard !conflictSections.isEmpty else { return false }
+        return conflictSections.allSatisfy { $0.resolution == resolution }
+    }
+
+    mutating func selectAllConflicts(_ resolution: ConflictSectionResolution) {
+        for index in sections.indices where sections[index].isConflict {
+            sections[index].manualResult = ""
+            sections[index].resolution = resolution
+        }
+    }
+
     static func parse(
         _ text: String,
         currentContent: String? = nil,

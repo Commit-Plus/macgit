@@ -99,4 +99,55 @@ final class ConflictResolutionModelsTests: XCTestCase {
         XCTAssertEqual(section.resolution, .manual)
         XCTAssertEqual(section.resolvedText, "")
     }
+
+    func testDocumentCanSelectIncomingForEveryConflict() {
+        var second = ConflictResolutionSection.conflict(
+            current: "second current\n",
+            incoming: "second incoming\n"
+        )
+        second.resolution = .both
+
+        var document = ConflictResolutionDocument(
+            sections: [
+                .context("prefix\n"),
+                .conflict(current: "first current\n", incoming: "first incoming\n"),
+                second,
+            ],
+            currentContent: "",
+            incomingContent: ""
+        )
+
+        document.selectAllConflicts(.incoming)
+
+        XCTAssertTrue(document.allConflictsUse(.incoming))
+        XCTAssertFalse(document.allConflictsUse(.current))
+        XCTAssertEqual(document.sections[1].resolution, .incoming)
+        XCTAssertEqual(document.sections[2].resolution, .incoming)
+        XCTAssertEqual(document.resolvedText, "prefix\nfirst incoming\nsecond incoming\n")
+    }
+
+    func testDocumentCanSelectCurrentForEveryConflict() {
+        var first = ConflictResolutionSection.conflict(
+            current: "first current\n",
+            incoming: "first incoming\n"
+        )
+        first.resolution = .incoming
+
+        var document = ConflictResolutionDocument(
+            sections: [
+                first,
+                .conflict(current: "second current\n", incoming: "second incoming\n"),
+            ],
+            currentContent: "",
+            incomingContent: ""
+        )
+
+        document.selectAllConflicts(.current)
+
+        XCTAssertTrue(document.allConflictsUse(.current))
+        XCTAssertFalse(document.allConflictsUse(.incoming))
+        XCTAssertEqual(document.sections[0].resolution, .current)
+        XCTAssertEqual(document.sections[1].resolution, .current)
+        XCTAssertEqual(document.resolvedText, "first current\nsecond current\n")
+    }
 }
