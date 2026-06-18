@@ -17,7 +17,7 @@ struct ConflictMergeToolView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showingError = false
-    @State private var selectedConflictIndex = 0
+    @State private var selectedConflictSectionIndex: Int?
     @State private var hasUnsavedChanges = false
     @State private var scrollController = SyncedScrollController()
 
@@ -216,28 +216,29 @@ struct ConflictMergeToolView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
             if let document = document {
+                let navigation = navigationState(for: document)
                 HStack(spacing: 0) {
                     Button {
-                        navigateToPreviousConflict(in: document)
+                        navigateToConflict(navigation.previousSectionIndex, in: document)
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 12, weight: .semibold))
                             .frame(width: 28, height: 22)
                     }
-                    .disabled(selectedConflictIndex == 0)
+                    .disabled(!navigation.canNavigatePrevious)
                     .accessibilityLabel("Previous conflict")
 
                     Divider()
                         .frame(height: 12)
 
                     Button {
-                        navigateToNextConflict(in: document)
+                        navigateToConflict(navigation.nextSectionIndex, in: document)
                     } label: {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12, weight: .semibold))
                             .frame(width: 28, height: 22)
                     }
-                    .disabled(selectedConflictIndex >= document.conflictCount - 1)
+                    .disabled(!navigation.canNavigateNext)
                     .accessibilityLabel("Next conflict")
                 }
                 .background(
@@ -263,9 +264,8 @@ struct ConflictMergeToolView: View {
                 }
 
                 if let document = document {
-                    let conflictCount = document.conflictCount
-                    let remaining = conflictCount - resolvedCount(in: document)
-                    Text("Conflict \(selectedConflictIndex + 1) of \(conflictCount) — \(remaining) remaining")
+                    let navigation = navigationState(for: document)
+                    Text(conflictStatusText(navigation: navigation))
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
@@ -312,22 +312,22 @@ struct ConflictMergeToolView: View {
         .accessibilityValue(selected ? "Selected" : "Not selected")
     }
 
-    private func resolvedCount(in document: ConflictResolutionDocument) -> Int {
-        document.sections.filter { $0.isConflict && $0.resolution != .manual }.count
+    private func navigationState(for document: ConflictResolutionDocument) -> ConflictNavigationState {
+        ConflictNavigationState(document: document, currentSectionIndex: selectedConflictSectionIndex)
     }
 
-    private func navigateToPreviousConflict(in document: ConflictResolutionDocument) {
-        let conflictIndices = document.sections.indices.filter { document.sections[$0].isConflict }
-        guard let currentIndex = conflictIndices.firstIndex(of: selectedConflictIndex) else { return }
-        let prevIndex = max(0, currentIndex - 1)
-        selectedConflictIndex = conflictIndices[prevIndex]
+    private func conflictStatusText(navigation: ConflictNavigationState) -> String {
+        guard let currentOrdinal = navigation.currentOrdinal else {
+            return "All conflicts resolved"
+        }
+
+        return "Unresolved \(currentOrdinal) of \(navigation.remainingCount)"
     }
 
-    private func navigateToNextConflict(in document: ConflictResolutionDocument) {
-        let conflictIndices = document.sections.indices.filter { document.sections[$0].isConflict }
-        guard let currentIndex = conflictIndices.firstIndex(of: selectedConflictIndex) else { return }
-        let nextIndex = min(conflictIndices.count - 1, currentIndex + 1)
-        selectedConflictIndex = conflictIndices[nextIndex]
+    private func navigateToConflict(_ sectionIndex: Int?, in document: ConflictResolutionDocument) {
+        guard let sectionIndex else { return }
+        selectedConflictSectionIndex = sectionIndex
+        scrollToConflict(sectionIndex, in: document)
     }
 
     private func isConflictSideSelected(
@@ -365,9 +365,9 @@ struct ConflictMergeToolView: View {
             document.sections[sectionIndex].setCurrentSelected(selected)
         }
 
-        selectedConflictIndex = sectionIndex
         hasUnsavedChanges = true
         self.document = document
+        focusCurrentConflict(in: document, preferredSectionIndex: sectionIndex, scroll: true)
     }
 
     private func allConflictsSelected(_ side: ConflictPaneSelectionSide) -> Bool {
@@ -378,9 +378,39 @@ struct ConflictMergeToolView: View {
         guard var document else { return }
 
         document.selectAllConflicts(side.resolution)
-        selectedConflictIndex = document.sections.firstIndex { $0.isConflict } ?? selectedConflictIndex
         hasUnsavedChanges = true
         self.document = document
+        focusCurrentConflict(in: document, preferredSectionIndex: selectedConflictSectionIndex, scroll: true)
+    }
+
+    private func focusCurrentConflict(
+        in document: ConflictResolutionDocument,
+        preferredSectionIndex: Int?,
+        scroll: Bool
+    ) {
+        let navigation = ConflictNavigationState(
+            document: document,
+            currentSectionIndex: preferredSectionIndex
+        )
+        selectedConflictSectionIndex = navigation.currentSectionIndex
+
+        guard scroll else { return }
+
+        if let currentSectionIndex = navigation.currentSectionIndex {
+            scrollToConflict(currentSectionIndex, in: document)
+        } else {
+            scrollController.scrollToTop()
+        }
+    }
+
+    private func scrollToConflict(_ sectionIndex: Int, in document: ConflictResolutionDocument) {
+        let panels = ConflictPanelAlignment(document: document)
+        guard let rowIndex = panels.rowIndex(forConflictSectionIndex: sectionIndex) else { return }
+        let offset = ConflictCodeView.verticalPadding + CGFloat(rowIndex) * ConflictCodeView.rowHeight()
+
+        DispatchQueue.main.async {
+            scrollController.scrollToVerticalOffset(offset)
+        }
     }
 
     private func loadDocument(for file: StatusFile) async {
@@ -390,9 +420,13 @@ struct ConflictMergeToolView: View {
             let loadedDocument = try await GitStatusService.shared.conflictDocument(for: file, in: repositoryURL)
             await MainActor.run {
                 document = loadedDocument
-                selectedConflictIndex = 0
+                focusCurrentConflict(in: loadedDocument, preferredSectionIndex: nil, scroll: false)
                 hasUnsavedChanges = false
-                scrollController.scrollToTop()
+                if let selectedConflictSectionIndex {
+                    scrollToConflict(selectedConflictSectionIndex, in: loadedDocument)
+                } else {
+                    scrollController.scrollToTop()
+                }
             }
         } catch {
             await MainActor.run {

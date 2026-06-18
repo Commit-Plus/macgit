@@ -46,6 +46,12 @@ struct ConflictPanelAlignment {
         self.resultRows = resultRows
     }
 
+    func rowIndex(forConflictSectionIndex sectionIndex: Int) -> Int? {
+        incomingRows.firstIndex { row in
+            row.startsConflict && row.conflictSectionIndex == sectionIndex
+        }
+    }
+
     private static func lines(of text: String) -> [String] {
         var components = text.components(separatedBy: "\n")
         if components.last == "" {

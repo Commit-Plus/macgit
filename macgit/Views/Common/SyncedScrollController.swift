@@ -38,10 +38,14 @@ final class SyncedScrollController {
     }
 
     func scrollToTop() {
+        scrollToVerticalOffset(0)
+    }
+
+    func scrollToVerticalOffset(_ offset: CGFloat) {
         removeReleasedScrollViews()
         isApplyingSynchronizedScroll = true
         for scrollView in scrollViews.values.compactMap(\.value) {
-            setVerticalOffset(0, on: scrollView)
+            setVerticalOffset(offset, on: scrollView)
         }
         isApplyingSynchronizedScroll = false
     }

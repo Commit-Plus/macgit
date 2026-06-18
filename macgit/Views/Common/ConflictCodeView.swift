@@ -7,6 +7,13 @@ import SwiftUI
 
 /// A read-only code view that shows line numbers and can highlight specific lines.
 struct ConflictCodeView: View {
+    static let defaultFontSize: CGFloat = 12
+    static let verticalPadding: CGFloat = 8
+
+    static func rowHeight(fontSize: CGFloat = defaultFontSize) -> CGFloat {
+        fontSize + 6
+    }
+
     let fileExtension: String
     let highlightColor: Color
     let fontSize: CGFloat
@@ -16,7 +23,7 @@ struct ConflictCodeView: View {
     let onSelectionChanged: (Int, Bool) -> Void
 
     private var rowHeight: CGFloat {
-        fontSize + 6
+        Self.rowHeight(fontSize: fontSize)
     }
 
     init(
@@ -24,7 +31,7 @@ struct ConflictCodeView: View {
         fileExtension: String,
         highlightedLines: Set<Int>,
         highlightColor: Color,
-        fontSize: CGFloat = 12
+        fontSize: CGFloat = Self.defaultFontSize
     ) {
         var components = text.components(separatedBy: "\n")
         if components.last == "" {
@@ -51,7 +58,7 @@ struct ConflictCodeView: View {
         rows: [ConflictCodeLine],
         fileExtension: String,
         highlightColor: Color,
-        fontSize: CGFloat = 12,
+        fontSize: CGFloat = Self.defaultFontSize,
         selectionSide: ConflictPaneSelectionSide? = nil,
         isSelected: @escaping (Int) -> Bool = { _ in false },
         onSelectionChanged: @escaping (Int, Bool) -> Void = { _, _ in }
@@ -86,7 +93,7 @@ struct ConflictCodeView: View {
                     .background(rowBackground(for: row))
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, Self.verticalPadding)
         .background(.secondary.opacity(0.05))
     }
 
@@ -105,7 +112,7 @@ struct ConflictCodeView: View {
                     .background(rowBackground(for: row))
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, Self.verticalPadding)
         .background(.secondary.opacity(0.05))
     }
 
@@ -126,7 +133,7 @@ struct ConflictCodeView: View {
                     .background(rowBackground(for: row))
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, Self.verticalPadding)
     }
 
     // MARK: - Helpers

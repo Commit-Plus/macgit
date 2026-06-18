@@ -20,7 +20,7 @@ final class ConflictPanelAlignmentTests: XCTestCase {
 
         XCTAssertEqual(panels.currentRows.map(\.lineNumber), [1, 2, 3, 4, 5, 6])
         XCTAssertEqual(panels.incomingRows.map(\.lineNumber), [1, 2, 3, nil, nil, 4])
-        XCTAssertEqual(panels.resultRows.map(\.lineNumber), [1, 2, 3, 4, 5, 6])
+        XCTAssertEqual(panels.resultRows.map(\.lineNumber), [1, 2, nil, nil, nil, 3])
 
         XCTAssertFalse(panels.incomingRows[0].isPlaceholder)
         XCTAssertTrue(panels.incomingRows[3].isPlaceholder)
@@ -33,6 +33,8 @@ final class ConflictPanelAlignmentTests: XCTestCase {
         XCTAssertTrue(panels.incomingRows[2].startsConflict)
         XCTAssertEqual(panels.incomingRows[2].conflictSectionIndex, 1)
         XCTAssertFalse(panels.currentRows[3].startsConflict)
+        XCTAssertEqual(panels.rowIndex(forConflictSectionIndex: 1), 2)
+        XCTAssertNil(panels.rowIndex(forConflictSectionIndex: 0))
     }
 
     func testResultPaneParticipatesInAlignmentWhenItHasMostRows() {

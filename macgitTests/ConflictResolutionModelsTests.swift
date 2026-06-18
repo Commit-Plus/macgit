@@ -59,8 +59,16 @@ final class ConflictResolutionModelsTests: XCTestCase {
             incoming: "incoming\n"
         )
 
+        XCTAssertFalse(section.isCurrentSelected)
+        XCTAssertFalse(section.isIncomingSelected)
+        XCTAssertEqual(section.resolution, .manual)
+        XCTAssertEqual(section.resolvedText, "")
+
+        section.setCurrentSelected(true)
+
         XCTAssertTrue(section.isCurrentSelected)
         XCTAssertFalse(section.isIncomingSelected)
+        XCTAssertEqual(section.resolution, .current)
         XCTAssertEqual(section.resolvedText, "current\n")
 
         section.setIncomingSelected(true)

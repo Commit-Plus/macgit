@@ -30,6 +30,11 @@ struct ConflictResolutionSection: Identifiable, Equatable {
         kind == .conflict
     }
 
+    var isResolved: Bool {
+        guard isConflict else { return true }
+        return resolution != .manual || !manualResult.isEmpty
+    }
+
     var preferredResultText: String {
         switch resolution {
         case .current:
@@ -111,7 +116,7 @@ struct ConflictResolutionSection: Identifiable, Equatable {
             contextText: "",
             currentText: current,
             incomingText: incoming,
-            resolution: .current,
+            resolution: .manual,
             manualResult: ""
         )
     }
