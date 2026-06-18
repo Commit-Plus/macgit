@@ -7,19 +7,50 @@ import SwiftUI
 
 /// A read-only code view that shows line numbers and can highlight specific lines.
 struct ConflictCodeView: View {
-    let text: String
     let fileExtension: String
-    let highlightedLines: Set<Int>
     let highlightColor: Color
-    let fontSize: CGFloat = 12
+    let fontSize: CGFloat
+    let rows: [ConflictCodeLine]
 
-    private var lines: [String] {
+    private var rowHeight: CGFloat {
+        fontSize + 6
+    }
+
+    init(
+        text: String,
+        fileExtension: String,
+        highlightedLines: Set<Int>,
+        highlightColor: Color,
+        fontSize: CGFloat = 12
+    ) {
         var components = text.components(separatedBy: "\n")
-        // Remove trailing empty component caused by trailing newline
         if components.last == "" {
             components.removeLast()
         }
-        return components
+
+        self.fileExtension = fileExtension
+        self.highlightColor = highlightColor
+        self.fontSize = fontSize
+        self.rows = components.enumerated().map { index, line in
+            let lineNumber = index + 1
+            return .actual(
+                lineNumber: lineNumber,
+                text: line,
+                isConflict: highlightedLines.contains(lineNumber)
+            )
+        }
+    }
+
+    init(
+        rows: [ConflictCodeLine],
+        fileExtension: String,
+        highlightColor: Color,
+        fontSize: CGFloat = 12
+    ) {
+        self.fileExtension = fileExtension
+        self.highlightColor = highlightColor
+        self.fontSize = fontSize
+        self.rows = rows
     }
 
     var body: some View {
@@ -33,15 +64,15 @@ struct ConflictCodeView: View {
 
     private var lineNumbers: some View {
         VStack(alignment: .trailing, spacing: 0) {
-            ForEach(0..<lines.count, id: \.self) { index in
-                let lineNum = index + 1
-                Text("\(lineNum)")
+            ForEach(rows.indices, id: \.self) { index in
+                let row = rows[index]
+                Text(row.lineNumber.map(String.init) ?? "")
                     .font(.system(size: fontSize, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .frame(width: 40, alignment: .trailing)
                     .padding(.trailing, 8)
-                    .padding(.vertical, 1)
-                    .background(backgroundColor(for: lineNum))
+                    .frame(height: rowHeight)
+                    .background(rowBackground(for: row))
             }
         }
         .padding(.vertical, 8)
@@ -54,17 +85,15 @@ struct ConflictCodeView: View {
         let highlighter = SyntaxHighlighter(fileExtension: fileExtension)
 
         return VStack(alignment: .leading, spacing: 0) {
-            ForEach(0..<lines.count, id: \.self) { index in
-                let lineNum = index + 1
-                let attributed = highlighter.attributedString(for: lines[index], fontSize: fontSize)
-
-                Text(attributed)
+            ForEach(rows.indices, id: \.self) { index in
+                let row = rows[index]
+                Text(attributedText(for: row, using: highlighter))
                     .font(.system(size: fontSize, design: .monospaced))
-                    .lineSpacing(2)
-                    .padding(.vertical, 1)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                     .padding(.horizontal, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(backgroundColor(for: lineNum))
+                    .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+                    .background(rowBackground(for: row))
             }
         }
         .padding(.vertical, 8)
@@ -72,7 +101,27 @@ struct ConflictCodeView: View {
 
     // MARK: - Helpers
 
-    private func backgroundColor(for lineNum: Int) -> Color {
-        highlightedLines.contains(lineNum) ? highlightColor.opacity(0.2) : Color.clear
+    private func attributedText(
+        for row: ConflictCodeLine,
+        using highlighter: SyntaxHighlighter
+    ) -> AttributedString {
+        guard !row.isPlaceholder else { return AttributedString("") }
+        return highlighter.attributedString(for: row.text, fontSize: fontSize)
+    }
+
+    @ViewBuilder
+    private func rowBackground(for row: ConflictCodeLine) -> some View {
+        if row.isPlaceholder {
+            Color(nsColor: .separatorColor)
+                .opacity(0.08)
+                .overlay {
+                    DiagonalHatchShape()
+                        .stroke(.separator.opacity(0.35), lineWidth: 1)
+                }
+        } else if row.isConflict {
+            highlightColor.opacity(0.2)
+        } else {
+            Color.clear
+        }
     }
 }

@@ -19,6 +19,7 @@ struct ConflictMergeToolView: View {
     @State private var showingError = false
     @State private var selectedConflictIndex = 0
     @State private var hasUnsavedChanges = false
+    @State private var scrollController = SyncedScrollController()
 
     init(allConflictFiles: [StatusFile], repositoryURL: URL, onResolved: @escaping () -> Void, onClose: @escaping () -> Void) {
         self.allConflictFiles = allConflictFiles
@@ -110,32 +111,53 @@ struct ConflictMergeToolView: View {
     // MARK: - Three Panel View
 
     private func threePanelView(document: ConflictResolutionDocument) -> some View {
-        let incomingData = buildPanelData(document: document, content: document.incomingContent, textSelector: \.incomingPaneText)
-        let currentData = buildPanelData(document: document, content: document.currentContent, textSelector: \.currentPaneText)
-        let resultData = buildPanelData(document: document, content: document.resolvedText, textSelector: \.resolvedText)
+        let panels = ConflictPanelAlignment(document: document)
+        let incomingData = PanelData(rows: panels.incomingRows)
+        let currentData = PanelData(rows: panels.currentRows)
+        let resultData = PanelData(rows: panels.resultRows)
 
-        return ScrollView(.vertical) {
-            VStack(spacing: 0) {
-                // Top row: Incoming | Current
-                HStack(alignment: .top, spacing: 0) {
-                    panelView(title: "Incoming", data: incomingData, highlightColor: Color(nsColor: .systemGreen).opacity(0.7))
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                    Divider()
-
-                    panelView(title: "Current", data: currentData, highlightColor: Color(nsColor: .systemBlue).opacity(0.7))
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
+        return VStack(spacing: 0) {
+            // Top row: Incoming | Current
+            HStack(alignment: .top, spacing: 0) {
+                panelView(
+                    title: "Incoming",
+                    scrollID: "incoming",
+                    data: incomingData,
+                    highlightColor: Color(nsColor: .systemGreen).opacity(0.7)
+                )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
                 Divider()
 
-                // Bottom row: Result
-                panelView(title: "Result", data: resultData, highlightColor: Color(nsColor: .systemPurple).opacity(0.7))
+                panelView(
+                    title: "Current",
+                    scrollID: "current",
+                    data: currentData,
+                    highlightColor: Color(nsColor: .systemBlue).opacity(0.7)
+                )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+            .frame(maxHeight: .infinity)
+
+            Divider()
+
+            // Bottom row: Result
+            panelView(
+                title: "Result",
+                scrollID: "result",
+                data: resultData,
+                highlightColor: Color(nsColor: .systemPurple).opacity(0.7)
+            )
+                .frame(maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
-    private func panelView(title: String, data: PanelData, highlightColor: Color) -> some View {
+    private func panelView(
+        title: String,
+        scrollID: String,
+        data: PanelData,
+        highlightColor: Color
+    ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
             HStack {
@@ -154,53 +176,21 @@ struct ConflictMergeToolView: View {
             }
 
             // Content
-            ConflictCodeView(
-                text: data.text,
-                fileExtension: selectedFile.fileExtension,
-                highlightedLines: data.highlightedLines,
-                highlightColor: highlightColor
-            )
+            SyncedScrollView(id: scrollID, controller: scrollController) {
+                ConflictCodeView(
+                    rows: data.rows,
+                    fileExtension: selectedFile.fileExtension,
+                    highlightColor: highlightColor
+                )
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
     // MARK: - Panel Data
 
     private struct PanelData {
-        let text: String
-        let highlightedLines: Set<Int>
-    }
-
-    private func buildPanelData(
-        document: ConflictResolutionDocument,
-        content: String,
-        textSelector: KeyPath<ConflictResolutionSection, String>
-    ) -> PanelData {
-        var highlightedLines = Set<Int>()
-        var currentLine = 1
-
-        for section in document.sections {
-            let text = section[keyPath: textSelector]
-            let sectionLines = lines(of: text)
-            let count = sectionLines.count
-
-            if section.isConflict {
-                for i in 0..<count {
-                    highlightedLines.insert(currentLine + i)
-                }
-            }
-
-            currentLine += count
-        }
-
-        return PanelData(text: content, highlightedLines: highlightedLines)
-    }
-
-    private func lines(of text: String) -> [String] {
-        var components = text.components(separatedBy: "\n")
-        if components.last == "" {
-            components.removeLast()
-        }
-        return components
+        let rows: [ConflictCodeLine]
     }
 
     // MARK: - Toolbar
@@ -317,6 +307,7 @@ struct ConflictMergeToolView: View {
                 document = loadedDocument
                 selectedConflictIndex = 0
                 hasUnsavedChanges = false
+                scrollController.scrollToTop()
             }
         } catch {
             await MainActor.run {
