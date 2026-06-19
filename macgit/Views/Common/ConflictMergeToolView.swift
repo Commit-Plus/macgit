@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct ConflictMergeToolView: View {
-    let allConflictFiles: [StatusFile]
+    @State private var allConflictFiles: [StatusFile]
     let repositoryURL: URL
     let onResolved: () -> Void
     let onClose: () -> Void
@@ -20,9 +20,10 @@ struct ConflictMergeToolView: View {
     @State private var selectedConflictSectionIndex: Int?
     @State private var hasUnsavedChanges = false
     @State private var scrollController = SyncedScrollController()
+    @State private var showingUnresolvedConflictsAlert = false
 
     init(allConflictFiles: [StatusFile], repositoryURL: URL, onResolved: @escaping () -> Void, onClose: @escaping () -> Void) {
-        self.allConflictFiles = allConflictFiles
+        self._allConflictFiles = State(initialValue: allConflictFiles)
         self.repositoryURL = repositoryURL
         self.onResolved = onResolved
         self.onClose = onClose
@@ -36,7 +37,7 @@ struct ConflictMergeToolView: View {
         .frame(minWidth: 900, minHeight: 600)
         .navigationTitle("")
         .toolbar { toolbarContent }
-        .task {
+        .task(id: selectedFile.id) {
             await loadDocument(for: selectedFile)
         }
         .alert("Error", isPresented: $showingError, actions: {
@@ -44,13 +45,10 @@ struct ConflictMergeToolView: View {
         }, message: {
             Text(errorMessage ?? "An unknown error occurred")
         })
-        .onChange(of: selectedFile) { _, newFile in
-            if hasUnsavedChanges {
-                // In a real app, show confirmation here. For now, just proceed.
-            }
-            Task {
-                await loadDocument(for: newFile)
-            }
+        .alert("Unresolved Conflicts", isPresented: $showingUnresolvedConflictsAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("There are still conflict blocks that need to be resolved before merging.")
         }
     }
 
@@ -275,18 +273,22 @@ struct ConflictMergeToolView: View {
 
         ToolbarItem(placement: .confirmationAction) {
             Button {
-                Task {
-                    await saveAndAdvance()
+                if hasUnresolvedConflicts {
+                    showingUnresolvedConflictsAlert = true
+                } else {
+                    Task {
+                        await saveAndAdvance()
+                    }
                 }
             } label: {
                 Text(isSaving ? "Resolving…" : "Merge")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(hasUnresolvedConflicts ? Color.primary : Color.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(Color.accentColor)
+                            .fill(hasUnresolvedConflicts ? Color.clear : Color.accentColor)
                     )
             }
             .keyboardShortcut(.defaultAction)
@@ -413,6 +415,13 @@ struct ConflictMergeToolView: View {
         }
     }
 
+    private var hasUnresolvedConflicts: Bool {
+        guard let document = document else { return false }
+        return document.sections.contains { section in
+            section.isConflict && !section.isIncomingSelected && !section.isCurrentSelected
+        }
+    }
+
     private func loadDocument(for file: StatusFile) async {
         isLoading = true
         defer { isLoading = false }
@@ -428,6 +437,8 @@ struct ConflictMergeToolView: View {
                     scrollController.scrollToTop()
                 }
             }
+        } catch is CancellationError {
+            // Task was cancelled, likely because user switched files. Ignore.
         } catch {
             await MainActor.run {
                 errorMessage = error.localizedDescription
@@ -445,12 +456,18 @@ struct ConflictMergeToolView: View {
             try await GitStatusService.shared.resolveConflict(file: selectedFile, in: repositoryURL, with: document)
             await MainActor.run {
                 hasUnsavedChanges = false
-                if let currentIndex = allConflictFiles.firstIndex(of: selectedFile),
-                   currentIndex + 1 < allConflictFiles.count {
-                    selectedFile = allConflictFiles[currentIndex + 1]
-                } else {
+                
+                let currentIndex = allConflictFiles.firstIndex(of: selectedFile)
+                allConflictFiles.removeAll { $0 == selectedFile }
+                
+                if allConflictFiles.isEmpty {
                     onClose()
                     onResolved()
+                } else if let currentIndex = currentIndex {
+                    let newIndex = min(currentIndex, allConflictFiles.count - 1)
+                    selectedFile = allConflictFiles[newIndex]
+                } else {
+                    selectedFile = allConflictFiles.first!
                 }
             }
         } catch {
