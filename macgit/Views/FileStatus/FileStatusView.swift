@@ -774,20 +774,6 @@ struct FileStatusView: View {
             .values
             .sorted { $0.path < $1.path }
 
-        let view = ConflictMergeToolView(
-            allConflictFiles: allConflictFiles,
-            repositoryURL: repositoryURL,
-            onResolved: { [repositoryURL] in
-                Task {
-                    await loadStatus()
-                    await syncState?.refresh(repositoryURL: repositoryURL)
-                }
-            },
-            onClose: { [weak conflictResolverWindow] in
-                conflictResolverWindow?.close()
-            }
-        )
-
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -797,6 +783,21 @@ struct FileStatusView: View {
         window.title = "Resolve Conflicts"
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
+
+        let view = ConflictMergeToolView(
+            allConflictFiles: allConflictFiles,
+            repositoryURL: repositoryURL,
+            onResolved: { [repositoryURL] in
+                Task {
+                    await loadStatus()
+                    await syncState?.refresh(repositoryURL: repositoryURL)
+                }
+            },
+            onClose: { [weak window] in
+                window?.close()
+            }
+        )
+
         window.contentView = NSHostingView(rootView: view)
         window.center()
         window.makeKeyAndOrderFront(nil)

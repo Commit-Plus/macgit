@@ -90,7 +90,14 @@ struct ConflictMergeToolView: View {
                         .frame(height: 0.5)
                 }
 
-            if isLoading {
+            if allConflictFiles.isEmpty {
+                EmptyStateView(
+                    icon: "checkmark.circle.fill",
+                    message: "All conflicts resolved",
+                    detail: "All files have been successfully merged. You can close this window."
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if isLoading {
                 ProgressView("Loading conflict details…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let document = document {
@@ -213,7 +220,7 @@ struct ConflictMergeToolView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
-            if let document = document {
+            if let document = document, !allConflictFiles.isEmpty {
                 let navigation = navigationState(for: document)
                 HStack(spacing: 0) {
                     Button {
@@ -255,13 +262,20 @@ struct ConflictMergeToolView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Resolve Conflicts")
                         .font(.headline.weight(.semibold))
-                    Text(selectedFile.path)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if allConflictFiles.isEmpty {
+                        Text("All files resolved")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    } else {
+                        Text(selectedFile.path)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
 
-                if let document = document {
+                if let document = document, !allConflictFiles.isEmpty {
                     let navigation = navigationState(for: document)
                     Text(conflictStatusText(navigation: navigation))
                         .font(.subheadline.weight(.medium))
@@ -272,28 +286,46 @@ struct ConflictMergeToolView: View {
         }
 
         ToolbarItem(placement: .confirmationAction) {
-            Button {
-                if hasUnresolvedConflicts {
-                    showingUnresolvedConflictsAlert = true
-                } else {
-                    Task {
-                        await saveAndAdvance()
-                    }
+            if allConflictFiles.isEmpty {
+                Button {
+                    onClose()
+                } label: {
+                    Text("Close")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(Color.accentColor)
+                        )
                 }
-            } label: {
-                Text(isSaving ? "Resolving…" : "Merge")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(hasUnresolvedConflicts ? Color.primary : Color.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(hasUnresolvedConflicts ? Color.clear : Color.accentColor)
-                    )
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.plain)
+            } else {
+                Button {
+                    if hasUnresolvedConflicts {
+                        showingUnresolvedConflictsAlert = true
+                    } else {
+                        Task {
+                            await saveAndAdvance()
+                        }
+                    }
+                } label: {
+                    Text(isSaving ? "Resolving…" : "Merge")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(hasUnresolvedConflicts ? Color.primary : Color.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(hasUnresolvedConflicts ? Color.clear : Color.accentColor)
+                        )
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.plain)
+                .disabled(isSaving)
             }
-            .keyboardShortcut(.defaultAction)
-            .buttonStyle(.plain)
-            .disabled(isSaving)
         }
     }
 
@@ -460,9 +492,13 @@ struct ConflictMergeToolView: View {
                 let currentIndex = allConflictFiles.firstIndex(of: selectedFile)
                 allConflictFiles.removeAll { $0 == selectedFile }
                 
+                // Notify main window to refresh status after each resolve
+                onResolved()
+                
                 if allConflictFiles.isEmpty {
-                    onClose()
-                    onResolved()
+                    // All conflicts resolved - show empty state, user will close manually
+                    self.document = nil
+                    selectedConflictSectionIndex = nil
                 } else if let currentIndex = currentIndex {
                     let newIndex = min(currentIndex, allConflictFiles.count - 1)
                     selectedFile = allConflictFiles[newIndex]
