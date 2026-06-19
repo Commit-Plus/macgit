@@ -184,6 +184,7 @@ struct FileStatusView: View {
 
     private func fileRow(file: StatusFile, isStaged: Bool) -> some View {
         let selectionKey = FileStatusSelectionKey(file: file, isStaged: isStaged)
+        let quickAction = FileStatusRowQuickAction(isStaged: isStaged)
 
         return HStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -231,12 +232,37 @@ struct FileStatusView: View {
                 selectedFile = file
             }
 
+            quickActionButton(quickAction, file: file)
+                .padding(.trailing, 2)
+
             moreButton(file: file, isStaged: isStaged)
                 .padding(.trailing, 4)
         }
         .contextMenu {
             fileContextMenu(file: file, isStaged: isStaged)
         }
+    }
+
+    private func quickActionButton(_ quickAction: FileStatusRowQuickAction, file: StatusFile) -> some View {
+        Button {
+            Task {
+                switch quickAction.kind {
+                case .stage:
+                    await stage(file: file)
+                case .unstage:
+                    await unstage(file: file)
+                }
+            }
+        } label: {
+            Image(systemName: quickAction.systemImage)
+                .font(.system(size: 10, weight: .semibold))
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(quickAction.accessibilityLabel)
+        .accessibilityLabel(quickAction.accessibilityLabel)
+        .frame(width: 24)
     }
 
     private func moreButton(file: StatusFile, isStaged: Bool) -> some View {
