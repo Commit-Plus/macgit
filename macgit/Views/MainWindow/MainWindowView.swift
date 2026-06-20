@@ -268,6 +268,17 @@ struct MainWindowView: View {
         }
 
         ToolbarItem(placement: .automatic) {
+            toolbarButton(
+                icon: "arrow.uturn.backward",
+                label: "Undo",
+                disabled: GitUndoToolbarPolicy.isUndoDisabled(
+                    isSyncing: syncState.isAnySyncing,
+                    canUndo: undoManager.canUndo
+                ),
+                action: { handleGitUndoMenuAction(.undo) }
+            )
+        }
+        ToolbarItem(placement: .automatic) {
             toolbarButton(icon: "network", label: "Remote", disabled: remoteURLString.isEmpty, action: { openRemoteURL() })
         }
         ToolbarItem(placement: .automatic) {
