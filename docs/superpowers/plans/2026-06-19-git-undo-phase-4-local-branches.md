@@ -1,4 +1,4 @@
-# Git Undo Phase 4 Local Branches Implementation Plan
+o# Git Undo Phase 4 Local Branches Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -39,6 +39,7 @@ Remote branch deletion and publishing are covered in Phase 7.
 ## Task 1: Add Branch Undo Support
 
 **Files:**
+
 - Create: `macgit/Services/GitBranchUndoSupport.swift`
 - Create: `macgitTests/GitBranchUndoSupportTests.swift`
 
@@ -165,6 +166,7 @@ Expected: commit succeeds.
 ## Task 2: Add Branch Operations to Undo Executor
 
 **Files:**
+
 - Modify: `macgit/Services/GitUndoModels.swift`
 - Modify: `macgit/Services/GitUndoExecutor.swift`
 - Create: `macgitTests/GitUndoBranchIntegrationTests.swift`
@@ -313,6 +315,7 @@ Expected: commit succeeds.
 ## Task 3: Register Branch Undo Entries in UI
 
 **Files:**
+
 - Modify: `macgit/Views/Common/BranchSheetView.swift`
 - Modify: `macgit/Views/MainWindow/SidebarView.swift`
 - Modify: `macgit/Views/MainWindow/MainWindowView.swift`
