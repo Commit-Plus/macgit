@@ -178,6 +178,7 @@ struct MainWindowView: View {
         SidebarView(
             repositoryURL: repositoryURL,
             selection: $selectedItem,
+            undoManager: undoManager,
             isBranchSyncing: { branch in
                 BranchSyncBadgePolicy.shouldShowLoading(
                     for: branch,
@@ -238,7 +239,7 @@ struct MainWindowView: View {
                     undoManager: undoManager
                 )
             case .item(.history), .branch, .tag, .remoteBranch, .head:
-                HistoryView(repositoryURL: repositoryURL, selectedBranch: selectedBranchName)
+                HistoryView(repositoryURL: repositoryURL, selectedBranch: selectedBranchName, undoManager: undoManager)
             case .stash(let ref):
                 StashView(repositoryURL: repositoryURL, stashRef: ref)
             case .item(.search):
@@ -335,7 +336,7 @@ struct MainWindowView: View {
 
     @ViewBuilder
     private var branchSheet: some View {
-        BranchSheetView(repositoryURL: repositoryURL) {
+        BranchSheetView(repositoryURL: repositoryURL, undoManager: undoManager) {
             Task {
                 await syncState.refresh(repositoryURL: repositoryURL)
             }
@@ -489,6 +490,8 @@ struct MainWindowView: View {
 
     private func performCheckout(ref: String, stash: Bool) async {
         do {
+            let support = GitBranchUndoSupport()
+            let previousRef = try await support.currentRef(in: repositoryURL)
             if stash {
                 try await GitStatusService.shared.stash(
                     options: GitStatusService.StashOptions(
@@ -499,6 +502,16 @@ struct MainWindowView: View {
                 )
             }
             try await GitStatusService.shared.checkoutCommit(ref, in: repositoryURL)
+            await MainActor.run {
+                undoManager.register(
+                    GitUndoEntry(
+                        repositoryURL: repositoryURL,
+                        label: "Checkout \(ref)",
+                        undoOperation: .checkoutRef(ref: previousRef),
+                        redoOperation: .checkoutRef(ref: ref)
+                    )
+                )
+            }
             await syncState.refresh(repositoryURL: repositoryURL)
             NotificationCenter.default.post(
                 name: .repositoryDidChange,

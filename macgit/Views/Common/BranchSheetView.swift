@@ -36,6 +36,7 @@ struct BranchSheetView: View {
     @Environment(\.dismiss) private var dismiss
     let repositoryURL: URL
     let onCompleted: () -> Void
+    var undoManager: GitUndoManager? = nil
 
     @State private var selectedTab: BranchTab = .create
 
@@ -332,6 +333,8 @@ struct BranchSheetView: View {
     private func createBranch() async {
         do {
             let commit = useWorkingCopyParent ? nil : selectedCommitHash
+            let support = GitBranchUndoSupport()
+            let startPoint = try await support.tip(of: commit ?? "HEAD", in: repositoryURL)
             _ = try await GitStatusService.shared.createBranch(
                 name: sanitizedName,
                 checkout: checkoutNewBranch,
@@ -339,6 +342,14 @@ struct BranchSheetView: View {
                 in: repositoryURL
             )
             await MainActor.run {
+                undoManager?.register(
+                    GitUndoEntry(
+                        repositoryURL: repositoryURL,
+                        label: "Create branch \(sanitizedName)",
+                        undoOperation: .deleteLocalBranch(name: sanitizedName, force: true, expectedTip: startPoint),
+                        redoOperation: .createLocalBranch(name: sanitizedName, startPoint: startPoint, checkout: checkoutNewBranch)
+                    )
+                )
                 onCompleted()
                 dismiss()
             }
@@ -371,11 +382,30 @@ struct BranchSheetView: View {
             for branch in selectedBranches {
                 switch branch.type {
                 case .local:
+                    let support = GitBranchUndoSupport()
+                    let tip = try await support.tip(of: branch.name, in: repositoryURL)
+                    let upstream = await support.upstream(of: branch.name, in: repositoryURL)
                     _ = try await GitStatusService.shared.deleteBranch(
                         name: branch.name,
                         force: forceDelete,
                         in: repositoryURL
                     )
+                    await MainActor.run {
+                        var undoOperations: [GitUndoOperation] = [
+                            .createLocalBranch(name: branch.name, startPoint: tip, checkout: false)
+                        ]
+                        if let upstream {
+                            undoOperations.append(.setUpstream(branch: branch.name, upstream: upstream))
+                        }
+                        undoManager?.register(
+                            GitUndoEntry(
+                                repositoryURL: repositoryURL,
+                                label: "Delete branch \(branch.name)",
+                                undoOperation: .sequence(undoOperations),
+                                redoOperation: .deleteLocalBranch(name: branch.name, force: forceDelete, expectedTip: tip)
+                            )
+                        )
+                    }
                 case .remote:
                     let parts = branch.name.split(separator: "/", maxSplits: 1)
                     guard parts.count == 2 else { continue }

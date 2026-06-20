@@ -8,6 +8,7 @@ import SwiftUI
 struct HistoryView: View {
     let repositoryURL: URL
     let selectedBranch: String?
+    let undoManager: GitUndoManager?
     private static let historyPageSize = 120
     private static let historyScrollSpaceName = "historyScroll"
     
@@ -53,9 +54,10 @@ struct HistoryView: View {
     @State private var mergeCommitImmediately = true
     @State private var mergeIncludeMessages = true
     
-    init(repositoryURL: URL, selectedBranch: String? = nil) {
+    init(repositoryURL: URL, selectedBranch: String? = nil, undoManager: GitUndoManager? = nil) {
         self.repositoryURL = repositoryURL
         self.selectedBranch = selectedBranch
+        self.undoManager = undoManager
         self._showAllBranches = State(initialValue: selectedBranch == nil)
         self._paging = State(initialValue: HistoryPagingState(pageSize: Self.historyPageSize))
     }
@@ -1072,6 +1074,8 @@ struct HistoryView: View {
         let name = branchNameInput.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
         do {
+            let support = GitBranchUndoSupport()
+            let startPoint = try await support.tip(of: commit.hash, in: repositoryURL)
             _ = try await GitStatusService.shared.createBranch(
                 name: name,
                 checkout: checkoutNewBranch,
@@ -1079,6 +1083,14 @@ struct HistoryView: View {
                 in: repositoryURL
             )
             await MainActor.run {
+                undoManager?.register(
+                    GitUndoEntry(
+                        repositoryURL: repositoryURL,
+                        label: "Create branch \(name)",
+                        undoOperation: .deleteLocalBranch(name: name, force: true, expectedTip: startPoint),
+                        redoOperation: .createLocalBranch(name: name, startPoint: startPoint, checkout: checkoutNewBranch)
+                    )
+                )
                 branchNameInput = ""
                 checkoutNewBranch = true
                 pendingCommit = nil
