@@ -7,10 +7,26 @@ import Foundation
 import Combine
 import SwiftUI
 
+enum GitUndoResetMode: Equatable {
+    case soft
+    case mixed
+    case hard
+
+    var flag: String {
+        switch self {
+        case .soft: return "--soft"
+        case .mixed: return "--mixed"
+        case .hard: return "--hard"
+        }
+    }
+}
+
 enum GitUndoOperation: Equatable {
     case stageFiles(paths: [String])
     case unstageFiles(paths: [String])
     case applyPatch(patch: String, cached: Bool, reverse: Bool)
+    case resetHead(target: String, mode: GitUndoResetMode, expectedHead: String?)
+    case commit(message: String, noVerify: Bool, signOff: Bool)
 }
 
 struct GitUndoEntry: Identifiable, Equatable {
