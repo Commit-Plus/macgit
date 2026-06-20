@@ -56,6 +56,21 @@ enum GitUndoEntryFactory {
         )
     }
 
+    static func applyPatch(
+        repositoryURL: URL,
+        label: String,
+        patch: String,
+        cached: Bool,
+        reverse: Bool
+    ) -> GitUndoEntry {
+        GitUndoEntry(
+            repositoryURL: repositoryURL,
+            label: label,
+            undoOperation: .applyPatch(patch: patch, cached: cached, reverse: !reverse),
+            redoOperation: .applyPatch(patch: patch, cached: cached, reverse: reverse)
+        )
+    }
+
     private static func normalized(_ paths: [String]) -> [String] {
         var seen: Set<String> = []
         var result: [String] = []

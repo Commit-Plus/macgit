@@ -458,6 +458,7 @@ struct FileStatusView: View {
                             hunks: diffHunks,
                             file: file,
                             repositoryURL: repositoryURL,
+                            undoManager: undoManager,
                             onRefresh: {
                                 Task {
                                     await loadStatus()

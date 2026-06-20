@@ -96,6 +96,22 @@ final class GitUndoManagerTests: XCTestCase {
         XCTAssertEqual(unstage.redoOperation, .unstageFiles(paths: ["README.md"]))
     }
 
+    func testFactoryBuildsPatchEntryWithReverseUndoOperation() {
+        let repoURL = URL(fileURLWithPath: "/tmp/repo")
+        let entry = GitUndoEntryFactory.applyPatch(
+            repositoryURL: repoURL,
+            label: "Stage hunk in README.md",
+            patch: "patch text",
+            cached: true,
+            reverse: false
+        )
+
+        XCTAssertEqual(entry.repositoryURL, repoURL)
+        XCTAssertEqual(entry.label, "Stage hunk in README.md")
+        XCTAssertEqual(entry.undoOperation, .applyPatch(patch: "patch text", cached: true, reverse: true))
+        XCTAssertEqual(entry.redoOperation, .applyPatch(patch: "patch text", cached: true, reverse: false))
+    }
+
     private func entry(label: String) -> GitUndoEntry {
         GitUndoEntry(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
