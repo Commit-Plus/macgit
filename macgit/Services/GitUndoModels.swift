@@ -39,6 +39,8 @@ indirect enum GitUndoOperation: Equatable {
     case sequence([GitUndoOperation])
     case resetHardToHead(expectedHead: String?)
     case stashPop(ref: String)
+    case restoreFileSnapshot(id: UUID)
+    case deleteFileSnapshot(id: UUID)
 }
 
 struct GitUndoEntry: Identifiable, Equatable {

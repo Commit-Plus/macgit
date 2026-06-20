@@ -24,18 +24,21 @@ struct GitUndoExecutor {
     private let patchRunner: any GitPatchApplying
     private let stashSupport: GitStashUndoSupport
     private let branchSupport: GitBranchUndoSupport
+    private let snapshotStore: GitFileUndoSnapshotStore
 
     init(
         runner: (any GitCommandRunning)? = nil,
         patchRunner: (any GitPatchApplying)? = nil,
         stashSupport: GitStashUndoSupport? = nil,
-        branchSupport: GitBranchUndoSupport? = nil
+        branchSupport: GitBranchUndoSupport? = nil,
+        snapshotStore: GitFileUndoSnapshotStore = GitFileUndoSnapshotStore()
     ) {
         let resolvedRunner = runner ?? GitStatusService.shared
         self.runner = resolvedRunner
         self.patchRunner = patchRunner ?? GitStatusService.shared
         self.stashSupport = stashSupport ?? GitStashUndoSupport(runner: resolvedRunner)
         self.branchSupport = branchSupport ?? GitBranchUndoSupport(runner: resolvedRunner)
+        self.snapshotStore = snapshotStore
     }
 
     func execute(_ operation: GitUndoOperation, in repositoryURL: URL) async throws {
@@ -113,6 +116,10 @@ struct GitUndoExecutor {
             _ = try await runner.runGit(arguments: ["reset", "--hard", "HEAD"], in: repositoryURL)
         case .stashPop(let ref):
             _ = try await runner.runGit(arguments: ["stash", "pop", ref], in: repositoryURL)
+        case .restoreFileSnapshot(let id):
+            try snapshotStore.restore(snapshotID: id, in: repositoryURL)
+        case .deleteFileSnapshot(let id):
+            try snapshotStore.delete(snapshotID: id, in: repositoryURL)
         }
     }
 
