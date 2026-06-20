@@ -17,7 +17,7 @@
 - Phase 2: [completed] [2026-06-19-git-undo-phase-2-commits.md](2026-06-19-git-undo-phase-2-commits.md) (branch: codex/git-undo-phase-2)
 - Phase 3A: [completed] [2026-06-19-git-undo-phase-3a-stash-save-drop.md](2026-06-19-git-undo-phase-3a-stash-save-drop.md) (branch: codex/git-undo-phase-3a)
 - Phase 3B: [completed] [2026-06-19-git-undo-phase-3b-stash-apply-pop.md](2026-06-19-git-undo-phase-3b-stash-apply-pop.md) (branch: codex/git-undo-phase-3b)
-- Phase 4: [pending] [2026-06-19-git-undo-phase-4-local-branches.md](2026-06-19-git-undo-phase-4-local-branches.md)
+- Phase 4: [completed] [2026-06-19-git-undo-phase-4-local-branches.md](2026-06-19-git-undo-phase-4-local-branches.md) (branch: codex/git-undo-phase-4)
 - Phase 5: [pending] [2026-06-19-git-undo-phase-5-discard-remove.md](2026-06-19-git-undo-phase-5-discard-remove.md)
 - Phase 6: [pending] [2026-06-19-git-undo-phase-6-history-actions.md](2026-06-19-git-undo-phase-6-history-actions.md)
 - Phase 7: [pending] [2026-06-19-git-undo-phase-7-remote-actions.md](2026-06-19-git-undo-phase-7-remote-actions.md)

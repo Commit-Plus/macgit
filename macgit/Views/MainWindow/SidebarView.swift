@@ -70,6 +70,7 @@ struct BranchRowItem: Identifiable {
 struct SidebarView: View {
     let repositoryURL: URL
     @Binding var selection: SidebarSelection?
+    let undoManager: GitUndoManager?
     let isBranchSyncing: (String) -> Bool
     let onRequestCheckout: (String, Bool) -> Void
     let onRequestFetchBranch: (String) -> Void
@@ -104,6 +105,7 @@ struct SidebarView: View {
     init(
         repositoryURL: URL,
         selection: Binding<SidebarSelection?>,
+        undoManager: GitUndoManager? = nil,
         isBranchSyncing: @escaping (String) -> Bool = { _ in false },
         onRequestCheckout: @escaping (String, Bool) -> Void,
         onRequestFetchBranch: @escaping (String) -> Void,
@@ -113,6 +115,7 @@ struct SidebarView: View {
     ) {
         self.repositoryURL = repositoryURL
         self._selection = selection
+        self.undoManager = undoManager
         self.isBranchSyncing = isBranchSyncing
         self.onRequestCheckout = onRequestCheckout
         self.onRequestFetchBranch = onRequestFetchBranch
@@ -733,7 +736,26 @@ struct SidebarView: View {
 
     private func deleteBranch(_ branch: String) async {
         do {
+            let support = GitBranchUndoSupport()
+            let tip = try await support.tip(of: branch, in: repositoryURL)
+            let upstream = await support.upstream(of: branch, in: repositoryURL)
             _ = try await GitStatusService.shared.deleteBranch(name: branch, force: false, in: repositoryURL)
+            await MainActor.run {
+                var undoOperations: [GitUndoOperation] = [
+                    .createLocalBranch(name: branch, startPoint: tip, checkout: false)
+                ]
+                if let upstream {
+                    undoOperations.append(.setUpstream(branch: branch, upstream: upstream))
+                }
+                undoManager?.register(
+                    GitUndoEntry(
+                        repositoryURL: repositoryURL,
+                        label: "Delete branch \(branch)",
+                        undoOperation: .sequence(undoOperations),
+                        redoOperation: .deleteLocalBranch(name: branch, force: false, expectedTip: tip)
+                    )
+                )
+            }
             NotificationCenter.default.post(name: .repositoryDidChange, object: nil, userInfo: ["repositoryURL": repositoryURL])
         } catch {
             await MainActor.run {
