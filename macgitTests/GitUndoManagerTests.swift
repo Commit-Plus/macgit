@@ -112,6 +112,23 @@ final class GitUndoManagerTests: XCTestCase {
         XCTAssertEqual(entry.redoOperation, .applyPatch(patch: "patch text", cached: true, reverse: false))
     }
 
+    func testFactoryBuildsCommitEntryWithSoftResetUndoOperation() {
+        let repoURL = URL(fileURLWithPath: "/tmp/repo")
+        let entry = GitUndoEntryFactory.commit(
+            repositoryURL: repoURL,
+            oldHead: "old-head",
+            newHead: "new-head",
+            message: "ship it",
+            noVerify: true,
+            signOff: true
+        )
+
+        XCTAssertEqual(entry.repositoryURL, repoURL)
+        XCTAssertEqual(entry.label, "Commit")
+        XCTAssertEqual(entry.undoOperation, .resetHead(target: "old-head", mode: .soft, expectedHead: "new-head"))
+        XCTAssertEqual(entry.redoOperation, .commit(message: "ship it", noVerify: true, signOff: true))
+    }
+
     private func entry(label: String) -> GitUndoEntry {
         GitUndoEntry(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,

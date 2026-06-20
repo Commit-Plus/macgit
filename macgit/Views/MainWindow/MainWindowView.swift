@@ -476,7 +476,11 @@ struct MainWindowView: View {
     }
 
     private func commitFromToolbar(message: String) async {
-        await syncState.performCommit(message: message, repositoryURL: repositoryURL)
+        await syncState.performCommit(
+            message: message,
+            repositoryURL: repositoryURL,
+            undoManager: undoManager
+        )
     }
 
     private func performCheckout(ref: String, stash: Bool) async {

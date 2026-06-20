@@ -205,12 +205,39 @@ class SyncState: ObservableObject {
         }
     }
 
-    func performCommit(message: String, repositoryURL: URL) async {
+    func performCommit(
+        message: String,
+        repositoryURL: URL,
+        undoManager: GitUndoManager? = nil,
+        noVerify: Bool = false,
+        signOff: Bool = false
+    ) async {
         await MainActor.run { isCommitting = true }
         defer { Task { @MainActor in isCommitting = false } }
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         do {
-            try await GitStatusService.shared.commit(message: message, in: repositoryURL)
+            let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
+            try await GitStatusService.shared.commit(
+                message: message,
+                in: repositoryURL,
+                noVerify: noVerify,
+                signOff: signOff
+            )
+            let newHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
+            if let oldHead, let newHead, oldHead != newHead {
+                await MainActor.run {
+                    undoManager?.register(
+                        GitUndoEntryFactory.commit(
+                            repositoryURL: repositoryURL,
+                            oldHead: oldHead,
+                            newHead: newHead,
+                            message: message,
+                            noVerify: noVerify,
+                            signOff: signOff
+                        )
+                    )
+                }
+            }
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
         } catch {

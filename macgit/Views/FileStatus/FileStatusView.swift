@@ -623,6 +623,7 @@ struct FileStatusView: View {
         let message = commitMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return }
         do {
+            let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
             try await GitStatusService.shared.commit(
                 message: message,
                 in: repositoryURL,
@@ -630,6 +631,21 @@ struct FileStatusView: View {
                 noVerify: bypassHooks,
                 signOff: signOffCommit
             )
+            let newHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
+            if !amendLastCommit, let oldHead, let newHead, oldHead != newHead {
+                await MainActor.run {
+                    undoManager?.register(
+                        GitUndoEntryFactory.commit(
+                            repositoryURL: repositoryURL,
+                            oldHead: oldHead,
+                            newHead: newHead,
+                            message: message,
+                            noVerify: bypassHooks,
+                            signOff: signOffCommit
+                        )
+                    )
+                }
+            }
             if pushAfterCommit {
                 let branch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
                 let options = GitStatusService.PushOptions(remote: "origin", branches: [branch], pushTags: false)
@@ -805,7 +821,23 @@ struct FileStatusView: View {
 
     private func commit(message: String) async {
         do {
+            let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
             try await GitStatusService.shared.commit(message: message, in: repositoryURL)
+            let newHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
+            if let oldHead, let newHead, oldHead != newHead {
+                await MainActor.run {
+                    undoManager?.register(
+                        GitUndoEntryFactory.commit(
+                            repositoryURL: repositoryURL,
+                            oldHead: oldHead,
+                            newHead: newHead,
+                            message: message,
+                            noVerify: false,
+                            signOff: false
+                        )
+                    )
+                }
+            }
             await loadStatus()
         } catch {
             errorMessage = error.localizedDescription
