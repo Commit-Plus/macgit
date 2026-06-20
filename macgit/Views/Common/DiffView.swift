@@ -97,9 +97,8 @@ struct HunkView: View {
                         .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 10))
 
                         Button("Discard") {
-                            perform {
-                                try await GitStatusService.shared.discard(hunk: hunk, file: file!, in: repositoryURL!)
-                            }
+                            let patch = DiffPatchBuilder.patchString(for: hunk, filePath: file!.path)
+                            performPatchAction(label: "Discard hunk in \(file!.displayName)", patch: patch, cached: false, reverse: true)
                         }
                         .buttonStyle(GlassButtonStyle(tint: .red, fontSize: 10))
                     }
@@ -160,9 +159,8 @@ struct HunkView: View {
                         stageHunk()
                     }
                     Button("Discard Hunk") {
-                        perform {
-                            try await GitStatusService.shared.discard(hunk: hunk, file: file!, in: repositoryURL!)
-                        }
+                        let patch = DiffPatchBuilder.patchString(for: hunk, filePath: file!.path)
+                        performPatchAction(label: "Discard hunk in \(file!.displayName)", patch: patch, cached: false, reverse: true)
                     }
 
                     if hasSelectedLines {
@@ -172,9 +170,8 @@ struct HunkView: View {
                         }
                         Button("Discard Selected Lines") {
                             let lines = expandedSelectedLines(for: hunk)
-                            perform {
-                                try await GitStatusService.shared.discard(lines: lines, hunk: hunk, file: file!, in: repositoryURL!)
-                            }
+                            let patch = DiffPatchBuilder.patchString(for: hunk, selectedLines: lines, filePath: file!.path)
+                            performPatchAction(label: "Discard selected lines in \(file!.displayName)", patch: patch, cached: false, reverse: true)
                         }
                     }
                 }
@@ -200,9 +197,8 @@ struct HunkView: View {
                         stageHunk()
                     }
                     Button("Discard Hunk") {
-                        perform {
-                            try await GitStatusService.shared.discard(hunk: hunk, file: file!, in: repositoryURL!)
-                        }
+                        let patch = DiffPatchBuilder.patchString(for: hunk, filePath: file!.path)
+                        performPatchAction(label: "Discard hunk in \(file!.displayName)", patch: patch, cached: false, reverse: true)
                     }
 
                     if selectedLineIDs.contains(line.id) && hasSelectedLines {
@@ -212,9 +208,8 @@ struct HunkView: View {
                         }
                         Button("Discard Selected Lines") {
                             let lines = expandedSelectedLines(for: hunk)
-                            perform {
-                                try await GitStatusService.shared.discard(lines: lines, hunk: hunk, file: file!, in: repositoryURL!)
-                            }
+                            let patch = DiffPatchBuilder.patchString(for: hunk, selectedLines: lines, filePath: file!.path)
+                            performPatchAction(label: "Discard selected lines in \(file!.displayName)", patch: patch, cached: false, reverse: true)
                         }
                     }
                 }
