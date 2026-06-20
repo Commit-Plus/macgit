@@ -16,6 +16,7 @@ struct MainWindowView: View {
     let repositoryURL: URL
     private let repoSettingsStore = RepoSettingsStore.shared
     private let fileService = RepositorySettingsFileService()
+    private let undoExecutor = GitUndoExecutor()
     @State private var selectedItem: SidebarSelection? = .item(.fileStatus)
     @State private var windowWidth: CGFloat = 0
     @State private var showingCommitSheet = false
@@ -32,6 +33,7 @@ struct MainWindowView: View {
     @State private var pendingStashRef: String?
     @State private var pendingStashAction: StashAction?
     @StateObject private var syncState = SyncState()
+    @StateObject private var undoManager = GitUndoManager()
     @State private var repoIconName: String = "code-branch"
     @State private var remoteURLString: String = ""
     @State private var selectedBranchName: String? = nil
@@ -156,6 +158,11 @@ struct MainWindowView: View {
                 handleToolbarAction(action)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .gitUndoAction)) { notification in
+            if let action = notification.userInfo?["action"] as? GitUndoMenuAction {
+                handleGitUndoMenuAction(action)
+            }
+        }
     }
 
     @ViewBuilder
@@ -225,7 +232,11 @@ struct MainWindowView: View {
 
             switch selectedItem {
             case .item(.fileStatus):
-                FileStatusView(repositoryURL: repositoryURL, syncState: syncState)
+                FileStatusView(
+                    repositoryURL: repositoryURL,
+                    syncState: syncState,
+                    undoManager: undoManager
+                )
             case .item(.history), .branch, .tag, .remoteBranch, .head:
                 HistoryView(repositoryURL: repositoryURL, selectedBranch: selectedBranchName)
             case .stash(let ref):
@@ -256,6 +267,17 @@ struct MainWindowView: View {
             .padding(.horizontal, 12)
         }
 
+        ToolbarItem(placement: .automatic) {
+            toolbarButton(
+                icon: "arrow.uturn.backward",
+                label: "Undo",
+                disabled: GitUndoToolbarPolicy.isUndoDisabled(
+                    isSyncing: syncState.isAnySyncing,
+                    canUndo: undoManager.canUndo
+                ),
+                action: { handleGitUndoMenuAction(.undo) }
+            )
+        }
         ToolbarItem(placement: .automatic) {
             toolbarButton(icon: "network", label: "Remote", disabled: remoteURLString.isEmpty, action: { openRemoteURL() })
         }
@@ -679,6 +701,72 @@ struct MainWindowView: View {
             }
         case .search:
             showingSearchModal = true
+        }
+    }
+
+    private func handleGitUndoMenuAction(_ action: GitUndoMenuAction) {
+        guard !syncState.isAnySyncing else {
+            syncState.showInfo("Wait for the current Git operation to finish before undoing.")
+            return
+        }
+
+        switch action {
+        case .undo:
+            guard let entry = undoManager.popForUndo() else {
+                syncState.showInfo("Nothing to undo.")
+                return
+            }
+            Task {
+                await executeUndoEntry(entry, menuAction: .undo)
+            }
+        case .redo:
+            guard let entry = undoManager.popForRedo() else {
+                syncState.showInfo("Nothing to redo.")
+                return
+            }
+            Task {
+                await executeUndoEntry(entry, menuAction: .redo)
+            }
+        }
+    }
+
+    private func executeUndoEntry(_ entry: GitUndoEntry, menuAction: GitUndoMenuAction) async {
+        let operation: GitUndoOperation
+        switch menuAction {
+        case .undo:
+            operation = entry.undoOperation
+        case .redo:
+            operation = entry.redoOperation
+        }
+
+        do {
+            try await undoExecutor.execute(operation, in: entry.repositoryURL)
+            await syncState.refresh(repositoryURL: repositoryURL)
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+            await MainActor.run {
+                switch menuAction {
+                case .undo:
+                    undoManager.completeUndo(entry)
+                    syncState.showInfo("Undid \(entry.label).")
+                case .redo:
+                    undoManager.completeRedo(entry)
+                    syncState.showInfo("Redid \(entry.label).")
+                }
+            }
+        } catch {
+            await MainActor.run {
+                switch menuAction {
+                case .undo:
+                    undoManager.restoreUndo(entry)
+                case .redo:
+                    undoManager.restoreRedo(entry)
+                }
+                syncState.showError(error.localizedDescription)
+            }
         }
     }
 

@@ -685,6 +685,7 @@ struct HistoryView: View {
                         hunks: diffHunks,
                         file: nil,
                         repositoryURL: nil,
+                        undoManager: nil,
                         onRefresh: {},
                         onError: { _ in }
                     )

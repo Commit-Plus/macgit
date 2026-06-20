@@ -52,6 +52,28 @@ struct macgitApp: App {
                 .disabled(!appState.hasOpenRepository)
             }
 
+            CommandGroup(replacing: .undoRedo) {
+                Button("Undo Git Action") {
+                    NotificationCenter.default.post(
+                        name: .gitUndoAction,
+                        object: nil,
+                        userInfo: ["action": GitUndoMenuAction.undo]
+                    )
+                }
+                .disabled(!appState.hasOpenRepository)
+                .keyboardShortcut("z", modifiers: .command)
+
+                Button("Redo Git Action") {
+                    NotificationCenter.default.post(
+                        name: .gitUndoAction,
+                        object: nil,
+                        userInfo: ["action": GitUndoMenuAction.redo]
+                    )
+                }
+                .disabled(!appState.hasOpenRepository)
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+            }
+
             CommandMenu("Actions") {
                 Button("Commit...") {
                     NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.commit])

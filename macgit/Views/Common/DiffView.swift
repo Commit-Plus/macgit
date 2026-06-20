@@ -9,6 +9,7 @@ struct DiffView: View {
     let hunks: [DiffHunk]
     let file: StatusFile?
     let repositoryURL: URL?
+    let undoManager: GitUndoManager?
     let onRefresh: () -> Void
     let onError: (String) -> Void
 
@@ -26,6 +27,7 @@ struct DiffView: View {
                             hunk: hunk,
                             file: file,
                             repositoryURL: repositoryURL,
+                            undoManager: undoManager,
                             selectedLineIDs: $selectedLineIDs,
                             lastSelectedLineID: $lastSelectedLineID,
                             onRefresh: onRefresh,
@@ -44,6 +46,7 @@ struct HunkView: View {
     let hunk: DiffHunk
     let file: StatusFile?
     let repositoryURL: URL?
+    let undoManager: GitUndoManager?
     @Binding var selectedLineIDs: Set<UUID>
     @Binding var lastSelectedLineID: UUID?
     let onRefresh: () -> Void
@@ -84,16 +87,12 @@ struct HunkView: View {
                 if canInteract {
                     if isStaged {
                         Button("Unstage") {
-                            perform {
-                                try await GitStatusService.shared.unstage(hunk: hunk, file: file!, in: repositoryURL!)
-                            }
+                            unstageHunk()
                         }
                         .buttonStyle(GlassButtonStyle(tint: .yellow, fontSize: 10))
                     } else {
                         Button("Stage") {
-                            perform {
-                                try await GitStatusService.shared.stage(hunk: hunk, file: file!, in: repositoryURL!)
-                            }
+                            stageHunk()
                         }
                         .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 10))
 
@@ -148,24 +147,17 @@ struct HunkView: View {
             if canInteract {
                 if isStaged {
                     Button("Unstage Hunk") {
-                        perform {
-                            try await GitStatusService.shared.unstage(hunk: hunk, file: file!, in: repositoryURL!)
-                        }
+                        unstageHunk()
                     }
                     if hasSelectedLines {
                         Divider()
                         Button("Unstage Selected Lines") {
-                            let lines = expandedSelectedLines(for: hunk)
-                            perform {
-                                try await GitStatusService.shared.unstage(lines: lines, hunk: hunk, file: file!, in: repositoryURL!)
-                            }
+                            unstageSelectedLines()
                         }
                     }
                 } else {
                     Button("Stage Hunk") {
-                        perform {
-                            try await GitStatusService.shared.stage(hunk: hunk, file: file!, in: repositoryURL!)
-                        }
+                        stageHunk()
                     }
                     Button("Discard Hunk") {
                         perform {
@@ -176,10 +168,7 @@ struct HunkView: View {
                     if hasSelectedLines {
                         Divider()
                         Button("Stage Selected Lines") {
-                            let lines = expandedSelectedLines(for: hunk)
-                            perform {
-                                try await GitStatusService.shared.stage(lines: lines, hunk: hunk, file: file!, in: repositoryURL!)
-                            }
+                            stageSelectedLines()
                         }
                         Button("Discard Selected Lines") {
                             let lines = expandedSelectedLines(for: hunk)
@@ -198,24 +187,17 @@ struct HunkView: View {
             if canInteract {
                 if isStaged {
                     Button("Unstage Hunk") {
-                        perform {
-                            try await GitStatusService.shared.unstage(hunk: hunk, file: file!, in: repositoryURL!)
-                        }
+                        unstageHunk()
                     }
                     if selectedLineIDs.contains(line.id) && hasSelectedLines {
                         Divider()
                         Button("Unstage Selected Lines") {
-                            let lines = expandedSelectedLines(for: hunk)
-                            perform {
-                                try await GitStatusService.shared.unstage(lines: lines, hunk: hunk, file: file!, in: repositoryURL!)
-                            }
+                            unstageSelectedLines()
                         }
                     }
                 } else {
                     Button("Stage Hunk") {
-                        perform {
-                            try await GitStatusService.shared.stage(hunk: hunk, file: file!, in: repositoryURL!)
-                        }
+                        stageHunk()
                     }
                     Button("Discard Hunk") {
                         perform {
@@ -226,10 +208,7 @@ struct HunkView: View {
                     if selectedLineIDs.contains(line.id) && hasSelectedLines {
                         Divider()
                         Button("Stage Selected Lines") {
-                            let lines = expandedSelectedLines(for: hunk)
-                            perform {
-                                try await GitStatusService.shared.stage(lines: lines, hunk: hunk, file: file!, in: repositoryURL!)
-                            }
+                            stageSelectedLines()
                         }
                         Button("Discard Selected Lines") {
                             let lines = expandedSelectedLines(for: hunk)
@@ -312,6 +291,80 @@ struct HunkView: View {
         }
 
         return hunk.lines.filter { expandedIDs.contains($0.id) }
+    }
+
+    private func stageHunk() {
+        guard let file else { return }
+        let patch = DiffPatchBuilder.patchString(for: hunk, filePath: file.path)
+        performPatchAction(
+            label: "Stage hunk in \(file.displayName)",
+            patch: patch,
+            cached: true,
+            reverse: false
+        )
+    }
+
+    private func unstageHunk() {
+        guard let file else { return }
+        let patch = DiffPatchBuilder.patchString(for: hunk, filePath: file.path)
+        performPatchAction(
+            label: "Unstage hunk in \(file.displayName)",
+            patch: patch,
+            cached: true,
+            reverse: true
+        )
+    }
+
+    private func stageSelectedLines() {
+        guard let file else { return }
+        let lines = expandedSelectedLines(for: hunk)
+        let patch = DiffPatchBuilder.patchString(for: hunk, selectedLines: lines, filePath: file.path)
+        performPatchAction(
+            label: "Stage selected lines in \(file.displayName)",
+            patch: patch,
+            cached: true,
+            reverse: false
+        )
+    }
+
+    private func unstageSelectedLines() {
+        guard let file else { return }
+        let lines = expandedSelectedLines(for: hunk)
+        let patch = DiffPatchBuilder.patchString(for: hunk, selectedLines: lines, filePath: file.path)
+        performPatchAction(
+            label: "Unstage selected lines in \(file.displayName)",
+            patch: patch,
+            cached: true,
+            reverse: true
+        )
+    }
+
+    private func performPatchAction(
+        label: String,
+        patch: String,
+        cached: Bool,
+        reverse: Bool
+    ) {
+        guard let repositoryURL else { return }
+        perform {
+            try await GitStatusService.shared.applyPatch(
+                patch,
+                in: repositoryURL,
+                cached: cached,
+                reverse: reverse
+            )
+            await MainActor.run {
+                undoManager?.register(
+                    GitUndoEntryFactory.applyPatch(
+                        repositoryURL: repositoryURL,
+                        label: label,
+                        patch: patch,
+                        cached: cached,
+                        reverse: reverse
+                    )
+                )
+            }
+        }
     }
 
     private func perform(_ operation: @escaping () async throws -> Void) {
