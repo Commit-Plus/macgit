@@ -89,7 +89,7 @@ Tower-style Git Undo, implemented phase-by-phase. Shared types created in Phase 
 | 3A | Stash save/drop undo | Planned (not started) |
 | 3B | Stash apply/pop undo | Planned (not started) |
 | 4 | Local branch actions undo | Planned (not started) |
-| 5 | Discard/remove undo (`.git/macgit/undo` backups) | Planned (not started) |
+| 5 | Discard/remove undo (`.git/macgit/undo` backups) | Code-complete on `codex/git-undo-phase-5` (worktree) |
 | 6 | History actions (cherry-pick/revert/reset/merge/rebase) | Planned (not started) |
 | 7 | Remote actions (pull rollback, published branch removal) | Planned (not started) |
 
