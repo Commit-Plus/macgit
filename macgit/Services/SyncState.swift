@@ -271,11 +271,27 @@ class SyncState: ObservableObject {
         }
     }
 
-    func performStash(options: GitStatusService.StashOptions, repositoryURL: URL) async {
+    func performStash(
+        options: GitStatusService.StashOptions,
+        repositoryURL: URL,
+        undoManager: GitUndoManager? = nil
+    ) async {
         await MainActor.run { isStashing = true }
         defer { Task { @MainActor in isStashing = false } }
         do {
             try await GitStatusService.shared.stash(options: options, in: repositoryURL)
+            let support = GitStashUndoSupport()
+            let hash = try await support.hash(for: "stash@{0}", in: repositoryURL)
+            await MainActor.run {
+                undoManager?.register(
+                    GitUndoEntry(
+                        repositoryURL: repositoryURL,
+                        label: "Stash changes",
+                        undoOperation: .stashApplyAndDrop(hash: hash),
+                        redoOperation: .stashPush(message: options.message, keepIndex: options.keepIndex)
+                    )
+                )
+            }
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
             showInfo("Changes stashed successfully.")

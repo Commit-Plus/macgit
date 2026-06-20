@@ -355,7 +355,11 @@ struct MainWindowView: View {
     private var stashSheet: some View {
         StashSheetView { options in
             Task {
-                await syncState.performStash(options: options, repositoryURL: repositoryURL)
+                await syncState.performStash(
+                    options: options,
+                    repositoryURL: repositoryURL,
+                    undoManager: undoManager
+                )
             }
         }
     }
@@ -548,7 +552,20 @@ struct MainWindowView: View {
                     in: repositoryURL
                 )
             case .delete:
+                let support = GitStashUndoSupport()
+                let hash = try await support.hash(for: ref, in: repositoryURL)
+                let summary = try await support.summary(for: ref, in: repositoryURL)
                 try await GitStatusService.shared.dropStash(ref: ref, in: repositoryURL)
+                await MainActor.run {
+                    undoManager.register(
+                        GitUndoEntry(
+                            repositoryURL: repositoryURL,
+                            label: "Drop stash",
+                            undoOperation: .stashStore(commit: hash, message: summary),
+                            redoOperation: .stashDropMatchingHash(hash: hash)
+                        )
+                    )
+                }
             }
             await syncState.refresh(repositoryURL: repositoryURL)
             NotificationCenter.default.post(
