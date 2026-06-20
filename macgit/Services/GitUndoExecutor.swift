@@ -23,16 +23,19 @@ struct GitUndoExecutor {
     private let runner: any GitCommandRunning
     private let patchRunner: any GitPatchApplying
     private let stashSupport: GitStashUndoSupport
+    private let branchSupport: GitBranchUndoSupport
 
     init(
         runner: (any GitCommandRunning)? = nil,
         patchRunner: (any GitPatchApplying)? = nil,
-        stashSupport: GitStashUndoSupport? = nil
+        stashSupport: GitStashUndoSupport? = nil,
+        branchSupport: GitBranchUndoSupport? = nil
     ) {
         let resolvedRunner = runner ?? GitStatusService.shared
         self.runner = resolvedRunner
         self.patchRunner = patchRunner ?? GitStatusService.shared
         self.stashSupport = stashSupport ?? GitStashUndoSupport(runner: resolvedRunner)
+        self.branchSupport = branchSupport ?? GitBranchUndoSupport(runner: resolvedRunner)
     }
 
     func execute(_ operation: GitUndoOperation, in repositoryURL: URL) async throws {
@@ -73,6 +76,28 @@ struct GitUndoExecutor {
             _ = try await runner.runGit(arguments: ["stash", "store", "-m", message, commit], in: repositoryURL)
         case .stashDropMatchingHash(let hash):
             try await stashSupport.dropStash(matchingHash: hash, in: repositoryURL)
+        case .checkoutRef(let ref):
+            _ = try await runner.runGit(arguments: ["checkout", ref], in: repositoryURL)
+        case .createLocalBranch(let name, let startPoint, let checkout):
+            if checkout {
+                _ = try await runner.runGit(arguments: ["checkout", "-b", name, startPoint], in: repositoryURL)
+            } else {
+                _ = try await runner.runGit(arguments: ["branch", name, startPoint], in: repositoryURL)
+            }
+        case .deleteLocalBranch(let name, let force, let expectedTip):
+            if let expectedTip {
+                let actualTip = try await branchSupport.tip(of: name, in: repositoryURL)
+                guard actualTip == expectedTip else {
+                    throw GitError.commandFailed("Cannot delete branch '\(name)' because its tip changed.")
+                }
+            }
+            let flag = force ? "-D" : "-d"
+            _ = try await runner.runGit(arguments: ["branch", flag, name], in: repositoryURL)
+        case .setUpstream(let branch, let upstream):
+            _ = try await runner.runGit(
+                arguments: ["branch", "--set-upstream-to", upstream, branch],
+                in: repositoryURL
+            )
         case .sequence(let operations):
             for operation in operations {
                 try await execute(operation, in: repositoryURL)

@@ -49,6 +49,71 @@ final class GitUndoExecutorTests: XCTestCase {
         let calls = await runner.recordedCalls()
         XCTAssertTrue(calls.isEmpty)
     }
+
+    func testCheckoutRefRunsGitCheckout() async throws {
+        let runner = RecordingGitRunner()
+        let executor = GitUndoExecutor(runner: runner)
+        let repoURL = URL(fileURLWithPath: "/tmp/repo")
+
+        try await executor.execute(.checkoutRef(ref: "feature"), in: repoURL)
+
+        let calls = await runner.recordedCalls()
+        XCTAssertEqual(calls, [
+            GitCommandCall(arguments: ["checkout", "feature"], directory: repoURL)
+        ])
+    }
+
+    func testCreateLocalBranchUsesBranchCommandWhenCheckoutDisabled() async throws {
+        let runner = RecordingGitRunner()
+        let executor = GitUndoExecutor(runner: runner)
+        let repoURL = URL(fileURLWithPath: "/tmp/repo")
+
+        try await executor.execute(
+            .createLocalBranch(name: "feature", startPoint: "abc123", checkout: false),
+            in: repoURL
+        )
+
+        let calls = await runner.recordedCalls()
+        XCTAssertEqual(calls, [
+            GitCommandCall(arguments: ["branch", "feature", "abc123"], directory: repoURL)
+        ])
+    }
+
+    func testDeleteLocalBranchChecksExpectedTipBeforeDeleting() async throws {
+        let runner = RecordingGitRunner(outputs: ["rev-parse feature^{commit}": "abc123\n"])
+        let executor = GitUndoExecutor(runner: runner)
+        let repoURL = URL(fileURLWithPath: "/tmp/repo")
+
+        try await executor.execute(
+            .deleteLocalBranch(name: "feature", force: true, expectedTip: "abc123"),
+            in: repoURL
+        )
+
+        let calls = await runner.recordedCalls()
+        XCTAssertEqual(calls, [
+            GitCommandCall(arguments: ["rev-parse", "feature^{commit}"], directory: repoURL),
+            GitCommandCall(arguments: ["branch", "-D", "feature"], directory: repoURL)
+        ])
+    }
+
+    func testSetUpstreamRunsGitBranchSetUpstreamTo() async throws {
+        let runner = RecordingGitRunner()
+        let executor = GitUndoExecutor(runner: runner)
+        let repoURL = URL(fileURLWithPath: "/tmp/repo")
+
+        try await executor.execute(
+            .setUpstream(branch: "feature", upstream: "origin/feature"),
+            in: repoURL
+        )
+
+        let calls = await runner.recordedCalls()
+        XCTAssertEqual(calls, [
+            GitCommandCall(
+                arguments: ["branch", "--set-upstream-to", "origin/feature", "feature"],
+                directory: repoURL
+            )
+        ])
+    }
 }
 
 private struct GitCommandCall: Equatable {
@@ -57,11 +122,16 @@ private struct GitCommandCall: Equatable {
 }
 
 private actor RecordingGitRunner: GitCommandRunning {
+    private let outputs: [String: String]
     private var calls: [GitCommandCall] = []
+
+    init(outputs: [String: String] = [:]) {
+        self.outputs = outputs
+    }
 
     func runGit(arguments: [String], in directory: URL) async throws -> String {
         calls.append(GitCommandCall(arguments: arguments, directory: directory))
-        return ""
+        return outputs[arguments.joined(separator: " ")] ?? ""
     }
 
     func recordedCalls() -> [GitCommandCall] {
