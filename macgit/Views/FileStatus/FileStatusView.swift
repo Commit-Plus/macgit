@@ -8,6 +8,7 @@ import SwiftUI
 struct FileStatusView: View {
     let repositoryURL: URL
     var syncState: SyncState? = nil
+    var undoManager: GitUndoManager? = nil
 
     @State private var gitStatus: GitStatus = GitStatus(staged: [], unstaged: [], untracked: [])
     @State private var selectedFile: StatusFile? = nil
@@ -457,6 +458,7 @@ struct FileStatusView: View {
                             hunks: diffHunks,
                             file: file,
                             repositoryURL: repositoryURL,
+                            undoManager: undoManager,
                             onRefresh: {
                                 Task {
                                     await loadStatus()
@@ -757,8 +759,17 @@ struct FileStatusView: View {
 
     private func stage(files: [StatusFile]) async {
         guard !files.isEmpty else { return }
+        let paths = files.map(\.path)
         do {
             try await GitStatusService.shared.stageAll(files: files, in: repositoryURL)
+            await MainActor.run {
+                undoManager?.register(
+                    GitUndoEntryFactory.stageFiles(
+                        repositoryURL: repositoryURL,
+                        paths: paths
+                    )
+                )
+            }
             await loadStatus()
             await syncState?.refresh(repositoryURL: repositoryURL)
         } catch {
@@ -773,8 +784,17 @@ struct FileStatusView: View {
 
     private func unstage(files: [StatusFile]) async {
         guard !files.isEmpty else { return }
+        let paths = files.map(\.path)
         do {
             try await GitStatusService.shared.unstageAll(files: files, in: repositoryURL)
+            await MainActor.run {
+                undoManager?.register(
+                    GitUndoEntryFactory.unstageFiles(
+                        repositoryURL: repositoryURL,
+                        paths: paths
+                    )
+                )
+            }
             await loadStatus()
             await syncState?.refresh(repositoryURL: repositoryURL)
         } catch {
