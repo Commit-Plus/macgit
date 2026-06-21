@@ -63,6 +63,18 @@ struct GitUndoExecutor {
             if noVerify { arguments.append("--no-verify") }
             if signOff { arguments.append("--signoff") }
             _ = try await runner.runGit(arguments: arguments, in: repositoryURL)
+        case .cherryPick(let commit):
+            _ = try await runner.runGit(arguments: ["cherry-pick", commit], in: repositoryURL)
+        case .revert(let commit):
+            _ = try await runner.runGit(arguments: ["revert", "--no-edit", commit], in: repositoryURL)
+        case .mergeCommit(let commit, let noCommit, let log):
+            var arguments = ["merge"]
+            if noCommit { arguments.append("--no-commit") }
+            if log { arguments.append("--log") }
+            arguments.append(commit)
+            _ = try await runner.runGit(arguments: arguments, in: repositoryURL)
+        case .rebaseOnto(let commit):
+            _ = try await runner.runGit(arguments: ["rebase", commit], in: repositoryURL)
         case .stashPush(let message, let keepIndex):
             var arguments = ["stash", "push"]
             if keepIndex { arguments.append("--keep-index") }

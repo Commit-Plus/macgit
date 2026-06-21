@@ -114,7 +114,7 @@ extension GitStatusService {
     }
 
     func revertCommit(_ commit: String, in repositoryURL: URL) async throws {
-        _ = try await runGit(arguments: ["revert", commit], in: repositoryURL)
+        _ = try await runGit(arguments: ["revert", "--no-edit", commit], in: repositoryURL)
     }
 
     func createTag(name: String, commit: String, annotated: Bool, message: String?, in repositoryURL: URL) async throws {

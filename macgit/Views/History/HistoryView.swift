@@ -931,10 +931,37 @@ struct HistoryView: View {
             }
         }
     }
+
+    private func registerHeadChangingUndo(
+        label: String,
+        oldHead: String?,
+        redoOperation: GitUndoOperation
+    ) async {
+        guard let oldHead,
+              let newHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL),
+              oldHead != newHead else { return }
+
+        await MainActor.run {
+            undoManager?.register(
+                GitUndoEntry(
+                    repositoryURL: repositoryURL,
+                    label: label,
+                    undoOperation: .resetHead(target: oldHead, mode: .hard, expectedHead: newHead),
+                    redoOperation: redoOperation
+                )
+            )
+        }
+    }
     
     private func cherryPickCommit(_ commit: Commit) async {
         do {
+            let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
             try await GitStatusService.shared.cherryPickCommit(commit.hash, in: repositoryURL)
+            await registerHeadChangingUndo(
+                label: "Cherry-pick \(commit.hash.prefix(7))",
+                oldHead: oldHead,
+                redoOperation: .cherryPick(commit: commit.hash)
+            )
             await MainActor.run {
                 NotificationCenter.default.post(
                     name: .repositoryDidChange,
@@ -953,11 +980,21 @@ struct HistoryView: View {
     private func performMerge() async {
         guard let commit = pendingCommit else { return }
         do {
+            let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
             try await GitStatusService.shared.mergeCommit(
                 commit.hash,
                 noCommit: !mergeCommitImmediately,
                 log: mergeIncludeMessages,
                 in: repositoryURL
+            )
+            await registerHeadChangingUndo(
+                label: "Merge \(commit.hash.prefix(7))",
+                oldHead: oldHead,
+                redoOperation: .mergeCommit(
+                    commit: commit.hash,
+                    noCommit: !mergeCommitImmediately,
+                    log: mergeIncludeMessages
+                )
             )
             await MainActor.run {
                 pendingCommit = nil
@@ -979,7 +1016,13 @@ struct HistoryView: View {
     private func performRebase() async {
         guard let commit = pendingCommit else { return }
         do {
+            let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
             try await GitStatusService.shared.rebaseCommit(commit.hash, in: repositoryURL)
+            await registerHeadChangingUndo(
+                label: "Rebase onto \(commit.hash.prefix(7))",
+                oldHead: oldHead,
+                redoOperation: .rebaseOnto(commit: commit.hash)
+            )
             await MainActor.run {
                 pendingCommit = nil
                 showingRebaseConfirmation = false
@@ -1000,7 +1043,30 @@ struct HistoryView: View {
     private func performReset() async {
         guard let commit = pendingCommit else { return }
         do {
+            let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
             try await GitStatusService.shared.resetToCommit(commit.hash, mode: resetMode, in: repositoryURL)
+            if let oldHead,
+               let newHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL),
+               oldHead != newHead {
+                await MainActor.run {
+                    undoManager?.register(
+                        GitUndoEntry(
+                            repositoryURL: repositoryURL,
+                            label: "Reset HEAD",
+                            undoOperation: .resetHead(
+                                target: oldHead,
+                                mode: resetMode == .hard ? .hard : .soft,
+                                expectedHead: newHead
+                            ),
+                            redoOperation: .resetHead(
+                                target: commit.hash,
+                                mode: resetMode.gitUndoMode,
+                                expectedHead: oldHead
+                            )
+                        )
+                    )
+                }
+            }
             await MainActor.run {
                 pendingCommit = nil
                 showingResetConfirmation = false
@@ -1021,7 +1087,13 @@ struct HistoryView: View {
     private func performRevert() async {
         guard let commit = pendingCommit else { return }
         do {
+            let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
             try await GitStatusService.shared.revertCommit(commit.hash, in: repositoryURL)
+            await registerHeadChangingUndo(
+                label: "Revert \(commit.hash.prefix(7))",
+                oldHead: oldHead,
+                redoOperation: .revert(commit: commit.hash)
+            )
             await MainActor.run {
                 pendingCommit = nil
                 showingRevertConfirmation = false
@@ -1162,6 +1234,16 @@ struct HistoryView: View {
         refreshIndicatorTask?.cancel()
         refreshIndicatorTask = nil
         isRefreshingHistory = false
+    }
+}
+
+private extension ResetMode {
+    var gitUndoMode: GitUndoResetMode {
+        switch self {
+        case .soft: return .soft
+        case .mixed: return .mixed
+        case .hard: return .hard
+        }
     }
 }
 

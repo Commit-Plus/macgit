@@ -90,7 +90,7 @@ Tower-style Git Undo, implemented phase-by-phase. Shared types created in Phase 
 | 3B | Stash apply/pop undo | Merged to `main` |
 | 4 | Local branch actions undo | Merged to `main` |
 | 5 | Discard/remove undo (`.git/macgit/undo` backups) | Merged to `main` at `0115a7f` |
-| 6 | History actions (cherry-pick/revert/reset/merge/rebase) | Planned (ready to branch from latest `main`) |
+| 6 | History actions (cherry-pick/revert/reset/merge/rebase) | In progress on `codex/git-undo-phase-6` |
 | 7 | Remote actions (pull rollback, published branch removal) | Planned (not started) |
 
 **Shared rules for every phase** (from the roadmap): undo entries are registered only after the original Git action succeeds; every undo/redo refreshes `SyncState` and posts `.repositoryDidChange`; destructive inverses check an expected state before running; if a precondition fails the popped entry is restored and an error is shown; undo stacks are not persisted across app launches.

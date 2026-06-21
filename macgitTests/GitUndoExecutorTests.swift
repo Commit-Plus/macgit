@@ -114,6 +114,45 @@ final class GitUndoExecutorTests: XCTestCase {
             )
         ])
     }
+
+    func testRevertRunsGitRevert() async throws {
+        let runner = RecordingGitRunner()
+        let executor = GitUndoExecutor(runner: runner)
+        let repoURL = URL(fileURLWithPath: "/tmp/repo")
+
+        try await executor.execute(.revert(commit: "abc123"), in: repoURL)
+
+        let calls = await runner.recordedCalls()
+        XCTAssertEqual(calls, [
+            GitCommandCall(arguments: ["revert", "--no-edit", "abc123"], directory: repoURL)
+        ])
+    }
+
+    func testMergeCommitRunsGitMergeWithSelectedFlags() async throws {
+        let runner = RecordingGitRunner()
+        let executor = GitUndoExecutor(runner: runner)
+        let repoURL = URL(fileURLWithPath: "/tmp/repo")
+
+        try await executor.execute(.mergeCommit(commit: "feature", noCommit: true, log: true), in: repoURL)
+
+        let calls = await runner.recordedCalls()
+        XCTAssertEqual(calls, [
+            GitCommandCall(arguments: ["merge", "--no-commit", "--log", "feature"], directory: repoURL)
+        ])
+    }
+
+    func testRebaseOntoRunsGitRebase() async throws {
+        let runner = RecordingGitRunner()
+        let executor = GitUndoExecutor(runner: runner)
+        let repoURL = URL(fileURLWithPath: "/tmp/repo")
+
+        try await executor.execute(.rebaseOnto(commit: "origin/main"), in: repoURL)
+
+        let calls = await runner.recordedCalls()
+        XCTAssertEqual(calls, [
+            GitCommandCall(arguments: ["rebase", "origin/main"], directory: repoURL)
+        ])
+    }
 }
 
 private struct GitCommandCall: Equatable {
