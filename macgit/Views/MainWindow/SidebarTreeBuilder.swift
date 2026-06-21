@@ -53,6 +53,44 @@ struct SidebarTreeBuilder {
         }
     }
 
+    static func expandedFolderPaths(revealing ref: String) -> Set<String> {
+        let parts = ref
+            .split(separator: "/")
+            .map(String.init)
+
+        guard parts.count > 1 else {
+            return []
+        }
+
+        var paths = Set<String>()
+        for index in parts.indices.dropLast() {
+            paths.insert(parts[...index].joined(separator: "/"))
+        }
+        return paths
+    }
+
+    static func visibleRows(from nodes: [BranchNode], expandedFolders: Set<String>) -> [BranchRowItem] {
+        var rows: [BranchRowItem] = []
+
+        func traverse(_ nodes: [BranchNode], indent: Int) {
+            for node in nodes {
+                rows.append(BranchRowItem(
+                    id: node.id,
+                    name: node.name,
+                    fullPath: node.fullPath,
+                    isFolder: node.isFolder,
+                    indent: indent
+                ))
+                if node.isFolder && expandedFolders.contains(node.fullPath) {
+                    traverse(node.children, indent: indent + 1)
+                }
+            }
+        }
+
+        traverse(nodes, indent: 0)
+        return rows
+    }
+
     nonisolated private static func normalizedRemoteBranchName(_ branch: String) -> String {
         let trimmed = branch.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("HEAD -> ") {

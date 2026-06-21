@@ -12,10 +12,19 @@ struct BranchSyncStatus: Equatable {
 
 extension GitStatusService {
     func currentBranch(in repositoryURL: URL) async -> String? {
-        let branch = (try? await runGit(arguments: ["branch", "--show-current"], in: repositoryURL))?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let b = branch, !b.isEmpty else { return nil }
-        return b
+        let showCurrentOutput = try? await runGit(arguments: ["branch", "--show-current"], in: repositoryURL)
+        if let branch = GitCurrentBranchResolver.resolve(
+            showCurrentOutput: showCurrentOutput,
+            abbreviatedHeadOutput: nil
+        ) {
+            return branch
+        }
+
+        let abbreviatedHeadOutput = try? await runGit(arguments: ["rev-parse", "--abbrev-ref", "HEAD"], in: repositoryURL)
+        return GitCurrentBranchResolver.resolve(
+            showCurrentOutput: nil,
+            abbreviatedHeadOutput: abbreviatedHeadOutput
+        )
     }
 
     func localBranches(in repositoryURL: URL) async -> [String] {

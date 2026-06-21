@@ -245,7 +245,7 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
-        .task {
+        .task(id: repositoryURL) {
             loadSectionStates()
             await loadBranches()
             await loadTags()
@@ -311,63 +311,15 @@ struct SidebarView: View {
     // MARK: - Tree Flattening
 
     private var visibleBranchRows: [BranchRowItem] {
-        var rows: [BranchRowItem] = []
-        func traverse(_ nodes: [BranchNode], indent: Int) {
-            for node in nodes {
-                rows.append(BranchRowItem(
-                    id: node.id,
-                    name: node.name,
-                    fullPath: node.fullPath,
-                    isFolder: node.isFolder,
-                    indent: indent
-                ))
-                if node.isFolder && expandedFolders.contains(node.fullPath) {
-                    traverse(node.children, indent: indent + 1)
-                }
-            }
-        }
-        traverse(branchNodes, indent: 0)
-        return rows
+        SidebarTreeBuilder.visibleRows(from: branchNodes, expandedFolders: expandedFolders)
     }
 
     private var visibleTagRows: [BranchRowItem] {
-        var rows: [BranchRowItem] = []
-        func traverse(_ nodes: [BranchNode], indent: Int) {
-            for node in nodes {
-                rows.append(BranchRowItem(
-                    id: node.id,
-                    name: node.name,
-                    fullPath: node.fullPath,
-                    isFolder: node.isFolder,
-                    indent: indent
-                ))
-                if node.isFolder && expandedTagFolders.contains(node.fullPath) {
-                    traverse(node.children, indent: indent + 1)
-                }
-            }
-        }
-        traverse(tagNodes, indent: 0)
-        return rows
+        SidebarTreeBuilder.visibleRows(from: tagNodes, expandedFolders: expandedTagFolders)
     }
 
     private var visibleRemoteRows: [BranchRowItem] {
-        var rows: [BranchRowItem] = []
-        func traverse(_ nodes: [BranchNode], indent: Int) {
-            for node in nodes {
-                rows.append(BranchRowItem(
-                    id: node.id,
-                    name: node.name,
-                    fullPath: node.fullPath,
-                    isFolder: node.isFolder,
-                    indent: indent
-                ))
-                if node.isFolder && expandedRemoteFolders.contains(node.fullPath) {
-                    traverse(node.children, indent: indent + 1)
-                }
-            }
-        }
-        traverse(remoteNodes, indent: 0)
-        return rows
+        SidebarTreeBuilder.visibleRows(from: remoteNodes, expandedFolders: expandedRemoteFolders)
     }
 
     // MARK: - Row Rendering
@@ -813,10 +765,8 @@ struct SidebarView: View {
             headHash = headHashValue
             branchSyncStatus = syncMap
             print("[loadBranches] Updated branchSyncStatus with \(syncMap.count) entries")
-            // Keep folders collapsed by default on first load
-            if expandedFolders.isEmpty {
-                expandedFolders = []
-            }
+            expandedFolders = SidebarTreeBuilder.expandedFolderPaths(revealing: current)
+                .intersection(allFolders)
         }
     }
 
@@ -843,7 +793,6 @@ struct SidebarView: View {
             branchesByRemote[remote] = await GitStatusService.shared.remoteBranches(remote: remote, in: repositoryURL)
         }
         let tree = SidebarTreeBuilder.buildRemoteTree(remoteBranchesByRemote: branchesByRemote)
-        let allFolders = collectFolderPaths(from: tree)
         await MainActor.run {
             remoteNodes = tree
             // Keep folders collapsed by default on first load
