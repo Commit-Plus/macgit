@@ -9,6 +9,7 @@ struct HistoryView: View {
     let repositoryURL: URL
     let selectedBranch: String?
     let undoManager: GitUndoManager?
+    var syncState: SyncState? = nil
     private static let historyPageSize = 120
     private static let historyScrollSpaceName = "historyScroll"
     
@@ -54,10 +55,16 @@ struct HistoryView: View {
     @State private var mergeCommitImmediately = true
     @State private var mergeIncludeMessages = true
     
-    init(repositoryURL: URL, selectedBranch: String? = nil, undoManager: GitUndoManager? = nil) {
+    init(
+        repositoryURL: URL,
+        selectedBranch: String? = nil,
+        undoManager: GitUndoManager? = nil,
+        syncState: SyncState? = nil
+    ) {
         self.repositoryURL = repositoryURL
         self.selectedBranch = selectedBranch
         self.undoManager = undoManager
+        self.syncState = syncState
         self._showAllBranches = State(initialValue: selectedBranch == nil)
         self._paging = State(initialValue: HistoryPagingState(pageSize: Self.historyPageSize))
     }
@@ -970,10 +977,21 @@ struct HistoryView: View {
                 )
             }
         } catch {
+            await syncState?.refresh(repositoryURL: repositoryURL)
             await MainActor.run {
-                errorMessage = error.localizedDescription
+                let message = error.localizedDescription
+                if message.uppercased().contains("CONFLICT") {
+                    errorMessage = "Cherry-pick produced conflicts. Resolve them in the File status view, then continue or abort."
+                } else {
+                    errorMessage = message
+                }
                 showingError = true
             }
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
         }
     }
 
@@ -1104,10 +1122,21 @@ struct HistoryView: View {
                 )
             }
         } catch {
+            await syncState?.refresh(repositoryURL: repositoryURL)
             await MainActor.run {
-                errorMessage = error.localizedDescription
+                let message = error.localizedDescription
+                if message.uppercased().contains("CONFLICT") {
+                    errorMessage = "Revert produced conflicts. Resolve them in the File status view, then continue or abort."
+                } else {
+                    errorMessage = message
+                }
                 showingError = true
             }
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
         }
     }
 

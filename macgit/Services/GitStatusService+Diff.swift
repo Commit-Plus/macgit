@@ -117,6 +117,34 @@ extension GitStatusService {
         _ = try await runGit(arguments: ["revert", "--no-edit", commit], in: repositoryURL)
     }
 
+    func inProgressOperation(in repositoryURL: URL) async -> GitInProgressOperation? {
+        if let head = try? await runGit(arguments: ["rev-parse", "--verify", "CHERRY_PICK_HEAD"], in: repositoryURL),
+           !head.isEmpty {
+            return .cherryPick(head: head.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        if let head = try? await runGit(arguments: ["rev-parse", "--verify", "REVERT_HEAD"], in: repositoryURL),
+           !head.isEmpty {
+            return .revert(head: head.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return nil
+    }
+
+    func continueCherryPick(in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["cherry-pick", "--continue"], in: repositoryURL)
+    }
+
+    func abortCherryPick(in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["cherry-pick", "--abort"], in: repositoryURL)
+    }
+
+    func continueRevert(in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["revert", "--continue"], in: repositoryURL)
+    }
+
+    func abortRevert(in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["revert", "--abort"], in: repositoryURL)
+    }
+
     func createTag(name: String, commit: String, annotated: Bool, message: String?, in repositoryURL: URL) async throws {
         var arguments = ["tag"]
         if annotated {

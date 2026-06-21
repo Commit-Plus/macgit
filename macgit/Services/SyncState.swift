@@ -29,6 +29,7 @@ class SyncState: ObservableObject {
     @Published var isMerging: Bool = false
     @Published var isStashing: Bool = false
     @Published var activeSyncBranch: String? = nil
+    @Published var inProgressOperation: GitInProgressOperation? = nil
 
     var isAnySyncing: Bool {
         isCommitting || isPushing || isPulling || isFetching || isMerging || isStashing
@@ -41,12 +42,14 @@ class SyncState: ObservableObject {
             let status = try await GitStatusService.shared.status(for: repositoryURL)
             let totalChanges = status.staged.count + status.unstaged.count + status.untracked.count
             let counts = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
+            let operation = await GitStatusService.shared.inProgressOperation(in: repositoryURL)
             await MainActor.run {
                 self.commitBadgeCount = totalChanges
                 self.stagedBadgeCount = status.staged.count
                 self.stashableCount = status.staged.count + status.unstaged.count
                 self.pushBadgeCount = counts.ahead
                 self.pullBadgeCount = counts.behind
+                self.inProgressOperation = operation
             }
         } catch {
             // Silently ignore refresh failures to avoid spamming the user

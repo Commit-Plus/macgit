@@ -50,6 +50,45 @@ struct FileStatusView: View {
         )
     }
 
+    @ViewBuilder
+    private var inProgressBanner: some View {
+        if let operation = syncState?.inProgressOperation {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.system(size: 12))
+
+                Text(operation.message)
+                    .font(.system(size: 12))
+
+                Spacer()
+
+                HStack(spacing: 8) {
+                    Button("Abort") {
+                        Task { await abortInProgressOperation(operation) }
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+
+                    Button("Continue") {
+                        Task { await continueInProgressOperation(operation) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.orange.opacity(0.08))
+            .overlay(
+                Rectangle()
+                    .fill(Color.orange.opacity(0.25))
+                    .frame(height: 1),
+                alignment: .bottom
+            )
+        }
+    }
+
     var body: some View {
         Group {
             if isLoading && !hasChanges {
@@ -63,6 +102,8 @@ struct FileStatusView: View {
                 )
             } else {
                 VStack(spacing: 0) {
+                    inProgressBanner
+
                     PersistentHSplit(
                         autosaveName: "FileStatusMainSplit",
                         left: { fileListPanel.frame(minWidth: 220) },
@@ -766,6 +807,52 @@ struct FileStatusView: View {
             diffHunks = try await GitStatusService.shared.diff(for: file, in: repositoryURL)
         } catch {
             diffHunks = []
+        }
+    }
+
+    private func continueInProgressOperation(_ operation: GitInProgressOperation) async {
+        do {
+            switch operation {
+            case .cherryPick:
+                try await GitStatusService.shared.continueCherryPick(in: repositoryURL)
+            case .revert:
+                try await GitStatusService.shared.continueRevert(in: repositoryURL)
+            }
+            await loadStatus()
+            await syncState?.refresh(repositoryURL: repositoryURL)
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    private func abortInProgressOperation(_ operation: GitInProgressOperation) async {
+        do {
+            switch operation {
+            case .cherryPick:
+                try await GitStatusService.shared.abortCherryPick(in: repositoryURL)
+            case .revert:
+                try await GitStatusService.shared.abortRevert(in: repositoryURL)
+            }
+            await loadStatus()
+            await syncState?.refresh(repositoryURL: repositoryURL)
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
         }
     }
 

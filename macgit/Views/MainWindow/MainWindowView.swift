@@ -239,7 +239,12 @@ struct MainWindowView: View {
                     undoManager: undoManager
                 )
             case .item(.history), .branch, .tag, .remoteBranch, .head:
-                HistoryView(repositoryURL: repositoryURL, selectedBranch: selectedBranchName, undoManager: undoManager)
+                HistoryView(
+                    repositoryURL: repositoryURL,
+                    selectedBranch: selectedBranchName,
+                    undoManager: undoManager,
+                    syncState: syncState
+                )
             case .stash(let ref):
                 StashView(repositoryURL: repositoryURL, stashRef: ref)
             case .item(.search):
