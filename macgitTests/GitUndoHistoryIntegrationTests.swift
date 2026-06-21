@@ -32,6 +32,23 @@ final class GitUndoHistoryIntegrationTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: repoURL.appendingPathComponent("tracked.txt"), encoding: .utf8), "changed\n")
     }
 
+    func testResetUndoRestoresOldHead() async throws {
+        let repoURL = try makeTempRepo()
+        try "second\n".write(to: repoURL.appendingPathComponent("tracked.txt"), atomically: true, encoding: .utf8)
+        try runGit(["add", "tracked.txt"], in: repoURL)
+        try runGit(["commit", "-m", "second"], in: repoURL)
+
+        let oldHead = try runGitOutput(["rev-parse", "HEAD"], in: repoURL)
+        let target = try runGitOutput(["rev-parse", "HEAD~1"], in: repoURL)
+        let executor = GitUndoExecutor()
+
+        try await executor.execute(.resetHead(target: target, mode: .hard, expectedHead: oldHead), in: repoURL)
+        try await executor.execute(.resetHead(target: oldHead, mode: .hard, expectedHead: target), in: repoURL)
+
+        XCTAssertEqual(try runGitOutput(["rev-parse", "HEAD"], in: repoURL), oldHead)
+        XCTAssertEqual(try String(contentsOf: repoURL.appendingPathComponent("tracked.txt"), encoding: .utf8), "second\n")
+    }
+
     func testMergeUndoResetsToOldHead() async throws {
         let repoURL = try makeRepoWithFeatureCommit()
         let oldHead = try runGitOutput(["rev-parse", "HEAD"], in: repoURL)
