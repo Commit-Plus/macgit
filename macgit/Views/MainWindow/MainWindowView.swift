@@ -64,7 +64,19 @@ struct MainWindowView: View {
                 "Confirm Git Undo",
                 isPresented: Binding(
                     get: { pendingConfirmedUndo != nil },
-                    set: { if !$0 { pendingConfirmedUndo = nil } }
+                    set: { isPresented in
+                        if !isPresented {
+                            if let pending = pendingConfirmedUndo {
+                                switch pending.action {
+                                case .undo:
+                                    undoManager.restoreUndo(pending.entry)
+                                case .redo:
+                                    undoManager.restoreRedo(pending.entry)
+                                }
+                            }
+                            pendingConfirmedUndo = nil
+                        }
+                    }
                 ),
                 titleVisibility: .visible
             ) {
@@ -75,16 +87,7 @@ struct MainWindowView: View {
                         await executeUndoEntry(pending.entry, menuAction: pending.action)
                     }
                 }
-                Button("Cancel", role: .cancel) {
-                    guard let pending = pendingConfirmedUndo else { return }
-                    switch pending.action {
-                    case .undo:
-                        undoManager.restoreUndo(pending.entry)
-                    case .redo:
-                        undoManager.restoreRedo(pending.entry)
-                    }
-                    pendingConfirmedUndo = nil
-                }
+                Button("Cancel", role: .cancel) {}
             } message: {
                 Text(pendingConfirmedUndo?.entry.confirmationMessage ?? "")
             }
