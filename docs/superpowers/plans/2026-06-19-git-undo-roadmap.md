@@ -20,7 +20,7 @@
 - Phase 4: [completed] [2026-06-19-git-undo-phase-4-local-branches.md](2026-06-19-git-undo-phase-4-local-branches.md) (branch: codex/git-undo-phase-4)
 - Phase 5: [completed] [2026-06-19-git-undo-phase-5-discard-remove.md](2026-06-19-git-undo-phase-5-discard-remove.md) (landed on `main` at `0115a7f`)
 - Phase 6: [completed] [2026-06-19-git-undo-phase-6-history-actions.md](2026-06-19-git-undo-phase-6-history-actions.md) (landed on `main` at `177ffb9`)
-- Phase 7: [pending] [2026-06-19-git-undo-phase-7-remote-actions.md](2026-06-19-git-undo-phase-7-remote-actions.md)
+- Phase 7: [completed] [2026-06-19-git-undo-phase-7-remote-actions.md](2026-06-19-git-undo-phase-7-remote-actions.md) (branch: codex/git-undo-phase-7)
 
 ## Recommended Order
 
