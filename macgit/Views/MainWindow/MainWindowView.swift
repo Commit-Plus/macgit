@@ -41,11 +41,104 @@ struct MainWindowView: View {
     @State private var showingSearchModal = false
     @State private var showingRepositorySettings = false
     @State private var repoSettings = RepoSettings.defaults(currentBranch: nil, remotes: [])
+    @State private var pendingConfirmedUndo: (entry: GitUndoEntry, action: GitUndoMenuAction)?
 
     var body: some View {
+        mainContent
+            .alert("Error", isPresented: $syncState.showingError, actions: {
+                Button("OK", role: .cancel) {}
+            }, message: {
+                Text(syncState.errorMessage ?? "An unknown error occurred")
+            })
+            .alert("Conflict", isPresented: $syncState.showingConflict, actions: {
+                Button("OK", role: .cancel) {}
+            }, message: {
+                Text(syncState.conflictMessage ?? "Merge conflicts detected.")
+            })
+            .alert("Info", isPresented: $syncState.showingInfo, actions: {
+                Button("OK", role: .cancel) {}
+            }, message: {
+                Text(syncState.infoMessage ?? "")
+            })
+            .confirmationDialog(
+                "Confirm Git Undo",
+                isPresented: Binding(
+                    get: { pendingConfirmedUndo != nil },
+                    set: { if !$0 { pendingConfirmedUndo = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Undo", role: .destructive) {
+                    guard let pending = pendingConfirmedUndo else { return }
+                    pendingConfirmedUndo = nil
+                    Task {
+                        await executeUndoEntry(pending.entry, menuAction: pending.action)
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    guard let pending = pendingConfirmedUndo else { return }
+                    switch pending.action {
+                    case .undo:
+                        undoManager.restoreUndo(pending.entry)
+                    case .redo:
+                        undoManager.restoreRedo(pending.entry)
+                    }
+                    pendingConfirmedUndo = nil
+                }
+            } message: {
+                Text(pendingConfirmedUndo?.entry.confirmationMessage ?? "")
+            }
+            .sheet(isPresented: $showingCommitSheet) { commitSheet }
+            .sheet(isPresented: $showingPullSheet) { pullSheet }
+            .sheet(isPresented: $showingPushSheet) { pushSheet }
+            .sheet(isPresented: $showingFetchSheet) { fetchSheet }
+            .sheet(isPresented: $showingBranchSheet) { branchSheet }
+            .sheet(isPresented: $showingMergeSheet) { mergeSheet }
+            .sheet(isPresented: $showingStashSheet) { stashSheet }
+            .sheet(isPresented: $showingRepositorySettings) { repositorySettingsSheet }
+            .sheet(isPresented: stashActionSheetBinding) { stashActionSheet }
+            .sheet(isPresented: $showingCheckoutConfirmation) {
+                CheckoutConfirmationSheet(branchName: branchToCheckout) { stash in
+                    Task {
+                        await performCheckout(ref: branchToCheckout, stash: stash)
+                    }
+                }
+            }
+            .alert("Confirm change working copy", isPresented: $showingDetachedHeadConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("OK") {
+                    Task {
+                        await performTagCheckout(tag: tagToCheckout)
+                    }
+                }
+            } message: {
+                Text("Are you sure you want to checkout '\(tagToCheckout)'?\n\nDoing so will make your working copy a 'detached HEAD', which means you won't be on a branch anymore. If you want to commit after this you'll probably want to either checkout a branch again, or create a new branch. Is this ok?")
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                guard repoSettings.refreshOnAppActive else { return }
+                Task {
+                    await syncState.refresh(repositoryURL: repositoryURL)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .showSearchModal)) { _ in
+                showingSearchModal = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toolbarAction)) { notification in
+                if let action = notification.userInfo?["action"] as? ToolbarAction {
+                    handleToolbarAction(action)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .gitUndoAction)) { notification in
+                if let action = notification.userInfo?["action"] as? GitUndoMenuAction {
+                    handleGitUndoMenuAction(action)
+                }
+            }
+    }
+
+    private var mainContent: some View {
         ZStack {
             rootView
-            
+
             if showingSearchModal {
                 ZStack {
                     Color.black.opacity(0.15)
@@ -53,7 +146,7 @@ struct MainWindowView: View {
                         .onTapGesture {
                             showingSearchModal = false
                         }
-                    
+
                     SearchModalView(
                         repositoryURL: repositoryURL,
                         onDismiss: { showingSearchModal = false },
@@ -102,66 +195,6 @@ struct MainWindowView: View {
         }
         .onDisappear {
             syncState.stopBackgroundSync()
-        }
-        .alert("Error", isPresented: $syncState.showingError, actions: {
-            Button("OK", role: .cancel) {}
-        }, message: {
-            Text(syncState.errorMessage ?? "An unknown error occurred")
-        })
-        .alert("Conflict", isPresented: $syncState.showingConflict, actions: {
-            Button("OK", role: .cancel) {}
-        }, message: {
-            Text(syncState.conflictMessage ?? "Merge conflicts detected.")
-        })
-        .alert("Info", isPresented: $syncState.showingInfo, actions: {
-            Button("OK", role: .cancel) {}
-        }, message: {
-            Text(syncState.infoMessage ?? "")
-        })
-        .sheet(isPresented: $showingCommitSheet) { commitSheet }
-        .sheet(isPresented: $showingPullSheet) { pullSheet }
-        .sheet(isPresented: $showingPushSheet) { pushSheet }
-        .sheet(isPresented: $showingFetchSheet) { fetchSheet }
-        .sheet(isPresented: $showingBranchSheet) { branchSheet }
-        .sheet(isPresented: $showingMergeSheet) { mergeSheet }
-        .sheet(isPresented: $showingStashSheet) { stashSheet }
-        .sheet(isPresented: $showingRepositorySettings) { repositorySettingsSheet }
-        .sheet(isPresented: stashActionSheetBinding) { stashActionSheet }
-        .sheet(isPresented: $showingCheckoutConfirmation) {
-            CheckoutConfirmationSheet(branchName: branchToCheckout) { stash in
-                Task {
-                    await performCheckout(ref: branchToCheckout, stash: stash)
-                }
-            }
-        }
-        .alert("Confirm change working copy", isPresented: $showingDetachedHeadConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("OK") {
-                Task {
-                    await performTagCheckout(tag: tagToCheckout)
-                }
-            }
-        } message: {
-            Text("Are you sure you want to checkout '\(tagToCheckout)'?\n\nDoing so will make your working copy a 'detached HEAD', which means you won't be on a branch anymore. If you want to commit after this you'll probably want to either checkout a branch again, or create a new branch. Is this ok?")
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            guard repoSettings.refreshOnAppActive else { return }
-            Task {
-                await syncState.refresh(repositoryURL: repositoryURL)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showSearchModal)) { _ in
-            showingSearchModal = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .toolbarAction)) { notification in
-            if let action = notification.userInfo?["action"] as? ToolbarAction {
-                handleToolbarAction(action)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .gitUndoAction)) { notification in
-            if let action = notification.userInfo?["action"] as? GitUndoMenuAction {
-                handleGitUndoMenuAction(action)
-            }
         }
     }
 
@@ -801,12 +834,20 @@ struct MainWindowView: View {
                 syncState.showInfo("Nothing to undo.")
                 return
             }
+            if entry.confirmationMessage != nil {
+                pendingConfirmedUndo = (entry, action)
+                return
+            }
             Task {
                 await executeUndoEntry(entry, menuAction: .undo)
             }
         case .redo:
             guard let entry = undoManager.popForRedo() else {
                 syncState.showInfo("Nothing to redo.")
+                return
+            }
+            if entry.confirmationMessage != nil {
+                pendingConfirmedUndo = (entry, action)
                 return
             }
             Task {
