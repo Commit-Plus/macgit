@@ -138,7 +138,7 @@ class SyncState: ObservableObject {
                         undoManager?.register(
                             GitUndoEntry(
                                 repositoryURL: repositoryURL,
-                                label: "Publish \(mapping.remote)",
+                                label: "Publish \(options.remote)/\(mapping.remote)",
                                 undoOperation: .deleteRemoteBranch(remote: options.remote, branch: mapping.remote, expectedHash: remoteHash),
                                 redoOperation: .pushBranch(remote: options.remote, localBranch: mapping.local, remoteBranch: mapping.remote),
                                 confirmationMessage: "Undoing publish will delete '\(options.remote)/\(mapping.remote)' from the remote. Continue?"
@@ -182,9 +182,7 @@ class SyncState: ObservableObject {
                             repositoryURL: repositoryURL,
                             label: "Pull",
                             undoOperation: .resetHead(target: oldHead, mode: .hard, expectedHead: newHead),
-                            redoOperation: .sequence([
-                                .resetHead(target: newHead, mode: .hard, expectedHead: oldHead)
-                            ]),
+                            redoOperation: .resetHead(target: newHead, mode: .hard, expectedHead: oldHead),
                             confirmationMessage: "Undoing a pull will reset the current branch back to its previous commit. Continue?"
                         )
                     )
@@ -230,9 +228,7 @@ class SyncState: ObservableObject {
                             repositoryURL: repositoryURL,
                             label: "Pull",
                             undoOperation: .resetHead(target: oldHead, mode: .hard, expectedHead: newHead),
-                            redoOperation: .sequence([
-                                .resetHead(target: newHead, mode: .hard, expectedHead: oldHead)
-                            ]),
+                            redoOperation: .resetHead(target: newHead, mode: .hard, expectedHead: oldHead),
                             confirmationMessage: "Undoing a pull will reset the current branch back to its previous commit. Continue?"
                         )
                     )
