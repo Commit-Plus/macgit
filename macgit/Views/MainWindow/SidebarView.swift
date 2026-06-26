@@ -69,6 +69,11 @@ struct BranchRowItem: Identifiable {
     let indent: Int
 }
 
+enum WorktreeCreationMode: String, CaseIterable {
+    case existingBranch = "Existing Branch"
+    case newBranch = "New Branch"
+}
+
 struct SidebarView: View {
     let repositoryURL: URL
     @Binding var selection: SidebarSelection?
@@ -100,7 +105,22 @@ struct SidebarView: View {
     @State private var isLoadingWorktrees = false
     @State private var worktreeToLabel: WorktreeEntry?
     @State private var worktreeLabelInput = ""
-    @State private var showingWorktreeLabelSheet = false
+    @State private var pendingWorktreeRemoval: WorktreeEntry?
+    @State private var showingWorktreeRemovalConfirmation = false
+    @State private var createWorktreeMode: WorktreeCreationMode = .existingBranch
+    @State private var availableWorktreeBranches: [String] = []
+    @State private var currentWorktreeBranch = ""
+    @State private var selectedExistingWorktreeBranch = ""
+    @State private var newWorktreeBranchName = ""
+    @State private var newWorktreeBaseBranch = ""
+    @State private var worktreePathInput = ""
+    @State private var customWorktreePath = false
+    @State private var worktreeLabelDraft = ""
+    @State private var openWorktreeAfterCreate = true
+    @State private var showingCreateWorktreeSheet = false
+    @State private var isCreatingWorktree = false
+    @State private var worktreeCreationErrorMessage: String?
+    @State private var worktreeRootURL: URL?
 
     @State private var sectionStates = SidebarSectionState()
 
@@ -304,8 +324,21 @@ struct SidebarView: View {
         } message: {
             Text("Are you sure you want to delete the branch '\(branchToDelete ?? "")'?")
         }
-        .sheet(isPresented: $showingWorktreeLabelSheet) {
+        .alert("Remove Worktree", isPresented: $showingWorktreeRemovalConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button(worktreeRemovalNeedsForce ? "Force Remove" : "Remove", role: .destructive) {
+                if let entry = pendingWorktreeRemoval {
+                    Task { await removeWorktree(entry, force: worktreeRemovalNeedsForce) }
+                }
+            }
+        } message: {
+            Text(worktreeRemovalMessage)
+        }
+        .sheet(item: $worktreeToLabel) { _ in
             worktreeLabelSheet
+        }
+        .sheet(isPresented: $showingCreateWorktreeSheet) {
+            createWorktreeSheet
         }
     }
 
@@ -316,6 +349,14 @@ struct SidebarView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
             Spacer()
+            if section == .worktrees {
+                Button("Create Worktree", systemImage: "plus") {
+                    Task { await prepareCreateWorktreeSheet() }
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.plain)
+                .help("Create Worktree")
+            }
             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -346,6 +387,43 @@ struct SidebarView: View {
 
     private var visibleRemoteRows: [BranchRowItem] {
         SidebarTreeBuilder.visibleRows(from: remoteNodes, expandedFolders: expandedRemoteFolders)
+    }
+
+    private var canCreateWorktree: Bool {
+        let trimmedPath = worktreePathInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else { return false }
+
+        switch createWorktreeMode {
+        case .existingBranch:
+            return !selectedExistingWorktreeBranch.isEmpty
+        case .newBranch:
+            return !sanitizedWorktreeBranchName(newWorktreeBranchName).isEmpty
+        }
+    }
+
+    private var worktreeRemovalNeedsForce: Bool {
+        guard let entry = pendingWorktreeRemoval else { return false }
+        return entry.dirtyCount > 0 || entry.isLocked
+    }
+
+    private var worktreeRemovalMessage: String {
+        guard let entry = pendingWorktreeRemoval else {
+            return "Are you sure you want to remove this worktree?"
+        }
+
+        if entry.isLocked && entry.dirtyCount > 0 {
+            return "This worktree is locked and has \(entry.dirtyCount) uncommitted changes. Remove it with --force?"
+        }
+
+        if entry.isLocked {
+            return "This worktree is locked. Remove it with --force?"
+        }
+
+        if entry.dirtyCount > 0 {
+            return "This worktree has \(entry.dirtyCount) uncommitted changes. Remove it with --force?"
+        }
+
+        return "Remove this worktree? The branch and commits are not deleted."
     }
 
     @ViewBuilder
@@ -445,7 +523,7 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func worktreeRowView(for entry: WorktreeEntry) -> some View {
-        let isMain = entry.path.standardizedFileURL == repositoryURL.standardizedFileURL
+        let isMain = isCurrentRepositoryWorktree(entry)
         let baseView = HStack(spacing: 4) {
             Image(systemName: entry.isLocked ? "lock.fill" : (isMain ? "circle.fill" : "folder"))
                 .font(.system(size: isMain ? 7 : 10))
@@ -778,6 +856,15 @@ struct SidebarView: View {
 
         Divider()
 
+        if !isCurrentRepositoryWorktree(entry) {
+            Button("Remove Worktree...", role: .destructive) {
+                pendingWorktreeRemoval = entry
+                showingWorktreeRemovalConfirmation = true
+            }
+
+            Divider()
+        }
+
         Button("Copy Path to Clipboard") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(entry.path.path, forType: .string)
@@ -812,7 +899,6 @@ struct SidebarView: View {
                 HStack(spacing: 12) {
                     Spacer()
                     Button("Cancel", role: .cancel) {
-                        showingWorktreeLabelSheet = false
                         worktreeToLabel = nil
                         worktreeLabelInput = ""
                     }
@@ -829,6 +915,106 @@ struct SidebarView: View {
         } else {
             EmptyView()
         }
+    }
+
+    private var createWorktreeSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Create Worktree")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            Picker("", selection: $createWorktreeMode) {
+                ForEach(WorktreeCreationMode.allCases, id: \.self) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: createWorktreeMode) { _, _ in
+                refreshWorktreePathIfNeeded(force: false)
+            }
+
+            if createWorktreeMode == .existingBranch {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Branch:")
+                        .font(.system(size: 13))
+                    Picker("", selection: $selectedExistingWorktreeBranch) {
+                        ForEach(availableWorktreeBranches, id: \.self) { branch in
+                            Text(branch).tag(branch)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: selectedExistingWorktreeBranch) { _, _ in
+                        refreshWorktreePathIfNeeded(force: false)
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("New branch name:")
+                        .font(.system(size: 13))
+                    TextField("feature/worktree-task", text: $newWorktreeBranchName)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: newWorktreeBranchName) { _, _ in
+                            refreshWorktreePathIfNeeded(force: false)
+                        }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Base branch:")
+                        .font(.system(size: 13))
+                    Picker("", selection: $newWorktreeBaseBranch) {
+                        ForEach(availableWorktreeBranches, id: \.self) { branch in
+                            Text(branch).tag(branch)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Path:")
+                    .font(.system(size: 13))
+                TextField("", text: $worktreePathInput)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: worktreePathInput) { _, newValue in
+                        customWorktreePath = newValue != defaultWorktreePath().path
+                    }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Label (optional):")
+                    .font(.system(size: 13))
+                TextField("Task label", text: $worktreeLabelDraft)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Toggle("Open after create", isOn: $openWorktreeAfterCreate)
+                .toggleStyle(.checkbox)
+                .font(.system(size: 12))
+
+            if let worktreeCreationErrorMessage {
+                Text(worktreeCreationErrorMessage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    showingCreateWorktreeSheet = false
+                }
+                .keyboardShortcut(.cancelAction)
+                .disabled(isCreatingWorktree)
+
+                Button("Create Worktree") {
+                    Task { await createWorktree() }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canCreateWorktree || isCreatingWorktree)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 440, idealWidth: 500)
     }
 
     private func deleteBranch(_ branch: String) async {
@@ -973,10 +1159,13 @@ struct SidebarView: View {
         return paths
     }
 
+    private func isCurrentRepositoryWorktree(_ entry: WorktreeEntry) -> Bool {
+        entry.path.standardizedFileURL == repositoryURL.standardizedFileURL
+    }
+
     private func beginEditingWorktreeLabel(_ entry: WorktreeEntry) {
         worktreeToLabel = entry
         worktreeLabelInput = entry.label ?? ""
-        showingWorktreeLabelSheet = true
     }
 
     private func saveWorktreeLabel() async {
@@ -986,7 +1175,6 @@ struct SidebarView: View {
             try await GitStatusService.shared.setWorktreeLabel(worktreeLabelInput, for: entry.path, in: repositoryURL)
             await loadWorktrees()
             await MainActor.run {
-                showingWorktreeLabelSheet = false
                 worktreeToLabel = nil
                 worktreeLabelInput = ""
             }
@@ -1002,6 +1190,149 @@ struct SidebarView: View {
         do {
             try await GitStatusService.shared.removeWorktreeLabel(for: entry.path, in: repositoryURL)
             await loadWorktrees()
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    private func prepareCreateWorktreeSheet() async {
+        let branches = await GitStatusService.shared.localBranches(in: repositoryURL)
+        let current = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
+        let root: URL
+        if let gitDirectory = try? await GitStatusService.shared.gitCommonDirectory(in: repositoryURL) {
+            root = gitDirectory.deletingLastPathComponent()
+        } else {
+            root = repositoryURL
+        }
+
+        await MainActor.run {
+            currentWorktreeBranch = current
+            availableWorktreeBranches = branches.filter { !$0.isEmpty }
+            selectedExistingWorktreeBranch = preferredExistingWorktreeBranch(from: branches, currentBranch: current)
+            newWorktreeBaseBranch = current.isEmpty ? (branches.first ?? "") : current
+            newWorktreeBranchName = ""
+            worktreeRootURL = root
+            customWorktreePath = false
+            worktreeLabelDraft = ""
+            worktreeCreationErrorMessage = nil
+            isCreatingWorktree = false
+            openWorktreeAfterCreate = true
+            refreshWorktreePathIfNeeded(force: true)
+            showingCreateWorktreeSheet = true
+        }
+    }
+
+    private func preferredExistingWorktreeBranch(from branches: [String], currentBranch: String) -> String {
+        if let other = branches.first(where: { $0 != currentBranch }) {
+            return other
+        }
+        return branches.first ?? ""
+    }
+
+    private func refreshWorktreePathIfNeeded(force: Bool) {
+        guard force || !customWorktreePath else { return }
+        worktreePathInput = defaultWorktreePath().path
+        customWorktreePath = false
+    }
+
+    private func defaultWorktreePath() -> URL {
+        let baseRoot = worktreeRootURL ?? repositoryURL
+        let container = baseRoot.appendingPathComponent(".worktrees", isDirectory: true)
+        return container.appendingPathComponent(defaultWorktreeFolderName(), isDirectory: true)
+    }
+
+    private func defaultWorktreeFolderName() -> String {
+        switch createWorktreeMode {
+        case .existingBranch:
+            return sanitizedWorktreeFolderComponent(selectedExistingWorktreeBranch)
+        case .newBranch:
+            return sanitizedWorktreeFolderComponent(sanitizedWorktreeBranchName(newWorktreeBranchName))
+        }
+    }
+
+    private func sanitizedWorktreeBranchName(_ input: String) -> String {
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_/")
+        var sanitized = ""
+        for scalar in input.unicodeScalars {
+            if allowed.contains(scalar) {
+                sanitized.append(Character(scalar))
+            } else {
+                sanitized.append("-")
+            }
+        }
+
+        while sanitized.contains("//") {
+            sanitized = sanitized.replacingOccurrences(of: "//", with: "/")
+        }
+
+        return sanitized.trimmingCharacters(in: CharacterSet(charactersIn: "-/"))
+    }
+
+    private func sanitizedWorktreeFolderComponent(_ input: String) -> String {
+        let candidate = input.replacingOccurrences(of: "/", with: "-")
+        let trimmed = candidate.trimmingCharacters(in: CharacterSet(charactersIn: "- "))
+        return trimmed.isEmpty ? "worktree" : trimmed
+    }
+
+    private func createWorktree() async {
+        let path = URL(fileURLWithPath: worktreePathInput)
+        let target: WorktreeAddTarget
+        let trimmedBaseBranch = newWorktreeBaseBranch.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch createWorktreeMode {
+        case .existingBranch:
+            target = .existingBranch(selectedExistingWorktreeBranch)
+        case .newBranch:
+            target = .newBranch(
+                name: sanitizedWorktreeBranchName(newWorktreeBranchName),
+                base: trimmedBaseBranch.isEmpty ? nil : trimmedBaseBranch
+            )
+        }
+
+        await MainActor.run {
+            isCreatingWorktree = true
+            worktreeCreationErrorMessage = nil
+        }
+        defer {
+            Task { @MainActor in
+                isCreatingWorktree = false
+            }
+        }
+
+        do {
+            try await GitStatusService.shared.addWorktree(
+                at: path,
+                target: target,
+                label: worktreeLabelDraft,
+                in: repositoryURL
+            )
+            await loadWorktrees()
+            await MainActor.run {
+                showingCreateWorktreeSheet = false
+                worktreeCreationErrorMessage = nil
+            }
+            if openWorktreeAfterCreate {
+                await MainActor.run {
+                    onRequestOpenWorktree(path)
+                }
+            }
+        } catch {
+            await MainActor.run {
+                worktreeCreationErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func removeWorktree(_ entry: WorktreeEntry, force: Bool) async {
+        do {
+            try await GitStatusService.shared.removeWorktree(at: entry.path, force: force, in: repositoryURL)
+            await loadWorktrees()
+            await MainActor.run {
+                pendingWorktreeRemoval = nil
+                showingWorktreeRemovalConfirmation = false
+            }
         } catch {
             await MainActor.run {
                 errorMessage = error.localizedDescription

@@ -6,7 +6,7 @@ final class WorktreeLabelStoreTests: XCTestCase {
         let gitDirectory = try makeTempGitDirectory()
         let store = WorktreeLabelStore()
 
-        XCTAssertEqual(store.labels(in: gitDirectory), [String: String]())
+        XCTAssertEqual(store.labels(in: gitDirectory), [:])
     }
 
     func testCorruptLabelFileReadsAsEmptyDictionary() throws {
@@ -20,7 +20,7 @@ final class WorktreeLabelStoreTests: XCTestCase {
 
         let store = WorktreeLabelStore()
 
-        XCTAssertEqual(store.labels(in: gitDirectory), [String: String]())
+        XCTAssertEqual(store.labels(in: gitDirectory), [:])
     }
 
     func testSetLabelTrimsAndPersistsNormalizedPath() throws {
@@ -46,7 +46,7 @@ final class WorktreeLabelStoreTests: XCTestCase {
         try store.setLabel("   ", for: worktreePath, in: gitDirectory)
 
         XCTAssertNil(store.label(for: worktreePath, in: gitDirectory))
-        XCTAssertEqual(store.labels(in: gitDirectory), [String: String]())
+        XCTAssertEqual(store.labels(in: gitDirectory), [:])
     }
 
     func testMoveLabelTransfersValueToNewPath() throws {

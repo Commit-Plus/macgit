@@ -1,5 +1,10 @@
 import Foundation
 
+enum WorktreeAddTarget: Sendable, Equatable {
+    case existingBranch(String)
+    case newBranch(name: String, base: String?)
+}
+
 extension GitStatusService {
     func worktrees(in repositoryURL: URL) async -> [WorktreeEntry] {
         let output = (try? await runGit(arguments: ["worktree", "list", "--porcelain"], in: repositoryURL)) ?? ""
@@ -68,21 +73,61 @@ extension GitStatusService {
     func setWorktreeLabel(_ label: String?, for path: URL, in repositoryURL: URL) async throws {
         let gitDirectory = try await gitCommonDirectory(in: repositoryURL)
         try WorktreeLabelStore().setLabel(label, for: path, in: gitDirectory)
-        NotificationCenter.default.post(
-            name: Notification.Name("macgit.repositoryDidChange"),
-            object: nil,
-            userInfo: ["repositoryURL": repositoryURL]
-        )
+        await postRepositoryDidChange(for: repositoryURL)
     }
 
     func removeWorktreeLabel(for path: URL, in repositoryURL: URL) async throws {
         let gitDirectory = try await gitCommonDirectory(in: repositoryURL)
         try WorktreeLabelStore().removeLabel(for: path, in: gitDirectory)
-        NotificationCenter.default.post(
-            name: Notification.Name("macgit.repositoryDidChange"),
-            object: nil,
-            userInfo: ["repositoryURL": repositoryURL]
-        )
+        await postRepositoryDidChange(for: repositoryURL)
+    }
+
+    func addWorktree(
+        at path: URL,
+        target: WorktreeAddTarget,
+        label: String?,
+        in repositoryURL: URL
+    ) async throws {
+        var arguments = ["worktree", "add"]
+        switch target {
+        case .existingBranch(let branch):
+            arguments.append(path.path)
+            arguments.append(branch)
+        case .newBranch(let name, let base):
+            arguments.append("-b")
+            arguments.append(name)
+            arguments.append(path.path)
+            if let base, !base.isEmpty {
+                arguments.append(base)
+            }
+        }
+
+        _ = try await runGit(arguments: arguments, in: repositoryURL)
+
+        if let label, !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let gitDirectory = try await gitCommonDirectory(in: repositoryURL)
+            try WorktreeLabelStore().setLabel(label, for: path, in: gitDirectory)
+        }
+
+        await postRepositoryDidChange(for: repositoryURL)
+    }
+
+    func removeWorktree(at path: URL, force: Bool, in repositoryURL: URL) async throws {
+        if isMainWorktree(path, repositoryURL: repositoryURL) {
+            throw GitError.commandFailed("The main worktree cannot be removed.")
+        }
+
+        var arguments = ["worktree", "remove"]
+        if force {
+            arguments.append("--force")
+        }
+        arguments.append(path.path)
+
+        _ = try await runGit(arguments: arguments, in: repositoryURL)
+
+        let gitDirectory = try await gitCommonDirectory(in: repositoryURL)
+        try WorktreeLabelStore().removeLabel(for: path, in: gitDirectory)
+        await postRepositoryDidChange(for: repositoryURL)
     }
 
     private struct ParsedWorktree {
@@ -147,5 +192,18 @@ extension GitStatusService {
     private func normalizedWorktreeURL(from path: String) -> URL {
         let cleanPath = path.hasPrefix("/private/") ? String(path.dropFirst("/private".count)) : path
         return URL(fileURLWithPath: cleanPath, isDirectory: false)
+    }
+
+    private func isMainWorktree(_ path: URL, repositoryURL: URL) -> Bool {
+        normalizedWorktreePath(path) == normalizedWorktreePath(repositoryURL)
+    }
+
+    private func normalizedWorktreePath(_ url: URL) -> String {
+        WorktreeLabelStore.key(for: url)
+    }
+
+    @MainActor
+    private func postRepositoryDidChange(for repositoryURL: URL) {
+        NotificationCenter.default.post(name: .repositoryDidChange, object: nil, userInfo: ["repositoryURL": repositoryURL])
     }
 }
