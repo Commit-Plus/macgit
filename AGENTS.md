@@ -35,12 +35,12 @@ Git operations are centralized in `macgit/Services/GitStatusService*.swift` (spl
 
 ## Workflow Conventions
 
-### 1. Use Superpowers skills for complex tasks
-This repo has the **superpowers** plugin installed (see `opencode.json`). For any non-trivial work — creating features, debugging, multi-step implementation — invoke the relevant superpowers skill via the `skill` tool before acting.
+### 1. Superpowers skills usage (use sparingly)
 
-Priority order:
-1. **Process skills first** — `brainstorming` (before creative work), `systematic-debugging` (before fixing bugs), `test-driven-development` (before implementation), `writing-plans` (before a multi-step task).
-2. **Execution skills second** — `subagent-driven-development` or `executing-plans` (to run a written plan), `using-git-worktrees` (for isolated workspaces), `verification-before-completion` (before claiming done), `requesting-code-review` / `receiving-code-review`.
+This repo has the **superpowers** plugin installed, but skills are expensive (high token cost) and often over-engineer simple problems.
+
+- **For simple/similar issues or straightforward tasks** — do NOT use superpower skills. Just do the work directly.
+- **For genuinely complex or multi-step tasks** — ask the user first before invoking any skill. Explain which skill you think applies and why (e.g. token cost, risk of over-engineering). Proceed only if the user approves.
 
 ### 2. OpenSpec is deprecated
 **OpenSpec is outdated for this project and no longer used.** Do not create or follow OpenSpec specs. All design specs and implementation plans now live under `docs/superpowers/`:
