@@ -98,6 +98,9 @@ struct SidebarView: View {
     @State private var isLoadingStashes = false
     @State private var worktreeEntries: [WorktreeEntry] = []
     @State private var isLoadingWorktrees = false
+    @State private var worktreeToLabel: WorktreeEntry?
+    @State private var worktreeLabelInput = ""
+    @State private var showingWorktreeLabelSheet = false
 
     @State private var sectionStates = SidebarSectionState()
 
@@ -300,6 +303,9 @@ struct SidebarView: View {
             }
         } message: {
             Text("Are you sure you want to delete the branch '\(branchToDelete ?? "")'?")
+        }
+        .sheet(isPresented: $showingWorktreeLabelSheet) {
+            worktreeLabelSheet
         }
     }
 
@@ -760,9 +766,68 @@ struct SidebarView: View {
 
         Divider()
 
+        Button(entry.label == nil ? "Set Label..." : "Edit Label...") {
+            beginEditingWorktreeLabel(entry)
+        }
+
+        if entry.label != nil {
+            Button("Clear Label") {
+                Task { await clearWorktreeLabel(entry) }
+            }
+        }
+
+        Divider()
+
         Button("Copy Path to Clipboard") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(entry.path.path, forType: .string)
+        }
+    }
+
+    @ViewBuilder
+    private var worktreeLabelSheet: some View {
+        if let entry = worktreeToLabel {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(entry.label == nil ? "Set Worktree Label" : "Edit Worktree Label")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Worktree:")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text(entry.path.path)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Label:")
+                        .font(.system(size: 13))
+                    TextField(entry.branch ?? entry.path.lastPathComponent, text: $worktreeLabelInput)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                HStack(spacing: 12) {
+                    Spacer()
+                    Button("Cancel", role: .cancel) {
+                        showingWorktreeLabelSheet = false
+                        worktreeToLabel = nil
+                        worktreeLabelInput = ""
+                    }
+                    .keyboardShortcut(.cancelAction)
+
+                    Button("Save") {
+                        Task { await saveWorktreeLabel() }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(24)
+            .frame(minWidth: 420, idealWidth: 480)
+        } else {
+            EmptyView()
         }
     }
 
@@ -848,7 +913,7 @@ struct SidebarView: View {
         isLoadingWorktrees = true
         defer { isLoadingWorktrees = false }
 
-        let entries = await GitStatusService.shared.worktrees(in: repositoryURL)
+        let entries = await GitStatusService.shared.worktreesWithLabels(in: repositoryURL)
         await MainActor.run {
             worktreeEntries = entries
         }
@@ -906,6 +971,43 @@ struct SidebarView: View {
             paths.formUnion(collectFolderPaths(from: node.children))
         }
         return paths
+    }
+
+    private func beginEditingWorktreeLabel(_ entry: WorktreeEntry) {
+        worktreeToLabel = entry
+        worktreeLabelInput = entry.label ?? ""
+        showingWorktreeLabelSheet = true
+    }
+
+    private func saveWorktreeLabel() async {
+        guard let entry = worktreeToLabel else { return }
+
+        do {
+            try await GitStatusService.shared.setWorktreeLabel(worktreeLabelInput, for: entry.path, in: repositoryURL)
+            await loadWorktrees()
+            await MainActor.run {
+                showingWorktreeLabelSheet = false
+                worktreeToLabel = nil
+                worktreeLabelInput = ""
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    private func clearWorktreeLabel(_ entry: WorktreeEntry) async {
+        do {
+            try await GitStatusService.shared.removeWorktreeLabel(for: entry.path, in: repositoryURL)
+            await loadWorktrees()
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
     }
 }
 

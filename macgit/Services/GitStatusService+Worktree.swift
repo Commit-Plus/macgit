@@ -39,6 +39,52 @@ extension GitStatusService {
         return output.split(separator: "\n").count
     }
 
+    func gitCommonDirectory(in repositoryURL: URL) async throws -> URL {
+        let output = try await runGit(
+            arguments: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            in: repositoryURL
+        )
+        let path = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalizedWorktreeURL(from: path)
+    }
+
+    func worktreesWithLabels(in repositoryURL: URL) async -> [WorktreeEntry] {
+        let entries = await worktrees(in: repositoryURL)
+        guard let gitDirectory = try? await gitCommonDirectory(in: repositoryURL) else {
+            return entries
+        }
+
+        let store = WorktreeLabelStore()
+        let labels = (try? store.prune(validPaths: Set(entries.map(\.path)), in: gitDirectory))
+            ?? store.labels(in: gitDirectory)
+
+        return entries.map { entry in
+            var labeled = entry
+            labeled.label = labels[WorktreeLabelStore.key(for: entry.path)]
+            return labeled
+        }
+    }
+
+    func setWorktreeLabel(_ label: String?, for path: URL, in repositoryURL: URL) async throws {
+        let gitDirectory = try await gitCommonDirectory(in: repositoryURL)
+        try WorktreeLabelStore().setLabel(label, for: path, in: gitDirectory)
+        NotificationCenter.default.post(
+            name: Notification.Name("macgit.repositoryDidChange"),
+            object: nil,
+            userInfo: ["repositoryURL": repositoryURL]
+        )
+    }
+
+    func removeWorktreeLabel(for path: URL, in repositoryURL: URL) async throws {
+        let gitDirectory = try await gitCommonDirectory(in: repositoryURL)
+        try WorktreeLabelStore().removeLabel(for: path, in: gitDirectory)
+        NotificationCenter.default.post(
+            name: Notification.Name("macgit.repositoryDidChange"),
+            object: nil,
+            userInfo: ["repositoryURL": repositoryURL]
+        )
+    }
+
     private struct ParsedWorktree {
         let path: URL
         let head: String

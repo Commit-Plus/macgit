@@ -2,6 +2,48 @@ import XCTest
 @testable import macgit
 
 final class WorktreeServiceTests: XCTestCase {
+    func testWorktreesWithLabelsMergesStoredLabels() async throws {
+        let repoURL = try makeTempRepo()
+        let wtPath = repoURL.deletingLastPathComponent().appendingPathComponent("wt-\(UUID().uuidString)")
+        try runGit(["worktree", "add", wtPath.path, "feature"], in: repoURL)
+        let gitDirectory = try await GitStatusService.shared.gitCommonDirectory(in: repoURL)
+        try WorktreeLabelStore().setLabel("Review UI", for: wtPath, in: gitDirectory)
+
+        let entries = await GitStatusService.shared.worktreesWithLabels(in: repoURL)
+
+        XCTAssertEqual(entries.first(where: { $0.path.path == wtPath.path })?.label, "Review UI")
+        XCTAssertEqual(entries.first(where: { $0.path.path == wtPath.path })?.displayTitle, "Review UI")
+    }
+
+    func testWorktreesWithLabelsPrunesOrphanedLabels() async throws {
+        let repoURL = try makeTempRepo()
+        let wtPath = repoURL.deletingLastPathComponent().appendingPathComponent("wt-\(UUID().uuidString)")
+        let orphanPath = repoURL.deletingLastPathComponent().appendingPathComponent("orphan-\(UUID().uuidString)")
+        try runGit(["worktree", "add", wtPath.path, "feature"], in: repoURL)
+        let gitDirectory = try await GitStatusService.shared.gitCommonDirectory(in: repoURL)
+        let store = WorktreeLabelStore()
+        try store.setLabel("Review UI", for: wtPath, in: gitDirectory)
+        try store.setLabel("Remove", for: orphanPath, in: gitDirectory)
+
+        _ = await GitStatusService.shared.worktreesWithLabels(in: repoURL)
+
+        XCTAssertNil(store.label(for: orphanPath, in: gitDirectory))
+        XCTAssertEqual(store.label(for: wtPath, in: gitDirectory), "Review UI")
+    }
+
+    func testSetWorktreeLabelPostsRepositoryDidChange() async throws {
+        let repoURL = try makeTempRepo()
+        let wtPath = repoURL.deletingLastPathComponent().appendingPathComponent("wt-\(UUID().uuidString)")
+        try runGit(["worktree", "add", wtPath.path, "feature"], in: repoURL)
+        let expectation = expectation(forNotification: .repositoryDidChange, object: nil) { notification in
+            (notification.userInfo?["repositoryURL"] as? URL)?.path == repoURL.path
+        }
+
+        try await GitStatusService.shared.setWorktreeLabel("Agent task", for: wtPath, in: repoURL)
+
+        await fulfillment(of: [expectation], timeout: 1.0)
+    }
+
     func testListsOnlyMainWorktree() async throws {
         let repoURL = try makeTempRepo()
 
