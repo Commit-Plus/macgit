@@ -217,6 +217,7 @@ struct MainWindowView: View {
             repositoryURL: repositoryURL,
             selection: $selectedItem,
             undoManager: undoManager,
+            currentBranchFallbackSyncStatus: currentBranchFallbackSyncStatus,
             isBranchSyncing: { branch in
                 BranchSyncBadgePolicy.shouldShowLoading(
                     for: branch,
@@ -266,6 +267,13 @@ struct MainWindowView: View {
             }
         )
         .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
+    }
+
+    private var currentBranchFallbackSyncStatus: BranchSyncStatus? {
+        let ahead = syncState.pushBadgeCount
+        let behind = syncState.pullBadgeCount
+        guard ahead > 0 || behind > 0 else { return nil }
+        return BranchSyncStatus(ahead: ahead, behind: behind)
     }
 
     @ViewBuilder

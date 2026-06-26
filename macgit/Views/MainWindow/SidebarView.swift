@@ -78,10 +78,26 @@ enum WorktreeHeaderAction: String, CaseIterable {
     case prune = "Prune Worktrees..."
 }
 
+enum SidebarBranchSyncBadgeResolver {
+    static func status(
+        for branch: String,
+        currentBranch: String,
+        branchSyncStatus: [String: BranchSyncStatus],
+        currentBranchFallbackSyncStatus: BranchSyncStatus?
+    ) -> BranchSyncStatus? {
+        if branch == currentBranch, let currentBranchFallbackSyncStatus {
+            return currentBranchFallbackSyncStatus
+        }
+
+        return branchSyncStatus[branch]
+    }
+}
+
 struct SidebarView: View {
     let repositoryURL: URL
     @Binding var selection: SidebarSelection?
     let undoManager: GitUndoManager?
+    let currentBranchFallbackSyncStatus: BranchSyncStatus?
     let isBranchSyncing: (String) -> Bool
     let onRequestCheckout: (String, Bool) -> Void
     let onRequestFetchBranch: (String) -> Void
@@ -154,6 +170,7 @@ struct SidebarView: View {
         repositoryURL: URL,
         selection: Binding<SidebarSelection?>,
         undoManager: GitUndoManager? = nil,
+        currentBranchFallbackSyncStatus: BranchSyncStatus? = nil,
         isBranchSyncing: @escaping (String) -> Bool = { _ in false },
         onRequestCheckout: @escaping (String, Bool) -> Void,
         onRequestFetchBranch: @escaping (String) -> Void,
@@ -166,6 +183,7 @@ struct SidebarView: View {
         self.repositoryURL = repositoryURL
         self._selection = selection
         self.undoManager = undoManager
+        self.currentBranchFallbackSyncStatus = currentBranchFallbackSyncStatus
         self.isBranchSyncing = isBranchSyncing
         self.onRequestCheckout = onRequestCheckout
         self.onRequestFetchBranch = onRequestFetchBranch
@@ -321,12 +339,14 @@ struct SidebarView: View {
             await loadRemotes()
             await loadStashes()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { _ in
-            Task {
-                await loadVisibleSections(force: true)
-                await loadTags()
-                await loadRemotes()
-                await loadStashes()
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { notification in
+            if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
+                Task {
+                    await loadVisibleSections(force: true)
+                    await loadTags()
+                    await loadRemotes()
+                    await loadStashes()
+                }
             }
         }
         .alert("Error", isPresented: $showingError) {
@@ -838,7 +858,12 @@ struct SidebarView: View {
             .padding(.vertical, 1)
             .background(Color.secondary)
             .cornerRadius(4)
-        } else if let status = branchSyncStatus[branch] {
+        } else if let status = SidebarBranchSyncBadgeResolver.status(
+            for: branch,
+            currentBranch: currentBranch,
+            branchSyncStatus: branchSyncStatus,
+            currentBranchFallbackSyncStatus: currentBranchFallbackSyncStatus
+        ) {
             HStack(spacing: 4) {
                 if status.ahead > 0 {
                     HStack(spacing: 2) {
