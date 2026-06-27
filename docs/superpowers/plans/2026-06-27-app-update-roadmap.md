@@ -17,7 +17,7 @@
 - Phase 1: [completed] [2026-06-27-app-update-phase-1-sparkle-foundation.md](2026-06-27-app-update-phase-1-sparkle-foundation.md) (branch: `codex/app-update-phase-1-sparkle-foundation`, commit: `8c7f3a5`)
 - Phase 2: [completed] [2026-06-27-app-update-phase-2-sidebar-experience.md](2026-06-27-app-update-phase-2-sidebar-experience.md) (branch: `codex/app-update-phase-2-sidebar-experience`, commit: `3127eed`)
 - Phase 3: [completed] [2026-06-27-app-update-phase-3-release-automation.md](2026-06-27-app-update-phase-3-release-automation.md) (branch: `codex/app-update-phase-3-release-automation`)
-- Phase 4: [pending] [2026-06-27-app-update-phase-4-release-qualification.md](2026-06-27-app-update-phase-4-release-qualification.md)
+- Phase 4: [completed] [2026-06-27-app-update-phase-4-release-qualification.md](2026-06-27-app-update-phase-4-release-qualification.md) (branch: `codex/app-update-phase-4-release-qualification`)
 
 ## Recommended Order
 

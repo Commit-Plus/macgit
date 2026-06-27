@@ -22,7 +22,7 @@
 **Files:**
 - Create: `docs/release/app-update-e2e.md`
 
-- [ ] **Step 1: Add the end-to-end verification guide**
+- [x] **Step 1: Add the end-to-end verification guide**
 
 Create `docs/release/app-update-e2e.md`:
 
@@ -40,7 +40,7 @@ Create `docs/release/app-update-e2e.md`:
 9. Verify the relaunched build reports the expected version and the sidebar banner is gone.
 ```
 
-- [ ] **Step 2: Commit the E2E guide**
+- [x] **Step 2: Commit the E2E guide**
 
 Run:
 
@@ -56,7 +56,7 @@ Expected: a clean docs commit on `codex/app-update-phase-4-release-qualification
 **Files:**
 - Create: `docs/release/app-update-runbook.md`
 
-- [ ] **Step 3: Add the production rollout checklist**
+- [x] **Step 3: Add the production rollout checklist**
 
 Create `docs/release/app-update-runbook.md`:
 
@@ -73,7 +73,7 @@ Create `docs/release/app-update-runbook.md`:
 8. If any release verification fails after publication, remove the appcast entry first so clients stop seeing the bad release.
 ```
 
-- [ ] **Step 4: Commit the runbook**
+- [x] **Step 4: Commit the runbook**
 
 Run:
 
