@@ -14,7 +14,7 @@
 
 ## Plan Index
 
-- Phase 1: [pending] [2026-06-27-app-update-phase-1-sparkle-foundation.md](2026-06-27-app-update-phase-1-sparkle-foundation.md)
+- Phase 1: [completed] [2026-06-27-app-update-phase-1-sparkle-foundation.md](2026-06-27-app-update-phase-1-sparkle-foundation.md) (branch: `codex/app-update-phase-1-sparkle-foundation`)
 - Phase 2: [pending] [2026-06-27-app-update-phase-2-sidebar-experience.md](2026-06-27-app-update-phase-2-sidebar-experience.md)
 - Phase 3: [pending] [2026-06-27-app-update-phase-3-release-automation.md](2026-06-27-app-update-phase-3-release-automation.md)
 - Phase 4: [pending] [2026-06-27-app-update-phase-4-release-qualification.md](2026-06-27-app-update-phase-4-release-qualification.md)

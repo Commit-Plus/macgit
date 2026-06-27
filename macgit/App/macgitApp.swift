@@ -10,13 +10,24 @@ import SwiftUI
 @main
 struct macgitApp: App {
     @StateObject private var appState = AppState.shared
+    @StateObject private var appUpdateController = AppUpdateController(updater: SparkleAppUpdater())
 
     var body: some Scene {
         WindowGroup(id: "main") {
             ContentView()
                 .environmentObject(appState)
+                .environmentObject(appUpdateController)
+                .task {
+                    appUpdateController.start()
+                }
         }
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates...") {
+                    appUpdateController.checkForUpdates()
+                }
+            }
+
             CommandGroup(replacing: .newItem) {
                 Button("New...") {
                     appState.fileMenuAction = .new

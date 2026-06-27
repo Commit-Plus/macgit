@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		8A19F0F127AA100100A1B2C3 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 8A19F0F027AA100100A1B2C3 /* Sparkle */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		6ADE73B32FDC12DF00A4E999 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -39,6 +43,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8A19F0F127AA100100A1B2C3 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -90,6 +95,7 @@
 			);
 			name = macgit;
 			packageProductDependencies = (
+				8A19F0F027AA100100A1B2C3 /* Sparkle */,
 			);
 			productName = macgit;
 			productReference = 6A843CA52FC5342F0031F230 /* macgit.app */;
@@ -149,6 +155,9 @@
 			productRefGroup = 6A843CA62FC5342F0031F230 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
+			packageReferences = (
+				8A19F0EF27AA100100A1B2C3 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			targets = (
 				6A843CA42FC5342F0031F230 /* macgit */,
 				6A843CBC2FC5342F0031F230 /* macgitTests */,
@@ -190,6 +199,25 @@
 			targetProxy = 6ADE73B32FDC12DF00A4E999 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		8A19F0EF27AA100100A1B2C3 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.8.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		8A19F0F027AA100100A1B2C3 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8A19F0EF27AA100100A1B2C3 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		6A843CB32FC534310031F230 /* Debug */ = {
@@ -326,6 +354,11 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_SUAllowsAutomaticUpdates = NO;
+				INFOPLIST_KEY_SUAutomaticallyUpdate = NO;
+				INFOPLIST_KEY_SUEnableAutomaticChecks = YES;
+				INFOPLIST_KEY_SUFeedURL = "https://thanhtran.github.io/macgit/appcast.xml";
+				INFOPLIST_KEY_SUPublicEDKey = "$(SPARKLE_PUBLIC_ED_KEY)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -335,6 +368,7 @@
 				PRODUCT_MODULE_NAME = macgit;
 				PRODUCT_NAME = "Commit+";
 				REGISTER_APP_GROUPS = YES;
+				SPARKLE_PUBLIC_ED_KEY = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -358,6 +392,11 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_SUAllowsAutomaticUpdates = NO;
+				INFOPLIST_KEY_SUAutomaticallyUpdate = NO;
+				INFOPLIST_KEY_SUEnableAutomaticChecks = YES;
+				INFOPLIST_KEY_SUFeedURL = "https://thanhtran.github.io/macgit/appcast.xml";
+				INFOPLIST_KEY_SUPublicEDKey = "$(SPARKLE_PUBLIC_ED_KEY)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -367,6 +406,7 @@
 				PRODUCT_MODULE_NAME = macgit;
 				PRODUCT_NAME = "Commit+";
 				REGISTER_APP_GROUPS = YES;
+				SPARKLE_PUBLIC_ED_KEY = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
