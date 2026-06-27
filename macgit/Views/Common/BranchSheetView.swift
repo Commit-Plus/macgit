@@ -33,10 +33,17 @@ enum BranchType: String {
 }
 
 struct BranchSheetView: View {
+    struct InitialCreateState: Equatable {
+        let useWorkingCopyParent: Bool
+        let selectedStartPoint: GitBranchStartPoint?
+        let selectedStartReference: String
+    }
+
     @Environment(\.dismiss) private var dismiss
     let repositoryURL: URL
     let onCompleted: () -> Void
     var undoManager: GitUndoManager? = nil
+    var initialStartPoint: GitBranchStartPoint? = nil
 
     @State private var selectedTab: BranchTab = .create
 
@@ -45,9 +52,11 @@ struct BranchSheetView: View {
     @State private var branchNameInput: String = ""
     @State private var sanitizedName: String = ""
     @State private var useWorkingCopyParent = true
-    @State private var selectedCommitHash: String = ""
+    @State private var selectedStartPoint: GitBranchStartPoint? = nil
+    @State private var selectedStartReference: String = ""
     @State private var recentCommits: [BranchCommitInfo] = []
     @State private var checkoutNewBranch = true
+    @State private var hasAppliedInitialCreateState = false
 
     // Delete tab state
     @State private var branches: [BranchDeleteItem] = []
@@ -61,6 +70,18 @@ struct BranchSheetView: View {
     @State private var errorMessage: String = ""
     @State private var showingError = false
 
+    init(
+        repositoryURL: URL,
+        undoManager: GitUndoManager? = nil,
+        initialStartPoint: GitBranchStartPoint? = nil,
+        onCompleted: @escaping () -> Void
+    ) {
+        self.repositoryURL = repositoryURL
+        self.onCompleted = onCompleted
+        self.undoManager = undoManager
+        self.initialStartPoint = initialStartPoint
+    }
+
     private var canCreate: Bool {
         !sanitizedName.isEmpty
     }
@@ -71,6 +92,13 @@ struct BranchSheetView: View {
 
     private var canDelete: Bool {
         !selectedBranches.isEmpty
+    }
+
+    private var commitPickerOptions: [BranchCommitInfo] {
+        Self.commitPickerOptions(
+            selectedStartPoint: selectedStartPoint,
+            recentCommits: recentCommits
+        )
     }
 
     var body: some View {
@@ -245,23 +273,63 @@ struct BranchSheetView: View {
 
                 Picker("", selection: $useWorkingCopyParent) {
                     Text("Working copy parent").tag(true)
-                    Text("Specified commit:").tag(false)
+                    Text("Specified start point:").tag(false)
                 }
                 .pickerStyle(.radioGroup)
                 .font(.system(size: 12))
+                .onChange(of: useWorkingCopyParent) { _, newValue in
+                    guard !newValue else { return }
+                    if selectedStartReference.isEmpty {
+                        selectedStartReference = recentCommits.first?.hash ?? ""
+                    }
+                    if selectedStartPoint == nil,
+                       let matchingCommit = recentCommits.first(where: { $0.hash == selectedStartReference }) {
+                        selectedStartPoint = .commit(
+                            hash: matchingCommit.hash,
+                            message: matchingCommit.message
+                        )
+                    }
+                }
 
                 if !useWorkingCopyParent {
-                    Picker("", selection: $selectedCommitHash) {
-                        Text("Select a commit...").tag("")
-                        ForEach(recentCommits) { commit in
-                            Text(commit.display)
-                                .tag(commit.hash)
-                                .lineLimit(1)
+                    if case .branch(let branchName) = selectedStartPoint {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Starting from branch:")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                            Text(branchName)
+                                .font(.system(size: 13, weight: .medium))
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(.quaternary.opacity(0.2))
+                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        }
+                        .padding(.leading, 16)
+                    } else {
+                        Picker("", selection: $selectedStartReference) {
+                            Text("Select a commit...").tag("")
+                            ForEach(commitPickerOptions) { commit in
+                                Text(commit.display)
+                                    .tag(commit.hash)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(minWidth: 280, alignment: .leading)
+                        .padding(.leading, 16)
+                        .onChange(of: selectedStartReference) { _, newValue in
+                            guard !newValue.isEmpty else {
+                                selectedStartPoint = nil
+                                return
+                            }
+                            if let matchingCommit = commitPickerOptions.first(where: { $0.hash == newValue }) {
+                                selectedStartPoint = .commit(
+                                    hash: matchingCommit.hash,
+                                    message: matchingCommit.message
+                                )
+                            }
                         }
                     }
-                    .pickerStyle(.menu)
-                    .frame(minWidth: 280, alignment: .leading)
-                    .padding(.leading, 16)
                 }
             }
 
@@ -332,13 +400,13 @@ struct BranchSheetView: View {
 
     private func createBranch() async {
         do {
-            let commit = useWorkingCopyParent ? nil : selectedCommitHash
+            let startReference = branchStartReference()
             let support = GitBranchUndoSupport()
-            let startPoint = try await support.tip(of: commit ?? "HEAD", in: repositoryURL)
+            let startPoint = try await support.tip(of: startReference ?? "HEAD", in: repositoryURL)
             _ = try await GitStatusService.shared.createBranch(
                 name: sanitizedName,
                 checkout: checkoutNewBranch,
-                commit: commit,
+                commit: startReference,
                 in: repositoryURL
             )
             await MainActor.run {
@@ -443,8 +511,17 @@ struct BranchSheetView: View {
         await MainActor.run {
             currentBranch = branch
             recentCommits = commits.map { BranchCommitInfo(hash: $0.hash, message: $0.message) }
-            if !recentCommits.isEmpty && selectedCommitHash.isEmpty {
-                selectedCommitHash = recentCommits[0].hash
+            if !hasAppliedInitialCreateState {
+                let state = Self.initialCreateState(
+                    initialStartPoint: initialStartPoint,
+                    recentCommits: recentCommits
+                )
+                useWorkingCopyParent = state.useWorkingCopyParent
+                selectedStartPoint = state.selectedStartPoint
+                selectedStartReference = state.selectedStartReference
+                hasAppliedInitialCreateState = true
+            } else if selectedStartReference.isEmpty {
+                selectedStartReference = recentCommits.first?.hash ?? ""
             }
         }
     }
@@ -474,6 +551,59 @@ struct BranchSheetView: View {
     }
 
     // MARK: - Helpers
+
+    static func initialCreateState(
+        initialStartPoint: GitBranchStartPoint?,
+        recentCommits: [BranchCommitInfo]
+    ) -> InitialCreateState {
+        switch initialStartPoint {
+        case nil:
+            return InitialCreateState(
+                useWorkingCopyParent: true,
+                selectedStartPoint: nil,
+                selectedStartReference: recentCommits.first?.hash ?? ""
+            )
+        case .commit(let hash, let message):
+            let selectedCommit = recentCommits.first(where: { $0.hash == hash })
+                ?? BranchCommitInfo(hash: hash, message: message)
+            return InitialCreateState(
+                useWorkingCopyParent: false,
+                selectedStartPoint: .commit(hash: selectedCommit.hash, message: selectedCommit.message),
+                selectedStartReference: selectedCommit.hash
+            )
+        case .branch(let name):
+            return InitialCreateState(
+                useWorkingCopyParent: false,
+                selectedStartPoint: .branch(name),
+                selectedStartReference: name
+            )
+        }
+    }
+
+    static func commitPickerOptions(
+        selectedStartPoint: GitBranchStartPoint?,
+        recentCommits: [BranchCommitInfo]
+    ) -> [BranchCommitInfo] {
+        guard case .commit(let hash, let message) = selectedStartPoint else {
+            return recentCommits
+        }
+        guard recentCommits.contains(where: { $0.hash == hash }) == false else {
+            return recentCommits
+        }
+        return [BranchCommitInfo(hash: hash, message: message)] + recentCommits
+    }
+
+    private func branchStartReference() -> String? {
+        guard !useWorkingCopyParent else { return nil }
+        switch selectedStartPoint {
+        case .commit(let hash, _):
+            return hash
+        case .branch(let name):
+            return name
+        case nil:
+            return selectedStartReference.isEmpty ? nil : selectedStartReference
+        }
+    }
 
     private func sanitizeBranchName(_ input: String) -> String {
         guard !input.isEmpty else { return "" }

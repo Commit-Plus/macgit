@@ -44,7 +44,7 @@
 - Create: `macgit/Models/GitDragDropModels.swift`
 - Create: `macgit/Services/GitDragDropPolicy.swift`
 
-- [ ] **Step 1: Write failing policy tests**
+- [x] **Step 1: Write failing policy tests**
 
 Cover repository mismatch, commit-to-current acceptance, non-current rejection, merge-commit rejection, one-commit branch creation, and multi-commit branch-creation rejection:
 
@@ -74,7 +74,7 @@ func testMergeCommitIsRejectedForCherryPick() {
 }
 ```
 
-- [ ] **Step 2: Run the test and verify failure**
+- [x] **Step 2: Run the test and verify failure**
 
 ```bash
 xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/GitDragDropPolicyTests
@@ -82,7 +82,7 @@ xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=
 
 Expected: compile failure because the payload and policy types do not exist.
 
-- [ ] **Step 3: Implement the shared model shapes**
+- [x] **Step 3: Implement the shared model shapes**
 
 Create the model with this contract:
 
@@ -154,11 +154,11 @@ nonisolated enum GitDragDropDecision: Equatable, Sendable {
 
 Add factories and accessors for each payload content without force casts.
 
-- [ ] **Step 4: Implement Phase 1 policy cases**
+- [x] **Step 4: Implement Phase 1 policy cases**
 
 First reject mismatched normalized repository paths. Support only `.commits` to the current local branch and exactly one commit to `.branchesHeader`. Reject empty batches, merge commits, non-current branches, and unsupported Phase 2/3 combinations with stable tested messages.
 
-- [ ] **Step 5: Run policy tests and commit**
+- [x] **Step 5: Run policy tests and commit**
 
 ```bash
 xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/GitDragDropPolicyTests
@@ -176,7 +176,7 @@ Expected: tests pass and commit succeeds.
 - Modify: `macgit/Views/Common/View+ClickInteraction.swift`
 - Modify: `macgit/Views/History/HistoryView.swift`
 
-- [ ] **Step 1: Write selection tests**
+- [x] **Step 1: Write selection tests**
 
 Cover plain replacement, Command toggle, Shift visible range, primary hash, pruning after reload, selected-row drag, unselected-row fallback, and oldest-first output:
 
@@ -194,7 +194,7 @@ func testDragSelectionReturnsOldestFirst() {
 }
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 ```bash
 xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/HistoryCommitSelectionTests
@@ -202,19 +202,19 @@ xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=
 
 Expected: compile failure because `HistoryCommitSelection` is missing.
 
-- [ ] **Step 3: Implement selection value**
+- [x] **Step 3: Implement selection value**
 
 Define an `OptionSet` with `.command` and `.shift`. Store `selectedHashes`, `primaryHash`, and `anchorHash`. Shift selects the inclusive visible range; Command toggles; plain click replaces. `draggedHashes` filters visible hashes and reverses the newest-first display order.
 
-- [ ] **Step 4: Pass click modifiers**
+- [x] **Step 4: Pass click modifiers**
 
 Change the left-click bridge to `(NSEvent.ModifierFlags) -> Void`, call it with `event.modifierFlags`, and retain a no-argument overload for source compatibility.
 
-- [ ] **Step 5: Integrate History selection and payload**
+- [x] **Step 5: Integrate History selection and payload**
 
 Add `@State private var commitSelection`. Route row clicks through it, update `selectedCommit` from `primaryHash`, prune after history reload, and attach `.draggable` with a preview showing one subject or `N commits`. Convert selected hashes to `GitDraggedCommit` in normalized oldest-first order.
 
-- [ ] **Step 6: Run focused tests and commit**
+- [x] **Step 6: Run focused tests and commit**
 
 ```bash
 xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/HistoryCommitSelectionTests -only-testing:macgitTests/HistoryViewTests
@@ -231,7 +231,7 @@ git commit -m "feat: add history commit drag selection"
 - Modify: `macgitTests/GitUndoExecutorTests.swift`
 - Modify: `macgitTests/GitUndoHistoryIntegrationTests.swift`
 
-- [ ] **Step 1: Add failing executor and integration tests**
+- [x] **Step 1: Add failing executor and integration tests**
 
 Assert `.cherryPickCommits(commits: ["old", "new"])` records:
 
@@ -241,11 +241,11 @@ GitCommandCall(arguments: ["cherry-pick", "old", "new"], directory: repoURL)
 
 In a real repository, create two feature commits, cherry-pick both, assert both files exist, guarded-reset to old HEAD, redo the batch, and assert both return.
 
-- [ ] **Step 2: Verify tests fail**
+- [x] **Step 2: Verify tests fail**
 
 Run `GitUndoExecutorTests` and `GitUndoHistoryIntegrationTests`. Expected: compile failure because `.cherryPickCommits` is missing.
 
-- [ ] **Step 3: Implement service and undo operation**
+- [x] **Step 3: Implement service and undo operation**
 
 ```swift
 func cherryPickCommits(_ commits: [String], in repositoryURL: URL) async throws {
@@ -258,7 +258,7 @@ func cherryPickCommits(_ commits: [String], in repositoryURL: URL) async throws 
 
 Keep `cherryPickCommit(_:)` as a one-element wrapper. Add `case cherryPickCommits(commits: [String])` and execute one ordered Git command.
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and commit**
 
 ```bash
 xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/GitUndoExecutorTests -only-testing:macgitTests/GitUndoHistoryIntegrationTests
@@ -276,31 +276,31 @@ git commit -m "feat: add batch cherry-pick undo support"
 - Modify: `macgitTests/GitDragDropPolicyTests.swift`
 - Create: `macgitTests/BranchSheetInitialStateTests.swift`
 
-- [ ] **Step 1: Add branch-start resolver tests**
+- [x] **Step 1: Add branch-start resolver tests**
 
 Test `BranchSheetInitialState.resolve(initialStartPoint:recentCommits:)`: a dropped commit sets `useWorkingCopyParent = false`, selects its hash, and inserts it when absent from recent commits.
 
-- [ ] **Step 2: Extend BranchSheetView**
+- [x] **Step 2: Extend BranchSheetView**
 
 Add `initialStartPoint: GitBranchStartPoint? = nil`. Initialize create state from the resolver and ensure `loadCreateData()` preserves the dropped ref rather than replacing it with the newest commit.
 
-- [ ] **Step 3: Build commit confirmation UI**
+- [x] **Step 3: Build commit confirmation UI**
 
 The new sheet receives ordered commits and target branch, lists each short hash and subject, and offers Cancel plus `Cherry-pick N Commits`. It contains no Git calls and disables confirmation while running.
 
-- [ ] **Step 4: Add modern sidebar targets**
+- [x] **Step 4: Add modern sidebar targets**
 
 Add `onRequestGitDrop: (GitDragDropRequest) -> Void`. Attach `dropDestination(for:isEnabled:action:)` to the current branch row and BRANCHES header. Run policy in the action and forward only `.accept`. Use `onDropSessionUpdated`: `.entering` and `.active` show the target treatment; `.exiting`, `.ended`, and `.dataTransferCompleted` clear it.
 
-- [ ] **Step 5: Execute requests in MainWindowView**
+- [x] **Step 5: Execute requests in MainWindowView**
 
 Store pending drag request and branch start point. Before cherry-pick, recheck current branch, `syncState.isAnySyncing`, `syncState.inProgressOperation`, and conflicts. Capture old/new HEAD, call `cherryPickCommits`, and register one reset/redo entry. A create-branch request presents the existing sheet with its initial start point.
 
-- [ ] **Step 6: Handle failure state**
+- [x] **Step 6: Handle failure state**
 
 On conflict, refresh `SyncState`, select File status, show conflict guidance, and register no undo. On branch mismatch or another active operation, show an error without invoking Git.
 
-- [ ] **Step 7: Run focused tests, build, and commit**
+- [x] **Step 7: Run focused tests, build, and commit**
 
 ```bash
 xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/GitDragDropPolicyTests -only-testing:macgitTests/HistoryCommitSelectionTests -only-testing:macgitTests/BranchSheetInitialStateTests -only-testing:macgitTests/GitUndoHistoryIntegrationTests
@@ -314,7 +314,7 @@ git commit -m "feat: confirm commit drag actions"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-06-27-drag-and-drop-roadmap.md`
 
-- [ ] **Step 1: Run full tests**
+- [x] **Step 1: Run full tests**
 
 ```bash
 xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' test

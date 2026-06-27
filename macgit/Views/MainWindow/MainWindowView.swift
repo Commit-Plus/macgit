@@ -12,6 +12,12 @@ struct WindowWidthKey: PreferenceKey {
     }
 }
 
+private struct PendingCommitDropConfirmation: Identifiable, Equatable {
+    let id = UUID()
+    let commits: [GitDraggedCommit]
+    let targetBranch: String
+}
+
 struct MainWindowView: View {
     let repositoryURL: URL
     @EnvironmentObject private var appState: AppState
@@ -26,6 +32,7 @@ struct MainWindowView: View {
     @State private var showingPushSheet = false
     @State private var showingFetchSheet = false
     @State private var showingBranchSheet = false
+    @State private var branchSheetStartPoint: GitBranchStartPoint?
     @State private var showingMergeSheet = false
     @State private var showingStashSheet = false
     @State private var showingCheckoutConfirmation = false
@@ -44,6 +51,7 @@ struct MainWindowView: View {
     @State private var showingRepositorySettings = false
     @State private var repoSettings = RepoSettings.defaults(currentBranch: nil, remotes: [])
     @State private var pendingConfirmedUndo: (entry: GitUndoEntry, action: GitUndoMenuAction)?
+    @State private var pendingCommitDropConfirmation: PendingCommitDropConfirmation?
 
     var body: some View {
         mainContent
@@ -97,11 +105,14 @@ struct MainWindowView: View {
             .sheet(isPresented: $showingPullSheet) { pullSheet }
             .sheet(isPresented: $showingPushSheet) { pushSheet }
             .sheet(isPresented: $showingFetchSheet) { fetchSheet }
-            .sheet(isPresented: $showingBranchSheet) { branchSheet }
+            .sheet(isPresented: $showingBranchSheet, onDismiss: { branchSheetStartPoint = nil }) { branchSheet }
             .sheet(isPresented: $showingMergeSheet) { mergeSheet }
             .sheet(isPresented: $showingStashSheet) { stashSheet }
             .sheet(isPresented: $showingRepositorySettings) { repositorySettingsSheet }
             .sheet(isPresented: stashActionSheetBinding) { stashActionSheet }
+            .sheet(item: $pendingCommitDropConfirmation) { confirmation in
+                commitDropConfirmationSheet(for: confirmation)
+            }
             .sheet(isPresented: $showingCheckoutConfirmation) {
                 CheckoutConfirmationSheet(branchName: branchToCheckout) { stash in
                     Task {
@@ -264,6 +275,9 @@ struct MainWindowView: View {
             },
             onRequestSearch: {
                 showingSearchModal = true
+            },
+            onRequestDragDrop: { request in
+                handleDragDropRequest(request)
             }
         )
         .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 600)
@@ -407,11 +421,38 @@ struct MainWindowView: View {
 
     @ViewBuilder
     private var branchSheet: some View {
-        BranchSheetView(repositoryURL: repositoryURL, undoManager: undoManager) {
+        BranchSheetView(
+            repositoryURL: repositoryURL,
+            undoManager: undoManager,
+            initialStartPoint: branchSheetStartPoint,
+            onCompleted: {
             Task {
                 await syncState.refresh(repositoryURL: repositoryURL)
             }
-        }
+        })
+    }
+
+    @ViewBuilder
+    private func commitDropConfirmationSheet(
+        for confirmation: PendingCommitDropConfirmation
+    ) -> some View {
+        GitDragActionConfirmationSheet(
+            title: "Cherry-pick Commits",
+            message: "This will cherry-pick the selected commits onto the current branch.",
+            targetBranchName: confirmation.targetBranch,
+            commits: confirmation.commits,
+            primaryActionTitle: "Cherry-pick",
+            onConfirm: {
+                let request = confirmation
+                pendingCommitDropConfirmation = nil
+                Task {
+                    await performCommitDropCherryPick(request)
+                }
+            },
+            onCancel: {
+                pendingCommitDropConfirmation = nil
+            }
+        )
     }
 
     @ViewBuilder
@@ -498,7 +539,7 @@ struct MainWindowView: View {
                 BadgeToolbarButton(icon: "arrow.down.to.line", label: "Pull", badgeCount: syncState.pullBadgeCount, isLoading: syncState.isPulling, disabled: syncing, action: { showingPullSheet = true })
                 BadgeToolbarButton(icon: "arrow.up.to.line", label: "Push", badgeCount: syncState.pushBadgeCount, isLoading: syncState.isPushing, disabled: syncing, action: { showingPushSheet = true })
                 toolbarButton(icon: "arrow.down.circle", label: "Fetch", isLoading: syncState.isFetching, disabled: syncing, action: { showingFetchSheet = true })
-                toolbarButton(icon: "arrow.triangle.branch", label: "Branch", action: { showingBranchSheet = true })
+                toolbarButton(icon: "arrow.triangle.branch", label: "Branch", action: { presentBranchSheet(startPoint: nil) })
                 toolbarButton(icon: "arrow.triangle.merge", label: "Merge", isLoading: syncState.isMerging, disabled: syncing, action: { showingMergeSheet = true })
                 toolbarButton(icon: "archivebox", label: "Stash", isLoading: syncState.isStashing, disabled: syncing || syncState.stashableCount == 0, action: { showingStashSheet = true })
             }
@@ -530,7 +571,7 @@ struct MainWindowView: View {
                     .disabled(syncing)
             }
             if windowWidth <= 1000 {
-                Button("Branch") { showingBranchSheet = true }
+                Button("Branch") { presentBranchSheet(startPoint: nil) }
                 Button("Merge") { showingMergeSheet = true }
                     .disabled(syncing)
                 Button("Stash", action: { showingStashSheet = true })
@@ -596,6 +637,72 @@ struct MainWindowView: View {
 
     private func performTagCheckout(tag: String) async {
         await performCheckout(ref: tag, stash: false)
+    }
+
+    private func performCommitDropCherryPick(_ confirmation: PendingCommitDropConfirmation) async {
+        guard !syncState.isAnySyncing else {
+            await MainActor.run {
+                syncState.showInfo("Wait for the current Git operation to finish before dragging commits.")
+            }
+            return
+        }
+
+        let currentBranch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
+        guard currentBranch == confirmation.targetBranch else {
+            await MainActor.run {
+                syncState.showInfo("The current branch changed. Repeat the drag and drop action.")
+            }
+            return
+        }
+
+        let hashes = confirmation.commits.map(\.hash)
+
+        do {
+            let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
+            try await GitStatusService.shared.cherryPickCommits(hashes, in: repositoryURL)
+            await registerHeadChangingUndo(
+                label: hashes.count == 1 ? "Cherry-pick \(confirmation.commits[0].hash.prefix(7))" : "Cherry-pick \(hashes.count) commits",
+                oldHead: oldHead,
+                redoOperation: .cherryPickCommits(commits: hashes)
+            )
+            await syncState.refresh(repositoryURL: repositoryURL)
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+        } catch {
+            await syncState.refresh(repositoryURL: repositoryURL)
+            await MainActor.run {
+                let message = error.localizedDescription
+                if message.uppercased().contains("CONFLICT") {
+                    syncState.showError("Cherry-pick produced conflicts. Resolve them in the File status view, then continue or abort.")
+                } else {
+                    syncState.showError(message)
+                }
+            }
+        }
+    }
+
+    private func registerHeadChangingUndo(
+        label: String,
+        oldHead: String?,
+        redoOperation: GitUndoOperation
+    ) async {
+        guard let oldHead,
+              let newHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL),
+              oldHead != newHead else { return }
+
+        await MainActor.run {
+            undoManager.register(
+                GitUndoEntry(
+                    repositoryURL: repositoryURL,
+                    label: label,
+                    undoOperation: .resetHead(target: oldHead, mode: .hard, expectedHead: newHead),
+                    redoOperation: redoOperation
+                )
+            )
+        }
     }
 
     private func requestStashAction(ref: String, action: StashAction) {
@@ -859,7 +966,7 @@ struct MainWindowView: View {
         case .fetch:
             if !syncing { showingFetchSheet = true }
         case .branch:
-            showingBranchSheet = true
+            presentBranchSheet(startPoint: nil)
         case .merge:
             if !syncing { showingMergeSheet = true }
         case .stash:
@@ -904,6 +1011,25 @@ struct MainWindowView: View {
                 await executeUndoEntry(entry, menuAction: .redo)
             }
         }
+    }
+
+    private func handleDragDropRequest(_ request: GitDragDropRequest) {
+        switch request {
+        case .cherryPick(let commits, let targetBranch):
+            pendingCommitDropConfirmation = PendingCommitDropConfirmation(
+                commits: commits,
+                targetBranch: targetBranch
+            )
+        case .createBranch(let startPoint):
+            presentBranchSheet(startPoint: startPoint)
+        case .branchOperation, .stashFiles, .applyStash:
+            syncState.showInfo("That drag and drop action is not available in Phase 1 yet.")
+        }
+    }
+
+    private func presentBranchSheet(startPoint: GitBranchStartPoint?) {
+        branchSheetStartPoint = startPoint
+        showingBranchSheet = true
     }
 
     private func executeUndoEntry(_ entry: GitUndoEntry, menuAction: GitUndoMenuAction) async {

@@ -108,6 +108,7 @@ struct SidebarView: View {
     let onRequestOpenWorktree: (URL) -> Void
     let onRequestOpenWorktreeInTerminal: (URL) -> Void
     let onRequestSearch: () -> Void
+    let onRequestDragDrop: (GitDragDropRequest) -> Void
 
     @State private var branchNodes: [BranchNode] = []
     @State private var currentBranch: String = ""
@@ -167,6 +168,8 @@ struct SidebarView: View {
     @State private var showingError = false
     @State private var branchToDelete: String?
     @State private var showingDeleteConfirmation = false
+    @State private var activeDropTarget: GitDragTarget?
+    @State private var activeDropLabel: String?
 
     init(
         repositoryURL: URL,
@@ -180,7 +183,8 @@ struct SidebarView: View {
         onRequestDeleteStash: @escaping (String) -> Void = { _ in },
         onRequestOpenWorktree: @escaping (URL) -> Void = { _ in },
         onRequestOpenWorktreeInTerminal: @escaping (URL) -> Void = { _ in },
-        onRequestSearch: @escaping () -> Void = {}
+        onRequestSearch: @escaping () -> Void = {},
+        onRequestDragDrop: @escaping (GitDragDropRequest) -> Void = { _ in }
     ) {
         self.repositoryURL = repositoryURL
         self._selection = selection
@@ -194,6 +198,7 @@ struct SidebarView: View {
         self.onRequestOpenWorktree = onRequestOpenWorktree
         self.onRequestOpenWorktreeInTerminal = onRequestOpenWorktreeInTerminal
         self.onRequestSearch = onRequestSearch
+        self.onRequestDragDrop = onRequestDragDrop
     }
 
     var body: some View {
@@ -424,11 +429,21 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func sectionHeader(_ section: SidebarSection, isExpanded: Bool) -> some View {
-        HStack {
+        let isBranchesDropActive = section == .branches && activeDropTarget == .branchesHeader
+
+        let baseView = HStack {
             Text(section.rawValue)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
             Spacer()
+            if isBranchesDropActive, let activeDropLabel {
+                Text(activeDropLabel)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.12), in: Capsule())
+            }
             if section == .worktrees {
                 Button("Create Worktree", systemImage: "plus") {
                     Task { await prepareCreateWorktreeSheet() }
@@ -458,6 +473,25 @@ struct SidebarView: View {
         .onTapGesture {
             toggleSection(section)
         }
+
+        if section == .branches {
+            baseView
+                .padding(.vertical, 2)
+                .background(isBranchesDropActive ? Color.accentColor.opacity(0.12) : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .onDropSessionUpdated { session in
+                    updateDropHover(
+                        target: .branchesHeader,
+                        label: "Create Branch",
+                        session: session
+                    )
+                }
+                .dropDestination(for: GitDragPayload.self) { items, _ in
+                    handleDrop(items, target: .branchesHeader)
+                }
+        } else {
+            baseView
+        }
     }
 
     private func loadSectionStates() {
@@ -473,6 +507,48 @@ struct SidebarView: View {
         sectionStates = SidebarSettingsStore.shared.state(for: repositoryURL.path)
         Task {
             await loadSectionIfNeeded(section)
+        }
+    }
+
+    private func updateDropHover(
+        target: GitDragTarget,
+        label: String,
+        session: DropSession
+    ) {
+        switch session.phase {
+        case .entering, .active:
+            activeDropTarget = target
+            activeDropLabel = label
+        case .exiting, .dataTransferCompleted, .ended:
+            if activeDropTarget == target {
+                clearDropHover()
+            }
+        @unknown default:
+            clearDropHover()
+        }
+    }
+
+    private func clearDropHover() {
+        activeDropTarget = nil
+        activeDropLabel = nil
+    }
+
+    private func handleDrop(_ items: [GitDragPayload], target: GitDragTarget) {
+        defer { clearDropHover() }
+
+        guard let payload = items.first else { return }
+
+        switch GitDragDropPolicy.decision(
+            for: payload,
+            target: target,
+            receivingRepositoryURL: repositoryURL,
+            optionKeyPressed: false
+        ) {
+        case .accept(let request):
+            onRequestDragDrop(request)
+        case .reject(let reason):
+            errorMessage = reason
+            showingError = true
         }
     }
 
@@ -612,6 +688,12 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func branchRowView(for row: BranchRowItem) -> some View {
+        let branchTarget = GitDragTarget.localBranch(
+            name: row.fullPath,
+            isCurrent: row.fullPath == currentBranch
+        )
+        let isActiveDropRow = activeDropTarget == branchTarget
+
         let baseView = HStack(spacing: 4) {
             HStack(spacing: 0) {
                 ForEach(0..<row.indent, id: \.self) { _ in
@@ -647,6 +729,17 @@ struct SidebarView: View {
             }
         }
         .padding(.vertical, 2)
+        .background(isActiveDropRow ? Color.accentColor.opacity(0.12) : Color.clear)
+        .overlay(alignment: .trailing) {
+            if isActiveDropRow, let activeDropLabel {
+                Text(activeDropLabel)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.12), in: Capsule())
+            }
+        }
         .contentShape(Rectangle())
 
         if row.isFolder {
@@ -655,7 +748,7 @@ struct SidebarView: View {
                     toggleFolder(row.fullPath)
                 }
         } else {
-            baseView
+            let rowView = baseView
                 .tag(SidebarSelection.branch(row.fullPath))
                 .onTapGesture {
                     selection = .branch(row.fullPath)
@@ -668,6 +761,22 @@ struct SidebarView: View {
                 .contextMenu {
                     branchContextMenu(for: row.fullPath)
                 }
+
+            if row.fullPath == currentBranch {
+                rowView
+                    .onDropSessionUpdated { session in
+                        updateDropHover(
+                            target: branchTarget,
+                            label: "Cherry-pick Commits",
+                            session: session
+                        )
+                    }
+                    .dropDestination(for: GitDragPayload.self) { items, _ in
+                        handleDrop(items, target: branchTarget)
+                    }
+            } else {
+                rowView
+            }
         }
     }
 
