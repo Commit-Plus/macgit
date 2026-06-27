@@ -2,3 +2,4 @@
 .worktrees/
 .tmp
 .superpowers/
+.env.local

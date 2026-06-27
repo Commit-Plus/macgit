@@ -55,6 +55,10 @@ extension GitStatusService {
         return DiffParser.parse(output)
     }
 
+    func showFile(at path: String, ref: String, in repositoryURL: URL) async throws -> Data {
+        try await runGitRaw(arguments: ["show", "\(ref):\(path)"], in: repositoryURL)
+    }
+
     func changedFiles(in commit: String, in repositoryURL: URL) async -> [CommitFileChange] {
         let output = (try? await runGit(arguments: ["show", "--name-status", "--format=", commit], in: repositoryURL)) ?? ""
         var changes: [CommitFileChange] = []

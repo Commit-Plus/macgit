@@ -12,12 +12,50 @@ struct DiffView: View {
     let undoManager: GitUndoManager?
     let onRefresh: () -> Void
     let onError: (String) -> Void
+    let filePath: String?
+    let gitRef: String?
+
+    init(
+        hunks: [DiffHunk],
+        file: StatusFile? = nil,
+        repositoryURL: URL? = nil,
+        undoManager: GitUndoManager? = nil,
+        onRefresh: @escaping () -> Void = {},
+        onError: @escaping (String) -> Void = { _ in },
+        filePath: String? = nil,
+        gitRef: String? = nil
+    ) {
+        self.hunks = hunks
+        self.file = file
+        self.repositoryURL = repositoryURL
+        self.undoManager = undoManager
+        self.onRefresh = onRefresh
+        self.onError = onError
+        self.filePath = filePath
+        self.gitRef = gitRef
+    }
 
     @State private var selectedLineIDs: Set<UUID> = []
     @State private var lastSelectedLineID: UUID?
+    @State private var loadedImage: NSImage?
+
+    private static let imageExtensions: Set<String> = [
+        "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp",
+        "tiff", "tif", "ico", "heic", "heif", "raw",
+        "cr2", "nef", "arw", "dng"
+    ]
+
+    private var isImageFile: Bool {
+        if let file = file { return file.isImage }
+        guard let path = filePath else { return false }
+        let ext = (path as NSString).pathExtension.lowercased()
+        return Self.imageExtensions.contains(ext)
+    }
 
     var body: some View {
-        if hunks.isEmpty {
+        if hunks.isEmpty && isImageFile {
+            imagePreview
+        } else if hunks.isEmpty {
             EmptyStateView(message: "No diff to display", detail: "Select a file to see changes")
         } else {
             ScrollView {
@@ -37,6 +75,67 @@ struct DiffView: View {
                 }
                 .padding(.vertical, 12)
                 .padding(.horizontal, 12)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var imagePreview: some View {
+        if let file = file, let url = repositoryURL {
+            let fileURL = url.appendingPathComponent(file.path)
+            diskImagePreview(fileURL: fileURL, filePath: file.path)
+        } else if let ref = gitRef, let url = repositoryURL, let path = filePath {
+            gitImagePreview(ref: ref, url: url, path: path)
+        } else {
+            EmptyStateView(icon: "photo", message: "Unable to preview image")
+        }
+    }
+
+    private func diskImagePreview(fileURL: URL, filePath: String) -> some View {
+        Group {
+            if let nsImage = NSImage(contentsOf: fileURL) {
+                imageDisplayView(nsImage)
+            } else {
+                EmptyStateView(icon: "photo", message: "Unable to preview image", detail: filePath)
+            }
+        }
+    }
+
+    private func gitImagePreview(ref: String, url: URL, path: String) -> some View {
+        Group {
+            if let image = loadedImage {
+                imageDisplayView(image)
+            } else {
+                ProgressView("Loading image…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task {
+            await loadImageFromGit(ref: ref, url: url, path: path)
+        }
+    }
+
+    private func loadImageFromGit(ref: String, url: URL, path: String) async {
+        do {
+            let data = try await GitStatusService.shared.showFile(at: path, ref: ref, in: url)
+            if let image = NSImage(data: data) {
+                loadedImage = image
+            }
+        } catch {
+            onError("Failed to load image: \(error.localizedDescription)")
+        }
+    }
+
+    private func imageDisplayView(_ nsImage: NSImage) -> some View {
+        GeometryReader { geo in
+            ScrollView([.horizontal, .vertical]) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(
+                        maxWidth: max(geo.size.width, CGFloat(nsImage.size.width)),
+                        maxHeight: max(geo.size.height, CGFloat(nsImage.size.height))
+                    )
             }
         }
     }

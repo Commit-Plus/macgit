@@ -32,6 +32,11 @@ actor GitStatusService {
     }
 
     func runGit(arguments: [String], in directory: URL) async throws -> String {
+        let data = try await runGitRaw(arguments: arguments, in: directory)
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    func runGitRaw(arguments: [String], in directory: URL) async throws -> Data {
         let executable = gitExecutable()
         let task = Process()
         task.executableURL = URL(fileURLWithPath: executable)
@@ -48,14 +53,14 @@ actor GitStatusService {
             task.terminationHandler = { process in
                 let outData = stdout.fileHandleForReading.readDataToEndOfFile()
                 let errData = stderr.fileHandleForReading.readDataToEndOfFile()
-                let output = String(data: outData, encoding: .utf8) ?? ""
                 let errorOutput = String(data: errData, encoding: .utf8) ?? ""
 
                 if process.terminationStatus != 0 {
+                    let output = String(data: outData, encoding: .utf8) ?? ""
                     let message = errorOutput.isEmpty ? output : errorOutput
                     continuation.resume(throwing: GitError.commandFailed(message.trimmingCharacters(in: .whitespacesAndNewlines)))
                 } else {
-                    continuation.resume(returning: output)
+                    continuation.resume(returning: outData)
                 }
             }
 

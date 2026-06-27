@@ -129,10 +129,12 @@ struct StashView: View {
                     DiffView(
                         hunks: diffHunks,
                         file: nil,
-                        repositoryURL: nil,
+                        repositoryURL: repositoryURL,
                         undoManager: nil,
                         onRefresh: {},
-                        onError: { _ in }
+                        onError: { _ in },
+                        filePath: file.path,
+                        gitRef: stashRef
                     )
                 }
             } else {
