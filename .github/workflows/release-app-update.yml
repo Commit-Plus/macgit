@@ -1,0 +1,143 @@
+name: Release App Update
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release-app-update-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve package dependencies into a stable checkout path
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project macgit.xcodeproj \
+            -scheme macgit \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
+
+      - name: Validate tag and versions
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$TAG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          PROJECT_VERSION=$(xcodebuild -project macgit.xcodeproj -scheme macgit -showBuildSettings | awk '/MARKETING_VERSION/ { print $3; exit }')
+          test "$TAG_VERSION" = "$PROJECT_VERSION"
+          echo "TAG_VERSION=$TAG_VERSION" >> "$GITHUB_ENV"
+          echo "BUILD_VERSION=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Import signing assets
+        run: scripts/release/import-signing-assets.sh
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+          APPSTORE_CONNECT_KEY_ID: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
+          APPSTORE_CONNECT_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+          APPSTORE_CONNECT_API_KEY_BASE64: ${{ secrets.APPSTORE_CONNECT_API_KEY_BASE64 }}
+
+      - name: Run tests
+        run: xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' test
+
+      - name: Build release archive
+        run: scripts/release/build-release-archive.sh "$TAG_VERSION" "$BUILD_VERSION"
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+
+      - name: Notarize and staple
+        run: scripts/release/notarize-and-staple.sh "$ZIP_PATH" "$APP_PATH"
+        env:
+          APPSTORE_CONNECT_KEY_ID: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
+          APPSTORE_CONNECT_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+
+      - name: Verify release metadata
+        run: scripts/release/verify-release-metadata.sh "$APP_PATH" "$TAG_VERSION" "$BUILD_VERSION" "${{ vars.SPARKLE_FEED_URL }}"
+
+      - name: Create stable GitHub Release
+        id: create_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$ZIP_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
+          RELEASE_IS_STABLE=$(gh release view "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease \
+            --jq '(.isDraft == false) and (.isPrerelease == false)')
+          test "$RELEASE_IS_STABLE" = "true"
+          RELEASE_ASSET_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ZIP_NAME}"
+          echo "release_asset_url=$RELEASE_ASSET_URL" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_ASSET_URL=$RELEASE_ASSET_URL" >> "$GITHUB_ENV"
+
+      - name: Verify public release asset
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error --location "$RELEASE_ASSET_URL" --output /dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Release asset did not become reachable in time" >&2
+          exit 1
+
+      - name: Generate appcast
+        run: scripts/release/generate-appcast.sh "$GITHUB_REF_NAME" "$ZIP_NAME" "$ZIP_PATH" "$RUNNER_TEMP/appcast.xml"
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SPARKLE_ED25519_PRIVATE_KEY: ${{ secrets.SPARKLE_ED25519_PRIVATE_KEY }}
+
+      - name: Prepare GitHub Pages artifact
+        run: |
+          mkdir -p "$RUNNER_TEMP/pages"
+          cp "$RUNNER_TEMP/appcast.xml" "$RUNNER_TEMP/pages/appcast.xml"
+          cat <<'EOF' > "$RUNNER_TEMP/pages/index.html"
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>Commit+ App Updates</title>
+          </head>
+          <body>
+            <p>This site hosts the stable Sparkle appcast for Commit+.</p>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5.0.0
+        with:
+          path: ${{ runner.temp }}/pages
+
+      - name: Clean up signing materials
+        if: always()
+        run: |
+          rm -f "$APPSTORE_CONNECT_API_KEY_PATH"
+          rm -f "$RUNNER_TEMP/developer-id-application.p12"
+          security delete-keychain "$KEYCHAIN_PATH" || true
+
+  deploy_pages:
+    needs: release
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6.0.0
+
+      - name: Deploy Pages site
+        id: deployment
+        uses: actions/deploy-pages@v5.0.0

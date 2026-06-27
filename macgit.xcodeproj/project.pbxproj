@@ -357,7 +357,7 @@
 				INFOPLIST_KEY_SUAllowsAutomaticUpdates = NO;
 				INFOPLIST_KEY_SUAutomaticallyUpdate = NO;
 				INFOPLIST_KEY_SUEnableAutomaticChecks = YES;
-				INFOPLIST_KEY_SUFeedURL = "https://thanhtran.github.io/macgit/appcast.xml";
+				INFOPLIST_KEY_SUFeedURL = "https://tranthanh98.github.io/macgit/appcast.xml";
 				INFOPLIST_KEY_SUPublicEDKey = "$(SPARKLE_PUBLIC_ED_KEY)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -395,7 +395,7 @@
 				INFOPLIST_KEY_SUAllowsAutomaticUpdates = NO;
 				INFOPLIST_KEY_SUAutomaticallyUpdate = NO;
 				INFOPLIST_KEY_SUEnableAutomaticChecks = YES;
-				INFOPLIST_KEY_SUFeedURL = "https://thanhtran.github.io/macgit/appcast.xml";
+				INFOPLIST_KEY_SUFeedURL = "https://tranthanh98.github.io/macgit/appcast.xml";
 				INFOPLIST_KEY_SUPublicEDKey = "$(SPARKLE_PUBLIC_ED_KEY)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
