@@ -94,6 +94,8 @@ enum SidebarBranchSyncBadgeResolver {
 }
 
 struct SidebarView: View {
+    @EnvironmentObject private var appUpdateController: AppUpdateController
+
     let repositoryURL: URL
     @Binding var selection: SidebarSelection?
     let undoManager: GitUndoManager?
@@ -195,219 +197,227 @@ struct SidebarView: View {
     }
 
     var body: some View {
-        List(selection: $selection) {
-            Section(SidebarSection.workspace.rawValue) {
-                ForEach(SidebarSection.workspace.items) { item in
-                    if item == .search {
-                        Label(item.rawValue, systemImage: item.icon)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                onRequestSearch()
+        VStack(spacing: 0) {
+            if let model = UpdateBannerView.Model.make(for: appUpdateController.state) {
+                UpdateBannerView(model: model) {
+                    appUpdateController.openUpdateWindow()
+                }
+            }
+
+            List(selection: $selection) {
+                Section(SidebarSection.workspace.rawValue) {
+                    ForEach(SidebarSection.workspace.items) { item in
+                        if item == .search {
+                            Label(item.rawValue, systemImage: item.icon)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    onRequestSearch()
+                                }
+                        } else {
+                            Label(item.rawValue, systemImage: item.icon)
+                                .tag(SidebarSelection.item(item))
+                        }
+                    }
+                }
+
+                Section {
+                    if sectionStates.branchesExpanded {
+                        if isLoadingBranches && branchNodes.isEmpty {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, 4)
+                        } else if branchNodes.isEmpty {
+                            Text("No branches")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            if currentBranch.isEmpty && !headHash.isEmpty {
+                                headRowView
                             }
-                    } else {
-                        Label(item.rawValue, systemImage: item.icon)
-                            .tag(SidebarSelection.item(item))
-                    }
-                }
-            }
 
-            Section {
-                if sectionStates.branchesExpanded {
-                    if isLoadingBranches && branchNodes.isEmpty {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.leading, 4)
-                    } else if branchNodes.isEmpty {
-                        Text("No branches")
+                            ForEach(visibleBranchRows) { row in
+                                branchRowView(for: row)
+                            }
+                        }
+                    }
+                } header: {
+                    sectionHeader(.branches, isExpanded: sectionStates.branchesExpanded)
+                }
+
+                Section {
+                    if sectionStates.worktreesExpanded {
+                        if isLoadingWorktrees && worktreeEntries.isEmpty {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, 4)
+                        } else if worktreeEntries.isEmpty {
+                            Text("No worktrees")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(worktreeEntries) { entry in
+                                worktreeRowView(for: entry)
+                            }
+                        }
+                    }
+                } header: {
+                    sectionHeader(.worktrees, isExpanded: sectionStates.worktreesExpanded)
+                }
+
+                Section {
+                    if sectionStates.tagsExpanded {
+                        if isLoadingTags && tagNodes.isEmpty {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, 4)
+                        } else if tagNodes.isEmpty {
+                            Text("No tags")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(visibleTagRows) { row in
+                                tagRowView(for: row)
+                            }
+                        }
+                    }
+                } header: {
+                    sectionHeader(.tags, isExpanded: sectionStates.tagsExpanded)
+                }
+
+                Section {
+                    if sectionStates.remotesExpanded {
+                        if isLoadingRemotes && remoteNodes.isEmpty {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, 4)
+                        } else if remoteNodes.isEmpty {
+                            Text("No remotes")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(visibleRemoteRows) { row in
+                                remoteRowView(for: row)
+                            }
+                        }
+                    }
+                } header: {
+                    sectionHeader(.remotes, isExpanded: sectionStates.remotesExpanded)
+                }
+
+                Section {
+                    if sectionStates.stashesExpanded {
+                        if isLoadingStashes && stashEntries.isEmpty {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, 4)
+                        } else if stashEntries.isEmpty {
+                            Text("No stashes")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(stashEntries) { stash in
+                                stashRowView(for: stash)
+                            }
+                        }
+                    }
+                } header: {
+                    sectionHeader(.stashes, isExpanded: sectionStates.stashesExpanded)
+                }
+
+                ForEach([SidebarSection.submodules, .subtrees], id: \.self) { section in
+                    Section(section.rawValue) {
+                        Text("Coming soon")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                    } else {
-                        if currentBranch.isEmpty && !headHash.isEmpty {
-                            headRowView
-                        }
-
-                        ForEach(visibleBranchRows) { row in
-                            branchRowView(for: row)
-                        }
+                    }
+                    .disabled(true)
+                }
+            }
+            .listStyle(.sidebar)
+            .task(id: repositoryURL) {
+                loadSectionStates()
+                resetLazySectionData()
+                await loadVisibleSections(force: false)
+                await loadTags()
+                await loadRemotes()
+                await loadStashes()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { notification in
+                if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
+                    Task {
+                        await loadVisibleSections(force: true)
+                        await loadTags()
+                        await loadRemotes()
+                        await loadStashes()
                     }
                 }
-            } header: {
-                sectionHeader(.branches, isExpanded: sectionStates.branchesExpanded)
             }
-
-            Section {
-                if sectionStates.worktreesExpanded {
-                    if isLoadingWorktrees && worktreeEntries.isEmpty {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.leading, 4)
-                    } else if worktreeEntries.isEmpty {
-                        Text("No worktrees")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(worktreeEntries) { entry in
-                            worktreeRowView(for: entry)
-                        }
+            .alert("Error", isPresented: $showingError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorMessage)
+            }
+            .alert("Delete Branch", isPresented: $showingDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) {
+                    if let branch = branchToDelete {
+                        Task { await deleteBranch(branch) }
                     }
                 }
-            } header: {
-                sectionHeader(.worktrees, isExpanded: sectionStates.worktreesExpanded)
+            } message: {
+                Text("Are you sure you want to delete the branch '\(branchToDelete ?? "")'?")
             }
-
-            Section {
-                if sectionStates.tagsExpanded {
-                    if isLoadingTags && tagNodes.isEmpty {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.leading, 4)
-                    } else if tagNodes.isEmpty {
-                        Text("No tags")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(visibleTagRows) { row in
-                            tagRowView(for: row)
-                        }
+            .alert("Remove Worktree", isPresented: $showingWorktreeRemovalConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button(worktreeRemovalNeedsForce ? "Force Remove" : "Remove", role: .destructive) {
+                    if let entry = pendingWorktreeRemoval {
+                        Task { await removeWorktree(entry, force: worktreeRemovalNeedsForce) }
                     }
                 }
-            } header: {
-                sectionHeader(.tags, isExpanded: sectionStates.tagsExpanded)
+            } message: {
+                Text(worktreeRemovalMessage)
             }
-
-            Section {
-                if sectionStates.remotesExpanded {
-                    if isLoadingRemotes && remoteNodes.isEmpty {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.leading, 4)
-                    } else if remoteNodes.isEmpty {
-                        Text("No remotes")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(visibleRemoteRows) { row in
-                            remoteRowView(for: row)
-                        }
+            .alert("Force Switch Branch", isPresented: $showingWorktreeForceCheckoutConfirmation) {
+                Button("Cancel", role: .cancel) {
+                    pendingWorktreeForceCheckout = nil
+                }
+                Button("Force Switch", role: .destructive) {
+                    if let entry = pendingWorktreeForceCheckout {
+                        Task { await checkoutWorktree(entry, force: true) }
                     }
                 }
-            } header: {
-                sectionHeader(.remotes, isExpanded: sectionStates.remotesExpanded)
+            } message: {
+                Text("This worktree has uncommitted changes. Force checkout and discard conflicting changes?")
             }
-
-            Section {
-                if sectionStates.stashesExpanded {
-                    if isLoadingStashes && stashEntries.isEmpty {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.leading, 4)
-                    } else if stashEntries.isEmpty {
-                        Text("No stashes")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(stashEntries) { stash in
-                            stashRowView(for: stash)
-                        }
-                    }
+            .alert("Prune Worktrees", isPresented: $showingPruneWorktreesConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Prune", role: .destructive) {
+                    Task { await pruneWorktrees() }
                 }
-            } header: {
-                sectionHeader(.stashes, isExpanded: sectionStates.stashesExpanded)
+            } message: {
+                Text("Remove stale worktree metadata and orphaned labels for paths that no longer exist?")
             }
-
-            ForEach([SidebarSection.submodules, .subtrees], id: \.self) { section in
-                Section(section.rawValue) {
-                    Text("Coming soon")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .disabled(true)
+            .sheet(item: $worktreeToLabel) { _ in
+                worktreeLabelSheet
             }
-        }
-        .listStyle(.sidebar)
-        .task(id: repositoryURL) {
-            loadSectionStates()
-            resetLazySectionData()
-            await loadVisibleSections(force: false)
-            await loadTags()
-            await loadRemotes()
-            await loadStashes()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { notification in
-            if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
-                Task {
-                    await loadVisibleSections(force: true)
-                    await loadTags()
-                    await loadRemotes()
-                    await loadStashes()
-                }
+            .sheet(item: $worktreeToLock) { _ in
+                worktreeLockSheet
             }
-        }
-        .alert("Error", isPresented: $showingError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(errorMessage)
-        }
-        .alert("Delete Branch", isPresented: $showingDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) {
-                if let branch = branchToDelete {
-                    Task { await deleteBranch(branch) }
-                }
+            .sheet(item: $worktreeToMove) { _ in
+                worktreeMoveSheet
             }
-        } message: {
-            Text("Are you sure you want to delete the branch '\(branchToDelete ?? "")'?")
-        }
-        .alert("Remove Worktree", isPresented: $showingWorktreeRemovalConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button(worktreeRemovalNeedsForce ? "Force Remove" : "Remove", role: .destructive) {
-                if let entry = pendingWorktreeRemoval {
-                    Task { await removeWorktree(entry, force: worktreeRemovalNeedsForce) }
-                }
+            .sheet(item: $worktreeToCheckout) { _ in
+                worktreeCheckoutSheet
             }
-        } message: {
-            Text(worktreeRemovalMessage)
-        }
-        .alert("Force Switch Branch", isPresented: $showingWorktreeForceCheckoutConfirmation) {
-            Button("Cancel", role: .cancel) {
-                pendingWorktreeForceCheckout = nil
+            .sheet(isPresented: $showingCreateWorktreeSheet) {
+                createWorktreeSheet
             }
-            Button("Force Switch", role: .destructive) {
-                if let entry = pendingWorktreeForceCheckout {
-                    Task { await checkoutWorktree(entry, force: true) }
-                }
-            }
-        } message: {
-            Text("This worktree has uncommitted changes. Force checkout and discard conflicting changes?")
-        }
-        .alert("Prune Worktrees", isPresented: $showingPruneWorktreesConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Prune", role: .destructive) {
-                Task { await pruneWorktrees() }
-            }
-        } message: {
-            Text("Remove stale worktree metadata and orphaned labels for paths that no longer exist?")
-        }
-        .sheet(item: $worktreeToLabel) { _ in
-            worktreeLabelSheet
-        }
-        .sheet(item: $worktreeToLock) { _ in
-            worktreeLockSheet
-        }
-        .sheet(item: $worktreeToMove) { _ in
-            worktreeMoveSheet
-        }
-        .sheet(item: $worktreeToCheckout) { _ in
-            worktreeCheckoutSheet
-        }
-        .sheet(isPresented: $showingCreateWorktreeSheet) {
-            createWorktreeSheet
         }
     }
 
