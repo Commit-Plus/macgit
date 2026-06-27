@@ -1,0 +1,71 @@
+# Drag and Drop Git Actions Roadmap
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Deliver a safe subset of Tower-style drag-and-drop actions in three independently useful phases.
+
+**Architecture:** A repository-scoped `GitDragPayload` and pure `GitDragDropPolicy` connect drag sources in History, File status, and the sidebar to confirmation requests owned by `MainWindowView`. Git execution remains in `GitStatusService`, and every successful mutation uses the existing undo, refresh, and `.repositoryDidChange` conventions.
+
+**Tech Stack:** Swift, SwiftUI `Transferable`, SwiftUI drag/drop APIs, XCTest, real temporary Git repositories, `xcodebuild`.
+
+**Design spec:** [2026-06-27-drag-and-drop-design.md](../specs/2026-06-27-drag-and-drop-design.md)
+
+---
+
+## Plan Index
+
+- Phase 1: [pending] [2026-06-27-drag-and-drop-phase-1-commit-drag.md](2026-06-27-drag-and-drop-phase-1-commit-drag.md)
+- Phase 2: [pending] [2026-06-27-drag-and-drop-phase-2-branch-drag.md](2026-06-27-drag-and-drop-phase-2-branch-drag.md)
+- Phase 3: [pending] [2026-06-27-drag-and-drop-phase-3-stash-drag.md](2026-06-27-drag-and-drop-phase-3-stash-drag.md)
+
+## Recommended Order
+
+1. Phase 1 establishes the shared payload, validation policy, History multi-selection, current-branch drop target, confirmation UI, and batch cherry-pick undo.
+2. Phase 2 extends those types and targets with local-branch sources, Merge/Rebase confirmation, and branch-based Create Branch preselection.
+3. Phase 3 adds the independent File status and stash payloads after the shared infrastructure is proven.
+
+Do not start a phase until every earlier phase is merged to `main`, committed, and passing the full test suite. Implement each phase in its own `.worktrees/drag-and-drop-phase-N-*` checkout on a `codex/drag-and-drop-phase-N-*` branch created from the latest `main`.
+
+## Shared Rules
+
+- A drop never silently checks out another branch.
+- Commit and branch actions accept only the current local branch as destination.
+- A drop opens confirmation; Git does not run from a hover or drop callback.
+- Payload repository paths must match the receiving window's standardized repository path.
+- Remote branches and merge-commit cherry-picks are rejected in v1.
+- Original Git actions register undo only after successful completion.
+- Successful actions refresh `SyncState` and post `.repositoryDidChange`.
+- Conflicted cherry-pick, merge, and rebase actions expose existing in-progress/conflict UI and do not register undo.
+- Use macOS 26 `dropDestination(for:isEnabled:action:)` and `onDropSessionUpdated(_:)`, not the deprecated targeted overload.
+- Run focused tests during development and the full `xcodebuild ... test` command before marking a phase completed.
+- Do not launch the app after build/test verification.
+
+## Phase Outcomes
+
+### After Phase 1
+
+- Plain, Command, and Shift commit selection works in the custom History graph list.
+- Dragging selected non-merge commits onto the current branch opens batch cherry-pick confirmation.
+- Dragging one commit onto BRANCHES opens Create Branch with that commit selected.
+- A completed batch cherry-pick has one guarded undo/redo entry.
+
+### After Phase 2
+
+- Non-current local branches are draggable.
+- Dropping a local branch onto the current branch confirms Merge by default or Rebase when Option is held.
+- Dropping a local branch onto BRANCHES opens Create Branch with that branch as the start point.
+- Merge and rebase use existing guarded HEAD-changing undo behavior.
+
+### After Phase 3
+
+- Dragging a selected File status row carries the selected path set.
+- Dropping files on STASHES confirms a path-scoped stash that includes only selected untracked files.
+- Stash redo preserves the same path list.
+- Dropping a stash on File status confirms Apply and retains the stash.
+
+## Completion Checklist
+
+- [ ] Phase 1 merged to `main`, roadmap marker updated with merge commit, full tests green.
+- [ ] Phase 2 merged to `main`, roadmap marker updated with merge commit, full tests green.
+- [ ] Phase 3 merged to `main`, roadmap marker updated with merge commit, full tests green.
+- [ ] Manual QA covers drag previews, target labels, Option-drop, invalid targets, and VoiceOver labels.
