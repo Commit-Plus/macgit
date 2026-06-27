@@ -322,7 +322,7 @@ xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS
 
 Expected: `** TEST SUCCEEDED **`.
 
-- [ ] **Step 2: Mark Phase 1 completed and commit**
+- [x] **Step 2: Mark Phase 1 completed and commit**
 
 Change the marker to `[completed]` with branch metadata; append the merge commit after landing on `main`.
 
@@ -331,6 +331,6 @@ git add docs/superpowers/plans/2026-06-27-drag-and-drop-roadmap.md
 git commit -m "docs: complete drag and drop phase 1"
 ```
 
-- [ ] **Step 3: Merge and verify main**
+- [x] **Step 3: Merge and verify main**
 
 Merge the verified branch into `main`, rerun full tests on the root checkout, and do not begin Phase 2 until it passes.

@@ -14,7 +14,7 @@
 
 ## Plan Index
 
-- Phase 1: [in progress] [2026-06-27-drag-and-drop-phase-1-commit-drag.md](2026-06-27-drag-and-drop-phase-1-commit-drag.md) (branch: `codex/drag-and-drop-phase-1-commit-drag`, worktree: `.worktrees/drag-and-drop-phase-1-commit-drag`, Tasks 1-3 merged to `main` at `6494741`; confirmation/drop-target UI still pending)
+- Phase 1: [completed] [2026-06-27-drag-and-drop-phase-1-commit-drag.md](2026-06-27-drag-and-drop-phase-1-commit-drag.md) (branch: `codex/drag-and-drop-phase-1-commit-drag`, landed on `main` at `517fa81`; Tasks 1-3 were merged earlier at `6494741`)
 - Phase 2: [pending] [2026-06-27-drag-and-drop-phase-2-branch-drag.md](2026-06-27-drag-and-drop-phase-2-branch-drag.md)
 - Phase 3: [pending] [2026-06-27-drag-and-drop-phase-3-stash-drag.md](2026-06-27-drag-and-drop-phase-3-stash-drag.md)
 
@@ -65,7 +65,7 @@ Do not start a phase until every earlier phase is merged to `main`, committed, a
 
 ## Completion Checklist
 
-- [ ] Phase 1 merged to `main`, roadmap marker updated with merge commit, full tests green.
+- [x] Phase 1 merged to `main`, roadmap marker updated with merge commit, full tests green.
 - [ ] Phase 2 merged to `main`, roadmap marker updated with merge commit, full tests green.
 - [ ] Phase 3 merged to `main`, roadmap marker updated with merge commit, full tests green.
 - [ ] Manual QA covers drag previews, target labels, Option-drop, invalid targets, and VoiceOver labels.
