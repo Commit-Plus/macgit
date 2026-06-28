@@ -105,16 +105,82 @@ final class GitDragDropPolicyTests: XCTestCase {
         )
     }
 
+    func testBranchCanMergeIntoCurrentBranch() {
+        XCTAssertEqual(
+            decision(
+                payload: .branch("feature", repositoryURL: repoURL),
+                target: .localBranch(name: "main", isCurrent: true)
+            ),
+            .accept(.branchOperation(source: "feature", target: "main", operation: .merge))
+        )
+    }
+
+    func testBranchOptionDropCanRebaseCurrentBranch() {
+        XCTAssertEqual(
+            decision(
+                payload: .branch("feature", repositoryURL: repoURL),
+                target: .localBranch(name: "main", isCurrent: true),
+                optionKeyPressed: true
+            ),
+            .accept(.branchOperation(source: "feature", target: "main", operation: .rebase))
+        )
+    }
+
+    func testBranchSelfDropIsRejected() {
+        XCTAssertEqual(
+            decision(
+                payload: .branch("main", repositoryURL: repoURL),
+                target: .localBranch(name: "main", isCurrent: true)
+            ),
+            .reject("Drop a different branch onto the current branch.")
+        )
+    }
+
+    func testBranchDropIsRejectedOnNonCurrentTarget() {
+        XCTAssertEqual(
+            decision(
+                payload: .branch("feature", repositoryURL: repoURL),
+                target: .localBranch(name: "release", isCurrent: false)
+            ),
+            .reject("Drop branches only on the current branch.")
+        )
+    }
+
+    func testBranchCanCreateBranchFromBranchesHeader() {
+        XCTAssertEqual(
+            decision(
+                payload: .branch("feature", repositoryURL: repoURL),
+                target: .branchesHeader
+            ),
+            .accept(.createBranch(startPoint: .branch("feature")))
+        )
+    }
+
     private func decision(
         commits: [GitDraggedCommit],
         target: GitDragTarget = .localBranch(name: "main", isCurrent: true),
         repositoryURL: URL = URL(fileURLWithPath: "/tmp/repo")
     ) -> GitDragDropDecision {
-        GitDragDropPolicy.decision(
-            for: .commits(commits, repositoryURL: repositoryURL),
+        decision(
+            payload: .commits(commits, repositoryURL: repositoryURL),
             target: target,
-            receivingRepositoryURL: repositoryURL,
-            optionKeyPressed: false
+            receivingRepositoryURL: repositoryURL
         )
     }
+
+    private func decision(
+        payload: GitDragPayload,
+        target: GitDragTarget,
+        receivingRepositoryURL: URL? = nil,
+        optionKeyPressed: Bool = false
+    ) -> GitDragDropDecision {
+        GitDragDropPolicy.decision(
+            for: payload,
+            target: target,
+            receivingRepositoryURL: receivingRepositoryURL ?? repoURL,
+            optionKeyPressed: optionKeyPressed
+        )
+    }
+
+    private let repoURL = URL(fileURLWithPath: "/tmp/repo")
 }

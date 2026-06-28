@@ -18,6 +18,13 @@ private struct PendingCommitDropConfirmation: Identifiable, Equatable {
     let targetBranch: String
 }
 
+private struct PendingBranchDropConfirmation: Identifiable, Equatable {
+    let id = UUID()
+    let sourceBranch: String
+    let targetBranch: String
+    var operation: GitDragBranchOperation
+}
+
 struct MainWindowView: View {
     let repositoryURL: URL
     @EnvironmentObject private var appState: AppState
@@ -52,6 +59,8 @@ struct MainWindowView: View {
     @State private var repoSettings = RepoSettings.defaults(currentBranch: nil, remotes: [])
     @State private var pendingConfirmedUndo: (entry: GitUndoEntry, action: GitUndoMenuAction)?
     @State private var pendingCommitDropConfirmation: PendingCommitDropConfirmation?
+    @State private var pendingBranchDropConfirmation: PendingBranchDropConfirmation?
+    @State private var isPerformingBranchDropOperation = false
 
     var body: some View {
         mainContent
@@ -112,6 +121,9 @@ struct MainWindowView: View {
             .sheet(isPresented: stashActionSheetBinding) { stashActionSheet }
             .sheet(item: $pendingCommitDropConfirmation) { confirmation in
                 commitDropConfirmationSheet(for: confirmation)
+            }
+            .sheet(item: $pendingBranchDropConfirmation) { confirmation in
+                branchDropConfirmationSheet(for: confirmation)
             }
             .sheet(isPresented: $showingCheckoutConfirmation) {
                 CheckoutConfirmationSheet(branchName: branchToCheckout) { stash in
@@ -456,6 +468,38 @@ struct MainWindowView: View {
     }
 
     @ViewBuilder
+    private func branchDropConfirmationSheet(
+        for confirmation: PendingBranchDropConfirmation
+    ) -> some View {
+        GitDragActionConfirmationSheet(
+            title: "Merge or Rebase Branch",
+            message: "Review the branch action before continuing.",
+            sourceBranchName: confirmation.sourceBranch,
+            targetBranchName: confirmation.targetBranch,
+            commits: [],
+            primaryActionTitle: "Continue",
+            selectedBranchOperation: Binding(
+                get: { pendingBranchDropConfirmation?.operation ?? confirmation.operation },
+                set: { newValue in
+                    guard var pending = pendingBranchDropConfirmation else { return }
+                    pending.operation = newValue
+                    pendingBranchDropConfirmation = pending
+                }
+            ),
+            onConfirm: {
+                guard let request = pendingBranchDropConfirmation else { return }
+                pendingBranchDropConfirmation = nil
+                Task {
+                    await performBranchDropOperation(request)
+                }
+            },
+            onCancel: {
+                pendingBranchDropConfirmation = nil
+            }
+        )
+    }
+
+    @ViewBuilder
     private var mergeSheet: some View {
         MergeSheetView(repositoryURL: repositoryURL) { branch, message, options in
             Task {
@@ -679,6 +723,113 @@ struct MainWindowView: View {
                     syncState.showError("Cherry-pick produced conflicts. Resolve them in the File status view, then continue or abort.")
                 } else {
                     syncState.showError(message)
+                }
+            }
+        }
+    }
+
+    private func performBranchDropOperation(_ confirmation: PendingBranchDropConfirmation) async {
+        guard !syncState.isAnySyncing, !isPerformingBranchDropOperation else {
+            await MainActor.run {
+                syncState.showInfo("Wait for the current Git operation to finish before dragging branches.")
+            }
+            return
+        }
+
+        let currentBranch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
+        guard currentBranch == confirmation.targetBranch else {
+            await MainActor.run {
+                syncState.showInfo("The current branch changed. Repeat the drag and drop action.")
+            }
+            return
+        }
+
+        guard confirmation.sourceBranch != confirmation.targetBranch else {
+            await MainActor.run {
+                syncState.showInfo("Drop a different branch onto the current branch.")
+            }
+            return
+        }
+
+        if await GitStatusService.shared.hasConflicts(in: repositoryURL) {
+            await MainActor.run {
+                selectedItem = .item(.fileStatus)
+                syncState.showConflict("There are unresolved merge conflicts. Please resolve them before proceeding.")
+            }
+            return
+        }
+
+        let inProgressOperation = await GitStatusService.shared.inProgressOperation(in: repositoryURL)
+        guard inProgressOperation == nil else {
+            await MainActor.run {
+                syncState.showInfo("Finish the current Git operation before dragging branches.")
+            }
+            return
+        }
+
+        let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
+
+        await MainActor.run {
+            isPerformingBranchDropOperation = true
+        }
+        defer {
+            Task { @MainActor in
+                isPerformingBranchDropOperation = false
+            }
+        }
+
+        do {
+            switch confirmation.operation {
+            case .merge:
+                try await GitStatusService.shared.mergeCommit(
+                    confirmation.sourceBranch,
+                    noCommit: false,
+                    log: false,
+                    in: repositoryURL
+                )
+            case .rebase:
+                try await GitStatusService.shared.rebaseCommit(
+                    confirmation.sourceBranch,
+                    in: repositoryURL
+                )
+            }
+
+            await registerHeadChangingUndo(
+                label: confirmation.operation == .merge
+                    ? "Merge \(confirmation.sourceBranch)"
+                    : "Rebase onto \(confirmation.sourceBranch)",
+                oldHead: oldHead,
+                redoOperation: confirmation.operation == .merge
+                    ? .mergeCommit(commit: confirmation.sourceBranch, noCommit: false, log: false)
+                    : .rebaseOnto(commit: confirmation.sourceBranch)
+            )
+            await syncState.refresh(repositoryURL: repositoryURL)
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+        } catch {
+            await syncState.refresh(repositoryURL: repositoryURL)
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+
+            let hasConflicts = await GitStatusService.shared.hasConflicts(in: repositoryURL)
+            let inProgressAfterFailure = await GitStatusService.shared.inProgressOperation(in: repositoryURL)
+
+            await MainActor.run {
+                if hasConflicts || inProgressAfterFailure != nil {
+                    selectedItem = .item(.fileStatus)
+                    syncState.showConflict(
+                        confirmation.operation == .merge
+                            ? "Merge conflicts occurred during Merge. Please resolve them in the File status view."
+                            : "Rebase conflicts occurred during Rebase. Please resolve them in the File status view."
+                    )
+                } else {
+                    syncState.showError(error.localizedDescription)
                 }
             }
         }
@@ -1020,9 +1171,15 @@ struct MainWindowView: View {
                 commits: commits,
                 targetBranch: targetBranch
             )
+        case .branchOperation(let source, let target, let operation):
+            pendingBranchDropConfirmation = PendingBranchDropConfirmation(
+                sourceBranch: source,
+                targetBranch: target,
+                operation: operation
+            )
         case .createBranch(let startPoint):
             presentBranchSheet(startPoint: startPoint)
-        case .branchOperation, .stashFiles, .applyStash:
+        case .stashFiles, .applyStash:
             syncState.showInfo("That drag and drop action is not available in Phase 1 yet.")
         }
     }

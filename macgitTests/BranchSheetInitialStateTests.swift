@@ -54,4 +54,16 @@ final class BranchSheetInitialStateTests: XCTestCase {
         XCTAssertEqual(state.selectedStartPoint, .commit(hash: "deadbeef", message: "Detached selection"))
         XCTAssertEqual(state.selectedStartReference, "deadbeef")
     }
+
+    func testBranchStartPointAppearsInPickerOptionsWhenNotPresentInRecentCommits() {
+        let options = BranchSheetView.commitPickerOptions(
+            selectedStartPoint: .branch("feature"),
+            recentCommits: [
+                BranchCommitInfo(hash: "abc123", message: "Latest commit")
+            ]
+        )
+
+        XCTAssertEqual(options.first?.hash, "feature")
+        XCTAssertEqual(options.first?.message, "Branch")
+    }
 }

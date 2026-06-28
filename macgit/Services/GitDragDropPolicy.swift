@@ -15,7 +15,9 @@ enum GitDragDropPolicy {
         switch payload.content {
         case .commits(let commits):
             return commitDecision(commits: commits, target: target)
-        case .branch, .files, .stash:
+        case .branch(let source):
+            return branchDecision(source: source, target: target, optionKeyPressed: optionKeyPressed)
+        case .files, .stash:
             return .reject("That drag and drop action is not available yet.")
         }
     }
@@ -43,6 +45,35 @@ enum GitDragDropPolicy {
                 return .reject("Select one commit to create a branch.")
             }
             return .accept(.createBranch(startPoint: .commit(hash: commit.hash, message: commit.message)))
+
+        case .stashesHeader, .fileStatus:
+            return .reject("That drag and drop action is not available yet.")
+        }
+    }
+
+    nonisolated private static func branchDecision(
+        source: String,
+        target: GitDragTarget,
+        optionKeyPressed: Bool
+    ) -> GitDragDropDecision {
+        switch target {
+        case .localBranch(let name, let isCurrent):
+            guard isCurrent else {
+                return .reject("Drop branches only on the current branch.")
+            }
+            guard source != name else {
+                return .reject("Drop a different branch onto the current branch.")
+            }
+            return .accept(
+                .branchOperation(
+                    source: source,
+                    target: name,
+                    operation: optionKeyPressed ? .rebase : .merge
+                )
+            )
+
+        case .branchesHeader:
+            return .accept(.createBranch(startPoint: .branch(source)))
 
         case .stashesHeader, .fileStatus:
             return .reject("That drag and drop action is not available yet.")

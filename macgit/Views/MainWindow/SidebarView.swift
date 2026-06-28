@@ -533,7 +533,11 @@ struct SidebarView: View {
         activeDropLabel = nil
     }
 
-    private func handleDrop(_ items: [GitDragPayload], target: GitDragTarget) {
+    private func handleDrop(
+        _ items: [GitDragPayload],
+        target: GitDragTarget,
+        optionKeyPressed: Bool = false
+    ) {
         defer { clearDropHover() }
 
         guard let payload = items.first else { return }
@@ -542,7 +546,7 @@ struct SidebarView: View {
             for: payload,
             target: target,
             receivingRepositoryURL: repositoryURL,
-            optionKeyPressed: false
+            optionKeyPressed: optionKeyPressed
         ) {
         case .accept(let request):
             onRequestDragDrop(request)
@@ -761,23 +765,40 @@ struct SidebarView: View {
                 .contextMenu {
                     branchContextMenu(for: row.fullPath)
                 }
+                .draggable(
+                    GitDragPayload.branch(
+                        row.fullPath,
+                        repositoryURL: repositoryURL
+                    )
+                )
 
             if row.fullPath == currentBranch {
                 rowView
                     .onDropSessionUpdated { session in
                         updateDropHover(
                             target: branchTarget,
-                            label: "Cherry-pick Commits",
+                            label: currentBranchDropLabel(),
                             session: session
                         )
                     }
                     .dropDestination(for: GitDragPayload.self) { items, _ in
-                        handleDrop(items, target: branchTarget)
+                        handleDrop(
+                            items,
+                            target: branchTarget,
+                            optionKeyPressed: NSEvent.modifierFlags.contains(.option)
+                        )
                     }
             } else {
                 rowView
             }
         }
+    }
+
+    private func currentBranchDropLabel() -> String {
+        if NSEvent.modifierFlags.contains(.option) {
+            return "Rebase or Cherry-pick"
+        }
+        return "Merge or Cherry-pick"
     }
 
     @ViewBuilder

@@ -584,13 +584,22 @@ struct BranchSheetView: View {
         selectedStartPoint: GitBranchStartPoint?,
         recentCommits: [BranchCommitInfo]
     ) -> [BranchCommitInfo] {
-        guard case .commit(let hash, let message) = selectedStartPoint else {
+        guard let selectedStartPoint else {
             return recentCommits
         }
-        guard recentCommits.contains(where: { $0.hash == hash }) == false else {
-            return recentCommits
+
+        switch selectedStartPoint {
+        case .commit(let hash, let message):
+            guard recentCommits.contains(where: { $0.hash == hash }) == false else {
+                return recentCommits
+            }
+            return [BranchCommitInfo(hash: hash, message: message)] + recentCommits
+        case .branch(let name):
+            guard recentCommits.contains(where: { $0.hash == name }) == false else {
+                return recentCommits
+            }
+            return [BranchCommitInfo(hash: name, message: "Branch")] + recentCommits
         }
-        return [BranchCommitInfo(hash: hash, message: message)] + recentCommits
     }
 
     private func branchStartReference() -> String? {

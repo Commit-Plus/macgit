@@ -15,7 +15,7 @@
 ## Plan Index
 
 - Phase 1: [completed] [2026-06-27-drag-and-drop-phase-1-commit-drag.md](2026-06-27-drag-and-drop-phase-1-commit-drag.md) (branch: `codex/drag-and-drop-phase-1-commit-drag`, landed on `main` at `517fa81`; Tasks 1-3 were merged earlier at `6494741`)
-- Phase 2: [pending] [2026-06-27-drag-and-drop-phase-2-branch-drag.md](2026-06-27-drag-and-drop-phase-2-branch-drag.md)
+- Phase 2: [in progress] [2026-06-27-drag-and-drop-phase-2-branch-drag.md](2026-06-27-drag-and-drop-phase-2-branch-drag.md) (worktree: `drag-and-drop-phase-2-branch-drag`, branch: `codex/drag-and-drop-phase-2-branch-drag`)
 - Phase 3: [pending] [2026-06-27-drag-and-drop-phase-3-stash-drag.md](2026-06-27-drag-and-drop-phase-3-stash-drag.md)
 
 ## Recommended Order
