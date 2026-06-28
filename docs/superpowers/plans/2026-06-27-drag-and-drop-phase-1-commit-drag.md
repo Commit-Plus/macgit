@@ -206,13 +206,15 @@ Expected: compile failure because `HistoryCommitSelection` is missing.
 
 Define an `OptionSet` with `.command` and `.shift`. Store `selectedHashes`, `primaryHash`, and `anchorHash`. Shift selects the inclusive visible range; Command toggles; plain click replaces. `draggedHashes` filters visible hashes and reverses the newest-first display order.
 
-- [x] **Step 4: Pass click modifiers**
+- [x] **Step 4: Pass click modifiers without intercepting native dragging**
 
-Change the left-click bridge to `(NSEvent.ModifierFlags) -> Void`, call it with `event.modifierFlags`, and retain a no-argument overload for source compatibility.
+Use a native SwiftUI tap gesture and read `NSEvent.modifierFlags` when applying History row selection. Do not place the custom `NSViewRepresentable` click overlay above a draggable row: it becomes the AppKit hit-test target and prevents SwiftUI's drag recognizer from starting the preview session.
 
-- [x] **Step 5: Integrate History selection and payload**
+- [x] **Step 5: Integrate History selection, payload, and polished preview**
 
-Add `@State private var commitSelection`. Route row clicks through it, update `selectedCommit` from `primaryHash`, prune after history reload, and attach `.draggable` with a preview showing one subject or `N commits`. Convert selected hashes to `GitDraggedCommit` in normalized oldest-first order.
+Add `@State private var commitSelection`. Route row clicks through it, update `selectedCommit` from `primaryHash`, prune after history reload, and attach `.draggable` with a commit card preview. The card shows subject, short hash, author, and relative time; multi-selection uses stacked cards with an `N commits` badge. Track the active drag hashes so source rows dim for the duration of the drag. Convert selected hashes to `GitDraggedCommit` in normalized oldest-first order.
+
+Pointer-following preview visibility, source-row dimming through drop/cancel, and appearance in light and dark mode require manual pointer-level QA; unit tests cover the preview presentation data but cannot inspect the native drag image lifecycle.
 
 - [x] **Step 6: Run focused tests and commit**
 

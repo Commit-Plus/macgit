@@ -68,4 +68,5 @@ Do not start a phase until every earlier phase is merged to `main`, committed, a
 - [x] Phase 1 merged to `main`, roadmap marker updated with merge commit, full tests green.
 - [x] Phase 2 merged to `main`, roadmap marker updated with merge commit, full tests green.
 - [ ] Phase 3 merged to `main`, roadmap marker updated with merge commit, full tests green.
-- [ ] Manual QA covers drag previews, target labels, Option-drop, invalid targets, and VoiceOver labels.
+- [ ] Manual pointer-level QA verifies the commit preview card appears immediately, follows the pointer, shows stacked multi-commit state, dims all source rows, and clears dimming after drop or cancel in light and dark mode.
+- [ ] Remaining manual QA covers target labels, Option-drop, invalid targets, and VoiceOver labels.

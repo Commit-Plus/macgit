@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import macgit
 
@@ -133,25 +134,58 @@ final class HistoryViewTests: XCTestCase {
         )
     }
 
-    func testDragPreviewTitleUsesPluralCountForMultiSelection() {
+    func testNativeCommitTapPreservesCommandSelection() {
         let commits = [
             makeCommit(hash: "newest", message: "Newest"),
             makeCommit(hash: "oldest", message: "Oldest")
         ]
-        let selection = HistoryCommitSelection(
-            selectedHashes: ["newest", "oldest"],
+        var selection = HistoryCommitSelection(
+            selectedHashes: ["newest"],
             primaryHash: "newest",
-            anchorHash: "oldest"
+            anchorHash: "newest"
         )
 
-        XCTAssertEqual(
-            HistoryView.dragPreviewTitle(
-                startingAt: "newest",
-                commits: commits,
-                selection: selection
-            ),
-            "2 commits"
+        let selectedCommit = HistoryView.selectCommitFromNativeTap(
+            "oldest",
+            modifierFlags: [.command],
+            commits: commits,
+            selection: &selection
         )
+
+        XCTAssertEqual(selection.selectedHashes, ["newest", "oldest"])
+        XCTAssertEqual(selection.primaryHash, "oldest")
+        XCTAssertEqual(selectedCommit?.hash, "oldest")
+    }
+
+    func testSingleCommitDragPreviewIncludesCommitMetadata() {
+        let date = Date(timeIntervalSince1970: 1_234)
+        let commit = Commit(
+            hash: "1234567890abcdef",
+            parents: [],
+            message: "Polish commit drag preview",
+            author: "Taylor",
+            email: "taylor@example.com",
+            date: date,
+            refs: []
+        )
+
+        let presentation = CommitDragPreviewPresentation(commit: commit, commitCount: 1)
+
+        XCTAssertEqual(presentation.subject, "Polish commit drag preview")
+        XCTAssertEqual(presentation.shortHash, "1234567")
+        XCTAssertEqual(presentation.author, "Taylor")
+        XCTAssertEqual(presentation.date, date)
+        XCTAssertFalse(presentation.showsStack)
+        XCTAssertNil(presentation.countBadgeText)
+    }
+
+    func testMultiCommitDragPreviewShowsStackAndCountBadge() {
+        let commit = makeCommit(hash: "newest", message: "Newest")
+
+        let presentation = CommitDragPreviewPresentation(commit: commit, commitCount: 3)
+
+        XCTAssertTrue(presentation.showsStack)
+        XCTAssertEqual(presentation.countBadgeText, "3 commits")
     }
 
     private func makeCommit(

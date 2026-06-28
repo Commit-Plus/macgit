@@ -9,6 +9,7 @@ struct CommitRowView: View {
     let commit: Commit
     let graphWidth: CGFloat
     let isSelected: Bool
+    let isDragActive: Bool
     let messageWidth: CGFloat
     let authorWidth: CGFloat
     let dateWidth: CGFloat
@@ -79,6 +80,7 @@ struct CommitRowView: View {
         .padding(.trailing, 16)
         .frame(height: 24)
         .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+        .opacity(isDragActive ? 0.4 : 1)
         .contentShape(Rectangle())
     }
 }
