@@ -733,7 +733,13 @@ struct SidebarView: View {
             }
         }
         .padding(.vertical, 2)
-        .background(isActiveDropRow ? Color.accentColor.opacity(0.12) : Color.clear)
+        .background(isActiveDropRow ? Color.accentColor.opacity(0.24) : Color.clear)
+        .overlay {
+            if isActiveDropRow {
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(Color.accentColor.opacity(0.7), lineWidth: 1)
+            }
+        }
         .overlay(alignment: .trailing) {
             if isActiveDropRow, let activeDropLabel {
                 Text(activeDropLabel)
@@ -772,26 +778,26 @@ struct SidebarView: View {
                     )
                 )
 
-            if row.fullPath == currentBranch {
-                rowView
-                    .onDropSessionUpdated { session in
-                        updateDropHover(
-                            target: branchTarget,
-                            label: currentBranchDropLabel(),
-                            session: session
-                        )
-                    }
-                    .dropDestination(for: GitDragPayload.self) { items, _ in
-                        handleDrop(
-                            items,
-                            target: branchTarget,
-                            optionKeyPressed: NSEvent.modifierFlags.contains(.option)
-                        )
-                    }
-            } else {
-                rowView
-            }
+            rowView
+                .onDropSessionUpdated { session in
+                    updateDropHover(
+                        target: branchTarget,
+                        label: branchDropLabel(isCurrent: row.fullPath == currentBranch),
+                        session: session
+                    )
+                }
+                .dropDestination(for: GitDragPayload.self) { items, _ in
+                    handleDrop(
+                        items,
+                        target: branchTarget,
+                        optionKeyPressed: NSEvent.modifierFlags.contains(.option)
+                    )
+                }
         }
+    }
+
+    private func branchDropLabel(isCurrent: Bool) -> String {
+        isCurrent ? currentBranchDropLabel() : "Cherry-pick Commits"
     }
 
     private func currentBranchDropLabel() -> String {

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Select one or more non-merge commits in History, drag them onto the current branch to confirm a batch cherry-pick, or drag one commit onto BRANCHES to create a branch from it.
+**Goal:** Select one or more non-merge commits in History, drag them onto any local branch to confirm a batch cherry-pick, or drag one commit onto BRANCHES to create a branch from it.
 
 **Architecture:** Introduce one repository-scoped transferable payload, a pure drop policy, and a testable History selection value. `SidebarView` validates and forwards drops; `MainWindowView` owns confirmation and execution; Git services and the undo executor own batch cherry-pick commands and guarded undo/redo.
 
@@ -30,7 +30,7 @@
 - Modify `macgit/Services/GitUndoModels.swift` and `GitUndoExecutor.swift`: batch cherry-pick redo.
 - Create `macgit/Views/Common/GitDragActionConfirmationSheet.swift`: commit confirmation.
 - Modify `macgit/Views/Common/BranchSheetView.swift`: initial branch start ref.
-- Modify `macgit/Views/MainWindow/SidebarView.swift`: current branch and BRANCHES targets.
+- Modify `macgit/Views/MainWindow/SidebarView.swift`: local branch and BRANCHES targets.
 - Modify `macgit/Views/MainWindow/MainWindowView.swift`: request coordination and execution.
 - Create `macgitTests/GitDragDropPolicyTests.swift` and `HistoryCommitSelectionTests.swift`.
 - Create `macgitTests/BranchSheetInitialStateTests.swift`: dropped commit preselection.
@@ -46,7 +46,7 @@
 
 - [x] **Step 1: Write failing policy tests**
 
-Cover repository mismatch, commit-to-current acceptance, non-current rejection, merge-commit rejection, one-commit branch creation, and multi-commit branch-creation rejection:
+Cover repository mismatch, commit-to-current acceptance, commit-to-non-current acceptance, merge-commit rejection, one-commit branch creation, and multi-commit branch-creation rejection:
 
 ```swift
 func testCommitsCanDropOnCurrentBranchInSameRepository() {
@@ -156,7 +156,7 @@ Add factories and accessors for each payload content without force casts.
 
 - [x] **Step 4: Implement Phase 1 policy cases**
 
-First reject mismatched normalized repository paths. Support only `.commits` to the current local branch and exactly one commit to `.branchesHeader`. Reject empty batches, merge commits, non-current branches, and unsupported Phase 2/3 combinations with stable tested messages.
+First reject mismatched normalized repository paths. Support `.commits` to any local branch and exactly one commit to `.branchesHeader`. Reject empty batches, merge commits, and unsupported Phase 2/3 combinations with stable tested messages.
 
 - [x] **Step 5: Run policy tests and commit**
 
@@ -292,15 +292,15 @@ The new sheet receives ordered commits and target branch, lists each short hash 
 
 - [x] **Step 4: Add modern sidebar targets**
 
-Add `onRequestGitDrop: (GitDragDropRequest) -> Void`. Attach `dropDestination(for:isEnabled:action:)` to the current branch row and BRANCHES header. Run policy in the action and forward only `.accept`. Use `onDropSessionUpdated`: `.entering` and `.active` show the target treatment; `.exiting`, `.ended`, and `.dataTransferCompleted` clear it.
+Add `onRequestGitDrop: (GitDragDropRequest) -> Void`. Attach `dropDestination(for:isEnabled:action:)` to every local branch row and the BRANCHES header. Run policy in the action and forward only `.accept`. Use `onDropSessionUpdated`: `.entering` and `.active` show a strong fill, border, and action label; `.exiting`, `.ended`, and `.dataTransferCompleted` clear it.
 
 - [x] **Step 5: Execute requests in MainWindowView**
 
-Store pending drag request and branch start point. Before cherry-pick, recheck current branch, `syncState.isAnySyncing`, `syncState.inProgressOperation`, and conflicts. Capture old/new HEAD, call `cherryPickCommits`, and register one reset/redo entry. A create-branch request presents the existing sheet with its initial start point.
+Store pending drag request and branch start point. Before cherry-pick, recheck `syncState.isAnySyncing`, `syncState.inProgressOperation`, and conflicts. Capture the target branch HEAD, check out a non-current target after confirmation, call `cherryPickCommits`, and register one reset/redo entry. A create-branch request presents the existing sheet with its initial start point.
 
 - [x] **Step 6: Handle failure state**
 
-On conflict, refresh `SyncState`, select File status, show conflict guidance, and register no undo. On branch mismatch or another active operation, show an error without invoking Git.
+On conflict, refresh `SyncState`, select File status, show conflict guidance, and register no undo. If the target branch disappeared or another operation is active, show an error without cherry-picking.
 
 - [x] **Step 7: Run focused tests, build, and commit**
 

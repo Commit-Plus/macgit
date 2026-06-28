@@ -52,6 +52,26 @@ final class GitUndoHistoryIntegrationTests: XCTestCase {
         )
     }
 
+    func testCherryPickOntoNonCurrentBranchChecksOutTarget() async throws {
+        let repoURL = try makeRepoWithTwoFeatureCommits()
+        let mainHead = try runGitOutput(["rev-parse", "main"], in: repoURL)
+        let featureHead = try runGitOutput(["rev-parse", "feature"], in: repoURL)
+        let firstFeatureHead = try runGitOutput(["rev-parse", "feature~1"], in: repoURL)
+        try runGit(["branch", "release"], in: repoURL)
+
+        try await GitStatusService.shared.cherryPickCommits(
+            [firstFeatureHead, featureHead],
+            onto: "release",
+            in: repoURL
+        )
+
+        XCTAssertEqual(try runGitOutput(["branch", "--show-current"], in: repoURL), "release")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: repoURL.appendingPathComponent("feature-one.txt").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: repoURL.appendingPathComponent("feature-two.txt").path))
+        XCTAssertEqual(try runGitOutput(["rev-parse", "main"], in: repoURL), mainHead)
+        XCTAssertEqual(try runGitOutput(["rev-parse", "feature"], in: repoURL), featureHead)
+    }
+
     func testRevertUndoResetsToOldHead() async throws {
         let repoURL = try makeTempRepo()
         try "changed\n".write(to: repoURL.appendingPathComponent("tracked.txt"), atomically: true, encoding: .utf8)

@@ -450,7 +450,7 @@ struct MainWindowView: View {
     ) -> some View {
         GitDragActionConfirmationSheet(
             title: "Cherry-pick Commits",
-            message: "This will cherry-pick the selected commits onto the current branch.",
+            message: "macgit will check out the target branch if needed, then cherry-pick the selected commits.",
             targetBranchName: confirmation.targetBranch,
             commits: confirmation.commits,
             primaryActionTitle: "Cherry-pick",
@@ -691,19 +691,18 @@ struct MainWindowView: View {
             return
         }
 
-        let currentBranch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
-        guard currentBranch == confirmation.targetBranch else {
-            await MainActor.run {
-                syncState.showInfo("The current branch changed. Repeat the drag and drop action.")
-            }
-            return
-        }
-
         let hashes = confirmation.commits.map(\.hash)
 
         do {
-            let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
-            try await GitStatusService.shared.cherryPickCommits(hashes, in: repositoryURL)
+            let oldHead = await GitStatusService.shared.tipHash(
+                for: confirmation.targetBranch,
+                in: repositoryURL
+            )
+            try await GitStatusService.shared.cherryPickCommits(
+                hashes,
+                onto: confirmation.targetBranch,
+                in: repositoryURL
+            )
             await registerHeadChangingUndo(
                 label: hashes.count == 1 ? "Cherry-pick \(confirmation.commits[0].hash.prefix(7))" : "Cherry-pick \(hashes.count) commits",
                 oldHead: oldHead,

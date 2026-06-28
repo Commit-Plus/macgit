@@ -107,6 +107,18 @@ extension GitStatusService {
         _ = try await runGit(arguments: ["cherry-pick"] + commits, in: repositoryURL)
     }
 
+    func cherryPickCommits(
+        _ commits: [String],
+        onto targetBranch: String,
+        in repositoryURL: URL
+    ) async throws {
+        let currentBranch = await currentBranch(in: repositoryURL)
+        if currentBranch != targetBranch {
+            try await checkoutCommit(targetBranch, in: repositoryURL)
+        }
+        try await cherryPickCommits(commits, in: repositoryURL)
+    }
+
     func mergeCommit(_ commit: String, noCommit: Bool = false, log: Bool = false, in repositoryURL: URL) async throws {
         var arguments = ["merge"]
         if noCommit { arguments.append("--no-commit") }

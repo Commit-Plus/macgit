@@ -31,10 +31,7 @@ enum GitDragDropPolicy {
         }
 
         switch target {
-        case .localBranch(let name, let isCurrent):
-            guard isCurrent else {
-                return .reject("Drop commits only on the current branch.")
-            }
+        case .localBranch(let name, _):
             guard commits.allSatisfy({ !$0.isMerge }) else {
                 return .reject("Merge commits are not supported by drag and drop yet.")
             }

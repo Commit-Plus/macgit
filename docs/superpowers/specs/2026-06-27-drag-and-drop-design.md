@@ -12,7 +12,7 @@ Reference: [Tower - More Productive with Drag and Drop](https://www.git-tower.co
 
 ## V1 Scope
 
-1. Select and drag one or more commits from History onto the currently checked-out branch to cherry-pick them.
+1. Select and drag one or more commits from History onto any local branch to cherry-pick them.
 2. Drag a local branch onto the currently checked-out branch and confirm either Merge or Rebase.
 3. Drag one commit or one local branch onto the BRANCHES header to open Create Branch with the dragged ref as its starting point.
 4. Drag one or more selected working-copy files onto the STASHES header to stash only those paths.
@@ -20,7 +20,7 @@ Reference: [Tower - More Productive with Drag and Drop](https://www.git-tower.co
 
 ## Safety Boundary
 
-Commit and branch operation drops are accepted only by the currently checked-out local branch. macgit never checks out another branch as a side effect of a drop. A non-current branch can be dragged as a source, but it cannot accept commit, merge, or rebase drops.
+Commit drops are accepted by any local branch. After explicit confirmation, macgit checks out a non-current target before cherry-picking and leaves that branch checked out. Branch merge and rebase drops remain limited to the currently checked-out branch.
 
 Every accepted drop opens a confirmation sheet before Git runs. Merge is the default branch operation; holding Option while dropping preselects Rebase. Stash-to-working-copy is Apply-only in v1, while Pop remains available through the existing context menu.
 
@@ -47,7 +47,7 @@ Add a typed `GitDragPayload` conforming to `Transferable`. Supported payloads ar
 
 Every payload includes the standardized repository path. Drop validation rejects payloads created by another repository or window.
 
-Add a pure `GitDragDropPolicy` that maps a payload and target to an allowed action or a rejection reason. It owns current-branch-only checks, payload cardinality, accepted target combinations, and source/target equality checks. It does not run Git commands or present UI.
+Add a pure `GitDragDropPolicy` that maps a payload and target to an allowed action or a rejection reason. It owns branch-operation target checks, payload cardinality, accepted target combinations, and source/target equality checks. It does not run Git commands or present UI.
 
 ### View Responsibilities
 
@@ -70,8 +70,9 @@ This keeps drag decoration close to each row while avoiding Git execution logic 
 - Dragging a selected row carries the full selection.
 - Dragging an unselected row carries only that commit.
 - A batch is normalized into oldest-first History order before cherry-pick.
-- The current branch row highlights while the payload is over a valid target and shows a concise `Cherry-pick N commits` action label.
+- Every local branch row highlights with a distinct fill and border while a commit payload is over it and shows a concise cherry-pick action label.
 - Dropping opens a confirmation that lists the target branch and ordered commits.
+- Confirming a non-current target checks out that branch before cherry-picking and leaves it checked out.
 
 Multi-selection applies only to drag actions in v1. The detail panel continues to show the primary selected commit.
 
@@ -160,7 +161,7 @@ Arguments are passed through `Process.arguments`; no shell command strings are c
 Before execution, macgit verifies:
 
 - The payload repository matches the open repository.
-- The destination branch is still current.
+- The commit destination branch still exists locally; merge/rebase destinations are still current.
 - The source branch is not the current branch.
 - The payload has the cardinality required by the target.
 - No incompatible cherry-pick, merge, rebase, or conflict resolution is already in progress.
@@ -175,7 +176,7 @@ Invalid hover targets do not accept the drop. Valid targets use an accent highli
 
 - Add `GitDragPayload`, drop targets, and pure validation policy.
 - Add testable History multi-selection semantics.
-- Drag one or more commits onto the current branch to confirm and cherry-pick oldest-first.
+- Drag one or more commits onto any local branch to confirm and cherry-pick oldest-first.
 - Drag one commit onto BRANCHES to open Create Branch with the commit preselected.
 - Add batch cherry-pick undo/redo support.
 

@@ -20,7 +20,7 @@
 
 ## Recommended Order
 
-1. Phase 1 establishes the shared payload, validation policy, History multi-selection, current-branch drop target, confirmation UI, and batch cherry-pick undo.
+1. Phase 1 establishes the shared payload, validation policy, History multi-selection, local-branch drop targets, confirmation UI, and batch cherry-pick undo.
 2. Phase 2 extends those types and targets with local-branch sources, Merge/Rebase confirmation, and branch-based Create Branch preselection.
 3. Phase 3 adds the independent File status and stash payloads after the shared infrastructure is proven.
 
@@ -28,8 +28,8 @@ Do not start a phase until every earlier phase is merged to `main`, committed, a
 
 ## Shared Rules
 
-- A drop never silently checks out another branch.
-- Commit and branch actions accept only the current local branch as destination.
+- A non-current commit target is checked out only after explicit cherry-pick confirmation.
+- Commit actions accept any local branch; branch merge/rebase actions accept only the current branch.
 - A drop opens confirmation; Git does not run from a hover or drop callback.
 - Payload repository paths must match the receiving window's standardized repository path.
 - Remote branches and merge-commit cherry-picks are rejected in v1.
@@ -45,7 +45,8 @@ Do not start a phase until every earlier phase is merged to `main`, committed, a
 ### After Phase 1
 
 - Plain, Command, and Shift commit selection works in the custom History graph list.
-- Dragging selected non-merge commits onto the current branch opens batch cherry-pick confirmation.
+- Dragging selected non-merge commits onto any local branch highlights that row and opens batch cherry-pick confirmation.
+- Confirming a non-current target checks it out before cherry-picking and leaves it checked out.
 - Dragging one commit onto BRANCHES opens Create Branch with that commit selected.
 - A completed batch cherry-pick has one guarded undo/redo entry.
 
@@ -68,5 +69,5 @@ Do not start a phase until every earlier phase is merged to `main`, committed, a
 - [x] Phase 1 merged to `main`, roadmap marker updated with merge commit, full tests green.
 - [x] Phase 2 merged to `main`, roadmap marker updated with merge commit, full tests green.
 - [ ] Phase 3 merged to `main`, roadmap marker updated with merge commit, full tests green.
-- [ ] Manual pointer-level QA verifies the commit preview card appears immediately, follows the pointer, shows stacked multi-commit state, dims all source rows, and clears dimming after drop or cancel in light and dark mode.
+- [ ] Manual pointer-level QA verifies the commit preview follows the pointer, every local branch gets a dark hover highlight and label, dropping opens confirmation for that branch, and dimming clears after drop or cancel in light and dark mode.
 - [ ] Remaining manual QA covers target labels, Option-drop, invalid targets, and VoiceOver labels.
