@@ -51,6 +51,7 @@ struct HistoryView: View {
     @State private var scrollTarget: String? = nil
     @State private var rowFrames: [String: CGRect] = [:]
     @State private var paging = HistoryPagingState(pageSize: HistoryView.historyPageSize)
+    @State private var historyCache: [String: HistorySnapshot] = [:]
     
     // MARK: - Context menu confirmation / sheet state
     @State private var showingResetConfirmation = false
@@ -145,6 +146,7 @@ struct HistoryView: View {
         .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { notification in
             if let url = notification.userInfo?["repositoryURL"] as? URL,
                url == repositoryURL {
+                historyCache.removeAll()
                 Task {
                     await loadHistory(reset: true)
                 }
@@ -830,6 +832,14 @@ struct HistoryView: View {
     // MARK: - Data Loading
 
     private func loadHistory(reset: Bool) async {
+        let cacheKey = historyLoadKey
+        if reset, let cached = historyCache[cacheKey] {
+            await MainActor.run {
+                applyCachedSnapshot(cached)
+            }
+            return
+        }
+
         isLoading = true
         defer { isLoading = false }
         if reset {
@@ -937,7 +947,37 @@ struct HistoryView: View {
             }
             paging.finishLoadingMore(loaded: newCommits.count)
             cancelHistoryRefreshIndicator()
+
+            historyCache[cacheKey] = HistorySnapshot(
+                commits: loadedCommits,
+                graphModel: newGraphModel,
+                selectedCommitHash: selectedCommit?.hash
+            )
         }
+    }
+
+    private func applyCachedSnapshot(_ snapshot: HistorySnapshot) {
+        cancelHistoryRefreshIndicator()
+        paging.reset()
+        paging.finishLoadingMore(loaded: snapshot.commits.count)
+        scrollTarget = snapshot.selectedCommitHash
+        rowFrames = [:]
+
+        commits = snapshot.commits
+        graphModel = snapshot.graphModel
+
+        let visibleHashes = snapshot.commits.map(\.hash)
+        commitSelection.prune(visibleHashes: visibleHashes)
+        if let cachedHash = snapshot.selectedCommitHash,
+           snapshot.commits.contains(where: { $0.hash == cachedHash }) {
+            commitSelection.select(cachedHash, modifiers: [], visibleHashes: visibleHashes)
+        } else if commitSelection.selectedHashes.isEmpty, let first = snapshot.commits.first {
+            commitSelection.select(first.hash, modifiers: [], visibleHashes: visibleHashes)
+        }
+        selectedCommit = Self.commit(withHash: commitSelection.primaryHash, in: snapshot.commits)
+
+        isLoading = false
+        isRefreshingHistory = false
     }
 
     private func loadOlderHistoryIfNeeded() async {
@@ -1298,6 +1338,12 @@ struct HistoryView: View {
         case allBranches
         case currentBranch
         case ref(String)
+    }
+
+    struct HistorySnapshot {
+        let commits: [Commit]
+        let graphModel: CommitGraphModel
+        let selectedCommitHash: String?
     }
 
     static func historyScope(selectedBranch: String?, showAllBranches: Bool) -> HistoryScope {

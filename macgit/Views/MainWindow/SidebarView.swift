@@ -78,7 +78,7 @@ struct BranchNode: Identifiable, Hashable {
     var children: [BranchNode]
 }
 
-struct BranchRowItem: Identifiable {
+struct BranchRowItem: Identifiable, Equatable {
     let id: UUID
     let name: String
     let fullPath: String
@@ -777,66 +777,27 @@ struct SidebarView: View {
             isCurrent: isCurrentBranch
         )
         let isActiveDropRow = isCurrentBranch && isCurrentBranchDropTargeted
+        let headBadgeVisible = isCurrentBranch && !row.isFolder
+        let resolvedSyncStatus = SidebarBranchSyncBadgeResolver.status(
+            for: row.fullPath,
+            currentBranch: currentBranch,
+            branchSyncStatus: branchSyncStatus,
+            currentBranchFallbackSyncStatus: isCurrentBranch ? currentBranchFallbackSyncStatus : nil
+        )
 
-        let baseView = HStack(spacing: 4) {
-            HStack(spacing: 0) {
-                ForEach(0..<row.indent, id: \.self) { _ in
-                    Color.clear
-                        .frame(width: 16)
-                }
-            }
-
-            if row.isFolder {
-                Image(systemName: expandedFolders.contains(row.fullPath) ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16, alignment: .center)
-            } else if isCurrentBranch {
-                Image(systemName: "circle.fill")
-                    .font(.system(size: 7))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 16, alignment: .center)
-            } else {
-                Color.clear
-                    .frame(width: 16)
-            }
-
-            Text(row.name)
-                .font(.system(size: 12))
-                .fontWeight(isCurrentBranch && !row.isFolder ? .bold : .regular)
-                .lineLimit(1)
-
-            Spacer()
-
-            if !row.isFolder {
-                if isCurrentBranch {
-                    headBadgeView
-                }
-                syncBadge(for: row.fullPath)
-            }
-        }
-        .padding(.vertical, 2)
-        .background(isActiveDropRow ? Color.accentColor.opacity(0.24) : Color.clear)
-        .overlay {
-            if isActiveDropRow {
-                RoundedRectangle(cornerRadius: 5)
-                    .stroke(Color.accentColor.opacity(0.7), lineWidth: 1)
-            }
-        }
-        .overlay(alignment: .trailing) {
-            if isActiveDropRow {
-                Text(currentBranchDropLabel())
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.12), in: Capsule())
-            }
-        }
-        .contentShape(Rectangle())
+        let content = BranchRowContent(
+            row: row,
+            isCurrentBranch: isCurrentBranch,
+            isActiveDropRow: isActiveDropRow,
+            dropLabel: isActiveDropRow ? currentBranchDropLabel() : "",
+            isBranchSyncing: isBranchSyncing(row.fullPath),
+            syncStatus: resolvedSyncStatus,
+            headBadgeVisible: headBadgeVisible,
+            folderIsExpanded: expandedFolders.contains(row.fullPath)
+        )
 
         if row.isFolder {
-            baseView
+            content
                 .onTapGesture {
                     toggleFolder(row.fullPath)
                 }
@@ -844,7 +805,7 @@ struct SidebarView: View {
                     folderContextMenu(for: row.fullPath)
                 }
         } else {
-            let rowView = baseView
+            let rowView = content
                 .tag(SidebarSelection.branch(row.fullPath))
                 .onTapGesture {
                     selection = .branch(row.fullPath)
@@ -866,15 +827,15 @@ struct SidebarView: View {
 
             if isCurrentBranch {
                 rowView
-                    .onDrop(
-                        of: [.macgitGitDragPayload],
-                        isTargeted: $isCurrentBranchDropTargeted
-                    ) { providers in
+                    .dropDestination(for: GitDragPayload.self) { items, _ in
                         handleDrop(
-                            providers,
+                            items,
                             target: branchTarget,
                             optionKeyPressed: NSEvent.modifierFlags.contains(.option)
                         )
+                        return true
+                    } isTargeted: { isTargeted in
+                        isCurrentBranchDropTargeted = isTargeted
                     }
             } else {
                 rowView
@@ -887,15 +848,6 @@ struct SidebarView: View {
             return "Rebase or Cherry-pick"
         }
         return "Merge or Cherry-pick"
-    }
-
-    private var headBadgeView: some View {
-        Text("HEAD")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(.quaternary.opacity(0.5), in: Capsule())
     }
 
     @ViewBuilder
@@ -1083,54 +1035,6 @@ struct SidebarView: View {
                     onRequestDeleteStash(stash.ref)
                 }
             }
-    }
-
-    @ViewBuilder
-    private func syncBadge(for branch: String) -> some View {
-        if isBranchSyncing(branch) {
-            HStack(spacing: 0) {
-                ProgressView()
-                    .scaleEffect(0.55)
-                    .frame(width: 14, height: 10)
-            }
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
-            .background(Color.secondary)
-            .cornerRadius(4)
-        } else if let status = SidebarBranchSyncBadgeResolver.status(
-            for: branch,
-            currentBranch: currentBranch,
-            branchSyncStatus: branchSyncStatus,
-            currentBranchFallbackSyncStatus: currentBranchFallbackSyncStatus
-        ) {
-            HStack(spacing: 4) {
-                if status.ahead > 0 {
-                    HStack(spacing: 2) {
-                        Text("\(status.ahead)")
-                        Text("↑")
-                    }
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Color.secondary)
-                    .cornerRadius(4)
-                }
-
-                if status.behind > 0 {
-                    HStack(spacing: 2) {
-                        Text("\(status.behind)")
-                        Text("↓")
-                    }
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Color.secondary)
-                    .cornerRadius(4)
-                }
-            }
-        }
     }
 
     private func toggleFolder(_ path: String) {
