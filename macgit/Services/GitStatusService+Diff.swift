@@ -279,6 +279,14 @@ extension GitStatusService {
         _ = try await runGit(arguments: ["revert", "--abort"], in: repositoryURL)
     }
 
+    func skipCherryPick(in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["cherry-pick", "--skip"], in: repositoryURL)
+    }
+
+    func skipRevert(in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["revert", "--skip"], in: repositoryURL)
+    }
+
     func createTag(name: String, commit: String, annotated: Bool, message: String?, in repositoryURL: URL) async throws {
         var arguments = ["tag"]
         if annotated {

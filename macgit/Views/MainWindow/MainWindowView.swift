@@ -716,12 +716,17 @@ struct MainWindowView: View {
             )
         } catch {
             await syncState.refresh(repositoryURL: repositoryURL)
+            let hasConflicts = await GitStatusService.shared.hasConflicts(in: repositoryURL)
+            let inProgress = await GitStatusService.shared.inProgressOperation(in: repositoryURL)
             await MainActor.run {
-                let message = error.localizedDescription
-                if message.uppercased().contains("CONFLICT") {
+                if hasConflicts {
+                    selectedItem = .item(.fileStatus)
                     syncState.showError("Cherry-pick produced conflicts. Resolve them in the File status view, then continue or abort.")
+                } else if inProgress != nil {
+                    selectedItem = .item(.fileStatus)
+                    syncState.showError("Cherry-pick produced an empty commit. Open the File status view to skip or abort.")
                 } else {
-                    syncState.showError(message)
+                    syncState.showError(error.localizedDescription)
                 }
             }
         }

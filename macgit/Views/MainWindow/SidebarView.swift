@@ -784,18 +784,18 @@ struct SidebarView: View {
 
             if isCurrentBranch {
                 rowView
-                    .onDropSessionUpdated { session in
-                        updateDropHover(
-                            target: branchTarget,
-                            label: currentBranchDropLabel(),
-                            session: session
-                        )
-                    }
                     .dropDestination(for: GitDragPayload.self) { items, _ in
                         handleDrop(
                             items,
                             target: branchTarget,
                             optionKeyPressed: NSEvent.modifierFlags.contains(.option)
+                        )
+                    }
+                    .onDropSessionUpdated { session in
+                        updateDropHover(
+                            target: branchTarget,
+                            label: currentBranchDropLabel(),
+                            session: session
                         )
                     }
             } else {

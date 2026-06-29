@@ -48,6 +48,47 @@ final class GitInProgressOperationTests: XCTestCase {
         XCTAssertNil(afterAbort)
     }
 
+    func testEmptyCherryPickLeavesInProgressStateWithoutConflicts() async throws {
+        let repoURL = try makeEmptyCherryPickRepo()
+        let featureHead = try runGitOutput(["rev-parse", "feature"], in: repoURL)
+
+        do {
+            try await GitStatusService.shared.cherryPickCommit(featureHead, in: repoURL)
+            XCTFail("cherry-pick should be empty and fail")
+        } catch {
+            // expected
+        }
+
+        let operation = await GitStatusService.shared.inProgressOperation(in: repoURL)
+        XCTAssertEqual(operation, .cherryPick(head: featureHead))
+
+        let hasConflicts = await GitStatusService.shared.hasConflicts(in: repoURL)
+        XCTAssertFalse(hasConflicts, "Empty cherry-pick should not produce conflicts")
+
+        try await GitStatusService.shared.abortCherryPick(in: repoURL)
+        let afterAbort = await GitStatusService.shared.inProgressOperation(in: repoURL)
+        XCTAssertNil(afterAbort)
+    }
+
+    func testSkipCherryPickClearsEmptyInProgressState() async throws {
+        let repoURL = try makeEmptyCherryPickRepo()
+        let featureHead = try runGitOutput(["rev-parse", "feature"], in: repoURL)
+
+        do {
+            try await GitStatusService.shared.cherryPickCommit(featureHead, in: repoURL)
+            XCTFail("cherry-pick should be empty and fail")
+        } catch {
+            // expected
+        }
+
+        let operation = await GitStatusService.shared.inProgressOperation(in: repoURL)
+        XCTAssertEqual(operation, .cherryPick(head: featureHead))
+
+        try await GitStatusService.shared.skipCherryPick(in: repoURL)
+        let afterSkip = await GitStatusService.shared.inProgressOperation(in: repoURL)
+        XCTAssertNil(afterSkip, "skip should clear the in-progress cherry-pick state")
+    }
+
     private func makeTempRepo() throws -> URL {
         let repoURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("macgit-in-progress-\(UUID().uuidString)", isDirectory: true)
@@ -72,6 +113,18 @@ final class GitInProgressOperationTests: XCTestCase {
         try "main\n".write(to: repoURL.appendingPathComponent("tracked.txt"), atomically: true, encoding: .utf8)
         try runGit(["add", "tracked.txt"], in: repoURL)
         try runGit(["commit", "-m", "main"], in: repoURL)
+        return repoURL
+    }
+
+    private func makeEmptyCherryPickRepo() throws -> URL {
+        let repoURL = try makeTempRepo()
+        try runGit(["checkout", "-b", "feature"], in: repoURL)
+        try "feature\n".write(to: repoURL.appendingPathComponent("tracked.txt"), atomically: true, encoding: .utf8)
+        try runGit(["add", "tracked.txt"], in: repoURL)
+        try runGit(["commit", "-m", "feature"], in: repoURL)
+        try runGit(["checkout", "main"], in: repoURL)
+        // Bring feature's changes into main via merge so cherry-picking feature again is empty.
+        try runGit(["merge", "--no-ff", "feature", "-m", "merge feature"], in: repoURL)
         return repoURL
     }
 

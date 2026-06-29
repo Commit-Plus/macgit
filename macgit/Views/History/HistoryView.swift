@@ -1033,12 +1033,15 @@ struct HistoryView: View {
             }
         } catch {
             await syncState?.refresh(repositoryURL: repositoryURL)
+            let hasConflicts = await GitStatusService.shared.hasConflicts(in: repositoryURL)
+            let inProgress = await GitStatusService.shared.inProgressOperation(in: repositoryURL)
             await MainActor.run {
-                let message = error.localizedDescription
-                if message.uppercased().contains("CONFLICT") {
+                if hasConflicts {
                     errorMessage = "Cherry-pick produced conflicts. Resolve them in the File status view, then continue or abort."
+                } else if inProgress != nil {
+                    errorMessage = "Cherry-pick produced an empty commit. Open the File status view to skip or abort."
                 } else {
-                    errorMessage = message
+                    errorMessage = error.localizedDescription
                 }
                 showingError = true
             }
@@ -1178,12 +1181,15 @@ struct HistoryView: View {
             }
         } catch {
             await syncState?.refresh(repositoryURL: repositoryURL)
+            let hasConflicts = await GitStatusService.shared.hasConflicts(in: repositoryURL)
+            let inProgress = await GitStatusService.shared.inProgressOperation(in: repositoryURL)
             await MainActor.run {
-                let message = error.localizedDescription
-                if message.uppercased().contains("CONFLICT") {
+                if hasConflicts {
                     errorMessage = "Revert produced conflicts. Resolve them in the File status view, then continue or abort."
+                } else if inProgress != nil {
+                    errorMessage = "Revert produced an empty commit. Open the File status view to skip or abort."
                 } else {
-                    errorMessage = message
+                    errorMessage = error.localizedDescription
                 }
                 showingError = true
             }

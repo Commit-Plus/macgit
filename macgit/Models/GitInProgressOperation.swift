@@ -26,4 +26,8 @@ enum GitInProgressOperation: Equatable {
     var message: String {
         "\(displayName) in progress (\(shortHead)). Resolve conflicts, then continue or abort."
     }
+
+    var emptyMessage: String {
+        "\(displayName) (\(shortHead)) produced an empty commit. Skip the commit or abort."
+    }
 }

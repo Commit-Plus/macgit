@@ -53,28 +53,43 @@ struct FileStatusView: View {
     @ViewBuilder
     private var inProgressBanner: some View {
         if let operation = syncState?.inProgressOperation {
+            let isEmpty = !hasChanges
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                     .font(.system(size: 12))
 
-                Text(operation.message)
+                Text(isEmpty ? operation.emptyMessage : operation.message)
                     .font(.system(size: 12))
 
                 Spacer()
 
                 HStack(spacing: 8) {
-                    Button("Abort") {
-                        Task { await abortInProgressOperation(operation) }
-                    }
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
+                    if isEmpty {
+                        Button("Skip") {
+                            Task { await skipInProgressOperation(operation) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
 
-                    Button("Continue") {
-                        Task { await continueInProgressOperation(operation) }
+                        Button("Abort") {
+                            Task { await abortInProgressOperation(operation) }
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                    } else {
+                        Button("Abort") {
+                            Task { await abortInProgressOperation(operation) }
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+
+                        Button("Continue") {
+                            Task { await continueInProgressOperation(operation) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
                 }
             }
             .padding(.horizontal, 12)
@@ -89,12 +104,16 @@ struct FileStatusView: View {
         }
     }
 
+    private var hasInProgressOperation: Bool {
+        syncState?.inProgressOperation != nil
+    }
+
     var body: some View {
         Group {
-            if isLoading && !hasChanges {
+            if isLoading && !hasChanges && !hasInProgressOperation {
                 ProgressView("Loading status…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if !hasChanges {
+            } else if !hasChanges && !hasInProgressOperation {
                 EmptyStateView(
                     icon: "doc.text.magnifyingglass",
                     message: "No changes",
@@ -104,13 +123,22 @@ struct FileStatusView: View {
                 VStack(spacing: 0) {
                     inProgressBanner
 
-                    PersistentHSplit(
-                        autosaveName: "FileStatusMainSplit",
-                        left: { fileListPanel.frame(minWidth: 220) },
-                        right: { diffPanel.frame(minWidth: 300) }
-                    )
+                    if hasChanges {
+                        PersistentHSplit(
+                            autosaveName: "FileStatusMainSplit",
+                            left: { fileListPanel.frame(minWidth: 220) },
+                            right: { diffPanel.frame(minWidth: 300) }
+                        )
 
-                    commitBar
+                        commitBar
+                    } else {
+                        EmptyStateView(
+                            icon: "doc.text.magnifyingglass",
+                            message: "No changes",
+                            detail: "Working directory is clean"
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }
             }
         }
@@ -817,6 +845,29 @@ struct FileStatusView: View {
                 try await GitStatusService.shared.continueCherryPick(in: repositoryURL)
             case .revert:
                 try await GitStatusService.shared.continueRevert(in: repositoryURL)
+            }
+            await loadStatus()
+            await syncState?.refresh(repositoryURL: repositoryURL)
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    private func skipInProgressOperation(_ operation: GitInProgressOperation) async {
+        do {
+            switch operation {
+            case .cherryPick:
+                try await GitStatusService.shared.skipCherryPick(in: repositoryURL)
+            case .revert:
+                try await GitStatusService.shared.skipRevert(in: repositoryURL)
             }
             await loadStatus()
             await syncState?.refresh(repositoryURL: repositoryURL)
