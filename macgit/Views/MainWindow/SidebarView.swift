@@ -133,7 +133,7 @@ struct SidebarView: View {
     let onRequestCheckout: (String, Bool) -> Void
     let onRequestFetchBranch: (String) -> Void
     let onRequestPushBranchToRemote: (String, String) -> Void
-    let onRequestTrackRemoteBranch: (String, String) -> Void
+    let onRequestTrackRemoteBranch: (String, String?) -> Void
     let onRequestApplyStash: (String) -> Void
     let onRequestDeleteStash: (String) -> Void
     let onRequestOpenWorktree: (URL) -> Void
@@ -153,6 +153,8 @@ struct SidebarView: View {
     @State private var expandedTagFolders: Set<String> = []
     @State private var remoteNodes: [BranchNode] = []
     @State private var remoteNames: [String] = []
+    @State private var branchesByRemote: [String: [String]] = [:]
+    @State private var upstreamByBranch: [String: String] = [:]
     @State private var isLoadingRemotes = false
     @State private var expandedRemoteFolders: Set<String> = []
     @State private var stashEntries: [StashEntry] = []
@@ -213,7 +215,7 @@ struct SidebarView: View {
         onRequestCheckout: @escaping (String, Bool) -> Void,
         onRequestFetchBranch: @escaping (String) -> Void,
         onRequestPushBranchToRemote: @escaping (String, String) -> Void = { _, _ in },
-        onRequestTrackRemoteBranch: @escaping (String, String) -> Void = { _, _ in },
+        onRequestTrackRemoteBranch: @escaping (String, String?) -> Void = { _, _ in },
         onRequestApplyStash: @escaping (String) -> Void = { _ in },
         onRequestDeleteStash: @escaping (String) -> Void = { _ in },
         onRequestOpenWorktree: @escaping (URL) -> Void = { _ in },
@@ -1176,9 +1178,35 @@ struct SidebarView: View {
             if remoteNames.isEmpty {
                 Text("No remotes configured")
             } else {
-                ForEach(remoteNames, id: \.self) { remote in
-                    Button(remote) {
-                        onRequestTrackRemoteBranch(branch, remote)
+                let currentUpstream = upstreamByBranch[branch]
+                let hasAnyRemoteBranch = remoteNames.contains { !(branchesByRemote[$0] ?? []).isEmpty }
+                if hasAnyRemoteBranch {
+                    ForEach(remoteNames.sorted(), id: \.self) { remote in
+                        ForEach((branchesByRemote[remote] ?? []).sorted(), id: \.self) { remoteBranch in
+                            let upstreamRef = "\(remote)/\(remoteBranch)"
+                            Button {
+                                onRequestTrackRemoteBranch(branch, upstreamRef)
+                            } label: {
+                                if currentUpstream == upstreamRef {
+                                    Label(upstreamRef, systemImage: "checkmark")
+                                } else {
+                                    Text(upstreamRef)
+                                }
+                            }
+                        }
+                    }
+                    Divider()
+                } else {
+                    Text("No remote branches")
+                    Divider()
+                }
+                Button {
+                    onRequestTrackRemoteBranch(branch, nil)
+                } label: {
+                    if currentUpstream == nil {
+                        Label("(None)", systemImage: "checkmark")
+                    } else {
+                        Text("(None)")
                     }
                 }
             }
@@ -1896,15 +1924,18 @@ struct SidebarView: View {
         defer { isLoadingRemotes = false }
 
         let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
-        var branchesByRemote: [String: [String]] = [:]
+        var fetchedBranchesByRemote: [String: [String]] = [:]
         for remote in remotes {
-            branchesByRemote[remote] = await GitStatusService.shared.remoteBranches(remote: remote, in: repositoryURL)
+            fetchedBranchesByRemote[remote] = await GitStatusService.shared.remoteBranches(remote: remote, in: repositoryURL)
         }
+        let upstreams = await GitStatusService.shared.localBranchUpstreams(in: repositoryURL)
 
-        let tree = SidebarTreeBuilder.buildRemoteTree(remoteBranchesByRemote: branchesByRemote)
+        let tree = SidebarTreeBuilder.buildRemoteTree(remoteBranchesByRemote: fetchedBranchesByRemote)
         await MainActor.run {
             remoteNodes = tree
             remoteNames = remotes
+            branchesByRemote = fetchedBranchesByRemote
+            upstreamByBranch = upstreams
             if expandedRemoteFolders.isEmpty {
                 expandedRemoteFolders = []
             }

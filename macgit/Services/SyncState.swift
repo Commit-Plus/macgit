@@ -180,12 +180,19 @@ class SyncState: ObservableObject {
         }
     }
 
-    func performTrackRemoteBranch(branch: String, remote: String, repositoryURL: URL) async {
+    func performTrackRemoteBranch(branch: String, upstream: String?, repositoryURL: URL) async {
         do {
-            try await GitStatusService.shared.setUpstream(remote: remote, branch: branch, in: repositoryURL)
-            await refresh(repositoryURL: repositoryURL)
-            notifyRepositoryChanged(repositoryURL)
-            showInfo("Tracking \(remote)/\(branch) for \(branch).")
+            if let upstream {
+                try await GitStatusService.shared.setUpstream(upstream: upstream, branch: branch, in: repositoryURL)
+                await refresh(repositoryURL: repositoryURL)
+                notifyRepositoryChanged(repositoryURL)
+                showInfo("Tracking \(upstream) for \(branch).")
+            } else {
+                try await GitStatusService.shared.unsetUpstream(branch: branch, in: repositoryURL)
+                await refresh(repositoryURL: repositoryURL)
+                notifyRepositoryChanged(repositoryURL)
+                showInfo("Stopped tracking upstream for \(branch).")
+            }
         } catch {
             showError(error.localizedDescription)
         }

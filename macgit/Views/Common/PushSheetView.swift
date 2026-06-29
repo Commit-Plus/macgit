@@ -278,7 +278,11 @@ struct PushSheetView: View {
 
     private func setUpstream(for branch: String) async {
         do {
-            try await GitStatusService.shared.setUpstream(remote: selectedRemote, branch: branch, in: repositoryURL)
+            try await GitStatusService.shared.setUpstream(
+                upstream: "\(selectedRemote)/\(branch)",
+                branch: branch,
+                in: repositoryURL
+            )
             await loadData()
         } catch {
             // Silently ignore upstream set failures

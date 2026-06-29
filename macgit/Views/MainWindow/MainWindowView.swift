@@ -304,11 +304,11 @@ struct MainWindowView: View {
                     )
                 }
             },
-            onRequestTrackRemoteBranch: { branch, remote in
+            onRequestTrackRemoteBranch: { branch, upstream in
                 Task {
                     await syncState.performTrackRemoteBranch(
                         branch: branch,
-                        remote: remote,
+                        upstream: upstream,
                         repositoryURL: repositoryURL
                     )
                 }

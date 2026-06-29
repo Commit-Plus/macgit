@@ -56,8 +56,25 @@ extension GitStatusService {
         return u
     }
 
-    func setUpstream(remote: String, branch: String, in repositoryURL: URL) async throws {
-        _ = try await runGit(arguments: ["branch", "--set-upstream-to", "\(remote)/\(branch)", branch], in: repositoryURL)
+    func localBranchUpstreams(in repositoryURL: URL) async -> [String: String] {
+        let format = "%(refname:short) %(upstream:short)"
+        let output = (try? await runGit(arguments: ["for-each-ref", "refs/heads/", "--format=\(format)"], in: repositoryURL)) ?? ""
+        var result: [String: String] = [:]
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false)
+                .map { String($0) }
+            guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { continue }
+            result[parts[0]] = parts[1]
+        }
+        return result
+    }
+
+    func setUpstream(upstream: String, branch: String, in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["branch", "--set-upstream-to", upstream, branch], in: repositoryURL)
+    }
+
+    func unsetUpstream(branch: String, in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["branch", "--unset-upstream", branch], in: repositoryURL)
     }
 
     func createBranch(name: String, checkout: Bool, commit: String?, in repositoryURL: URL) async throws -> String {
