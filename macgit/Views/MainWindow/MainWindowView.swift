@@ -316,6 +316,11 @@ struct MainWindowView: View {
                 branchToRename = branch
                 showingRenameBranchSheet = true
             },
+            onRequestCreatePullRequest: { branch in
+                Task {
+                    await openPullRequest(branch: branch)
+                }
+            },
             onRequestPushBranchToRemote: { branch, remote in
                 Task {
                     let options = GitStatusService.PushOptions(
@@ -1080,6 +1085,34 @@ struct MainWindowView: View {
 
         guard let url = browserURL(from: remoteURLString) else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    private func openPullRequest(branch: String) async {
+        guard let upstream = await GitStatusService.shared.upstreamBranch(for: branch, in: repositoryURL) else {
+            await MainActor.run {
+                syncState.showError("Branch '\(branch)' has no upstream. Push it first to create a pull request.")
+            }
+            return
+        }
+        let parts = upstream.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2, !parts[0].isEmpty else {
+            await MainActor.run {
+                syncState.showError("Could not parse upstream '\(upstream)'.")
+            }
+            return
+        }
+        let remoteName = parts[0]
+        let remoteBranch = parts[1]
+        let remoteURL = await GitStatusService.shared.remoteURL(remote: remoteName, in: repositoryURL)
+        guard let url = PullRequestURLBuilder.build(remoteURL: remoteURL, branch: remoteBranch) else {
+            await MainActor.run {
+                syncState.showError("Remote '\(remoteName)' is not a recognized pull request host (GitHub, GitLab, or Bitbucket).")
+            }
+            return
+        }
+        await MainActor.run {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func showInFinder() {

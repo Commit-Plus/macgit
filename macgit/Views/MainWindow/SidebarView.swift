@@ -135,6 +135,7 @@ struct SidebarView: View {
     let onRequestPullTracked: (String) -> Void
     let onRequestPushToTracked: (String) -> Void
     let onRequestRenameBranch: (String) -> Void
+    let onRequestCreatePullRequest: (String) -> Void
     let onRequestPushBranchToRemote: (String, String) -> Void
     let onRequestTrackRemoteBranch: (String, String?) -> Void
     let onRequestApplyStash: (String) -> Void
@@ -220,6 +221,7 @@ struct SidebarView: View {
         onRequestPullTracked: @escaping (String) -> Void = { _ in },
         onRequestPushToTracked: @escaping (String) -> Void = { _ in },
         onRequestRenameBranch: @escaping (String) -> Void = { _ in },
+        onRequestCreatePullRequest: @escaping (String) -> Void = { _ in },
         onRequestPushBranchToRemote: @escaping (String, String) -> Void = { _, _ in },
         onRequestTrackRemoteBranch: @escaping (String, String?) -> Void = { _, _ in },
         onRequestApplyStash: @escaping (String) -> Void = { _ in },
@@ -239,6 +241,7 @@ struct SidebarView: View {
         self.onRequestPullTracked = onRequestPullTracked
         self.onRequestPushToTracked = onRequestPushToTracked
         self.onRequestRenameBranch = onRequestRenameBranch
+        self.onRequestCreatePullRequest = onRequestCreatePullRequest
         self.onRequestPushBranchToRemote = onRequestPushBranchToRemote
         self.onRequestTrackRemoteBranch = onRequestTrackRemoteBranch
         self.onRequestApplyStash = onRequestApplyStash
@@ -1257,8 +1260,10 @@ struct SidebarView: View {
 
         Divider()
 
-        Button("Create Pull Request...") {}
-            .disabled(true)
+        Button("Create Pull Request...") {
+            onRequestCreatePullRequest(branch)
+        }
+        .disabled(!BranchUpstreamActionPolicy.shouldEnableCreatePullRequest(for: currentUpstream))
     }
 
     @ViewBuilder
@@ -2323,6 +2328,7 @@ struct SidebarView: View {
         onRequestPullTracked: { _ in },
         onRequestPushToTracked: { _ in },
         onRequestRenameBranch: { _ in },
+        onRequestCreatePullRequest: { _ in },
         onRequestOpenWorktree: { _ in },
         onRequestOpenWorktreeInTerminal: { _ in }
     )
