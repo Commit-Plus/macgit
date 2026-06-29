@@ -170,6 +170,7 @@ struct SidebarView: View {
     @State private var showingDeleteConfirmation = false
     @State private var activeDropTarget: GitDragTarget?
     @State private var activeDropLabel: String?
+    @State private var isCurrentBranchDropTargeted = false
 
     init(
         repositoryURL: URL,
@@ -556,6 +557,33 @@ struct SidebarView: View {
         }
     }
 
+    private func handleDrop(
+        _ providers: [NSItemProvider],
+        target: GitDragTarget,
+        optionKeyPressed: Bool = false
+    ) -> Bool {
+        guard let provider = providers.first else { return false }
+
+        GitDragPayloadItemProviderLoader.load(from: provider) { result in
+            Task { @MainActor in
+                switch result {
+                case .success(let payload):
+                    handleDrop(
+                        [payload],
+                        target: target,
+                        optionKeyPressed: optionKeyPressed
+                    )
+                case .failure(let error):
+                    clearDropHover()
+                    errorMessage = error.localizedDescription
+                    showingError = true
+                }
+            }
+        }
+
+        return true
+    }
+
     private func resetLazySectionData() {
         branchNodes = []
         currentBranch = ""
@@ -697,7 +725,7 @@ struct SidebarView: View {
             name: row.fullPath,
             isCurrent: isCurrentBranch
         )
-        let isActiveDropRow = activeDropTarget == branchTarget
+        let isActiveDropRow = isCurrentBranch && isCurrentBranchDropTargeted
 
         let baseView = HStack(spacing: 4) {
             HStack(spacing: 0) {
@@ -745,8 +773,8 @@ struct SidebarView: View {
             }
         }
         .overlay(alignment: .trailing) {
-            if isActiveDropRow, let activeDropLabel {
-                Text(activeDropLabel)
+            if isActiveDropRow {
+                Text(currentBranchDropLabel())
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                     .padding(.horizontal, 6)
@@ -784,18 +812,14 @@ struct SidebarView: View {
 
             if isCurrentBranch {
                 rowView
-                    .dropDestination(for: GitDragPayload.self) { items, _ in
+                    .onDrop(
+                        of: [.macgitGitDragPayload],
+                        isTargeted: $isCurrentBranchDropTargeted
+                    ) { providers in
                         handleDrop(
-                            items,
+                            providers,
                             target: branchTarget,
                             optionKeyPressed: NSEvent.modifierFlags.contains(.option)
-                        )
-                    }
-                    .onDropSessionUpdated { session in
-                        updateDropHover(
-                            target: branchTarget,
-                            label: currentBranchDropLabel(),
-                            session: session
                         )
                     }
             } else {

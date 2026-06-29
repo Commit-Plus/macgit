@@ -3,6 +3,23 @@ import XCTest
 @testable import macgit
 
 final class GitDragDropPolicyTests: XCTestCase {
+    func testDragPayloadLoadsFromItemProvider() async throws {
+        let payload = GitDragPayload.commits(
+            [GitDraggedCommit(hash: "c1", message: "commit", isMerge: false)],
+            repositoryURL: repoURL
+        )
+        let provider = NSItemProvider()
+        provider.register(payload)
+
+        let loadedPayload: GitDragPayload = try await withCheckedThrowingContinuation { continuation in
+            GitDragPayloadItemProviderLoader.load(from: provider) { result in
+                continuation.resume(with: result)
+            }
+        }
+
+        XCTAssertEqual(loadedPayload, payload)
+    }
+
     func testRepositoryMismatchIsRejected() {
         let payload = GitDragPayload.commits(
             [GitDraggedCommit(hash: "c1", message: "commit", isMerge: false)],
