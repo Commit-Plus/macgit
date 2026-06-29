@@ -290,6 +290,24 @@ class SyncState: ObservableObject {
         }
     }
 
+    func performPushToTracked(branch: String, repositoryURL: URL, undoManager: GitUndoManager? = nil) async {
+        guard let upstream = await GitStatusService.shared.upstreamBranch(for: branch, in: repositoryURL) else {
+            showError("Branch '\(branch)' has no upstream to push to.")
+            return
+        }
+        let parts = upstream.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else {
+            showError("Could not parse upstream '\(upstream)'.")
+            return
+        }
+        let options = GitStatusService.PushOptions(
+            remote: parts[0],
+            branches: [branch],
+            branchMappings: [branch: parts[1]]
+        )
+        await performPush(options: options, repositoryURL: repositoryURL, undoManager: undoManager)
+    }
+
     func performFetch(options: GitStatusService.FetchOptions, repositoryURL: URL) async {
         await MainActor.run { isFetching = true }
         defer { Task { @MainActor in isFetching = false } }

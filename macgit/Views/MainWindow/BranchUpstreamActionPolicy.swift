@@ -1,5 +1,5 @@
 //
-//  BranchPullActionPolicy.swift
+//  BranchUpstreamActionPolicy.swift
 //  macgit
 //
 
@@ -22,8 +22,16 @@
 //
 import Foundation
 
-enum BranchPullActionPolicy {
+enum BranchUpstreamActionPolicy {
     static func shouldEnablePullFromUpstream(for upstream: String?) -> Bool {
+        hasUpstream(upstream)
+    }
+
+    static func shouldEnablePushToUpstream(for upstream: String?) -> Bool {
+        hasUpstream(upstream)
+    }
+
+    private static func hasUpstream(_ upstream: String?) -> Bool {
         guard let upstream, !upstream.isEmpty else { return false }
         return true
     }

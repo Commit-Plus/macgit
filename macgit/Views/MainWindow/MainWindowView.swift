@@ -300,6 +300,15 @@ struct MainWindowView: View {
                     )
                 }
             },
+            onRequestPushToTracked: { branch in
+                Task {
+                    await syncState.performPushToTracked(
+                        branch: branch,
+                        repositoryURL: repositoryURL,
+                        undoManager: undoManager
+                    )
+                }
+            },
             onRequestPushBranchToRemote: { branch, remote in
                 Task {
                     let options = GitStatusService.PushOptions(

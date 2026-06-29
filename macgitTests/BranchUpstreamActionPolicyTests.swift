@@ -23,17 +23,30 @@
 import XCTest
 @testable import macgit
 
-final class BranchPullActionPolicyTests: XCTestCase {
+final class BranchUpstreamActionPolicyTests: XCTestCase {
     func testShouldEnablePullFromUpstreamIsFalseWhenUpstreamIsNil() {
-        XCTAssertFalse(BranchPullActionPolicy.shouldEnablePullFromUpstream(for: nil))
+        XCTAssertFalse(BranchUpstreamActionPolicy.shouldEnablePullFromUpstream(for: nil))
     }
 
     func testShouldEnablePullFromUpstreamIsFalseWhenUpstreamIsEmpty() {
-        XCTAssertFalse(BranchPullActionPolicy.shouldEnablePullFromUpstream(for: ""))
+        XCTAssertFalse(BranchUpstreamActionPolicy.shouldEnablePullFromUpstream(for: ""))
     }
 
     func testShouldEnablePullFromUpstreamIsTrueWhenUpstreamIsNonEmpty() {
-        XCTAssertTrue(BranchPullActionPolicy.shouldEnablePullFromUpstream(for: "origin/main"))
-        XCTAssertTrue(BranchPullActionPolicy.shouldEnablePullFromUpstream(for: "upstream/feature"))
+        XCTAssertTrue(BranchUpstreamActionPolicy.shouldEnablePullFromUpstream(for: "origin/main"))
+        XCTAssertTrue(BranchUpstreamActionPolicy.shouldEnablePullFromUpstream(for: "upstream/feature"))
+    }
+
+    func testShouldEnablePushToUpstreamIsFalseWhenUpstreamIsNil() {
+        XCTAssertFalse(BranchUpstreamActionPolicy.shouldEnablePushToUpstream(for: nil))
+    }
+
+    func testShouldEnablePushToUpstreamIsFalseWhenUpstreamIsEmpty() {
+        XCTAssertFalse(BranchUpstreamActionPolicy.shouldEnablePushToUpstream(for: ""))
+    }
+
+    func testShouldEnablePushToUpstreamIsTrueWhenUpstreamIsNonEmpty() {
+        XCTAssertTrue(BranchUpstreamActionPolicy.shouldEnablePushToUpstream(for: "origin/main"))
+        XCTAssertTrue(BranchUpstreamActionPolicy.shouldEnablePushToUpstream(for: "upstream/feature"))
     }
 }

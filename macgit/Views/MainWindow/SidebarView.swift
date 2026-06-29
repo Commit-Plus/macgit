@@ -133,6 +133,7 @@ struct SidebarView: View {
     let onRequestCheckout: (String, Bool) -> Void
     let onRequestFetchBranch: (String) -> Void
     let onRequestPullTracked: (String) -> Void
+    let onRequestPushToTracked: (String) -> Void
     let onRequestPushBranchToRemote: (String, String) -> Void
     let onRequestTrackRemoteBranch: (String, String?) -> Void
     let onRequestApplyStash: (String) -> Void
@@ -216,6 +217,7 @@ struct SidebarView: View {
         onRequestCheckout: @escaping (String, Bool) -> Void,
         onRequestFetchBranch: @escaping (String) -> Void,
         onRequestPullTracked: @escaping (String) -> Void = { _ in },
+        onRequestPushToTracked: @escaping (String) -> Void = { _ in },
         onRequestPushBranchToRemote: @escaping (String, String) -> Void = { _, _ in },
         onRequestTrackRemoteBranch: @escaping (String, String?) -> Void = { _, _ in },
         onRequestApplyStash: @escaping (String) -> Void = { _ in },
@@ -233,6 +235,7 @@ struct SidebarView: View {
         self.onRequestCheckout = onRequestCheckout
         self.onRequestFetchBranch = onRequestFetchBranch
         self.onRequestPullTracked = onRequestPullTracked
+        self.onRequestPushToTracked = onRequestPushToTracked
         self.onRequestPushBranchToRemote = onRequestPushBranchToRemote
         self.onRequestTrackRemoteBranch = onRequestTrackRemoteBranch
         self.onRequestApplyStash = onRequestApplyStash
@@ -1170,7 +1173,12 @@ struct SidebarView: View {
         Button(pullLabel) {
             onRequestPullTracked(branch)
         }
-        .disabled(!BranchPullActionPolicy.shouldEnablePullFromUpstream(for: currentUpstream))
+        .disabled(!BranchUpstreamActionPolicy.shouldEnablePullFromUpstream(for: currentUpstream))
+        let pushLabel = currentUpstream.map { "Push to \($0) (tracked)" } ?? "Push to (tracked)"
+        Button(pushLabel) {
+            onRequestPushToTracked(branch)
+        }
+        .disabled(!BranchUpstreamActionPolicy.shouldEnablePushToUpstream(for: currentUpstream))
         Menu("Push to") {
             if remoteNames.isEmpty {
                 Text("No remotes configured")
@@ -2309,6 +2317,7 @@ struct SidebarView: View {
         onRequestCheckout: { _, _ in },
         onRequestFetchBranch: { _ in },
         onRequestPullTracked: { _ in },
+        onRequestPushToTracked: { _ in },
         onRequestOpenWorktree: { _ in },
         onRequestOpenWorktreeInTerminal: { _ in }
     )
