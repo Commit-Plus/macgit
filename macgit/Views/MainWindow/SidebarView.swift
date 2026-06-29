@@ -692,9 +692,10 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func branchRowView(for row: BranchRowItem) -> some View {
+        let isCurrentBranch = row.fullPath == currentBranch
         let branchTarget = GitDragTarget.localBranch(
             name: row.fullPath,
-            isCurrent: row.fullPath == currentBranch
+            isCurrent: isCurrentBranch
         )
         let isActiveDropRow = activeDropTarget == branchTarget
 
@@ -711,7 +712,7 @@ struct SidebarView: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
                     .frame(width: 16, alignment: .center)
-            } else if row.fullPath == currentBranch {
+            } else if isCurrentBranch {
                 Image(systemName: "circle.fill")
                     .font(.system(size: 7))
                     .foregroundStyle(Color.accentColor)
@@ -723,12 +724,15 @@ struct SidebarView: View {
 
             Text(row.name)
                 .font(.system(size: 12))
-                .fontWeight(row.fullPath == currentBranch && !row.isFolder ? .bold : .regular)
+                .fontWeight(isCurrentBranch && !row.isFolder ? .bold : .regular)
                 .lineLimit(1)
 
             Spacer()
 
             if !row.isFolder {
+                if isCurrentBranch {
+                    headBadgeView
+                }
                 syncBadge(for: row.fullPath)
             }
         }
@@ -764,7 +768,7 @@ struct SidebarView: View {
                     selection = .branch(row.fullPath)
                 }
                 .onTapGesture(count: 2) {
-                    if row.fullPath != currentBranch {
+                    if !isCurrentBranch {
                         onRequestCheckout(row.fullPath, false)
                     }
                 }
@@ -778,26 +782,26 @@ struct SidebarView: View {
                     )
                 )
 
-            rowView
-                .onDropSessionUpdated { session in
-                    updateDropHover(
-                        target: branchTarget,
-                        label: branchDropLabel(isCurrent: row.fullPath == currentBranch),
-                        session: session
-                    )
-                }
-                .dropDestination(for: GitDragPayload.self) { items, _ in
-                    handleDrop(
-                        items,
-                        target: branchTarget,
-                        optionKeyPressed: NSEvent.modifierFlags.contains(.option)
-                    )
-                }
+            if isCurrentBranch {
+                rowView
+                    .onDropSessionUpdated { session in
+                        updateDropHover(
+                            target: branchTarget,
+                            label: currentBranchDropLabel(),
+                            session: session
+                        )
+                    }
+                    .dropDestination(for: GitDragPayload.self) { items, _ in
+                        handleDrop(
+                            items,
+                            target: branchTarget,
+                            optionKeyPressed: NSEvent.modifierFlags.contains(.option)
+                        )
+                    }
+            } else {
+                rowView
+            }
         }
-    }
-
-    private func branchDropLabel(isCurrent: Bool) -> String {
-        isCurrent ? currentBranchDropLabel() : "Cherry-pick Commits"
     }
 
     private func currentBranchDropLabel() -> String {
@@ -805,6 +809,15 @@ struct SidebarView: View {
             return "Rebase or Cherry-pick"
         }
         return "Merge or Cherry-pick"
+    }
+
+    private var headBadgeView: some View {
+        Text("HEAD")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.quaternary.opacity(0.5), in: Capsule())
     }
 
     @ViewBuilder

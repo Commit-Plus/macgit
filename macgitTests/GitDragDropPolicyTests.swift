@@ -38,7 +38,7 @@ final class GitDragDropPolicyTests: XCTestCase {
         )
     }
 
-    func testCommitsCanDropOnNonCurrentBranch() {
+    func testCommitsAreRejectedOnNonCurrentBranch() {
         let commit = GitDraggedCommit(hash: "c1", message: "commit", isMerge: false)
 
         XCTAssertEqual(
@@ -46,7 +46,7 @@ final class GitDragDropPolicyTests: XCTestCase {
                 commits: [commit],
                 target: .localBranch(name: "feature", isCurrent: false)
             ),
-            .accept(.cherryPick(commits: [commit], targetBranch: "feature"))
+            .reject("Drop commits only on the current HEAD branch.")
         )
     }
 
