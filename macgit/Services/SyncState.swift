@@ -180,6 +180,17 @@ class SyncState: ObservableObject {
         }
     }
 
+    func performTrackRemoteBranch(branch: String, remote: String, repositoryURL: URL) async {
+        do {
+            try await GitStatusService.shared.setUpstream(remote: remote, branch: branch, in: repositoryURL)
+            await refresh(repositoryURL: repositoryURL)
+            notifyRepositoryChanged(repositoryURL)
+            showInfo("Tracking \(remote)/\(branch) for \(branch).")
+        } catch {
+            showError(error.localizedDescription)
+        }
+    }
+
     func performPull(remote: String, branch: String, options: GitStatusService.PullOptions, repositoryURL: URL, undoManager: GitUndoManager? = nil) async {
         if await checkConflicts(repositoryURL: repositoryURL) { return }
         await MainActor.run { isPulling = true }

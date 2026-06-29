@@ -290,6 +290,29 @@ struct MainWindowView: View {
                     )
                 }
             },
+            onRequestPushBranchToRemote: { branch, remote in
+                Task {
+                    let options = GitStatusService.PushOptions(
+                        remote: remote,
+                        branches: [branch],
+                        branchMappings: [branch: branch]
+                    )
+                    await syncState.performPush(
+                        options: options,
+                        repositoryURL: repositoryURL,
+                        undoManager: undoManager
+                    )
+                }
+            },
+            onRequestTrackRemoteBranch: { branch, remote in
+                Task {
+                    await syncState.performTrackRemoteBranch(
+                        branch: branch,
+                        remote: remote,
+                        repositoryURL: repositoryURL
+                    )
+                }
+            },
             onRequestApplyStash: { ref in
                 requestStashAction(ref: ref, action: .apply)
             },

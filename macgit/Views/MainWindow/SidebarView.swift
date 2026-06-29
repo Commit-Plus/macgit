@@ -132,6 +132,8 @@ struct SidebarView: View {
     let isBranchSyncing: (String) -> Bool
     let onRequestCheckout: (String, Bool) -> Void
     let onRequestFetchBranch: (String) -> Void
+    let onRequestPushBranchToRemote: (String, String) -> Void
+    let onRequestTrackRemoteBranch: (String, String) -> Void
     let onRequestApplyStash: (String) -> Void
     let onRequestDeleteStash: (String) -> Void
     let onRequestOpenWorktree: (URL) -> Void
@@ -150,6 +152,7 @@ struct SidebarView: View {
     @State private var isLoadingTags = false
     @State private var expandedTagFolders: Set<String> = []
     @State private var remoteNodes: [BranchNode] = []
+    @State private var remoteNames: [String] = []
     @State private var isLoadingRemotes = false
     @State private var expandedRemoteFolders: Set<String> = []
     @State private var stashEntries: [StashEntry] = []
@@ -209,6 +212,8 @@ struct SidebarView: View {
         isBranchSyncing: @escaping (String) -> Bool = { _ in false },
         onRequestCheckout: @escaping (String, Bool) -> Void,
         onRequestFetchBranch: @escaping (String) -> Void,
+        onRequestPushBranchToRemote: @escaping (String, String) -> Void = { _, _ in },
+        onRequestTrackRemoteBranch: @escaping (String, String) -> Void = { _, _ in },
         onRequestApplyStash: @escaping (String) -> Void = { _ in },
         onRequestDeleteStash: @escaping (String) -> Void = { _ in },
         onRequestOpenWorktree: @escaping (URL) -> Void = { _ in },
@@ -223,6 +228,8 @@ struct SidebarView: View {
         self.isBranchSyncing = isBranchSyncing
         self.onRequestCheckout = onRequestCheckout
         self.onRequestFetchBranch = onRequestFetchBranch
+        self.onRequestPushBranchToRemote = onRequestPushBranchToRemote
+        self.onRequestTrackRemoteBranch = onRequestTrackRemoteBranch
         self.onRequestApplyStash = onRequestApplyStash
         self.onRequestDeleteStash = onRequestDeleteStash
         self.onRequestOpenWorktree = onRequestOpenWorktree
@@ -1154,13 +1161,29 @@ struct SidebarView: View {
         }
         .disabled(!BranchFetchActionPolicy.shouldEnableFetch(for: branchSyncStatus[branch]))
         Menu("Push to") {
-            Text("No remotes configured")
+            if remoteNames.isEmpty {
+                Text("No remotes configured")
+            } else {
+                ForEach(remoteNames, id: \.self) { remote in
+                    Button(remote) {
+                        onRequestPushBranchToRemote(branch, remote)
+                    }
+                }
+            }
         }
-        .disabled(true)
+        .disabled(remoteNames.isEmpty)
         Menu("Track Remote Branch") {
-            Text("No remotes configured")
+            if remoteNames.isEmpty {
+                Text("No remotes configured")
+            } else {
+                ForEach(remoteNames, id: \.self) { remote in
+                    Button(remote) {
+                        onRequestTrackRemoteBranch(branch, remote)
+                    }
+                }
+            }
         }
-        .disabled(true)
+        .disabled(remoteNames.isEmpty)
 
         Divider()
 
@@ -1881,6 +1904,7 @@ struct SidebarView: View {
         let tree = SidebarTreeBuilder.buildRemoteTree(remoteBranchesByRemote: branchesByRemote)
         await MainActor.run {
             remoteNodes = tree
+            remoteNames = remotes
             if expandedRemoteFolders.isEmpty {
                 expandedRemoteFolders = []
             }
