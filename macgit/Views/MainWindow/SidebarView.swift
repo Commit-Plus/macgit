@@ -69,6 +69,18 @@ struct BranchRowItem: Identifiable {
     let indent: Int
 }
 
+enum DeleteConfirmationTarget: Identifiable {
+    case single(String)
+    case prefix(String)
+
+    var id: String {
+        switch self {
+        case .single(let branch): return "single:\(branch)"
+        case .prefix(let prefix): return "prefix:\(prefix)"
+        }
+    }
+}
+
 enum WorktreeCreationMode: String, CaseIterable {
     case existingBranch = "Existing Branch"
     case newBranch = "New Branch"
@@ -166,8 +178,7 @@ struct SidebarView: View {
 
     @State private var errorMessage = ""
     @State private var showingError = false
-    @State private var branchToDelete: String?
-    @State private var showingDeleteConfirmation = false
+    @State private var deleteConfirmationTarget: DeleteConfirmationTarget?
     @State private var forceDeleteBranch = false
     @State private var activeDropTarget: GitDragTarget?
     @State private var activeDropLabel: String?
@@ -371,8 +382,13 @@ struct SidebarView: View {
             } message: {
                 Text(errorMessage)
             }
-            .sheet(isPresented: $showingDeleteConfirmation) {
-                deleteBranchConfirmationSheet
+            .sheet(item: $deleteConfirmationTarget) { target in
+                switch target {
+                case .single(let branch):
+                    deleteBranchConfirmationSheet(for: branch)
+                case .prefix(let prefix):
+                    deletePrefixConfirmationSheet(for: prefix)
+                }
             }
             .alert("Remove Worktree", isPresented: $showingWorktreeRemovalConfirmation) {
                 Button("Cancel", role: .cancel) {}
@@ -783,6 +799,9 @@ struct SidebarView: View {
                 .onTapGesture {
                     toggleFolder(row.fullPath)
                 }
+                .contextMenu {
+                    folderContextMenu(for: row.fullPath)
+                }
         } else {
             let rowView = baseView
                 .tag(SidebarSelection.branch(row.fullPath))
@@ -1136,8 +1155,7 @@ struct SidebarView: View {
         Button("Rename...") {}
             .disabled(true)
         Button("Delete \(branch)") {
-            branchToDelete = branch
-            showingDeleteConfirmation = true
+            deleteConfirmationTarget = .single(branch)
         }
         .disabled(branch == currentBranch)
 
@@ -1152,6 +1170,23 @@ struct SidebarView: View {
 
         Button("Create Pull Request...") {}
             .disabled(true)
+    }
+
+    @ViewBuilder
+    private func folderContextMenu(for prefix: String) -> some View {
+        let deletable = branchesUnderPrefix(prefix).filter { $0 != currentBranch }
+
+        Button("Delete All in \u{201C}\(prefix)/\u{201D}\u{2026}") {
+            deleteConfirmationTarget = .prefix(prefix)
+        }
+        .disabled(deletable.isEmpty)
+
+        Divider()
+
+        Button("Copy Folder Name to Clipboard") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(prefix, forType: .string)
+        }
     }
 
     @ViewBuilder
@@ -1364,48 +1399,104 @@ struct SidebarView: View {
     }
 
     @ViewBuilder
-    private var deleteBranchConfirmationSheet: some View {
+    private func deleteBranchConfirmationSheet(for branch: String) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Delete Branch")
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("Are you sure you want to delete the branch '\(branchToDelete ?? "")'?")
+            Text("Are you sure you want to delete the branch '\(branch)'?")
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle("Force delete regardless of merge status", isOn: $forceDeleteBranch)
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: 12))
-
-                Text("Use \u{201C}git branch -D\u{201D}. Required for branches that are not fully merged; otherwise their commits may become unreachable.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            forceDeleteToggle
 
             HStack(spacing: 12) {
                 Spacer()
                 Button("Cancel", role: .cancel) {
-                    showingDeleteConfirmation = false
+                    deleteConfirmationTarget = nil
                     forceDeleteBranch = false
                 }
                 .keyboardShortcut(.cancelAction)
 
                 Button(forceDeleteBranch ? "Force Delete" : "Delete", role: .destructive) {
-                    if let branch = branchToDelete {
-                        let force = forceDeleteBranch
-                        showingDeleteConfirmation = false
-                        forceDeleteBranch = false
-                        Task { await deleteBranch(branch, force: force) }
-                    }
+                    let force = forceDeleteBranch
+                    deleteConfirmationTarget = nil
+                    forceDeleteBranch = false
+                    Task { await deleteBranch(branch, force: force) }
                 }
                 .keyboardShortcut(.defaultAction)
             }
         }
         .padding(24)
         .frame(minWidth: 420, idealWidth: 480)
+    }
+
+    @ViewBuilder
+    private func deletePrefixConfirmationSheet(for prefix: String) -> some View {
+        let all = branchesUnderPrefix(prefix)
+        let deletable = all.filter { $0 != currentBranch }
+        let skipped = all.filter { $0 == currentBranch }
+
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Delete All Branches in \u{201C}\(prefix)/\u{201D}")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            Text("This will delete \(deletable.count) branch\(deletable.count == 1 ? "" : "es") with the prefix \u{201C}\(prefix)/\u{201D}.")
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !skipped.isEmpty {
+                Text("The current branch \u{201C}\(currentBranch)\u{201D} will be skipped because it is checked out.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(deletable, id: \.self) { branch in
+                    Text("\u{2022} \(branch)")
+                        .font(.system(size: 12))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            forceDeleteToggle
+
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    deleteConfirmationTarget = nil
+                    forceDeleteBranch = false
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button(forceDeleteBranch ? "Force Delete All" : "Delete All", role: .destructive) {
+                    let force = forceDeleteBranch
+                    deleteConfirmationTarget = nil
+                    forceDeleteBranch = false
+                    Task { await deleteBranchesWithPrefix(prefix, force: force) }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(deletable.isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 420, idealWidth: 480)
+    }
+
+    private var forceDeleteToggle: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle("Force delete regardless of merge status", isOn: $forceDeleteBranch)
+                .toggleStyle(.checkbox)
+                .font(.system(size: 12))
+
+            Text("Use \u{201C}git branch -D\u{201D}. Required for branches that are not fully merged; otherwise their commits may become unreachable.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     @ViewBuilder
@@ -1607,6 +1698,70 @@ struct SidebarView: View {
                 showingError = true
             }
         }
+    }
+
+    private func deleteBranchesWithPrefix(_ prefix: String, force: Bool) async {
+        let toDelete = branchesUnderPrefix(prefix).filter { $0 != currentBranch }
+        guard !toDelete.isEmpty else { return }
+
+        var undoSequences: [GitUndoOperation] = []
+        var redoOperations: [GitUndoOperation] = []
+        var failed: [String] = []
+        let support = GitBranchUndoSupport()
+
+        for branch in toDelete {
+            do {
+                let tip = try await support.tip(of: branch, in: repositoryURL)
+                let upstream = await support.upstream(of: branch, in: repositoryURL)
+                _ = try await GitStatusService.shared.deleteBranch(name: branch, force: force, in: repositoryURL)
+
+                var undoOps: [GitUndoOperation] = [
+                    .createLocalBranch(name: branch, startPoint: tip, checkout: false)
+                ]
+                if let upstream {
+                    undoOps.append(.setUpstream(branch: branch, upstream: upstream))
+                }
+                undoSequences.append(.sequence(undoOps))
+                redoOperations.append(.deleteLocalBranch(name: branch, force: force, expectedTip: tip))
+            } catch {
+                failed.append(branch)
+            }
+        }
+
+        await MainActor.run {
+            if !undoSequences.isEmpty {
+                let label = "Delete \(undoSequences.count) branch\(undoSequences.count == 1 ? "" : "es") in \(prefix)/"
+                undoManager?.register(
+                    GitUndoEntry(
+                        repositoryURL: repositoryURL,
+                        label: label,
+                        undoOperation: .sequence(undoSequences),
+                        redoOperation: .sequence(redoOperations)
+                    )
+                )
+            }
+            if !failed.isEmpty {
+                errorMessage = "Failed to delete: \(failed.joined(separator: ", "))"
+                showingError = true
+            }
+        }
+
+        NotificationCenter.default.post(name: .repositoryDidChange, object: nil, userInfo: ["repositoryURL": repositoryURL])
+    }
+
+    private func branchesUnderPrefix(_ prefix: String) -> [String] {
+        var leaves: [String] = []
+        func collect(_ nodes: [BranchNode]) {
+            for node in nodes {
+                if node.isFolder {
+                    collect(node.children)
+                } else {
+                    leaves.append(node.fullPath)
+                }
+            }
+        }
+        collect(branchNodes)
+        return leaves.filter { $0.hasPrefix(prefix + "/") }.sorted()
     }
 
     private func loadBranches(force: Bool = false) async {
