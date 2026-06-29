@@ -285,12 +285,10 @@ struct MainWindowView: View {
                 }
             },
             onRequestFetchBranch: { branch in
-                // TODO: Fetch is wired to performPullBranch (which pulls from upstream) — should call fetch instead. See known-issues.
                 Task {
-                    await syncState.performPullBranch(
+                    await syncState.performFetchBranch(
                         branch: branch,
-                        repositoryURL: repositoryURL,
-                        undoManager: undoManager
+                        repositoryURL: repositoryURL
                     )
                 }
             },

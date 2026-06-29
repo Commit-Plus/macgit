@@ -58,6 +58,55 @@ final class BranchFetchActionTests: XCTestCase {
         XCTAssertEqual(gitStatus.trimmingCharacters(in: .whitespacesAndNewlines), "")
     }
 
+    func testFetchBranchUpdatesRemoteTrackingBranchWithoutMerging() async throws {
+        let repoURL = try makeRepoWithFeatureBranchBehindUpstream(commitCount: 2)
+
+        let localTipBefore = try runGitAndCapture(["rev-parse", "feature"], in: repoURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let remoteTrackingBefore = try runGitAndCapture(["rev-parse", "origin/feature"], in: repoURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let workingCopy = repoURL.appendingPathComponent("tracked.txt")
+        let workingCopyBefore = try String(contentsOf: workingCopy, encoding: .utf8)
+
+        // The remote-tracking ref starts out stale (still pointing at the local
+        // tip because the local clone predates the updater's pushes).
+        XCTAssertEqual(localTipBefore, remoteTrackingBefore)
+
+        try await GitStatusService.shared.fetchBranch(
+            remote: "origin",
+            branch: "feature",
+            in: repoURL
+        )
+
+        let localTipAfter = try runGitAndCapture(["rev-parse", "feature"], in: repoURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let remoteTrackingAfter = try runGitAndCapture(["rev-parse", "origin/feature"], in: repoURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let workingCopyAfter = try String(contentsOf: workingCopy, encoding: .utf8)
+
+        // Fetch must not touch the local branch tip or the working copy.
+        XCTAssertEqual(localTipBefore, localTipAfter)
+        XCTAssertEqual(workingCopyBefore, workingCopyAfter)
+        // The remote-tracking branch should have caught up to the latest upstream.
+        XCTAssertNotEqual(remoteTrackingAfter, localTipAfter)
+        XCTAssertNotEqual(remoteTrackingAfter, remoteTrackingBefore)
+    }
+
+    func testFetchBranchThrowsWhenRemoteDoesNotHaveTheBranch() async throws {
+        let repoURL = try makeRepoWithFeatureBranchBehindUpstream(commitCount: 1)
+
+        do {
+            try await GitStatusService.shared.fetchBranch(
+                remote: "origin",
+                branch: "nonexistent",
+                in: repoURL
+            )
+            XCTFail("Expected fetch to throw on unknown branch")
+        } catch {
+            // Expected: git fetch prints 'couldn't find remote ref' and exits non-zero.
+        }
+    }
+
     // MARK: - Helpers
 
     private func makeRepoWithFeatureBranchBehindUpstream(commitCount: Int) throws -> URL {

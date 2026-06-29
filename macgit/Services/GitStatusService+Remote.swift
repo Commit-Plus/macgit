@@ -75,6 +75,10 @@ extension GitStatusService {
         _ = try await runGit(arguments: arguments, in: repositoryURL)
     }
 
+    func fetchBranch(remote: String, branch: String, in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["fetch", remote, branch], in: repositoryURL)
+    }
+
     func remotes(in repositoryURL: URL) async -> [String] {
         let output = (try? await runGit(arguments: ["remote"], in: repositoryURL)) ?? ""
         return output.split(separator: "\n").map { String($0) }.filter { !$0.isEmpty }

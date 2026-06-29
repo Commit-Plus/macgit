@@ -357,6 +357,36 @@ class SyncState: ObservableObject {
         }
     }
 
+    func performFetchBranch(branch: String, repositoryURL: URL) async {
+        await MainActor.run { isFetching = true }
+        defer { Task { @MainActor in isFetching = false } }
+        guard let upstream = await GitStatusService.shared.upstreamBranch(for: branch, in: repositoryURL) else {
+            showError("Branch '\(branch)' has no upstream to fetch from.")
+            return
+        }
+        let parts = upstream.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2, !parts[0].isEmpty else {
+            showError("Could not parse upstream '\(upstream)'.")
+            return
+        }
+        let before = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
+        do {
+            try await GitStatusService.shared.fetchBranch(
+                remote: parts[0],
+                branch: parts[1],
+                in: repositoryURL
+            )
+            let after = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
+            await refresh(repositoryURL: repositoryURL)
+            notifyRepositoryChanged(repositoryURL)
+            if after.behind <= before.behind {
+                showInfo("No new changes on remote.")
+            }
+        } catch {
+            showError(error.localizedDescription)
+        }
+    }
+
     func performCommit(
         message: String,
         repositoryURL: URL,
