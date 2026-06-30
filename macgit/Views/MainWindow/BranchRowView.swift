@@ -64,10 +64,14 @@ struct BranchRowContent: View, Equatable {
             Spacer()
 
             if !row.isFolder {
-                if headBadgeVisible {
-                    BranchHeadBadge()
+                if isActiveDropRow {
+                    BranchDropLabel(text: dropLabel)
+                } else {
+                    if headBadgeVisible {
+                        BranchHeadBadge()
+                    }
+                    BranchSyncBadge(isSyncing: isBranchSyncing, status: syncStatus)
                 }
-                BranchSyncBadge(isSyncing: isBranchSyncing, status: syncStatus)
             }
         }
         .padding(.vertical, 2)
@@ -76,16 +80,6 @@ struct BranchRowContent: View, Equatable {
             if isActiveDropRow {
                 RoundedRectangle(cornerRadius: 5)
                     .stroke(Color.accentColor.opacity(0.7), lineWidth: 1)
-            }
-        }
-        .overlay(alignment: .trailing) {
-            if isActiveDropRow {
-                Text(dropLabel)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.12), in: Capsule())
             }
         }
         .contentShape(Rectangle())
@@ -107,6 +101,19 @@ struct BranchRowContent: View, Equatable {
             Color.clear
                 .frame(width: 16)
         }
+    }
+}
+
+private struct BranchDropLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(Color.accentColor)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.accentColor.opacity(0.12), in: Capsule())
     }
 }
 
