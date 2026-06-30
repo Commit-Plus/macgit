@@ -138,6 +138,8 @@ struct SidebarView: View {
     let onRequestPushToTracked: (String) -> Void
     let onRequestRenameBranch: (String) -> Void
     let onRequestCreatePullRequest: (String) -> Void
+    let onRequestCreateBranchFromBranch: (String) -> Void
+    let onRequestCreateTagFromBranch: (String) -> Void
     let onRequestRebaseOnto: (String) -> Void
     let onRequestPushBranchToRemote: (String, String) -> Void
     let onRequestTrackRemoteBranch: (String, String?) -> Void
@@ -226,6 +228,8 @@ struct SidebarView: View {
         onRequestPushToTracked: @escaping (String) -> Void = { _ in },
         onRequestRenameBranch: @escaping (String) -> Void = { _ in },
         onRequestCreatePullRequest: @escaping (String) -> Void = { _ in },
+        onRequestCreateBranchFromBranch: @escaping (String) -> Void = { _ in },
+        onRequestCreateTagFromBranch: @escaping (String) -> Void = { _ in },
         onRequestRebaseOnto: @escaping (String) -> Void = { _ in },
         onRequestPushBranchToRemote: @escaping (String, String) -> Void = { _, _ in },
         onRequestTrackRemoteBranch: @escaping (String, String?) -> Void = { _, _ in },
@@ -247,6 +251,8 @@ struct SidebarView: View {
         self.onRequestPushToTracked = onRequestPushToTracked
         self.onRequestRenameBranch = onRequestRenameBranch
         self.onRequestCreatePullRequest = onRequestCreatePullRequest
+        self.onRequestCreateBranchFromBranch = onRequestCreateBranchFromBranch
+        self.onRequestCreateTagFromBranch = onRequestCreateTagFromBranch
         self.onRequestRebaseOnto = onRequestRebaseOnto
         self.onRequestPushBranchToRemote = onRequestPushBranchToRemote
         self.onRequestTrackRemoteBranch = onRequestTrackRemoteBranch
@@ -494,6 +500,9 @@ struct SidebarView: View {
                     onTap: { toggleSection(.branches) },
                     onTargetedChange: updateBranchesHeaderDropTarget,
                     fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
+                    dragPayload: { nil },
+                    dragTitle: { "" },
+                    onDragEnded: { _ in },
                     onDrop: { payload in
                         activeBranchDragPayload = nil
                         GitDragPayloadStore.clear(ifMatching: payload)
@@ -592,12 +601,7 @@ struct SidebarView: View {
     }
 
     private func makeBranchItemProvider(branchName: String) -> NSItemProvider {
-        let payload = GitDragPayload.branch(
-            branchName,
-            repositoryURL: repositoryURL
-        )
-        activeBranchDragPayload = payload
-        GitDragPayloadStore.set(payload)
+        let payload = makeBranchPayload(branchName: branchName)
 
         let provider = NSItemProvider()
         if let data = try? GitDragPayload.encodeTransferData(payload) {
@@ -612,6 +616,16 @@ struct SidebarView: View {
         provider.register(payload)
         provider.suggestedName = branchName
         return provider
+    }
+
+    private func makeBranchPayload(branchName: String) -> GitDragPayload {
+        let payload = GitDragPayload.branch(
+            branchName,
+            repositoryURL: repositoryURL
+        )
+        activeBranchDragPayload = payload
+        GitDragPayloadStore.set(payload)
+        return payload
     }
 
     private func clearDropHover() {
@@ -866,6 +880,12 @@ struct SidebarView: View {
                             onTap: { selection = .branch(row.fullPath) },
                             onTargetedChange: updateCurrentBranchDropTarget,
                             fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
+                            dragPayload: { makeBranchPayload(branchName: row.fullPath) },
+                            dragTitle: { row.fullPath },
+                            onDragEnded: { payload in
+                                activeBranchDragPayload = nil
+                                GitDragPayloadStore.clear(ifMatching: payload)
+                            },
                             onDrop: { payload in
                                 activeBranchDragPayload = nil
                                 GitDragPayloadStore.clear(ifMatching: payload)
@@ -1202,6 +1222,15 @@ struct SidebarView: View {
             }
         }
         .disabled(remoteNames.isEmpty)
+
+        Divider()
+
+        Button("Create Branch from '\(branch)'...") {
+            onRequestCreateBranchFromBranch(branch)
+        }
+        Button("Create Tag from '\(branch)'...") {
+            onRequestCreateTagFromBranch(branch)
+        }
 
         Divider()
 

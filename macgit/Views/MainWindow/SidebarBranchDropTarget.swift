@@ -28,6 +28,9 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
     let onTap: () -> Void
     let onTargetedChange: (Bool) -> Void
     let fallbackPayload: () -> GitDragPayload?
+    let dragPayload: () -> GitDragPayload?
+    let dragTitle: () -> String
+    let onDragEnded: (GitDragPayload) -> Void
     let onDrop: (GitDragPayload) -> Bool
 
     func makeNSView(context: Context) -> DropTargetView {
@@ -35,6 +38,9 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
             onTap: onTap,
             onTargetedChange: onTargetedChange,
             fallbackPayload: fallbackPayload,
+            dragPayload: dragPayload,
+            dragTitle: dragTitle,
+            onDragEnded: onDragEnded,
             onDrop: onDrop
         )
     }
@@ -43,6 +49,9 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         nsView.onTap = onTap
         nsView.onTargetedChange = onTargetedChange
         nsView.fallbackPayload = fallbackPayload
+        nsView.dragPayload = dragPayload
+        nsView.dragTitle = dragTitle
+        nsView.onDragEnded = onDragEnded
         nsView.onDrop = onDrop
     }
 
@@ -51,26 +60,37 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         nsView.unregisterDraggedTypes()
     }
 
-    final class DropTargetView: NSView {
+    final class DropTargetView: NSView, NSDraggingSource {
         private static let payloadIdentifier = UTType.macgitGitDragPayload.identifier
         private static let payloadType = NSPasteboard.PasteboardType(payloadIdentifier)
 
         var onTap: () -> Void
         var onTargetedChange: (Bool) -> Void
         var fallbackPayload: () -> GitDragPayload?
+        var dragPayload: () -> GitDragPayload?
+        var dragTitle: () -> String
+        var onDragEnded: (GitDragPayload) -> Void
         var onDrop: (GitDragPayload) -> Bool
 
         private var isTargeted = false
+        private var dragStartEvent: NSEvent?
+        private var activeDragPayload: GitDragPayload?
 
         init(
             onTap: @escaping () -> Void,
             onTargetedChange: @escaping (Bool) -> Void,
             fallbackPayload: @escaping () -> GitDragPayload?,
+            dragPayload: @escaping () -> GitDragPayload?,
+            dragTitle: @escaping () -> String,
+            onDragEnded: @escaping (GitDragPayload) -> Void,
             onDrop: @escaping (GitDragPayload) -> Bool
         ) {
             self.onTap = onTap
             self.onTargetedChange = onTargetedChange
             self.fallbackPayload = fallbackPayload
+            self.dragPayload = dragPayload
+            self.dragTitle = dragTitle
+            self.onDragEnded = onDragEnded
             self.onDrop = onDrop
             super.init(frame: .zero)
             registerForDraggedTypes([Self.payloadType])
@@ -82,7 +102,54 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         }
 
         override func mouseDown(with event: NSEvent) {
+            dragStartEvent = event
             onTap()
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard activeDragPayload == nil,
+                  dragStartEvent != nil,
+                  let payload = dragPayload(),
+                  let item = Self.pasteboardItem(for: payload)
+            else {
+                return
+            }
+
+            activeDragPayload = payload
+
+            let dragItem = NSDraggingItem(pasteboardWriter: item)
+            let image = Self.dragImage(title: dragTitle())
+            let frame = NSRect(
+                x: 0,
+                y: max(0, bounds.midY - image.size.height / 2),
+                width: image.size.width,
+                height: image.size.height
+            )
+            dragItem.setDraggingFrame(frame, contents: image)
+            beginDraggingSession(with: [dragItem], event: event, source: self)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            dragStartEvent = nil
+        }
+
+        func draggingSession(
+            _ session: NSDraggingSession,
+            sourceOperationMaskFor context: NSDraggingContext
+        ) -> NSDragOperation {
+            .copy
+        }
+
+        func draggingSession(
+            _ session: NSDraggingSession,
+            endedAt screenPoint: NSPoint,
+            operation: NSDragOperation
+        ) {
+            dragStartEvent = nil
+            if let activeDragPayload {
+                onDragEnded(activeDragPayload)
+            }
+            activeDragPayload = nil
         }
 
         override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -167,6 +234,52 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
             }
 
             return try? GitDragPayload.decodeTransferData(data)
+        }
+
+        static func pasteboardItem(for payload: GitDragPayload) -> NSPasteboardItem? {
+            guard let data = try? GitDragPayload.encodeTransferData(payload) else {
+                return nil
+            }
+
+            let item = NSPasteboardItem()
+            item.setData(data, forType: payloadType)
+            return item
+        }
+
+        private static func dragImage(title: String) -> NSImage {
+            let displayTitle = title.isEmpty ? "Branch" : title
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+                .foregroundColor: NSColor.labelColor,
+            ]
+            let text = NSString(string: displayTitle)
+            let textSize = text.size(withAttributes: attributes)
+            let imageSize = NSSize(
+                width: max(96, textSize.width + 28),
+                height: 28
+            )
+            let image = NSImage(size: imageSize)
+
+            image.lockFocus()
+            NSColor.windowBackgroundColor.withAlphaComponent(0.94).setFill()
+            NSBezierPath(
+                roundedRect: NSRect(origin: .zero, size: imageSize),
+                xRadius: 6,
+                yRadius: 6
+            ).fill()
+            NSColor.separatorColor.setStroke()
+            NSBezierPath(
+                roundedRect: NSRect(x: 0.5, y: 0.5, width: imageSize.width - 1, height: imageSize.height - 1),
+                xRadius: 6,
+                yRadius: 6
+            ).stroke()
+            text.draw(
+                at: NSPoint(x: 14, y: (imageSize.height - textSize.height) / 2),
+                withAttributes: attributes
+            )
+            image.unlockFocus()
+
+            return image
         }
     }
 }

@@ -42,6 +42,16 @@ private struct PendingBranchDropConfirmation: Identifiable, Equatable {
     var operation: GitDragBranchOperation
 }
 
+private struct BranchTagStartPoint: Equatable {
+    let branchName: String
+    let hash: String
+    let message: String
+
+    var shortHash: String {
+        String(hash.prefix(7))
+    }
+}
+
 struct MainWindowView: View {
     let repositoryURL: URL
     @EnvironmentObject private var appState: AppState
@@ -57,6 +67,9 @@ struct MainWindowView: View {
     @State private var showingFetchSheet = false
     @State private var showingBranchSheet = false
     @State private var branchSheetStartPoint: GitBranchStartPoint?
+    @State private var showingTagSheet = false
+    @State private var tagNameInput = ""
+    @State private var branchTagStartPoint: BranchTagStartPoint?
     @State private var showingMergeSheet = false
     @State private var showingStashSheet = false
     @State private var showingCheckoutConfirmation = false
@@ -134,6 +147,7 @@ struct MainWindowView: View {
             .sheet(isPresented: $showingPushSheet) { pushSheet }
             .sheet(isPresented: $showingFetchSheet) { fetchSheet }
             .sheet(isPresented: $showingBranchSheet, onDismiss: { branchSheetStartPoint = nil }) { branchSheet }
+            .sheet(isPresented: $showingTagSheet, onDismiss: resetTagSheet) { tagSheet }
             .sheet(isPresented: $showingMergeSheet) { mergeSheet }
             .sheet(isPresented: $showingStashSheet) { stashSheet }
             .sheet(isPresented: $showingRepositorySettings) { repositorySettingsSheet }
@@ -317,6 +331,14 @@ struct MainWindowView: View {
             onRequestCreatePullRequest: { branch in
                 Task {
                     await openPullRequest(branch: branch)
+                }
+            },
+            onRequestCreateBranchFromBranch: { branch in
+                presentBranchSheet(startPoint: .branch(branch))
+            },
+            onRequestCreateTagFromBranch: { branch in
+                Task {
+                    await presentTagSheetFromBranchTip(branch)
                 }
             },
             onRequestRebaseOnto: { branch in
@@ -526,6 +548,49 @@ struct MainWindowView: View {
                 }
             }
         )
+    }
+
+    @ViewBuilder
+    private var tagSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Create Tag")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            if let startPoint = branchTagStartPoint {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("From branch:")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("\(startPoint.branchName) at \(startPoint.shortHash) : \(startPoint.message)")
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Tag name:")
+                    .font(.system(size: 13))
+                TextField("Enter tag name...", text: $tagNameInput)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    showingTagSheet = false
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("Create Tag") {
+                    Task { await createTagFromBranch() }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(tagNameInput.trimmingCharacters(in: .whitespaces).isEmpty || branchTagStartPoint == nil)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 360, idealWidth: 420)
     }
 
     @ViewBuilder
@@ -1357,6 +1422,61 @@ struct MainWindowView: View {
     private func presentBranchSheet(startPoint: GitBranchStartPoint?) {
         branchSheetStartPoint = startPoint
         showingBranchSheet = true
+    }
+
+    private func presentTagSheetFromBranchTip(_ sourceBranch: String) async {
+        let commits = await GitStatusService.shared.commitHistory(
+            branch: sourceBranch,
+            limit: 1,
+            in: repositoryURL
+        )
+
+        await MainActor.run {
+            if let commit = commits.first {
+                branchTagStartPoint = BranchTagStartPoint(
+                    branchName: sourceBranch,
+                    hash: commit.hash,
+                    message: commit.message
+                )
+                showingTagSheet = true
+            } else {
+                syncState.showError("Could not find the last commit for \(sourceBranch).")
+            }
+        }
+    }
+
+    private func createTagFromBranch() async {
+        guard let startPoint = branchTagStartPoint else { return }
+        let name = tagNameInput.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+
+        do {
+            try await GitStatusService.shared.createTag(
+                name: name,
+                commit: startPoint.hash,
+                annotated: false,
+                message: nil,
+                in: repositoryURL
+            )
+            await MainActor.run {
+                showingTagSheet = false
+            }
+            await syncState.refresh(repositoryURL: repositoryURL)
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+        } catch {
+            await MainActor.run {
+                syncState.showError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func resetTagSheet() {
+        tagNameInput = ""
+        branchTagStartPoint = nil
     }
 
     private func executeUndoEntry(_ entry: GitUndoEntry, menuAction: GitUndoMenuAction) async {

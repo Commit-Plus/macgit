@@ -15,6 +15,7 @@
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
+import AppKit
 import Foundation
 import UniformTypeIdentifiers
 import XCTest
@@ -125,6 +126,19 @@ final class GitDragDropPolicyTests: XCTestCase {
 
         GitDragPayloadStore.clear(ifMatching: payload)
         XCTAssertNil(GitDragPayloadStore.currentPayload())
+    }
+
+    func testNativeBranchDropTargetPasteboardItemRoundTripsPayload() throws {
+        let payload = GitDragPayload.branch("main", repositoryURL: repoURL)
+
+        let item = try XCTUnwrap(SidebarBranchDropTarget.DropTargetView.pasteboardItem(for: payload))
+        let data = try XCTUnwrap(
+            item.data(
+                forType: NSPasteboard.PasteboardType(UTType.macgitGitDragPayload.identifier)
+            )
+        )
+
+        XCTAssertEqual(try GitDragPayload.decodeTransferData(data), payload)
     }
 
     func testRepositoryMismatchIsRejected() {
