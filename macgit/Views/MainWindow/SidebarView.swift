@@ -315,6 +315,8 @@ struct SidebarView: View {
                 }
 
                 Section {
+                    sectionHeader(.worktrees, isExpanded: sectionStates.worktreesExpanded)
+
                     if sectionStates.worktreesExpanded {
                         if isLoadingWorktrees && worktreeEntries.isEmpty {
                             ProgressView()
@@ -331,8 +333,6 @@ struct SidebarView: View {
                             }
                         }
                     }
-                } header: {
-                    sectionHeader(.worktrees, isExpanded: sectionStates.worktreesExpanded)
                 }
 
                 Section {
@@ -357,6 +357,8 @@ struct SidebarView: View {
                 }
 
                 Section {
+                    sectionHeader(.remotes, isExpanded: sectionStates.remotesExpanded)
+
                     if sectionStates.remotesExpanded {
                         if isLoadingRemotes && remoteNodes.isEmpty {
                             ProgressView()
@@ -373,11 +375,11 @@ struct SidebarView: View {
                             }
                         }
                     }
-                } header: {
-                    sectionHeader(.remotes, isExpanded: sectionStates.remotesExpanded)
                 }
 
                 Section {
+                    sectionHeader(.stashes, isExpanded: sectionStates.stashesExpanded)
+
                     if sectionStates.stashesExpanded {
                         if isLoadingStashes && stashEntries.isEmpty {
                             ProgressView()
@@ -394,8 +396,6 @@ struct SidebarView: View {
                             }
                         }
                     }
-                } header: {
-                    sectionHeader(.stashes, isExpanded: sectionStates.stashesExpanded)
                 }
 
                 // TODO: Re-enable when submodule/subtree support is implemented
@@ -550,6 +550,8 @@ struct SidebarView: View {
     @ViewBuilder
     private func sectionHeader(_ section: SidebarSection, isExpanded: Bool) -> some View {
         sectionHeaderContent(section, isExpanded: isExpanded)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
