@@ -233,21 +233,23 @@ struct HunkView: View {
             }
 
             // Lines
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(hunk.lines.enumerated()), id: \.element.id) { index, line in
-                    DiffLineView(
-                        line: line,
-                        isSelected: selectedLineIDs.contains(line.id)
-                    )
-                    .onTapGesture {
-                        handleLineTap(at: index)
-                    }
-                    .contextMenu {
-                        lineContextMenu(for: line)
+            ScrollView([.horizontal]) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(hunk.lines.enumerated()), id: \.element.id) { index, line in
+                        DiffLineView(
+                            line: line,
+                            isSelected: selectedLineIDs.contains(line.id)
+                        )
+                        .onTapGesture {
+                            handleLineTap(at: index)
+                        }
+                        .contextMenu {
+                            lineContextMenu(for: line)
+                        }
                     }
                 }
+                .background(.background)
             }
-            .background(.background)
         }
         .background(.background)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -571,9 +573,9 @@ struct DiffLineView: View {
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(textColor)
                 .lineLimit(1)
-                .truncationMode(.tail)
+                .fixedSize(horizontal: true, vertical: false)
 
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
