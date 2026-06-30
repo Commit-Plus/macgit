@@ -76,6 +76,8 @@ struct RepoPickerView: View {
     @State private var selectedFilterTypes: Set<RepoPickerFilterType> = []
     @State private var repoIcons: [URL: String] = [:]
     @State private var rowStates: [URL: RepoPickerRowState] = [:]
+    @State private var missingRepository: RecentRepository?
+    @State private var showingMissingRepositoryAlert = false
 
     var showCloneSheetInitially: Bool
     var onRepositoryOpened: (URL) -> Void
@@ -115,6 +117,22 @@ struct RepoPickerView: View {
             Button("OK", role: .cancel) {}
         }, message: {
             Text(errorMessage ?? "An unknown error occurred")
+        })
+        .alert("Repository Moved or Deleted", isPresented: $showingMissingRepositoryAlert, presenting: missingRepository, actions: { repo in
+            Button("Remove", role: .destructive) {
+                store.remove(repo)
+                missingRepository = nil
+            }
+
+            Button("Change folder") {
+                chooseReplacementFolder(for: repo)
+            }
+
+            Button("Cancel", role: .cancel) {
+                missingRepository = nil
+            }
+        }, message: { repo in
+            Text("\"\(repo.name)\" is no longer available at \(repo.url.path).")
         })
         .sheet(isPresented: $showingCloneSheet) {
             CloneSheetView(onClone: { url in
@@ -300,8 +318,7 @@ struct RepoPickerView: View {
 
     private func repoRow(_ repo: RecentRepository) -> some View {
         Button(action: {
-            store.add(repo.url)
-            onRepositoryOpened(repo.url)
+            openRecentRepository(repo)
         }) {
             repoRowContent(repo)
         }
@@ -314,6 +331,19 @@ struct RepoPickerView: View {
                 store.remove(repo)
             }
         }
+    }
+
+    private func openRecentRepository(_ repo: RecentRepository) {
+        guard isValidGitRepository(at: repo.url) else {
+            repoIcons[repo.url] = "code-branch"
+            rowStates[repo.url] = RepoPickerRowState(currentBranch: nil, isMissing: true, isLoading: false)
+            missingRepository = repo
+            showingMissingRepositoryAlert = true
+            return
+        }
+
+        store.add(repo.url)
+        onRepositoryOpened(repo.url)
     }
 
     private func repoRowContent(_ repo: RecentRepository) -> some View {
@@ -382,10 +412,8 @@ struct RepoPickerView: View {
 
         let repoPath = repo.url.path
         let gitMetadataPath = repo.url.appendingPathComponent(".git").path
-        let exists = FileManager.default.fileExists(atPath: repoPath)
-        let hasGitMetadata = FileManager.default.fileExists(atPath: gitMetadataPath)
-
-        guard exists && hasGitMetadata else {
+        guard FileManager.default.fileExists(atPath: repoPath),
+              FileManager.default.fileExists(atPath: gitMetadataPath) else {
             await MainActor.run {
                 repoIcons[repo.url] = "code-branch"
                 rowStates[repo.url] = RepoPickerRowState(currentBranch: nil, isMissing: true, isLoading: false)
@@ -405,6 +433,41 @@ struct RepoPickerView: View {
                 isLoading: false
             )
         }
+    }
+
+    private func chooseReplacementFolder(for repo: RecentRepository) {
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.message = "Select the new location for \(repo.name)"
+            panel.prompt = "Change Folder"
+
+            panel.beginSheetModal(for: NSApp.keyWindow!) { result in
+                missingRepository = nil
+
+                guard result == .OK, let url = panel.url else {
+                    return
+                }
+
+                guard isValidGitRepository(at: url) else {
+                    errorMessage = "The selected folder does not contain a .git directory."
+                    showingError = true
+                    return
+                }
+
+                store.remove(repo)
+                store.add(url)
+                onRepositoryOpened(url)
+            }
+        }
+    }
+
+    private func isValidGitRepository(at url: URL) -> Bool {
+        let gitPath = url.appendingPathComponent(".git").path
+        return FileManager.default.fileExists(atPath: url.path)
+            && FileManager.default.fileExists(atPath: gitPath)
     }
 
     private func timeAgoString(from date: Date) -> String {
@@ -450,8 +513,7 @@ struct RepoPickerView: View {
 
         panel.beginSheetModal(for: NSApp.keyWindow!) { result in
             if result == .OK, let url = panel.url {
-                let gitPath = url.appendingPathComponent(".git").path
-                if FileManager.default.fileExists(atPath: gitPath) {
+                if isValidGitRepository(at: url) {
                     store.add(url)
                     onRepositoryOpened(url)
                 } else {

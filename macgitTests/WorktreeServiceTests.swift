@@ -202,6 +202,33 @@ final class WorktreeServiceTests: XCTestCase {
         }
     }
 
+    func testRepairWorktreeLocationUpdatesMetadataAndLabel() async throws {
+        let repoURL = try makeTempRepo()
+        let oldPath = repoURL.appendingPathComponent(".worktrees/feature-ui")
+        let newPath = repoURL.appendingPathComponent(".worktrees/feature-ui-moved")
+        try await GitStatusService.shared.addWorktree(
+            at: oldPath,
+            target: .existingBranch("feature"),
+            label: "Review UI",
+            in: repoURL
+        )
+        try FileManager.default.moveItem(at: oldPath, to: newPath)
+        let gitDirectory = try await GitStatusService.shared.gitCommonDirectory(in: repoURL)
+        let expectation = expectation(forNotification: .repositoryDidChange, object: nil) { notification in
+            (notification.userInfo?["repositoryURL"] as? URL)?.path == repoURL.path
+        }
+
+        try await GitStatusService.shared.repairWorktreeLocation(from: oldPath, to: newPath, in: repoURL)
+
+        await fulfillment(of: [expectation], timeout: 1.0)
+
+        let entries = await GitStatusService.shared.worktreesWithLabels(in: repoURL)
+        XCTAssertNil(linkedWorktree(at: oldPath, in: entries))
+        XCTAssertEqual(linkedWorktree(at: newPath, in: entries)?.label, "Review UI")
+        XCTAssertNil(WorktreeLabelStore().label(for: oldPath, in: gitDirectory))
+        XCTAssertEqual(WorktreeLabelStore().label(for: newPath, in: gitDirectory), "Review UI")
+    }
+
     func testCheckoutBranchInWorktreeSwitchesBranchAndPostsRepositoryDidChange() async throws {
         let repoURL = try makeTempRepo()
         let wtPath = repoURL.appendingPathComponent(".worktrees/feature-ui")
@@ -424,6 +451,26 @@ final class WorktreeServiceTests: XCTestCase {
         let entries = await GitStatusService.shared.worktreesWithLabels(in: repoURL)
         let gitDirectory = try await GitStatusService.shared.gitCommonDirectory(in: repoURL)
         XCTAssertNil(entries.first(where: { $0.path.path == wtPath.path }))
+        XCTAssertNil(WorktreeLabelStore().label(for: wtPath, in: gitDirectory))
+    }
+
+    func testRemoveLockedMissingWorktreeWithForceDeletesMetadataAndLabel() async throws {
+        let repoURL = try makeTempRepo()
+        let wtPath = repoURL.appendingPathComponent(".worktrees/feature-ui")
+        try await GitStatusService.shared.addWorktree(
+            at: wtPath,
+            target: .existingBranch("feature"),
+            label: "Review UI",
+            in: repoURL
+        )
+        try await GitStatusService.shared.lockWorktree(at: wtPath, reason: nil, in: repoURL)
+        try FileManager.default.removeItem(at: wtPath)
+
+        try await GitStatusService.shared.removeWorktree(at: wtPath, force: true, in: repoURL)
+
+        let entries = await GitStatusService.shared.worktreesWithLabels(in: repoURL)
+        let gitDirectory = try await GitStatusService.shared.gitCommonDirectory(in: repoURL)
+        XCTAssertNil(linkedWorktree(at: wtPath, in: entries))
         XCTAssertNil(WorktreeLabelStore().label(for: wtPath, in: gitDirectory))
     }
 

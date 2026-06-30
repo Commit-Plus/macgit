@@ -199,6 +199,8 @@ struct SidebarView: View {
     @State private var isCheckingOutWorktreeBranch = false
     @State private var pendingWorktreeForceCheckout: WorktreeEntry?
     @State private var showingWorktreeForceCheckoutConfirmation = false
+    @State private var missingWorktreeEntry: WorktreeEntry?
+    @State private var showingMissingWorktreeAlert = false
     @State private var pendingWorktreeRemoval: WorktreeEntry?
     @State private var showingWorktreeRemovalConfirmation = false
     @State private var showingPruneWorktreesConfirmation = false
@@ -493,6 +495,21 @@ struct SidebarView: View {
                 }
             } message: {
                 Text(worktreeRemovalMessage)
+            }
+            .alert("Worktree Moved or Deleted", isPresented: $showingMissingWorktreeAlert, presenting: missingWorktreeEntry) { entry in
+                Button("Delete", role: .destructive) {
+                    Task { await deleteMissingWorktree(entry) }
+                }
+
+                Button("Change folder") {
+                    chooseReplacementWorktreeFolder(for: entry)
+                }
+
+                Button("Cancel", role: .cancel) {
+                    missingWorktreeEntry = nil
+                }
+            } message: { entry in
+                Text("\"\(entry.displayTitle)\" is no longer available at \(entry.path.path).")
             }
             .alert("Force Switch Branch", isPresented: $showingWorktreeForceCheckoutConfirmation) {
                 Button("Cancel", role: .cancel) {
@@ -1095,10 +1112,10 @@ struct SidebarView: View {
         baseView
             .tag(SidebarSelection.worktree(entry.path))
             .onTapGesture {
-                selection = .worktree(entry.path)
+                selectWorktree(entry)
             }
             .onTapGesture(count: 2) {
-                onRequestOpenWorktree(entry.path)
+                openWorktree(entry)
             }
             .contextMenu {
                 worktreeContextMenu(for: entry)
@@ -2243,6 +2260,34 @@ struct SidebarView: View {
         entry.path.standardizedFileURL == repositoryURL.standardizedFileURL
     }
 
+    private func isMissingWorktree(_ entry: WorktreeEntry) -> Bool {
+        !isCurrentRepositoryWorktree(entry)
+            && (entry.dirtyCount < 0 || !FileManager.default.fileExists(atPath: entry.path.path))
+    }
+
+    private func selectWorktree(_ entry: WorktreeEntry) {
+        if isMissingWorktree(entry) {
+            showMissingWorktreeAlert(for: entry)
+            return
+        }
+
+        selection = .worktree(entry.path)
+    }
+
+    private func openWorktree(_ entry: WorktreeEntry) {
+        if isMissingWorktree(entry) {
+            showMissingWorktreeAlert(for: entry)
+            return
+        }
+
+        onRequestOpenWorktree(entry.path)
+    }
+
+    private func showMissingWorktreeAlert(for entry: WorktreeEntry) {
+        missingWorktreeEntry = entry
+        showingMissingWorktreeAlert = true
+    }
+
     private func beginEditingWorktreeLabel(_ entry: WorktreeEntry) {
         worktreeToLabel = entry
         worktreeLabelInput = entry.label ?? ""
@@ -2504,6 +2549,44 @@ struct SidebarView: View {
         }
     }
 
+    private func chooseReplacementWorktreeFolder(for entry: WorktreeEntry) {
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.message = "Select the new location for \(entry.displayTitle)"
+            panel.prompt = "Change Folder"
+
+            panel.beginSheetModal(for: NSApp.keyWindow!) { result in
+                missingWorktreeEntry = nil
+
+                guard result == .OK, let url = panel.url else {
+                    return
+                }
+
+                Task {
+                    await repairMissingWorktree(entry, newPath: url)
+                }
+            }
+        }
+    }
+
+    private func repairMissingWorktree(_ entry: WorktreeEntry, newPath: URL) async {
+        do {
+            try await GitStatusService.shared.repairWorktreeLocation(from: entry.path, to: newPath, in: repositoryURL)
+            await loadWorktrees(force: true)
+            await MainActor.run {
+                selection = .worktree(newPath)
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
     private func prepareCheckoutWorktreeSheet(for entry: WorktreeEntry) async {
         let branches = await GitStatusService.shared.localBranches(in: repositoryURL).filter { !$0.isEmpty }
         let selectedBranch = branches.contains(entry.branch ?? "") ? (entry.branch ?? "") : (branches.first ?? "")
@@ -2549,6 +2632,27 @@ struct SidebarView: View {
             await MainActor.run {
                 worktreeCheckoutErrorMessage = error.localizedDescription
                 pendingWorktreeForceCheckout = nil
+            }
+        }
+    }
+
+    private func deleteMissingWorktree(_ entry: WorktreeEntry) async {
+        do {
+            try await GitStatusService.shared.removeWorktree(at: entry.path, force: true, in: repositoryURL)
+            await loadWorktrees(force: true)
+            await MainActor.run {
+                missingWorktreeEntry = nil
+                showingMissingWorktreeAlert = false
+                if selection == .worktree(entry.path) {
+                    selection = nil
+                }
+            }
+        } catch {
+            await MainActor.run {
+                missingWorktreeEntry = nil
+                showingMissingWorktreeAlert = false
+                errorMessage = error.localizedDescription
+                showingError = true
             }
         }
     }

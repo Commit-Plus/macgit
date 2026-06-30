@@ -145,6 +145,7 @@ extension GitStatusService {
         var arguments = ["worktree", "remove"]
         if force {
             arguments.append("--force")
+            arguments.append("--force")
         }
         arguments.append(path.path)
 
@@ -152,6 +153,19 @@ extension GitStatusService {
 
         let gitDirectory = try await gitCommonDirectory(in: repositoryURL)
         try WorktreeLabelStore().removeLabel(for: path, in: gitDirectory)
+        await postRepositoryDidChange(for: repositoryURL)
+    }
+
+    func repairWorktreeLocation(from oldPath: URL, to newPath: URL, in repositoryURL: URL) async throws {
+        let normalizedNewPath = newPath.standardizedFileURL
+        if !FileManager.default.fileExists(atPath: normalizedNewPath.path) {
+            throw GitError.commandFailed("The selected worktree folder does not exist.")
+        }
+
+        _ = try await runGit(arguments: ["worktree", "repair", normalizedNewPath.path], in: repositoryURL)
+
+        let gitDirectory = try await gitCommonDirectory(in: repositoryURL)
+        try WorktreeLabelStore().moveLabel(from: oldPath, to: normalizedNewPath, in: gitDirectory)
         await postRepositoryDidChange(for: repositoryURL)
     }
 
