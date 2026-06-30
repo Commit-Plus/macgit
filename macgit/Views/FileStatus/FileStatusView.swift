@@ -67,6 +67,25 @@ struct FileStatusView: View {
         )
     }
 
+    private func sectionCheckState(isStaged: Bool) -> NSControl.StateValue {
+        let files = isStaged ? gitStatus.staged : changedFiles
+        let allKeys = Set(files.map { FileStatusSelectionKey(file: $0, isStaged: isStaged) })
+        let selected = selectedActionFileKeys.intersection(allKeys)
+        if selected.isEmpty { return .off }
+        if selected == allKeys { return .on }
+        return .mixed
+    }
+
+    private func toggleSelectAll(isStaged: Bool, selectAll: Bool) {
+        let files = isStaged ? gitStatus.staged : changedFiles
+        let allKeys = Set(files.map { FileStatusSelectionKey(file: $0, isStaged: isStaged) })
+        if selectAll {
+            selectedActionFileKeys.formUnion(allKeys)
+        } else {
+            selectedActionFileKeys.subtract(allKeys)
+        }
+    }
+
     @ViewBuilder
     private var inProgressBanner: some View {
         if let operation = syncState?.inProgressOperation {
@@ -218,6 +237,9 @@ struct FileStatusView: View {
                     }
                 } header: {
                     HStack(spacing: 8) {
+                        TriStateCheckbox(state: sectionCheckState(isStaged: true), accessibilityLabel: "Select all staged") { selectAll in
+                            toggleSelectAll(isStaged: true, selectAll: selectAll)
+                        }
                         Text("Staged")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)
@@ -246,6 +268,9 @@ struct FileStatusView: View {
                     }
                 } header: {
                     HStack(spacing: 8) {
+                        TriStateCheckbox(state: sectionCheckState(isStaged: false), accessibilityLabel: "Select all changed") { selectAll in
+                            toggleSelectAll(isStaged: false, selectAll: selectAll)
+                        }
                         Text("Changed")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)
