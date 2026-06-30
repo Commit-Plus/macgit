@@ -22,7 +22,9 @@
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
+import CoreTransferable
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum SidebarSelection: Hashable {
     case item(SidebarItem)
@@ -210,6 +212,7 @@ struct SidebarView: View {
     @State private var activeDropTarget: GitDragTarget?
     @State private var activeDropLabel: String?
     @State private var isCurrentBranchDropTargeted = false
+    @State private var activeBranchDragPayload: GitDragPayload?
 
     init(
         repositoryURL: URL,
@@ -281,6 +284,8 @@ struct SidebarView: View {
                 }
 
                 Section {
+                    branchesSectionHeaderRow
+
                     if sectionStates.branchesExpanded {
                         if isLoadingBranches && branchNodes.isEmpty {
                             ProgressView()
@@ -301,8 +306,6 @@ struct SidebarView: View {
                             }
                         }
                     }
-                } header: {
-                    sectionHeader(.branches, isExpanded: sectionStates.branchesExpanded)
                 }
 
                 Section {
@@ -479,11 +482,41 @@ struct SidebarView: View {
         }
     }
 
+    // Use a real list row for the branches title because List section headers are unreliable drop targets on macOS.
+    private var branchesSectionHeaderRow: some View {
+        sectionHeaderContent(.branches, isExpanded: sectionStates.branchesExpanded)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(activeDropTarget == .branchesHeader ? Color.accentColor.opacity(0.12) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay {
+                SidebarBranchDropTarget(
+                    onTap: { toggleSection(.branches) },
+                    onTargetedChange: updateBranchesHeaderDropTarget,
+                    fallbackPayload: { activeBranchDragPayload },
+                    onDrop: { payload in
+                        activeBranchDragPayload = nil
+                        handleDrop([payload], target: .branchesHeader)
+                        return true
+                    }
+                )
+                .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
+                    activeBranchDragPayload = nil
+                    return handleDrop(providers, target: .branchesHeader)
+                }
+            }
+    }
+
     @ViewBuilder
     private func sectionHeader(_ section: SidebarSection, isExpanded: Bool) -> some View {
+        sectionHeaderContent(section, isExpanded: isExpanded)
+    }
+
+    @ViewBuilder
+    private func sectionHeaderContent(_ section: SidebarSection, isExpanded: Bool) -> some View {
         let isBranchesDropActive = section == .branches && activeDropTarget == .branchesHeader
 
-        let baseView = HStack {
+        HStack {
             Text(section.rawValue)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -525,25 +558,6 @@ struct SidebarView: View {
         .onTapGesture {
             toggleSection(section)
         }
-
-        if section == .branches {
-            baseView
-                .padding(.vertical, 2)
-                .background(isBranchesDropActive ? Color.accentColor.opacity(0.12) : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .onDropSessionUpdated { session in
-                    updateDropHover(
-                        target: .branchesHeader,
-                        label: "Create Branch",
-                        session: session
-                    )
-                }
-                .dropDestination(for: GitDragPayload.self) { items, _ in
-                    handleDrop(items, target: .branchesHeader)
-                }
-        } else {
-            baseView
-        }
     }
 
     private func loadSectionStates() {
@@ -562,22 +576,46 @@ struct SidebarView: View {
         }
     }
 
-    private func updateDropHover(
-        target: GitDragTarget,
-        label: String,
-        session: DropSession
-    ) {
-        switch session.phase {
-        case .entering, .active:
-            activeDropTarget = target
-            activeDropLabel = label
-        case .exiting, .dataTransferCompleted, .ended:
-            if activeDropTarget == target {
-                clearDropHover()
-            }
-        @unknown default:
+    private func updateBranchesHeaderDropTarget(isTargeted: Bool) {
+        if isTargeted {
+            activeDropTarget = .branchesHeader
+            activeDropLabel = "Create Branch"
+        } else if activeDropTarget == .branchesHeader {
             clearDropHover()
         }
+    }
+
+    private func updateCurrentBranchDropTarget(session: DropSession) {
+        switch session.phase {
+        case .entering, .active:
+            isCurrentBranchDropTargeted = true
+        case .exiting, .dataTransferCompleted, .ended:
+            isCurrentBranchDropTargeted = false
+        @unknown default:
+            isCurrentBranchDropTargeted = false
+        }
+    }
+
+    private func makeBranchItemProvider(branchName: String) -> NSItemProvider {
+        let payload = GitDragPayload.branch(
+            branchName,
+            repositoryURL: repositoryURL
+        )
+        activeBranchDragPayload = payload
+
+        let provider = NSItemProvider()
+        if let data = try? GitDragPayload.encodeTransferData(payload) {
+            provider.registerDataRepresentation(
+                forTypeIdentifier: UTType.macgitGitDragPayload.identifier,
+                visibility: .all
+            ) { completionHandler in
+                completionHandler(data, nil)
+                return nil
+            }
+        }
+        provider.register(payload)
+        provider.suggestedName = branchName
+        return provider
     }
 
     private func clearDropHover() {
@@ -818,24 +856,24 @@ struct SidebarView: View {
                 .contextMenu {
                     branchContextMenu(for: row.fullPath)
                 }
-                .draggable(
-                    GitDragPayload.branch(
-                        row.fullPath,
-                        repositoryURL: repositoryURL
-                    )
-                )
+                .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 8))
+                .onDrag {
+                    makeBranchItemProvider(branchName: row.fullPath)
+                } preview: {
+                    BranchDragPreview(branchName: row.fullPath)
+                }
 
             if isCurrentBranch {
                 rowView
-                    .dropDestination(for: GitDragPayload.self) { items, _ in
+                    .onDropSessionUpdated { session in
+                        updateCurrentBranchDropTarget(session: session)
+                    }
+                    .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
                         handleDrop(
-                            items,
+                            providers,
                             target: branchTarget,
                             optionKeyPressed: NSEvent.modifierFlags.contains(.option)
                         )
-                        return true
-                    } isTargeted: { isTargeted in
-                        isCurrentBranchDropTargeted = isTargeted
                     }
             } else {
                 rowView

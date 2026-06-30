@@ -44,6 +44,14 @@ nonisolated struct GitDragPayload: Codable, Hashable, Sendable, Transferable {
         CodableRepresentation(contentType: .macgitGitDragPayload)
     }
 
+    nonisolated static func encodeTransferData(_ payload: GitDragPayload) throws -> Data {
+        try JSONEncoder().encode(payload)
+    }
+
+    nonisolated static func decodeTransferData(_ data: Data) throws -> GitDragPayload {
+        try JSONDecoder().decode(GitDragPayload.self, from: data)
+    }
+
     static func normalizedPath(_ url: URL) -> String {
         url.standardizedFileURL.resolvingSymlinksInPath().path
     }

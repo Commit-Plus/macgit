@@ -16,6 +16,7 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 import Foundation
+import UniformTypeIdentifiers
 import XCTest
 @testable import macgit
 
@@ -27,6 +28,79 @@ final class GitDragDropPolicyTests: XCTestCase {
         )
         let provider = NSItemProvider()
         provider.register(payload)
+
+        XCTAssertTrue(
+            provider.hasItemConformingToTypeIdentifier(UTType.macgitGitDragPayload.identifier)
+        )
+
+        let loadedData: Data = try await withCheckedThrowingContinuation { continuation in
+            provider.loadDataRepresentation(
+                forTypeIdentifier: UTType.macgitGitDragPayload.identifier
+            ) { data, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let data {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(
+                        throwing: NSError(
+                            domain: "GitDragDropPolicyTests",
+                            code: 1,
+                            userInfo: [NSLocalizedDescriptionKey: "Missing drag payload data."]
+                        )
+                    )
+                }
+            }
+        }
+
+        XCTAssertEqual(try GitDragPayload.decodeTransferData(loadedData), payload)
+
+        let loadedPayload: GitDragPayload = try await withCheckedThrowingContinuation { continuation in
+            GitDragPayloadItemProviderLoader.load(from: provider) { result in
+                continuation.resume(with: result)
+            }
+        }
+
+        XCTAssertEqual(loadedPayload, payload)
+    }
+
+    func testDragPayloadLoadsFromRawDataItemProvider() async throws {
+        let payload = GitDragPayload.branch("feature", repositoryURL: repoURL)
+        let data = try GitDragPayload.encodeTransferData(payload)
+        let provider = NSItemProvider(
+            item: data as NSData,
+            typeIdentifier: UTType.macgitGitDragPayload.identifier
+        )
+
+        XCTAssertTrue(
+            provider.hasItemConformingToTypeIdentifier(UTType.macgitGitDragPayload.identifier)
+        )
+
+        let loadedPayload: GitDragPayload = try await withCheckedThrowingContinuation { continuation in
+            GitDragPayloadItemProviderLoader.load(from: provider) { result in
+                continuation.resume(with: result)
+            }
+        }
+
+        XCTAssertEqual(loadedPayload, payload)
+    }
+
+    func testDragPayloadLoadsFromRegisteredDataRepresentation() async throws {
+        let payload = GitDragPayload.branch("release", repositoryURL: repoURL)
+        let data = try GitDragPayload.encodeTransferData(payload)
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(
+            forTypeIdentifier: UTType.macgitGitDragPayload.identifier,
+            visibility: .all
+        ) { completionHandler in
+            completionHandler(data, nil)
+            return nil
+        }
+        provider.register(payload)
+
+        XCTAssertTrue(
+            provider.hasItemConformingToTypeIdentifier(UTType.macgitGitDragPayload.identifier)
+        )
 
         let loadedPayload: GitDragPayload = try await withCheckedThrowingContinuation { continuation in
             GitDragPayloadItemProviderLoader.load(from: provider) { result in

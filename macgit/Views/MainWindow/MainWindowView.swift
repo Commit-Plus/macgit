@@ -1319,9 +1319,38 @@ struct MainWindowView: View {
                 operation: operation
             )
         case .createBranch(let startPoint):
-            presentBranchSheet(startPoint: startPoint)
+            presentCreateBranchSheet(startPoint: startPoint)
         case .stashFiles, .applyStash:
             syncState.showInfo("That drag and drop action is not available in Phase 1 yet.")
+        }
+    }
+
+    private func presentCreateBranchSheet(startPoint: GitBranchStartPoint) {
+        switch startPoint {
+        case .commit:
+            presentBranchSheet(startPoint: startPoint)
+        case .branch(let sourceBranch):
+            Task {
+                await presentBranchSheetFromBranchTip(sourceBranch)
+            }
+        }
+    }
+
+    private func presentBranchSheetFromBranchTip(_ sourceBranch: String) async {
+        let commits = await GitStatusService.shared.commitHistory(
+            branch: sourceBranch,
+            limit: 1,
+            in: repositoryURL
+        )
+
+        await MainActor.run {
+            if let commit = commits.first {
+                presentBranchSheet(
+                    startPoint: .commit(hash: commit.hash, message: commit.message)
+                )
+            } else {
+                syncState.showError("Could not find the last commit for \(sourceBranch).")
+            }
         }
     }
 
