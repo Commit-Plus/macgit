@@ -74,6 +74,10 @@ struct StatusFile: Identifiable, Equatable, Hashable {
         ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "tiff", "tif", "ico", "heic", "heif", "raw", "cr2", "nef", "arw", "dng"].contains(fileExtension)
     }
 
+    var isVideo: Bool {
+        ["mp4", "mov", "mkv", "avi", "flv", "wmv", "webm", "m4v", "mpg", "mpeg", "3gp"].contains(fileExtension)
+    }
+
     var isBinary: Bool {
         let binaryExtensions = [
             // Archives

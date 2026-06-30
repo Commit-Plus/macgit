@@ -564,6 +564,8 @@ struct FileStatusView: View {
 
                     if file.isImage {
                         imagePreview(file: file)
+                    } else if file.isVideo {
+                        videoPreview(file: file)
                     } else {
                         DiffView(
                             hunks: diffHunks,
@@ -805,6 +807,11 @@ struct FileStatusView: View {
                 )
             }
         }
+    }
+
+    private func videoPreview(file: StatusFile) -> some View {
+        let fileURL = repositoryURL.appendingPathComponent(file.path)
+        return VideoThumbnailView(fileURL: fileURL, filePath: file.path)
     }
 
     private func fileIcon(for file: StatusFile) -> String {
