@@ -280,7 +280,7 @@ final class GitDragDropPolicyTests: XCTestCase {
                 commits: [GitDraggedCommit(hash: "c1", message: "one", isMerge: false)],
                 target: .stashesHeader
             ),
-            .reject("That drag and drop action is not available yet.")
+            .reject("Commits cannot be dropped on Stashes. Drop working copy files onto Stashes to stash them.")
         )
     }
 
@@ -371,7 +371,7 @@ final class GitDragDropPolicyTests: XCTestCase {
                 commits: [GitDraggedCommit(hash: "c1", message: "one", isMerge: false)],
                 target: .tagsHeader
             ),
-            .reject("Drop a branch onto Tags to create a tag.")
+            .reject("Commits cannot be dropped on Tags. Drop a branch onto Tags to create a tag.")
         )
     }
 
@@ -391,7 +391,7 @@ final class GitDragDropPolicyTests: XCTestCase {
                 commits: [GitDraggedCommit(hash: "c1", message: "one", isMerge: false)],
                 target: .remotesHeader
             ),
-            .reject("Drop a branch onto Remotes to push it.")
+            .reject("Commits cannot be dropped on Remotes. Drop a branch onto Remotes to push it.")
         )
     }
 
@@ -445,6 +445,96 @@ final class GitDragDropPolicyTests: XCTestCase {
                 target: .stashesHeader
             ),
             .reject("Drop stashes onto File status to apply them.")
+        )
+    }
+
+    func testCommitDropOnStashesHeaderIsRejected() {
+        XCTAssertEqual(
+            decision(
+                commits: [GitDraggedCommit(hash: "c1", message: "one", isMerge: false)],
+                target: .stashesHeader
+            ),
+            .reject("Commits cannot be dropped on Stashes. Drop working copy files onto Stashes to stash them.")
+        )
+    }
+
+    func testCommitDropOnFileStatusIsRejected() {
+        XCTAssertEqual(
+            decision(
+                commits: [GitDraggedCommit(hash: "c1", message: "one", isMerge: false)],
+                target: .fileStatus
+            ),
+            .reject("Commits cannot be dropped on File status. Drop a stash onto File status to apply it.")
+        )
+    }
+
+    func testBranchDropOnStashesHeaderIsRejected() {
+        XCTAssertEqual(
+            decision(
+                payload: .branch("feature", repositoryURL: repoURL),
+                target: .stashesHeader
+            ),
+            .reject("Branches cannot be dropped on Stashes. Drop working copy files onto Stashes to stash them.")
+        )
+    }
+
+    func testBranchDropOnFileStatusIsRejected() {
+        XCTAssertEqual(
+            decision(
+                payload: .branch("feature", repositoryURL: repoURL),
+                target: .fileStatus
+            ),
+            .reject("Branches cannot be dropped on File status. Drop a stash onto File status to apply it.")
+        )
+    }
+
+    func testFilesCannotDropOnBranchesHeader() {
+        XCTAssertEqual(
+            decision(
+                payload: .files(["a.txt"], repositoryURL: repoURL),
+                target: .branchesHeader
+            ),
+            .reject("Drop working copy files onto Stashes.")
+        )
+    }
+
+    func testFilesCannotDropOnTagsHeader() {
+        XCTAssertEqual(
+            decision(
+                payload: .files(["a.txt"], repositoryURL: repoURL),
+                target: .tagsHeader
+            ),
+            .reject("Drop working copy files onto Stashes.")
+        )
+    }
+
+    func testFilesCannotDropOnRemotesHeader() {
+        XCTAssertEqual(
+            decision(
+                payload: .files(["a.txt"], repositoryURL: repoURL),
+                target: .remotesHeader
+            ),
+            .reject("Drop working copy files onto Stashes.")
+        )
+    }
+
+    func testFilesCannotDropOnCurrentBranch() {
+        XCTAssertEqual(
+            decision(
+                payload: .files(["a.txt"], repositoryURL: repoURL),
+                target: .localBranch(name: "main", isCurrent: true)
+            ),
+            .reject("Drop working copy files onto Stashes.")
+        )
+    }
+
+    func testFilesCannotDropOnNonCurrentBranch() {
+        XCTAssertEqual(
+            decision(
+                payload: .files(["a.txt"], repositoryURL: repoURL),
+                target: .localBranch(name: "feature", isCurrent: false)
+            ),
+            .reject("Drop working copy files onto Stashes.")
         )
     }
 

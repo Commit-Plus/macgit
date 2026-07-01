@@ -589,7 +589,13 @@ struct SidebarView: View {
                     onTap: { toggleSection(.branches) },
                     onTargetedChange: updateBranchesHeaderDropTarget,
                     fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
-                    canAcceptDrop: { _ in true },
+                    canAcceptDrop: { payload in
+                        canAcceptDrop(
+                            payload,
+                            target: .branchesHeader,
+                            optionKeyPressed: false
+                        )
+                    },
                     dragPayload: { nil },
                     dragTitle: { "" },
                     onDragEnded: { _ in },
@@ -601,6 +607,17 @@ struct SidebarView: View {
                     }
                 )
                 .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
+                    if let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload(),
+                       !canAcceptDrop(
+                           payload,
+                           target: .branchesHeader,
+                           optionKeyPressed: false
+                       ) {
+                        activeBranchDragPayload = nil
+                        GitDragPayloadStore.clear(ifMatching: payload)
+                        clearDropHover()
+                        return false
+                    }
                     activeBranchDragPayload = nil
                     GitDragPayloadStore.clear()
                     return handleDrop(providers, target: .branchesHeader)
@@ -619,7 +636,13 @@ struct SidebarView: View {
                     onTap: { toggleSection(.tags) },
                     onTargetedChange: updateTagsHeaderDropTarget,
                     fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
-                    canAcceptDrop: { _ in true },
+                    canAcceptDrop: { payload in
+                        canAcceptDrop(
+                            payload,
+                            target: .tagsHeader,
+                            optionKeyPressed: false
+                        )
+                    },
                     dragPayload: { nil },
                     dragTitle: { "" },
                     onDragEnded: { _ in },
@@ -631,6 +654,17 @@ struct SidebarView: View {
                     }
                 )
                 .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
+                    if let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload(),
+                       !canAcceptDrop(
+                           payload,
+                           target: .tagsHeader,
+                           optionKeyPressed: false
+                       ) {
+                        activeBranchDragPayload = nil
+                        GitDragPayloadStore.clear(ifMatching: payload)
+                        clearDropHover()
+                        return false
+                    }
                     activeBranchDragPayload = nil
                     GitDragPayloadStore.clear()
                     return handleDrop(providers, target: .tagsHeader)
@@ -649,7 +683,13 @@ struct SidebarView: View {
                     onTap: { toggleSection(.remotes) },
                     onTargetedChange: updateRemotesHeaderDropTarget,
                     fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
-                    canAcceptDrop: { _ in true },
+                    canAcceptDrop: { payload in
+                        canAcceptDrop(
+                            payload,
+                            target: .remotesHeader,
+                            optionKeyPressed: false
+                        )
+                    },
                     dragPayload: { nil },
                     dragTitle: { "" },
                     onDragEnded: { _ in },
@@ -661,6 +701,17 @@ struct SidebarView: View {
                     }
                 )
                 .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
+                    if let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload(),
+                       !canAcceptDrop(
+                           payload,
+                           target: .remotesHeader,
+                           optionKeyPressed: false
+                       ) {
+                        activeBranchDragPayload = nil
+                        GitDragPayloadStore.clear(ifMatching: payload)
+                        clearDropHover()
+                        return false
+                    }
                     activeBranchDragPayload = nil
                     GitDragPayloadStore.clear()
                     return handleDrop(providers, target: .remotesHeader)
@@ -679,7 +730,13 @@ struct SidebarView: View {
                     onTap: { toggleSection(.stashes) },
                     onTargetedChange: updateStashesHeaderDropTarget,
                     fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
-                    canAcceptDrop: { _ in true },
+                    canAcceptDrop: { payload in
+                        canAcceptDrop(
+                            payload,
+                            target: .stashesHeader,
+                            optionKeyPressed: false
+                        )
+                    },
                     dragPayload: { nil },
                     dragTitle: { "" },
                     onDragEnded: { _ in },
@@ -691,6 +748,17 @@ struct SidebarView: View {
                     }
                 )
                 .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
+                    if let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload(),
+                       !canAcceptDrop(
+                           payload,
+                           target: .stashesHeader,
+                           optionKeyPressed: false
+                       ) {
+                        activeBranchDragPayload = nil
+                        GitDragPayloadStore.clear(ifMatching: payload)
+                        clearDropHover()
+                        return false
+                    }
                     activeBranchDragPayload = nil
                     GitDragPayloadStore.clear()
                     return handleDrop(providers, target: .stashesHeader)

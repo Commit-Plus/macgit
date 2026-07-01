@@ -68,13 +68,16 @@ enum GitDragDropPolicy {
             return .accept(.createBranch(startPoint: .commit(hash: commit.hash, message: commit.message)))
 
         case .tagsHeader:
-            return .reject("Drop a branch onto Tags to create a tag.")
+            return .reject("Commits cannot be dropped on Tags. Drop a branch onto Tags to create a tag.")
 
         case .remotesHeader:
-            return .reject("Drop a branch onto Remotes to push it.")
+            return .reject("Commits cannot be dropped on Remotes. Drop a branch onto Remotes to push it.")
 
-        case .stashesHeader, .fileStatus:
-            return .reject("That drag and drop action is not available yet.")
+        case .stashesHeader:
+            return .reject("Commits cannot be dropped on Stashes. Drop working copy files onto Stashes to stash them.")
+
+        case .fileStatus:
+            return .reject("Commits cannot be dropped on File status. Drop a stash onto File status to apply it.")
         }
     }
 
@@ -108,8 +111,11 @@ enum GitDragDropPolicy {
         case .remotesHeader:
             return .accept(.pushBranchToRemote(source))
 
-        case .stashesHeader, .fileStatus:
-            return .reject("That drag and drop action is not available yet.")
+        case .stashesHeader:
+            return .reject("Branches cannot be dropped on Stashes. Drop working copy files onto Stashes to stash them.")
+
+        case .fileStatus:
+            return .reject("Branches cannot be dropped on File status. Drop a stash onto File status to apply it.")
         }
     }
 
