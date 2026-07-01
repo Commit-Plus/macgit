@@ -34,6 +34,8 @@ enum GitDragDropPolicy {
             return commitDecision(commits: commits, target: target)
         case .branch(let source):
             return branchDecision(source: source, target: target, optionKeyPressed: optionKeyPressed)
+        case .remoteBranch(let source):
+            return remoteBranchDecision(source: source, target: target)
         case .files, .stash:
             return .reject("That drag and drop action is not available yet.")
         }
@@ -107,5 +109,16 @@ enum GitDragDropPolicy {
         case .stashesHeader, .fileStatus:
             return .reject("That drag and drop action is not available yet.")
         }
+    }
+
+    nonisolated private static func remoteBranchDecision(
+        source: String,
+        target: GitDragTarget
+    ) -> GitDragDropDecision {
+        guard target == .branchesHeader else {
+            return .reject("Drop remote branches onto Branches to check them out.")
+        }
+
+        return .accept(.checkoutRemoteBranch(source))
     }
 }

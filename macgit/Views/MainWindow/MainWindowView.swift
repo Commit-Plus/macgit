@@ -1492,6 +1492,10 @@ struct MainWindowView: View {
             )
         case .createBranch(let startPoint):
             presentCreateBranchSheet(startPoint: startPoint)
+        case .checkoutRemoteBranch(let fullPath):
+            runRepositoryOperation("Checking out \(fullPath)...") {
+                await checkoutRemoteBranchFromDrop(fullPath)
+            }
         case .createTagFromBranch(let sourceBranch):
             Task {
                 await presentTagSheetFromBranchTip(sourceBranch)
@@ -1502,6 +1506,45 @@ struct MainWindowView: View {
             }
         case .stashFiles, .applyStash:
             syncState.showInfo("That drag and drop action is not available in Phase 1 yet.")
+        }
+    }
+
+    private func checkoutRemoteBranchFromDrop(_ fullPath: String) async {
+        let parts = fullPath.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else {
+            await MainActor.run {
+                syncState.showError("Could not parse remote branch '\(fullPath)'.")
+            }
+            return
+        }
+
+        let remote = String(parts[0])
+        let branch = String(parts[1])
+        guard !remote.isEmpty, !branch.isEmpty else {
+            await MainActor.run {
+                syncState.showError("Could not parse remote branch '\(fullPath)'.")
+            }
+            return
+        }
+
+        do {
+            let localBranch = try await GitStatusService.shared.checkoutRemoteBranch(
+                remote: remote,
+                branch: branch,
+                in: repositoryURL
+            )
+            await MainActor.run {
+                selectedItem = .branch(localBranch)
+            }
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+        } catch {
+            await MainActor.run {
+                syncState.showError(error.localizedDescription)
+            }
         }
     }
 

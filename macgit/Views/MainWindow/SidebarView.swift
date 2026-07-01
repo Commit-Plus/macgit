@@ -566,11 +566,18 @@ struct SidebarView: View {
 
     // Use a real list row for the branches title because List section headers are unreliable drop targets on macOS.
     private var branchesSectionHeaderRow: some View {
-        sectionHeaderContent(.branches, isExpanded: sectionStates.branchesExpanded)
+        Group {
+            if let remoteBranch = draggedRemoteBranch {
+                RemoteBranchCheckoutDropZone(
+                    remoteBranch: remoteBranch,
+                    isTargeted: activeDropTarget == .branchesHeader
+                )
+            } else {
+                sectionHeaderContent(.branches, isExpanded: sectionStates.branchesExpanded)
+            }
+        }
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(activeDropTarget == .branchesHeader ? Color.accentColor.opacity(0.12) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay {
                 SidebarBranchDropTarget(
                     onTap: { toggleSection(.branches) },
@@ -730,7 +737,7 @@ struct SidebarView: View {
     private func updateBranchesHeaderDropTarget(isTargeted: Bool) {
         if isTargeted {
             activeDropTarget = .branchesHeader
-            activeDropLabel = "Create Branch"
+            activeDropLabel = draggedRemoteBranch == nil ? "Create Branch" : "Check Out"
         } else if activeDropTarget == .branchesHeader {
             clearDropHover()
         }
@@ -786,6 +793,29 @@ struct SidebarView: View {
         return payload
     }
 
+    private func makeRemoteBranchPayload(remoteBranch: String) -> GitDragPayload {
+        let payload = GitDragPayload.remoteBranch(remoteBranch, repositoryURL: repositoryURL)
+        activeBranchDragPayload = payload
+        GitDragPayloadStore.set(payload)
+        return payload
+    }
+
+    private var draggedRemoteBranch: String? {
+        let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload()
+        return payload?.remoteBranch
+    }
+
+    private func finishRemoteBranchDrag(_ remoteBranch: String) {
+        guard let payload = activeBranchDragPayload,
+              payload.remoteBranch == remoteBranch
+        else {
+            return
+        }
+        activeBranchDragPayload = nil
+        GitDragPayloadStore.clear(ifMatching: payload)
+        clearDropHover()
+    }
+
     private func clearDropHover() {
         activeDropTarget = nil
         activeDropLabel = nil
@@ -807,8 +837,12 @@ struct SidebarView: View {
             optionKeyPressed: optionKeyPressed
         ) {
         case .accept(let request):
+            if case .checkoutRemoteBranch = request {
+                expandBranchesSection()
+            }
             onRequestDragDrop(request)
         case .reject(let reason):
+            guard payload.remoteBranch == nil else { return }
             errorMessage = reason
             showingError = true
         }
@@ -1224,7 +1258,7 @@ struct SidebarView: View {
                     toggleRemoteFolder(row.fullPath)
                 }
         } else {
-            baseView
+            let rowView = baseView
                 .tag(SidebarSelection.remoteBranch(row.fullPath))
                 .onTapGesture {
                     selection = .remoteBranch(row.fullPath)
@@ -1235,9 +1269,38 @@ struct SidebarView: View {
                         await checkoutRemoteBranch(row.fullPath)
                     }
                 }
-                .contextMenu {
-                    remoteBranchContextMenu(for: row.fullPath)
-                }
+
+            if remoteBranchParts(from: row.fullPath)?.branch == "HEAD" {
+                rowView
+                    .contextMenu {
+                        remoteBranchContextMenu(for: row.fullPath)
+                    }
+            } else {
+                rowView
+                    .overlay {
+                        SidebarRemoteBranchDragSource(
+                            onTap: {
+                                selection = .remoteBranch(row.fullPath)
+                            },
+                            onDoubleTap: {
+                                selection = .remoteBranch(row.fullPath)
+                                Task {
+                                    await checkoutRemoteBranch(row.fullPath)
+                                }
+                            },
+                            dragPayload: {
+                                makeRemoteBranchPayload(remoteBranch: row.fullPath)
+                            },
+                            dragTitle: row.fullPath,
+                            onDragEnded: {
+                                finishRemoteBranchDrag(row.fullPath)
+                            }
+                        )
+                    }
+                    .contextMenu {
+                        remoteBranchContextMenu(for: row.fullPath)
+                    }
+            }
         }
     }
 

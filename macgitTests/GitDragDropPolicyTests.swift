@@ -141,6 +141,14 @@ final class GitDragDropPolicyTests: XCTestCase {
         XCTAssertEqual(try GitDragPayload.decodeTransferData(data), payload)
     }
 
+    func testRemoteBranchDragPayloadRoundTripsTransferData() throws {
+        let payload = GitDragPayload.remoteBranch("origin/feature", repositoryURL: repoURL)
+
+        let data = try GitDragPayload.encodeTransferData(payload)
+
+        XCTAssertEqual(try GitDragPayload.decodeTransferData(data), payload)
+    }
+
     func testRepositoryMismatchIsRejected() {
         let payload = GitDragPayload.commits(
             [GitDraggedCommit(hash: "c1", message: "commit", isMerge: false)],
@@ -293,6 +301,26 @@ final class GitDragDropPolicyTests: XCTestCase {
                 target: .branchesHeader
             ),
             .accept(.createBranch(startPoint: .branch("feature")))
+        )
+    }
+
+    func testRemoteBranchCanCheckoutFromBranchesHeader() {
+        XCTAssertEqual(
+            decision(
+                payload: .remoteBranch("origin/feature", repositoryURL: repoURL),
+                target: .branchesHeader
+            ),
+            .accept(.checkoutRemoteBranch("origin/feature"))
+        )
+    }
+
+    func testRemoteBranchDropOutsideBranchesHeaderIsRejected() {
+        XCTAssertEqual(
+            decision(
+                payload: .remoteBranch("origin/feature", repositoryURL: repoURL),
+                target: .tagsHeader
+            ),
+            .reject("Drop remote branches onto Branches to check them out.")
         )
     }
 

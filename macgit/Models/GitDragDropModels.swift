@@ -33,6 +33,7 @@ nonisolated struct GitDragPayload: Codable, Hashable, Sendable, Transferable {
     enum Content: Codable, Hashable, Sendable {
         case commits([GitDraggedCommit])
         case branch(String)
+        case remoteBranch(String)
         case files([String])
         case stash(String)
     }
@@ -70,6 +71,13 @@ nonisolated struct GitDragPayload: Codable, Hashable, Sendable, Transferable {
         )
     }
 
+    static func remoteBranch(_ remoteBranch: String, repositoryURL: URL) -> GitDragPayload {
+        GitDragPayload(
+            repositoryPath: normalizedPath(repositoryURL),
+            content: .remoteBranch(remoteBranch)
+        )
+    }
+
     static func files(_ paths: [String], repositoryURL: URL) -> GitDragPayload {
         GitDragPayload(
             repositoryPath: normalizedPath(repositoryURL),
@@ -90,6 +98,10 @@ nonisolated struct GitDragPayload: Codable, Hashable, Sendable, Transferable {
 
     nonisolated var branch: String? {
         content.branchValue
+    }
+
+    nonisolated var remoteBranch: String? {
+        content.remoteBranchValue
     }
 
     nonisolated var files: [String] {
@@ -114,6 +126,13 @@ extension GitDragPayload.Content {
             return nil
         }
         return branch
+    }
+
+    nonisolated var remoteBranchValue: String? {
+        guard case .remoteBranch(let remoteBranch) = self else {
+            return nil
+        }
+        return remoteBranch
     }
 
     nonisolated var filesValue: [String]? {
@@ -153,6 +172,7 @@ nonisolated enum GitDragBranchOperation: Equatable, Sendable {
 nonisolated enum GitDragDropRequest: Equatable, Sendable {
     case cherryPick(commits: [GitDraggedCommit], targetBranch: String)
     case createBranch(startPoint: GitBranchStartPoint)
+    case checkoutRemoteBranch(String)
     case createTagFromBranch(String)
     case pushBranchToRemote(String)
     case branchOperation(source: String, target: String, operation: GitDragBranchOperation)
