@@ -16,7 +16,7 @@
 
 - Phase 1: [completed] [2026-06-27-drag-and-drop-phase-1-commit-drag.md](2026-06-27-drag-and-drop-phase-1-commit-drag.md) (branch: `codex/drag-and-drop-phase-1-commit-drag`, landed on `main` at `517fa81`; Tasks 1-3 were merged earlier at `6494741`)
 - Phase 2: [completed] [2026-06-27-drag-and-drop-phase-2-branch-drag.md](2026-06-27-drag-and-drop-phase-2-branch-drag.md) (branch: `codex/drag-and-drop-phase-2-branch-drag`, landed on `main` at `827b1a7`)
-- Phase 3: [in progress] [2026-06-27-drag-and-drop-phase-3-stash-drag.md](2026-06-27-drag-and-drop-phase-3-stash-drag.md) (worktree: `.worktrees/drag-and-drop-phase-3-stash-drag`, branch: `codex/drag-and-drop-phase-3-stash-drag`)
+- Phase 3: [completed] [2026-06-27-drag-and-drop-phase-3-stash-drag.md](2026-06-27-drag-and-drop-phase-3-stash-drag.md) (branch: `codex/drag-and-drop-phase-3-stash-drag`, merge commit will be appended after landing on `main`)
 
 ## Recommended Order
 
@@ -68,6 +68,6 @@ Do not start a phase until every earlier phase is merged to `main`, committed, a
 
 - [x] Phase 1 merged to `main`, roadmap marker updated with merge commit, full tests green.
 - [x] Phase 2 merged to `main`, roadmap marker updated with merge commit, full tests green.
-- [ ] Phase 3 merged to `main`, roadmap marker updated with merge commit, full tests green.
+- [x] Phase 3 merged to `main`, roadmap marker updated with merge commit, full tests green.
 - [ ] Manual pointer-level QA verifies the commit preview follows the pointer, every local branch gets a dark hover highlight and label, dropping opens confirmation for that branch, and dimming clears after drop or cancel in light and dark mode.
 - [ ] Remaining manual QA covers target labels, Option-drop, invalid targets, and VoiceOver labels.
