@@ -104,6 +104,7 @@ struct MainWindowView: View {
     @State private var pendingBranchDropConfirmation: PendingBranchDropConfirmation?
     @State private var pendingPushBranchDropConfirmation: PendingPushBranchDropConfirmation?
     @State private var isPerformingBranchDropOperation = false
+    @StateObject private var operationProgress = RepositoryOperationProgress()
 
     var body: some View {
         mainContent
@@ -145,7 +146,7 @@ struct MainWindowView: View {
                 Button(pendingConfirmedUndo?.action == .redo ? "Redo" : "Undo", role: .destructive) {
                     guard let pending = pendingConfirmedUndo else { return }
                     pendingConfirmedUndo = nil
-                    Task {
+                    runRepositoryOperation(pending.action == .redo ? "Redoing Git action..." : "Undoing Git action...") {
                         await executeUndoEntry(pending.entry, menuAction: pending.action)
                     }
                 }
@@ -184,7 +185,7 @@ struct MainWindowView: View {
                 Button("Push") {
                     guard let confirmation = pendingPushBranchDropConfirmation else { return }
                     pendingPushBranchDropConfirmation = nil
-                    Task {
+                    runRepositoryOperation("Pushing \(confirmation.branch) to \(confirmation.remote)...") {
                         await performConfirmedBranchPush(confirmation)
                     }
                 }
@@ -197,7 +198,7 @@ struct MainWindowView: View {
             .sheet(isPresented: $showingRenameBranchSheet) { renameSheet }
             .sheet(isPresented: $showingCheckoutConfirmation) {
                 CheckoutConfirmationSheet(branchName: branchToCheckout) { stash in
-                    Task {
+                    runRepositoryOperation("Checking out \(branchToCheckout)...") {
                         await performCheckout(ref: branchToCheckout, stash: stash)
                     }
                 }
@@ -205,7 +206,7 @@ struct MainWindowView: View {
             .alert("Confirm change working copy", isPresented: $showingDetachedHeadConfirmation) {
                 Button("Cancel", role: .cancel) {}
                 Button("OK") {
-                    Task {
+                    runRepositoryOperation("Checking out \(tagToCheckout)...") {
                         await performTagCheckout(tag: tagToCheckout)
                     }
                 }
@@ -229,6 +230,21 @@ struct MainWindowView: View {
             .onReceive(NotificationCenter.default.publisher(for: .gitUndoAction)) { notification in
                 if let action = notification.userInfo?["action"] as? GitUndoMenuAction {
                     handleGitUndoMenuAction(action)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .repositoryOperationProgressBegan)) { notification in
+                if let event = notification.userInfo?["event"] as? RepositoryOperationProgressEvent {
+                    operationProgress.begin(event)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .repositoryOperationProgressEnded)) { notification in
+                if let id = notification.userInfo?["id"] as? UUID {
+                    operationProgress.end(id)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .repositoryOperationProgressCancelRequested)) { notification in
+                if let id = notification.userInfo?["id"] as? UUID {
+                    operationProgress.requestCancel(id)
                 }
             }
     }
@@ -256,6 +272,13 @@ struct MainWindowView: View {
                     .padding(.top, 80)
                 }
                 .transition(.opacity)
+            }
+
+            if let activeOperation = operationProgress.activeOperation {
+                RepositoryOperationOverlayView(
+                    operation: activeOperation,
+                    onCancel: { operationProgress.cancelActiveOperation() }
+                )
             }
 
             MainWindowKeyboardHandler(showingSearchModal: $showingSearchModal)
@@ -294,6 +317,10 @@ struct MainWindowView: View {
         .onDisappear {
             syncState.stopBackgroundSync()
         }
+    }
+
+    private func runRepositoryOperation(_ message: String, _ operation: @escaping () async -> Void) {
+        operationProgress.run(message: message, operation: operation)
     }
 
     @ViewBuilder
@@ -335,7 +362,7 @@ struct MainWindowView: View {
                 }
             },
             onRequestFetchBranch: { branch in
-                Task {
+                runRepositoryOperation("Fetching \(branch)...") {
                     await syncState.performFetchBranch(
                         branch: branch,
                         repositoryURL: repositoryURL
@@ -343,7 +370,7 @@ struct MainWindowView: View {
                 }
             },
             onRequestPullRemoteBranch: { remote, branch in
-                Task {
+                runRepositoryOperation("Pulling \(remote)/\(branch)...") {
                     await syncState.performPull(
                         remote: remote,
                         branch: branch,
@@ -354,7 +381,7 @@ struct MainWindowView: View {
                 }
             },
             onRequestPullTracked: { branch in
-                Task {
+                runRepositoryOperation("Pulling \(branch)...") {
                     await syncState.performPullBranch(
                         branch: branch,
                         repositoryURL: repositoryURL,
@@ -363,7 +390,7 @@ struct MainWindowView: View {
                 }
             },
             onRequestPushToTracked: { branch in
-                Task {
+                runRepositoryOperation("Pushing \(branch)...") {
                     await syncState.performPushToTracked(
                         branch: branch,
                         repositoryURL: repositoryURL,
@@ -376,7 +403,7 @@ struct MainWindowView: View {
                 showingRenameBranchSheet = true
             },
             onRequestCreatePullRequest: { branch in
-                Task {
+                runRepositoryOperation("Preparing pull request for \(branch)...") {
                     await openPullRequest(branch: branch)
                 }
             },
@@ -384,12 +411,12 @@ struct MainWindowView: View {
                 presentBranchSheet(startPoint: .branch(branch))
             },
             onRequestCreateTagFromBranch: { branch in
-                Task {
+                runRepositoryOperation("Preparing tag for \(branch)...") {
                     await presentTagSheetFromBranchTip(branch)
                 }
             },
             onRequestRebaseOnto: { branch in
-                Task {
+                runRepositoryOperation("Rebasing onto \(branch)...") {
                     await syncState.performRebaseOnto(
                         branch: branch,
                         repositoryURL: repositoryURL,
@@ -398,7 +425,7 @@ struct MainWindowView: View {
                 }
             },
             onRequestMergeBranchIntoCurrent: { branch in
-                Task {
+                runRepositoryOperation("Merging \(branch)...") {
                     await syncState.performMerge(
                         branch: branch,
                         options: GitStatusService.MergeOptions(),
@@ -407,7 +434,7 @@ struct MainWindowView: View {
                 }
             },
             onRequestPushBranchToRemote: { branch, remote in
-                Task {
+                runRepositoryOperation("Pushing \(branch) to \(remote)...") {
                     let options = GitStatusService.PushOptions(
                         remote: remote,
                         branches: [branch],
@@ -421,7 +448,7 @@ struct MainWindowView: View {
                 }
             },
             onRequestTrackRemoteBranch: { branch, upstream in
-                Task {
+                runRepositoryOperation(upstream == nil ? "Clearing upstream for \(branch)..." : "Tracking \(upstream!) for \(branch)...") {
                     await syncState.performTrackRemoteBranch(
                         branch: branch,
                         upstream: upstream,
@@ -430,7 +457,7 @@ struct MainWindowView: View {
                 }
             },
             onRequestCreatePullRequestForRemote: { remote, branch in
-                Task {
+                runRepositoryOperation("Preparing pull request for \(remote)/\(branch)...") {
                     await openPullRequest(remote: remote, branch: branch)
                 }
             },
@@ -451,7 +478,8 @@ struct MainWindowView: View {
             },
             onRequestDragDrop: { request in
                 handleDragDropRequest(request)
-            }
+            },
+            onRunRepositoryOperation: runRepositoryOperation
         )
         .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 600)
     }
@@ -486,7 +514,8 @@ struct MainWindowView: View {
                     repositoryURL: repositoryURL,
                     selectedBranch: selectedBranchName,
                     undoManager: undoManager,
-                    syncState: syncState
+                    syncState: syncState,
+                    onRunRepositoryOperation: runRepositoryOperation
                 )
             case .stash(let ref):
                 StashView(repositoryURL: repositoryURL, stashRef: ref)
@@ -545,7 +574,7 @@ struct MainWindowView: View {
     @ViewBuilder
     private var commitSheet: some View {
         CommitSheetView { message in
-            Task {
+            runRepositoryOperation("Committing changes...") {
                 await commitFromToolbar(message: message)
             }
         }
@@ -559,7 +588,7 @@ struct MainWindowView: View {
             preselectedBranch: resolvedPullPreselectedBranch(),
             defaultPullStrategy: repoSettings.pullStrategy
         ) { remote, branch, options in
-            Task {
+            runRepositoryOperation("Pulling \(remote)/\(branch)...") {
                 await syncState.performPull(
                     remote: remote,
                     branch: branch,
@@ -574,7 +603,7 @@ struct MainWindowView: View {
     @ViewBuilder
     private var pushSheet: some View {
         PushSheetView(repositoryURL: repositoryURL) { options in
-            Task {
+            runRepositoryOperation("Pushing branches...") {
                 await syncState.performPush(
                     options: options,
                     repositoryURL: repositoryURL,
@@ -587,7 +616,7 @@ struct MainWindowView: View {
     @ViewBuilder
     private var fetchSheet: some View {
         FetchSheetView(repositoryURL: repositoryURL) { options in
-            Task {
+            runRepositoryOperation("Fetching remotes...") {
                 await syncState.performFetch(options: options, repositoryURL: repositoryURL)
             }
         }
@@ -599,6 +628,7 @@ struct MainWindowView: View {
             repositoryURL: repositoryURL,
             undoManager: undoManager,
             initialStartPoint: branchSheetStartPoint,
+            onRunRepositoryOperation: runRepositoryOperation,
             onCompleted: {
                 Task {
                     await syncState.refresh(repositoryURL: repositoryURL)
@@ -661,6 +691,7 @@ struct MainWindowView: View {
             repositoryURL: repositoryURL,
             currentName: branchToRename,
             undoManager: undoManager,
+            onRunRepositoryOperation: runRepositoryOperation,
             onCompleted: {
                 Task {
                     await syncState.refresh(repositoryURL: repositoryURL)
@@ -687,7 +718,7 @@ struct MainWindowView: View {
             onConfirm: {
                 let request = confirmation
                 pendingCommitDropConfirmation = nil
-                Task {
+                runRepositoryOperation("Cherry-picking commits...") {
                     await performCommitDropCherryPick(request)
                 }
             },
@@ -719,7 +750,7 @@ struct MainWindowView: View {
             onConfirm: {
                 guard let request = pendingBranchDropConfirmation else { return }
                 pendingBranchDropConfirmation = nil
-                Task {
+                runRepositoryOperation(request.operation == .merge ? "Merging \(request.sourceBranch)..." : "Rebasing onto \(request.sourceBranch)...") {
                     await performBranchDropOperation(request)
                 }
             },
@@ -732,7 +763,7 @@ struct MainWindowView: View {
     @ViewBuilder
     private var mergeSheet: some View {
         MergeSheetView(repositoryURL: repositoryURL) { branch, message, options in
-            Task {
+            runRepositoryOperation("Merging \(branch)...") {
                 await syncState.performMerge(branch: branch, options: options, repositoryURL: repositoryURL)
             }
         }
@@ -741,7 +772,7 @@ struct MainWindowView: View {
     @ViewBuilder
     private var stashSheet: some View {
         StashSheetView { options in
-            Task {
+            runRepositoryOperation("Stashing changes...") {
                 await syncState.performStash(
                     options: options,
                     repositoryURL: repositoryURL,
@@ -755,7 +786,7 @@ struct MainWindowView: View {
     private var stashActionSheet: some View {
         if let ref = pendingStashRef, let action = pendingStashAction {
             StashActionConfirmationSheet(stashRef: ref, action: action) { deleteAfterApplying in
-                Task {
+                runRepositoryOperation(action == .apply ? "Applying \(ref)..." : "Deleting \(ref)...") {
                     await performStashAction(
                         ref: ref,
                         action: action,

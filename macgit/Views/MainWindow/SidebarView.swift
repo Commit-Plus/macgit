@@ -161,6 +161,7 @@ struct SidebarView: View {
     let onRequestOpenWorktreeInTerminal: (URL) -> Void
     let onRequestSearch: () -> Void
     let onRequestDragDrop: (GitDragDropRequest) -> Void
+    let onRunRepositoryOperation: RepositoryOperationRunner
 
     @State private var branchNodes: [BranchNode] = []
     @State private var currentBranch: String = ""
@@ -256,7 +257,10 @@ struct SidebarView: View {
         onRequestOpenWorktree: @escaping (URL) -> Void = { _ in },
         onRequestOpenWorktreeInTerminal: @escaping (URL) -> Void = { _ in },
         onRequestSearch: @escaping () -> Void = {},
-        onRequestDragDrop: @escaping (GitDragDropRequest) -> Void = { _ in }
+        onRequestDragDrop: @escaping (GitDragDropRequest) -> Void = { _ in },
+        onRunRepositoryOperation: @escaping RepositoryOperationRunner = { _, operation in
+            Task { await operation() }
+        }
     ) {
         self.repositoryURL = repositoryURL
         self._selection = selection
@@ -283,6 +287,7 @@ struct SidebarView: View {
         self.onRequestOpenWorktreeInTerminal = onRequestOpenWorktreeInTerminal
         self.onRequestSearch = onRequestSearch
         self.onRequestDragDrop = onRequestDragDrop
+        self.onRunRepositoryOperation = onRunRepositoryOperation
     }
 
     var body: some View {
@@ -480,7 +485,9 @@ struct SidebarView: View {
                 Button("Cancel", role: .cancel) {}
                 Button("Delete", role: .destructive) {
                     if let target = remoteBranchDeleteTarget {
-                        Task { await deleteRemoteBranch(target) }
+                        onRunRepositoryOperation("Deleting \(target.fullPath)...") {
+                            await deleteRemoteBranch(target)
+                        }
                     }
                 }
             } message: {
@@ -490,7 +497,9 @@ struct SidebarView: View {
                 Button("Cancel", role: .cancel) {}
                 Button(worktreeRemovalNeedsForce ? "Force Remove" : "Remove", role: .destructive) {
                     if let entry = pendingWorktreeRemoval {
-                        Task { await removeWorktree(entry, force: worktreeRemovalNeedsForce) }
+                        onRunRepositoryOperation("Removing \(entry.displayTitle)...") {
+                            await removeWorktree(entry, force: worktreeRemovalNeedsForce)
+                        }
                     }
                 }
             } message: {
@@ -498,7 +507,9 @@ struct SidebarView: View {
             }
             .alert("Worktree Moved or Deleted", isPresented: $showingMissingWorktreeAlert, presenting: missingWorktreeEntry) { entry in
                 Button("Delete", role: .destructive) {
-                    Task { await deleteMissingWorktree(entry) }
+                    onRunRepositoryOperation("Removing missing worktree...") {
+                        await deleteMissingWorktree(entry)
+                    }
                 }
 
                 Button("Change folder") {
@@ -517,7 +528,9 @@ struct SidebarView: View {
                 }
                 Button("Force Switch", role: .destructive) {
                     if let entry = pendingWorktreeForceCheckout {
-                        Task { await checkoutWorktree(entry, force: true) }
+                        onRunRepositoryOperation("Switching \(entry.displayTitle)...") {
+                            await checkoutWorktree(entry, force: true)
+                        }
                     }
                 }
             } message: {
@@ -526,7 +539,9 @@ struct SidebarView: View {
             .alert("Prune Worktrees", isPresented: $showingPruneWorktreesConfirmation) {
                 Button("Cancel", role: .cancel) {}
                 Button("Prune", role: .destructive) {
-                    Task { await pruneWorktrees() }
+                    onRunRepositoryOperation("Pruning worktrees...") {
+                        await pruneWorktrees()
+                    }
                 }
             } message: {
                 Text("Remove stale worktree metadata and orphaned labels for paths that no longer exist?")
@@ -665,7 +680,9 @@ struct SidebarView: View {
             }
             if section == .worktrees {
                 Button("Create Worktree", systemImage: "plus") {
-                    Task { await prepareCreateWorktreeSheet() }
+                    onRunRepositoryOperation("Preparing worktree creation...") {
+                        await prepareCreateWorktreeSheet()
+                    }
                 }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.plain)
@@ -1288,7 +1305,9 @@ struct SidebarView: View {
         if let remoteBranch = remoteBranchParts(from: fullPath) {
             Button("Checkout...") {
                 selection = .remoteBranch(fullPath)
-                Task { await checkoutRemoteBranch(fullPath) }
+                onRunRepositoryOperation("Checking out \(fullPath)...") {
+                    await checkoutRemoteBranch(fullPath)
+                }
             }
             .disabled(remoteBranch.branch == "HEAD")
 
@@ -1570,7 +1589,9 @@ struct SidebarView: View {
 
         if entry.label != nil {
             Button("Clear Label") {
-                Task { await clearWorktreeLabel(entry) }
+                onRunRepositoryOperation("Clearing worktree label...") {
+                    await clearWorktreeLabel(entry)
+                }
             }
         }
 
@@ -1579,7 +1600,9 @@ struct SidebarView: View {
         if !isCurrentRepositoryWorktree(entry) {
             if entry.isLocked {
                 Button("Unlock Worktree") {
-                    Task { await unlockWorktree(entry) }
+                    onRunRepositoryOperation("Unlocking \(entry.displayTitle)...") {
+                        await unlockWorktree(entry)
+                    }
                 }
             } else {
                 Button("Lock Worktree...") {
@@ -1592,7 +1615,9 @@ struct SidebarView: View {
             }
 
             Button("Switch Branch...") {
-                Task { await prepareCheckoutWorktreeSheet(for: entry) }
+                onRunRepositoryOperation("Preparing branch switch...") {
+                    await prepareCheckoutWorktreeSheet(for: entry)
+                }
             }
 
             Divider()
@@ -1645,7 +1670,9 @@ struct SidebarView: View {
                     .keyboardShortcut(.cancelAction)
 
                     Button("Save") {
-                        Task { await saveWorktreeLabel() }
+                        onRunRepositoryOperation("Saving worktree label...") {
+                            await saveWorktreeLabel()
+                        }
                     }
                     .keyboardShortcut(.defaultAction)
                 }
@@ -1692,7 +1719,9 @@ struct SidebarView: View {
                     .disabled(isUpdatingWorktreeLock)
 
                     Button("Lock") {
-                        Task { await lockWorktree(entry) }
+                        onRunRepositoryOperation("Locking \(entry.displayTitle)...") {
+                            await lockWorktree(entry)
+                        }
                     }
                     .keyboardShortcut(.defaultAction)
                     .disabled(isUpdatingWorktreeLock)
@@ -1748,7 +1777,9 @@ struct SidebarView: View {
                     .disabled(isMovingWorktree)
 
                     Button("Move") {
-                        Task { await moveWorktree(entry) }
+                        onRunRepositoryOperation("Moving \(entry.displayTitle)...") {
+                            await moveWorktree(entry)
+                        }
                     }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canMoveWorktree || isMovingWorktree)
@@ -1786,7 +1817,9 @@ struct SidebarView: View {
                     let force = forceDeleteBranch
                     deleteConfirmationTarget = nil
                     forceDeleteBranch = false
-                    Task { await deleteBranch(branch, force: force) }
+                    onRunRepositoryOperation("Deleting \(branch)...") {
+                        await deleteBranch(branch, force: force)
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
             }
@@ -1839,7 +1872,9 @@ struct SidebarView: View {
                     let force = forceDeleteBranch
                     deleteConfirmationTarget = nil
                     forceDeleteBranch = false
-                    Task { await deleteBranchesWithPrefix(prefix, force: force) }
+                    onRunRepositoryOperation("Deleting branches in \(prefix)/...") {
+                        await deleteBranchesWithPrefix(prefix, force: force)
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(deletable.isEmpty)
@@ -1914,7 +1949,9 @@ struct SidebarView: View {
                             pendingWorktreeForceCheckout = entry
                             showingWorktreeForceCheckoutConfirmation = true
                         } else {
-                            Task { await checkoutWorktree(entry, force: false) }
+                            onRunRepositoryOperation("Switching \(entry.displayTitle)...") {
+                                await checkoutWorktree(entry, force: false)
+                            }
                         }
                     }
                     .keyboardShortcut(.defaultAction)
@@ -2018,7 +2055,9 @@ struct SidebarView: View {
                 .disabled(isCreatingWorktree)
 
                 Button("Create Worktree") {
-                    Task { await createWorktree() }
+                    onRunRepositoryOperation("Creating worktree...") {
+                        await createWorktree()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canCreateWorktree || isCreatingWorktree)

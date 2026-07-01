@@ -28,6 +28,9 @@ struct RenameBranchSheetView: View {
     let repositoryURL: URL
     let currentName: String
     let undoManager: GitUndoManager?
+    var onRunRepositoryOperation: RepositoryOperationRunner = { _, operation in
+        Task { await operation() }
+    }
     let onCompleted: () -> Void
 
     @State private var newName: String = ""
@@ -93,7 +96,9 @@ struct RenameBranchSheetView: View {
                 .keyboardShortcut(.cancelAction)
 
                 Button("Rename") {
-                    save()
+                    onRunRepositoryOperation("Renaming \(currentName)...") {
+                        await save()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 13))
@@ -108,34 +113,32 @@ struct RenameBranchSheetView: View {
         }
     }
 
-    private func save() {
+    private func save() async {
         guard isValid else { return }
         let target = trimmedNewName
         isLoading = true
-        Task {
-            do {
-                _ = try await GitStatusService.shared.renameBranch(
-                    from: currentName,
-                    to: target,
-                    in: repositoryURL
-                )
-                await MainActor.run {
-                    undoManager?.register(
-                        GitUndoEntry(
-                            repositoryURL: repositoryURL,
-                            label: "Rename branch \(currentName) → \(target)",
-                            undoOperation: .renameLocalBranch(from: target, to: currentName),
-                            redoOperation: .renameLocalBranch(from: currentName, to: target)
-                        )
+        do {
+            _ = try await GitStatusService.shared.renameBranch(
+                from: currentName,
+                to: target,
+                in: repositoryURL
+            )
+            await MainActor.run {
+                undoManager?.register(
+                    GitUndoEntry(
+                        repositoryURL: repositoryURL,
+                        label: "Rename branch \(currentName) → \(target)",
+                        undoOperation: .renameLocalBranch(from: target, to: currentName),
+                        redoOperation: .renameLocalBranch(from: currentName, to: target)
                     )
-                    onCompleted()
-                    dismiss()
-                }
-            } catch {
-                await MainActor.run {
-                    isLoading = false
-                    errorMessage = error.localizedDescription
-                }
+                )
+                onCompleted()
+                dismiss()
+            }
+        } catch {
+            await MainActor.run {
+                isLoading = false
+                errorMessage = error.localizedDescription
             }
         }
     }

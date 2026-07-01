@@ -59,6 +59,7 @@ struct BranchSheetView: View {
     @Environment(\.dismiss) private var dismiss
     let repositoryURL: URL
     let onCompleted: () -> Void
+    let onRunRepositoryOperation: RepositoryOperationRunner
     var undoManager: GitUndoManager? = nil
     var initialStartPoint: GitBranchStartPoint? = nil
 
@@ -91,10 +92,14 @@ struct BranchSheetView: View {
         repositoryURL: URL,
         undoManager: GitUndoManager? = nil,
         initialStartPoint: GitBranchStartPoint? = nil,
+        onRunRepositoryOperation: @escaping RepositoryOperationRunner = { _, operation in
+            Task { await operation() }
+        },
         onCompleted: @escaping () -> Void
     ) {
         self.repositoryURL = repositoryURL
         self.onCompleted = onCompleted
+        self.onRunRepositoryOperation = onRunRepositoryOperation
         self.undoManager = undoManager
         self.initialStartPoint = initialStartPoint
     }
@@ -162,7 +167,9 @@ struct BranchSheetView: View {
 
                     if selectedTab == .create {
                         Button("Create Branch") {
-                            Task { await createBranch() }
+                            onRunRepositoryOperation("Creating branch \(sanitizedName)...") {
+                                await createBranch()
+                            }
                         }
                         .keyboardShortcut(.defaultAction)
                         .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 13))
@@ -236,7 +243,9 @@ struct BranchSheetView: View {
                         .disabled(isDeleting)
 
                         Button(isDeleting ? "Deleting..." : "Delete") {
-                            Task { await deleteSelectedBranches() }
+                            onRunRepositoryOperation("Deleting branches...") {
+                                await deleteSelectedBranches()
+                            }
                         }
                         .keyboardShortcut(.defaultAction)
                         .buttonStyle(GlassProminentButtonStyle(tint: .red, fontSize: 13))

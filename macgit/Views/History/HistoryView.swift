@@ -29,6 +29,7 @@ struct HistoryView: View {
     let selectedBranch: String?
     let undoManager: GitUndoManager?
     var syncState: SyncState? = nil
+    let onRunRepositoryOperation: RepositoryOperationRunner
     private static let historyPageSize = 120
     private static let historyScrollSpaceName = "historyScroll"
     
@@ -81,12 +82,16 @@ struct HistoryView: View {
         repositoryURL: URL,
         selectedBranch: String? = nil,
         undoManager: GitUndoManager? = nil,
-        syncState: SyncState? = nil
+        syncState: SyncState? = nil,
+        onRunRepositoryOperation: @escaping RepositoryOperationRunner = { _, operation in
+            Task { await operation() }
+        }
     ) {
         self.repositoryURL = repositoryURL
         self.selectedBranch = selectedBranch
         self.undoManager = undoManager
         self.syncState = syncState
+        self.onRunRepositoryOperation = onRunRepositoryOperation
         self._showAllBranches = State(initialValue: selectedBranch == nil)
         self._paging = State(initialValue: HistoryPagingState(pageSize: Self.historyPageSize))
     }
@@ -212,7 +217,9 @@ struct HistoryView: View {
                 .keyboardShortcut(.cancelAction)
                 
                 Button("Create Tag") {
-                    Task { await performCreateTag() }
+                    onRunRepositoryOperation("Creating tag \(tagNameInput)...") {
+                        await performCreateTag()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(tagNameInput.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -257,7 +264,9 @@ struct HistoryView: View {
                 .keyboardShortcut(.cancelAction)
                 
                 Button("Create Branch") {
-                    Task { await performCreateBranch() }
+                    onRunRepositoryOperation("Creating branch \(branchNameInput)...") {
+                        await performCreateBranch()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(branchNameInput.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -308,7 +317,9 @@ struct HistoryView: View {
                 .keyboardShortcut(.cancelAction)
                 
                 Button("Reset", role: .destructive) {
-                    Task { await performReset() }
+                    onRunRepositoryOperation("Resetting HEAD...") {
+                        await performReset()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
             }
@@ -343,7 +354,9 @@ struct HistoryView: View {
                 .keyboardShortcut(.cancelAction)
                 
                 Button("OK") {
-                    Task { await performMerge() }
+                    onRunRepositoryOperation("Merging commit...") {
+                        await performMerge()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
             }
@@ -373,7 +386,9 @@ struct HistoryView: View {
                 .keyboardShortcut(.cancelAction)
                 
                 Button("OK") {
-                    Task { await performRebase() }
+                    onRunRepositoryOperation("Rebasing onto commit...") {
+                        await performRebase()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
             }
@@ -407,7 +422,9 @@ struct HistoryView: View {
                 .keyboardShortcut(.cancelAction)
                 
                 Button("OK") {
-                    Task { await performCheckoutCommit() }
+                    onRunRepositoryOperation("Checking out commit...") {
+                        await performCheckoutCommit()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
             }
@@ -772,7 +789,9 @@ struct HistoryView: View {
                 showingCheckoutConfirmation = true
             }
             Button("Cherry Pick") {
-                Task { await cherryPickCommit(commit) }
+                onRunRepositoryOperation("Cherry-picking \(commit.hash.prefix(7))...") {
+                    await cherryPickCommit(commit)
+                }
             }
             
             Divider()
