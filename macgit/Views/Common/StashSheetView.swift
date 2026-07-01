@@ -24,23 +24,43 @@ import SwiftUI
 
 struct StashSheetView: View {
     @Environment(\.dismiss) private var dismiss
+    let paths: [String]
     let onStash: (GitStatusService.StashOptions) -> Void
 
     @State private var message: String = ""
     @State private var keepStagedChanges: Bool = false
 
+    init(
+        paths: [String] = [],
+        onStash: @escaping (GitStatusService.StashOptions) -> Void
+    ) {
+        self.paths = paths
+        self.onStash = onStash
+    }
+
+    private var hasPaths: Bool {
+        !paths.isEmpty
+    }
+
     private var stashOptions: GitStatusService.StashOptions {
         GitStatusService.StashOptions(
             message: message.trimmingCharacters(in: .whitespacesAndNewlines),
-            keepIndex: keepStagedChanges
+            keepIndex: keepStagedChanges,
+            paths: paths,
+            includeUntracked: hasPaths
         )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                Text("This will stash all the changes in your working copy and return it to a clean state.")
-                    .font(.system(size: 13))
+                if hasPaths {
+                    Text("Stash \(paths.count) selected files (including untracked).")
+                        .font(.system(size: 13))
+                } else {
+                    Text("This will stash all the changes in your working copy and return it to a clean state.")
+                        .font(.system(size: 13))
+                }
 
                 HStack(spacing: 8) {
                     Text("Message:")
@@ -64,7 +84,7 @@ struct StashSheetView: View {
                 }
                 .keyboardShortcut(.cancelAction)
 
-                Button("Stash") {
+                Button(hasPaths ? "Stash \(paths.count) files" : "Stash") {
                     dismiss()
                     onStash(stashOptions)
                 }

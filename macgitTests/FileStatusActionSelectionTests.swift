@@ -117,7 +117,80 @@ final class FileStatusActionSelectionTests: XCTestCase {
         XCTAssertEqual(policy.prunedSelection, [FileStatusSelectionKey(file: present, isStaged: true)])
     }
 
-    private func file(_ path: String, status: FileStatus) -> StatusFile {
-        StatusFile(path: path, status: status, originalPath: nil)
+    func testDraggingSelectedRowCarriesAllSelectedFilePaths() {
+        let staged = file("README.md", status: .staged)
+        let changed = file("Sources/App.swift", status: .modified)
+        let policy = FileStatusActionSelection(
+            selectedKeys: [
+                FileStatusSelectionKey(file: staged, isStaged: true),
+                FileStatusSelectionKey(file: changed, isStaged: false)
+            ],
+            stagedFiles: [staged],
+            changedFiles: [changed]
+        )
+
+        XCTAssertEqual(
+            policy.dragPaths(startingAt: changed, isStaged: false),
+            ["README.md", "Sources/App.swift"]
+        )
+    }
+
+    func testDraggingUnselectedRowCarriesOnlyFallbackFilePath() {
+        let selected = file("README.md", status: .staged)
+        let fallback = file("Sources/App.swift", status: .modified)
+        let policy = FileStatusActionSelection(
+            selectedKeys: [FileStatusSelectionKey(file: selected, isStaged: true)],
+            stagedFiles: [selected],
+            changedFiles: [fallback]
+        )
+
+        XCTAssertEqual(
+            policy.dragPaths(startingAt: fallback, isStaged: false),
+            ["Sources/App.swift"]
+        )
+    }
+
+    func testDragPathsDeduplicateFilesPresentInStagedAndChangedSections() {
+        let staged = file("Sources/App.swift", status: .staged)
+        let changed = file("Sources/App.swift", status: .modified)
+        let policy = FileStatusActionSelection(
+            selectedKeys: [
+                FileStatusSelectionKey(file: staged, isStaged: true),
+                FileStatusSelectionKey(file: changed, isStaged: false)
+            ],
+            stagedFiles: [staged],
+            changedFiles: [changed]
+        )
+
+        XCTAssertEqual(
+            policy.dragPaths(startingAt: staged, isStaged: true),
+            ["Sources/App.swift"]
+        )
+    }
+
+    func testDragPathsIncludeOriginalAndNewRenamePaths() {
+        let renamed = file(
+            "new-name.txt",
+            status: .renamed,
+            originalPath: "old-name.txt"
+        )
+        let policy = FileStatusActionSelection(
+            selectedKeys: [FileStatusSelectionKey(file: renamed, isStaged: true)],
+            stagedFiles: [renamed],
+            changedFiles: []
+        )
+
+        XCTAssertEqual(
+            policy.dragPaths(startingAt: renamed, isStaged: true),
+            ["old-name.txt", "new-name.txt"]
+        )
+    }
+
+    private func file(
+        _ path: String,
+        status: FileStatus,
+        originalPath: String? = nil
+    ) -> StatusFile {
+        StatusFile(path: path, status: status, originalPath: originalPath)
     }
 }

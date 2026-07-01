@@ -62,6 +62,39 @@ final class StashServiceTests: XCTestCase {
         XCTAssertTrue(stashes.isEmpty)
     }
 
+    func testStashSelectedPathsLeavesUnrelatedChangesIntact() async throws {
+        let repoURL = try makeTempRepoWithTwoTrackedAndTwoUntracked()
+        let options = GitStatusService.StashOptions(
+            message: "Selected files",
+            paths: ["tracked.txt", "new.txt"],
+            includeUntracked: true
+        )
+
+        try await GitStatusService.shared.stash(options: options, in: repoURL)
+
+        let stashes = await GitStatusService.shared.stashes(in: repoURL)
+        XCTAssertEqual(stashes.count, 1)
+        XCTAssertEqual(stashes[0].description, "Selected files")
+
+        let tracked = try String(contentsOf: repoURL.appendingPathComponent("tracked.txt"), encoding: .utf8)
+        XCTAssertEqual(tracked, "base\n")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: repoURL.appendingPathComponent("new.txt").path))
+
+        let otherTracked = try String(contentsOf: repoURL.appendingPathComponent("other.txt"), encoding: .utf8)
+        XCTAssertEqual(otherTracked, "tracked edit\n")
+
+        let otherUntracked = try String(contentsOf: repoURL.appendingPathComponent("other-new.txt"), encoding: .utf8)
+        XCTAssertEqual(otherUntracked, "untracked content\n")
+
+        try await GitStatusService.shared.applyStash(ref: "stash@{0}", in: repoURL)
+
+        let restoredTracked = try String(contentsOf: repoURL.appendingPathComponent("tracked.txt"), encoding: .utf8)
+        XCTAssertEqual(restoredTracked, "working tree change\n")
+        let restoredUntracked = try String(contentsOf: repoURL.appendingPathComponent("new.txt"), encoding: .utf8)
+        XCTAssertEqual(restoredUntracked, "untracked content\n")
+    }
+
     // MARK: - Helpers
 
     private func makeTempRepoWithOneStash(message: String) throws -> URL {
@@ -80,6 +113,30 @@ final class StashServiceTests: XCTestCase {
 
         try "working tree change\n".write(to: trackedFile, atomically: true, encoding: .utf8)
         try runGit(["stash", "push", "-m", message], in: repoURL)
+
+        return repoURL
+    }
+
+    private func makeTempRepoWithTwoTrackedAndTwoUntracked() throws -> URL {
+        let repoURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macgit-stash-selected-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: repoURL, withIntermediateDirectories: true)
+
+        try runGit(["init", "-b", "main"], in: repoURL)
+        try runGit(["config", "user.name", "Mac Git Tests"], in: repoURL)
+        try runGit(["config", "user.email", "tests@example.com"], in: repoURL)
+
+        let trackedFile = repoURL.appendingPathComponent("tracked.txt")
+        try "base\n".write(to: trackedFile, atomically: true, encoding: .utf8)
+        let otherTracked = repoURL.appendingPathComponent("other.txt")
+        try "base\n".write(to: otherTracked, atomically: true, encoding: .utf8)
+        try runGit(["add", "tracked.txt", "other.txt"], in: repoURL)
+        try runGit(["commit", "-m", "initial commit"], in: repoURL)
+
+        try "working tree change\n".write(to: trackedFile, atomically: true, encoding: .utf8)
+        try "tracked edit\n".write(to: otherTracked, atomically: true, encoding: .utf8)
+        try "untracked content\n".write(to: repoURL.appendingPathComponent("new.txt"), atomically: true, encoding: .utf8)
+        try "untracked content\n".write(to: repoURL.appendingPathComponent("other-new.txt"), atomically: true, encoding: .utf8)
 
         return repoURL
     }

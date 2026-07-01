@@ -21,11 +21,13 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct FileStatusView: View {
     let repositoryURL: URL
     var syncState: SyncState? = nil
     var undoManager: GitUndoManager? = nil
+    var onRequestApplyStash: (String) -> Void = { _ in }
 
     @State private var gitStatus: GitStatus = GitStatus(staged: [], unstaged: [], untracked: [])
     @State private var selectedFile: StatusFile? = nil
@@ -180,6 +182,18 @@ struct FileStatusView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
+            guard let provider = providers.first else { return false }
+            GitDragPayloadItemProviderLoader.load(from: provider) { result in
+                Task { @MainActor in
+                    if case .success(let payload) = result,
+                       let stashRef = payload.stash {
+                        onRequestApplyStash(stashRef)
+                    }
+                }
+            }
+            return true
+        }
         .task {
             await loadStatus()
         }
@@ -297,6 +311,8 @@ struct FileStatusView: View {
     private func fileRow(file: StatusFile, isStaged: Bool) -> some View {
         let selectionKey = FileStatusSelectionKey(file: file, isStaged: isStaged)
         let quickAction = FileStatusRowQuickAction(isStaged: isStaged)
+        let dragPaths = actionSelection.dragPaths(startingAt: file, isStaged: isStaged)
+        let dragPayload = GitDragPayload.files(dragPaths, repositoryURL: repositoryURL)
 
         return HStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -343,6 +359,11 @@ struct FileStatusView: View {
             .onTapGesture {
                 selectedFile = file
             }
+            .onDrag {
+                makeFileItemProvider(payload: dragPayload)
+            } preview: {
+                FileDragPreview(pathCount: dragPaths.count, fallbackPath: file.path)
+            }
 
             quickActionButton(quickAction, file: file)
                 .padding(.trailing, 2)
@@ -353,6 +374,24 @@ struct FileStatusView: View {
         .contextMenu {
             fileContextMenu(file: file, isStaged: isStaged)
         }
+    }
+
+    private func makeFileItemProvider(payload: GitDragPayload) -> NSItemProvider {
+        GitDragPayloadStore.set(payload)
+
+        let provider = NSItemProvider()
+        if let data = try? GitDragPayload.encodeTransferData(payload) {
+            provider.registerDataRepresentation(
+                forTypeIdentifier: UTType.macgitGitDragPayload.identifier,
+                visibility: .all
+            ) { completionHandler in
+                completionHandler(data, nil)
+                return nil
+            }
+        }
+        provider.register(payload)
+        provider.suggestedName = "\(payload.files.count) files"
+        return provider
     }
 
     private func quickActionButton(_ quickAction: FileStatusRowQuickAction, file: StatusFile) -> some View {

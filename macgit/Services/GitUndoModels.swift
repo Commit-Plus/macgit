@@ -49,7 +49,7 @@ indirect enum GitUndoOperation: Equatable {
     case revert(commit: String)
     case mergeCommit(commit: String, noCommit: Bool, log: Bool)
     case rebaseOnto(commit: String)
-    case stashPush(message: String, keepIndex: Bool)
+    case stashPush(message: String, keepIndex: Bool, paths: [String], includeUntracked: Bool)
     case stashApply(ref: String)
     case stashApplyAndDrop(hash: String)
     case stashStore(commit: String, message: String)

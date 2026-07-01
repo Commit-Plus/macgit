@@ -38,11 +38,24 @@ extension GitStatusService {
     func stash(options: StashOptions, in repositoryURL: URL) async throws {
         var arguments = ["stash", "push"]
         if options.keepIndex { arguments.append("--keep-index") }
+        if options.includeUntracked { arguments.append("--include-untracked") }
         if !options.message.isEmpty {
             arguments.append("-m")
             arguments.append(options.message)
         }
+        let normalizedPaths = uniqueNonEmptyPaths(options.paths)
+        if !normalizedPaths.isEmpty {
+            arguments.append("--")
+            arguments.append(contentsOf: normalizedPaths)
+        }
         _ = try await runGit(arguments: arguments, in: repositoryURL)
+    }
+
+    private func uniqueNonEmptyPaths(_ paths: [String]) -> [String] {
+        var seen: Set<String> = []
+        return paths.filter { path in
+            !path.isEmpty && seen.insert(path).inserted
+        }
     }
 
     func stashes(in repositoryURL: URL) async -> [StashEntry] {

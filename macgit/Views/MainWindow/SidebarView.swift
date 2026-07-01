@@ -404,7 +404,7 @@ struct SidebarView: View {
                 }
 
                 Section {
-                    sectionHeader(.stashes, isExpanded: sectionStates.stashesExpanded)
+                    stashesSectionHeaderRow
 
                     if sectionStates.stashesExpanded {
                         if isLoadingStashes && stashEntries.isEmpty {
@@ -668,6 +668,36 @@ struct SidebarView: View {
             }
     }
 
+    private var stashesSectionHeaderRow: some View {
+        sectionHeaderContent(.stashes, isExpanded: sectionStates.stashesExpanded)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(activeDropTarget == .stashesHeader ? Color.accentColor.opacity(0.12) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay {
+                SidebarBranchDropTarget(
+                    onTap: { toggleSection(.stashes) },
+                    onTargetedChange: updateStashesHeaderDropTarget,
+                    fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
+                    canAcceptDrop: { _ in true },
+                    dragPayload: { nil },
+                    dragTitle: { "" },
+                    onDragEnded: { _ in },
+                    onDrop: { payload in
+                        activeBranchDragPayload = nil
+                        GitDragPayloadStore.clear(ifMatching: payload)
+                        handleDrop([payload], target: .stashesHeader)
+                        return true
+                    }
+                )
+                .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
+                    activeBranchDragPayload = nil
+                    GitDragPayloadStore.clear()
+                    return handleDrop(providers, target: .stashesHeader)
+                }
+            }
+    }
+
     @ViewBuilder
     private func sectionHeader(_ section: SidebarSection, isExpanded: Bool) -> some View {
         sectionHeaderContent(section, isExpanded: isExpanded)
@@ -680,6 +710,7 @@ struct SidebarView: View {
         let isDropActive = (section == .branches && activeDropTarget == .branchesHeader)
             || (section == .tags && activeDropTarget == .tagsHeader)
             || (section == .remotes && activeDropTarget == .remotesHeader)
+            || (section == .stashes && activeDropTarget == .stashesHeader)
 
         HStack {
             Text(section.rawValue)
@@ -771,6 +802,24 @@ struct SidebarView: View {
         }
     }
 
+    private func updateStashesHeaderDropTarget(isTargeted: Bool) {
+        if isTargeted {
+            activeDropTarget = .stashesHeader
+            let fileCount = currentFileDragCount()
+            activeDropLabel = fileCount > 1 ? "Stash \(fileCount) files" : "Stash"
+        } else if activeDropTarget == .stashesHeader {
+            clearDropHover()
+        }
+    }
+
+    private func currentFileDragCount() -> Int {
+        if let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload(),
+           !payload.files.isEmpty {
+            return payload.files.count
+        }
+        return 0
+    }
+
     private func updateCurrentBranchDropTarget(isTargeted: Bool) {
         isCurrentBranchDropTargeted = isTargeted
     }
@@ -805,6 +854,13 @@ struct SidebarView: View {
 
     private func makeRemoteBranchPayload(remoteBranch: String) -> GitDragPayload {
         let payload = GitDragPayload.remoteBranch(remoteBranch, repositoryURL: repositoryURL)
+        activeBranchDragPayload = payload
+        GitDragPayloadStore.set(payload)
+        return payload
+    }
+
+    private func makeStashPayload(ref: String) -> GitDragPayload {
+        let payload = GitDragPayload.stash(ref, repositoryURL: repositoryURL)
         activeBranchDragPayload = payload
         GitDragPayloadStore.set(payload)
         return payload
@@ -1376,6 +1432,11 @@ struct SidebarView: View {
             .onTapGesture(count: 2) {
                 onRequestApplyStash(stash.ref)
             }
+            .onDrag {
+                makeStashItemProvider(ref: stash.ref)
+            } preview: {
+                StashDragPreview(title: stash.displayTitle)
+            }
             .contextMenu {
                 Button("Apply stash") {
                     onRequestApplyStash(stash.ref)
@@ -1384,6 +1445,24 @@ struct SidebarView: View {
                     onRequestDeleteStash(stash.ref)
                 }
             }
+    }
+
+    private func makeStashItemProvider(ref: String) -> NSItemProvider {
+        let payload = makeStashPayload(ref: ref)
+
+        let provider = NSItemProvider()
+        if let data = try? GitDragPayload.encodeTransferData(payload) {
+            provider.registerDataRepresentation(
+                forTypeIdentifier: UTType.macgitGitDragPayload.identifier,
+                visibility: .all
+            ) { completionHandler in
+                completionHandler(data, nil)
+                return nil
+            }
+        }
+        provider.register(payload)
+        provider.suggestedName = ref
+        return provider
     }
 
     private func toggleFolder(_ path: String) {

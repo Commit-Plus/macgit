@@ -36,8 +36,10 @@ enum GitDragDropPolicy {
             return branchDecision(source: source, target: target, optionKeyPressed: optionKeyPressed)
         case .remoteBranch(let source):
             return remoteBranchDecision(source: source, target: target)
-        case .files, .stash:
-            return .reject("That drag and drop action is not available yet.")
+        case .files(let paths):
+            return filesDecision(paths: paths, target: target)
+        case .stash(let ref):
+            return stashDecision(ref: ref, target: target)
         }
     }
 
@@ -120,5 +122,39 @@ enum GitDragDropPolicy {
         }
 
         return .accept(.checkoutRemoteBranch(source))
+    }
+
+    nonisolated private static func filesDecision(
+        paths: [String],
+        target: GitDragTarget
+    ) -> GitDragDropDecision {
+        guard target == .stashesHeader else {
+            return .reject("Drop working copy files onto Stashes.")
+        }
+
+        let normalizedPaths = uniqueNonEmptyValues(paths)
+        guard !normalizedPaths.isEmpty else {
+            return .reject("Select at least one file to stash.")
+        }
+
+        return .accept(.stashFiles(paths: normalizedPaths))
+    }
+
+    nonisolated private static func stashDecision(
+        ref: String,
+        target: GitDragTarget
+    ) -> GitDragDropDecision {
+        guard target == .fileStatus else {
+            return .reject("Drop stashes onto File status to apply them.")
+        }
+
+        return .accept(.applyStash(ref: ref))
+    }
+
+    nonisolated private static func uniqueNonEmptyValues(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { value in
+            !value.isEmpty && seen.insert(value).inserted
+        }
     }
 }

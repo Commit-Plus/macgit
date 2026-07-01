@@ -395,6 +395,59 @@ final class GitDragDropPolicyTests: XCTestCase {
         )
     }
 
+    func testFilesCanBeStashedFromStashesHeader() {
+        XCTAssertEqual(
+            decision(
+                payload: .files(
+                    ["a.txt", "", "b.txt", "a.txt"],
+                    repositoryURL: repoURL
+                ),
+                target: .stashesHeader
+            ),
+            .accept(.stashFiles(paths: ["a.txt", "b.txt"]))
+        )
+    }
+
+    func testEmptyFilePathsAreRejectedFromStashesHeader() {
+        XCTAssertEqual(
+            decision(
+                payload: .files(["", ""], repositoryURL: repoURL),
+                target: .stashesHeader
+            ),
+            .reject("Select at least one file to stash.")
+        )
+    }
+
+    func testStashCanBeAppliedFromFileStatus() {
+        XCTAssertEqual(
+            decision(
+                payload: .stash("stash@{0}", repositoryURL: repoURL),
+                target: .fileStatus
+            ),
+            .accept(.applyStash(ref: "stash@{0}"))
+        )
+    }
+
+    func testFilesCannotDropOnFileStatus() {
+        XCTAssertEqual(
+            decision(
+                payload: .files(["a.txt"], repositoryURL: repoURL),
+                target: .fileStatus
+            ),
+            .reject("Drop working copy files onto Stashes.")
+        )
+    }
+
+    func testStashCannotDropOnStashesHeader() {
+        XCTAssertEqual(
+            decision(
+                payload: .stash("stash@{0}", repositoryURL: repoURL),
+                target: .stashesHeader
+            ),
+            .reject("Drop stashes onto File status to apply them.")
+        )
+    }
+
     private func decision(
         commits: [GitDraggedCommit],
         target: GitDragTarget = .localBranch(name: "main", isCurrent: true),

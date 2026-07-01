@@ -470,7 +470,12 @@ class SyncState: ObservableObject {
                         repositoryURL: repositoryURL,
                         label: "Stash changes",
                         undoOperation: .stashApplyAndDrop(hash: hash),
-                        redoOperation: .stashPush(message: options.message, keepIndex: options.keepIndex)
+                        redoOperation: .stashPush(
+                            message: options.message,
+                            keepIndex: options.keepIndex,
+                            paths: options.paths,
+                            includeUntracked: options.includeUntracked
+                        )
                     )
                 )
             }

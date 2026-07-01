@@ -200,6 +200,8 @@ actor GitStatusService {
     struct StashOptions {
         var message: String = ""
         var keepIndex: Bool = false
+        var paths: [String] = []
+        var includeUntracked: Bool = false
     }
 
     struct FetchOptions {

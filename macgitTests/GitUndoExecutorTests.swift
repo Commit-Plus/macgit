@@ -253,6 +253,63 @@ final class GitUndoExecutorTests: XCTestCase {
             GitCommandCall(arguments: ["rebase", "origin/main"], directory: repoURL)
         ])
     }
+
+    func testStashPushRedoRunsGitStashPushWithPathsAndUntracked() async throws {
+        let runner = RecordingGitRunner()
+        let executor = GitUndoExecutor(runner: runner)
+        let repoURL = URL(fileURLWithPath: "/tmp/repo")
+
+        try await executor.execute(
+            .stashPush(
+                message: "Selected files",
+                keepIndex: false,
+                paths: ["tracked.txt", "new.txt"],
+                includeUntracked: true
+            ),
+            in: repoURL
+        )
+
+        let calls = await runner.recordedCalls()
+        XCTAssertEqual(calls, [
+            GitCommandCall(
+                arguments: [
+                    "stash",
+                    "push",
+                    "--include-untracked",
+                    "-m",
+                    "Selected files",
+                    "--",
+                    "tracked.txt",
+                    "new.txt"
+                ],
+                directory: repoURL
+            )
+        ])
+    }
+
+    func testStashPushRedoOmitsIncludeUntrackedAndKeepsIndexFlag() async throws {
+        let runner = RecordingGitRunner()
+        let executor = GitUndoExecutor(runner: runner)
+        let repoURL = URL(fileURLWithPath: "/tmp/repo")
+
+        try await executor.execute(
+            .stashPush(
+                message: "",
+                keepIndex: true,
+                paths: ["only.txt"],
+                includeUntracked: false
+            ),
+            in: repoURL
+        )
+
+        let calls = await runner.recordedCalls()
+        XCTAssertEqual(calls, [
+            GitCommandCall(
+                arguments: ["stash", "push", "--keep-index", "--", "only.txt"],
+                directory: repoURL
+            )
+        ])
+    }
 }
 
 private struct GitCommandCall: Equatable {

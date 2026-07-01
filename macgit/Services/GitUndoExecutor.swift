@@ -97,11 +97,16 @@ struct GitUndoExecutor {
             _ = try await runner.runGit(arguments: arguments, in: repositoryURL)
         case .rebaseOnto(let commit):
             _ = try await runner.runGit(arguments: ["rebase", commit], in: repositoryURL)
-        case .stashPush(let message, let keepIndex):
+        case .stashPush(let message, let keepIndex, let paths, let includeUntracked):
             var arguments = ["stash", "push"]
             if keepIndex { arguments.append("--keep-index") }
+            if includeUntracked { arguments.append("--include-untracked") }
             if !message.isEmpty {
                 arguments.append(contentsOf: ["-m", message])
+            }
+            if !paths.isEmpty {
+                arguments.append("--")
+                arguments.append(contentsOf: paths)
             }
             _ = try await runner.runGit(arguments: arguments, in: repositoryURL)
         case .stashApply(let ref):
