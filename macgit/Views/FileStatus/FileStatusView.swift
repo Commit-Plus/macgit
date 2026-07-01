@@ -27,6 +27,7 @@ struct FileStatusView: View {
     let repositoryURL: URL
     var syncState: SyncState? = nil
     var undoManager: GitUndoManager? = nil
+    var onRequestApplyStash: (String) -> Void = { _ in }
 
     @State private var gitStatus: GitStatus = GitStatus(staged: [], unstaged: [], untracked: [])
     @State private var selectedFile: StatusFile? = nil
@@ -181,6 +182,18 @@ struct FileStatusView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
+            guard let provider = providers.first else { return false }
+            GitDragPayloadItemProviderLoader.load(from: provider) { result in
+                Task { @MainActor in
+                    if case .success(let payload) = result,
+                       let stashRef = payload.stash {
+                        onRequestApplyStash(stashRef)
+                    }
+                }
+            }
+            return true
+        }
         .task {
             await loadStatus()
         }

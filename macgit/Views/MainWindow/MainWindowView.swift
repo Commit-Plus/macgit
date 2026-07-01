@@ -90,6 +90,7 @@ struct MainWindowView: View {
     @State private var tagToCheckout: String = ""
     @State private var pendingStashRef: String?
     @State private var pendingStashAction: StashAction?
+    @State private var pendingStashPaths: [String] = []
     @StateObject private var syncState = SyncState()
     @StateObject private var undoManager = GitUndoManager()
     @State private var repoIconName: String = "code-branch"
@@ -507,7 +508,10 @@ struct MainWindowView: View {
                 FileStatusView(
                     repositoryURL: repositoryURL,
                     syncState: syncState,
-                    undoManager: undoManager
+                    undoManager: undoManager,
+                    onRequestApplyStash: { ref in
+                        requestStashAction(ref: ref, action: .apply)
+                    }
                 )
             case .item(.history), .branch, .worktree, .tag, .remoteBranch, .head:
                 HistoryView(
@@ -771,15 +775,26 @@ struct MainWindowView: View {
 
     @ViewBuilder
     private var stashSheet: some View {
-        StashSheetView { options in
-            runRepositoryOperation("Stashing changes...") {
+        StashSheetView(paths: pendingStashPaths) { options in
+            let pathsToStash = options.paths
+            runRepositoryOperation(pathsToStash.isEmpty ? "Stashing changes..." : "Stashing \(pathsToStash.count) files...") {
                 await syncState.performStash(
                     options: options,
                     repositoryURL: repositoryURL,
                     undoManager: undoManager
                 )
             }
+            clearPendingStashPaths()
         }
+        .onDisappear {
+            clearPendingStashPaths()
+        }
+    }
+
+    @MainActor
+    private func clearPendingStashPaths() {
+        guard !pendingStashPaths.isEmpty else { return }
+        pendingStashPaths = []
     }
 
     @ViewBuilder
@@ -1504,9 +1519,21 @@ struct MainWindowView: View {
             Task {
                 await presentPushBranchDropConfirmation(branch)
             }
-        case .stashFiles, .applyStash:
-            syncState.showInfo("That drag and drop action is not available in Phase 1 yet.")
+        case .stashFiles(let paths):
+            handleStashFilesDrop(paths: paths)
+        case .applyStash(let ref):
+            requestStashAction(ref: ref, action: .apply)
         }
+    }
+
+    private func handleStashFilesDrop(paths: [String]) {
+        guard !paths.isEmpty else { return }
+        if syncState.isAnySyncing {
+            syncState.showInfo("Wait for the current operation to finish before stashing more files.")
+            return
+        }
+        pendingStashPaths = paths
+        showingStashSheet = true
     }
 
     private func checkoutRemoteBranchFromDrop(_ fullPath: String) async {
