@@ -24,25 +24,66 @@ import Foundation
 
 extension GitStatusService {
     func stage(file: StatusFile, in repositoryURL: URL) async throws {
-        _ = try await runGit(arguments: ["add", file.path], in: repositoryURL)
+        if let originalPath = file.originalPath {
+            try await stageRename(file: file, originalPath: originalPath, in: repositoryURL)
+        } else {
+            _ = try await runGit(arguments: ["add", file.path], in: repositoryURL)
+        }
     }
 
     func unstage(file: StatusFile, in repositoryURL: URL) async throws {
-        _ = try await runGit(arguments: ["reset", "HEAD", "--", file.path], in: repositoryURL)
+        // Resetting only the new path would leave the old path as a staged
+        // deletion, so the user would see a confusing "added new file +
+        // deleted old file" pair instead of the original rename row. We pass
+        // both paths so the index returns to the worktree state.
+        var arguments = ["reset", "HEAD", "--", file.path]
+        if let originalPath = file.originalPath {
+            arguments.append(originalPath)
+        }
+        _ = try await runGit(arguments: arguments, in: repositoryURL)
     }
 
     func stageAll(files: [StatusFile], in repositoryURL: URL) async throws {
         guard !files.isEmpty else { return }
-        var arguments = ["add", "--"]
-        arguments.append(contentsOf: files.map(\.path))
-        _ = try await runGit(arguments: arguments, in: repositoryURL)
+
+        var addArguments = ["add", "--"]
+        var renameOriginals: [String] = []
+        for file in files {
+            addArguments.append(file.path)
+            if let original = file.originalPath {
+                renameOriginals.append(original)
+            }
+        }
+        _ = try await runGit(arguments: addArguments, in: repositoryURL)
+
+        if !renameOriginals.isEmpty {
+            var rmArguments = ["rm", "--cached", "--"]
+            rmArguments.append(contentsOf: renameOriginals)
+            _ = try await runGit(arguments: rmArguments, in: repositoryURL)
+        }
     }
 
     func unstageAll(files: [StatusFile], in repositoryURL: URL) async throws {
         guard !files.isEmpty else { return }
         var arguments = ["reset", "HEAD", "--"]
-        arguments.append(contentsOf: files.map(\.path))
+        for file in files {
+            arguments.append(file.path)
+            if let original = file.originalPath {
+                arguments.append(original)
+            }
+        }
         _ = try await runGit(arguments: arguments, in: repositoryURL)
+    }
+
+    private func stageRename(file: StatusFile, originalPath: String, in repositoryURL: URL) async throws {
+        // `git add <newpath>` alone leaves the old path untouched in the
+        // index, which Git reads as "added new + missing tracked" rather
+        // than a rename. Removing the old entry from the index with
+        // `git rm --cached` (not plain `git rm`: the old file is already
+        // gone from the worktree) is what produces a proper `R` row in
+        // `git status`.
+        _ = try await runGit(arguments: ["add", file.path], in: repositoryURL)
+        _ = try await runGit(arguments: ["rm", "--cached", originalPath], in: repositoryURL)
     }
 
     // MARK: - Hunk / Line Operations

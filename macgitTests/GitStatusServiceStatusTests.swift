@@ -143,6 +143,70 @@ final class GitStatusServiceStatusTests: XCTestCase {
         XCTAssertTrue(untracked.isEmpty)
     }
 
+    func testStageAllCollapsesFinderMoveIntoIndexRename() async throws {
+        let repoURL = try makeTempRepo()
+        let newURL = repoURL.appendingPathComponent("relocated/tracked.txt")
+        try FileManager.default.createDirectory(
+            at: repoURL.appendingPathComponent("relocated"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.moveItem(
+            at: repoURL.appendingPathComponent("tracked.txt"),
+            to: newURL
+        )
+
+        let status = try await GitStatusService.shared.status(for: repoURL)
+        let rename = try XCTUnwrap(status.unstaged.first { $0.status == .renamed })
+
+        try await GitStatusService.shared.stageAll(files: [rename], in: repoURL)
+
+        let after = try await GitStatusService.shared.status(for: repoURL)
+        XCTAssertTrue(
+            after.staged.contains { $0.status == .renamed && $0.path == "relocated/tracked.txt" },
+            "After staging, the move should be recorded as an index rename"
+        )
+        XCTAssertFalse(
+            after.staged.contains { $0.status == .added && $0.path == "relocated/tracked.txt" },
+            "The new path should not appear as a plain index addition"
+        )
+        XCTAssertTrue(after.unstaged.isEmpty, "No unstaged entries should remain after staging a rename")
+    }
+
+    func testUnstageAllOnStagedRenameReturnsWorktreeRenameRow() async throws {
+        let repoURL = try makeTempRepo()
+        let newURL = repoURL.appendingPathComponent("relocated/tracked.txt")
+        try FileManager.default.createDirectory(
+            at: repoURL.appendingPathComponent("relocated"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.moveItem(
+            at: repoURL.appendingPathComponent("tracked.txt"),
+            to: newURL
+        )
+
+        let status = try await GitStatusService.shared.status(for: repoURL)
+        let rename = try XCTUnwrap(status.unstaged.first { $0.status == .renamed })
+        try await GitStatusService.shared.stageAll(files: [rename], in: repoURL)
+
+        let staged = try await GitStatusService.shared.status(for: repoURL)
+        let stagedRename = try XCTUnwrap(staged.staged.first { $0.status == .renamed })
+
+        try await GitStatusService.shared.unstageAll(files: [stagedRename], in: repoURL)
+
+        let after = try await GitStatusService.shared.status(for: repoURL)
+        XCTAssertTrue(after.staged.isEmpty, "Staging area should be empty after unstaging a rename")
+        XCTAssertTrue(
+            after.unstaged.contains {
+                $0.status == .renamed
+                && $0.path == "relocated/tracked.txt"
+                && $0.originalPath == "tracked.txt"
+            },
+            "Unstaging a rename should leave it as a worktree rename row in the unstaged section"
+        )
+        XCTAssertTrue(after.untracked.isEmpty,
+                      "The new path should be consumed by the worktree rename pairing")
+    }
+
     private func makeTempRepo() throws -> URL {
         let repoURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("macgit-status-binary-\(UUID().uuidString)", isDirectory: true)
