@@ -101,6 +101,26 @@ struct FileStatusActionSelection {
         }
     }
 
+    func dragPaths(startingAt file: StatusFile, isStaged: Bool) -> [String] {
+        let startingKey = FileStatusSelectionKey(file: file, isStaged: isStaged)
+        let sourceFiles: [StatusFile]
+        if selectedKeys.contains(startingKey) {
+            sourceFiles = uniqueFilesByPath(selectedFiles)
+        } else {
+            sourceFiles = [file]
+        }
+
+        var seen: Set<String> = []
+        var paths: [String] = []
+        for source in sourceFiles {
+            for path in [source.originalPath, source.path] {
+                guard let path, !path.isEmpty, seen.insert(path).inserted else { continue }
+                paths.append(path)
+            }
+        }
+        return paths
+    }
+
     private var currentSelectionKeys: Set<FileStatusSelectionKey> {
         Set(stagedFiles.map { FileStatusSelectionKey(file: $0, isStaged: true) })
             .union(changedFiles.map { FileStatusSelectionKey(file: $0, isStaged: false) })
