@@ -28,6 +28,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
     let onTap: () -> Void
     let onTargetedChange: (Bool) -> Void
     let fallbackPayload: () -> GitDragPayload?
+    let canAcceptDrop: (GitDragPayload) -> Bool
     let dragPayload: () -> GitDragPayload?
     let dragTitle: () -> String
     let onDragEnded: (GitDragPayload) -> Void
@@ -38,6 +39,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
             onTap: onTap,
             onTargetedChange: onTargetedChange,
             fallbackPayload: fallbackPayload,
+            canAcceptDrop: canAcceptDrop,
             dragPayload: dragPayload,
             dragTitle: dragTitle,
             onDragEnded: onDragEnded,
@@ -49,6 +51,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         nsView.onTap = onTap
         nsView.onTargetedChange = onTargetedChange
         nsView.fallbackPayload = fallbackPayload
+        nsView.canAcceptDrop = canAcceptDrop
         nsView.dragPayload = dragPayload
         nsView.dragTitle = dragTitle
         nsView.onDragEnded = onDragEnded
@@ -67,6 +70,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         var onTap: () -> Void
         var onTargetedChange: (Bool) -> Void
         var fallbackPayload: () -> GitDragPayload?
+        var canAcceptDrop: (GitDragPayload) -> Bool
         var dragPayload: () -> GitDragPayload?
         var dragTitle: () -> String
         var onDragEnded: (GitDragPayload) -> Void
@@ -80,6 +84,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
             onTap: @escaping () -> Void,
             onTargetedChange: @escaping (Bool) -> Void,
             fallbackPayload: @escaping () -> GitDragPayload?,
+            canAcceptDrop: @escaping (GitDragPayload) -> Bool,
             dragPayload: @escaping () -> GitDragPayload?,
             dragTitle: @escaping () -> String,
             onDragEnded: @escaping (GitDragPayload) -> Void,
@@ -88,6 +93,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
             self.onTap = onTap
             self.onTargetedChange = onTargetedChange
             self.fallbackPayload = fallbackPayload
+            self.canAcceptDrop = canAcceptDrop
             self.dragPayload = dragPayload
             self.dragTitle = dragTitle
             self.onDragEnded = onDragEnded
@@ -153,7 +159,8 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         }
 
         override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-            guard canReadPayload(from: sender.draggingPasteboard) else {
+            guard acceptedPayload(from: sender.draggingPasteboard) != nil else {
+                setTargeted(false)
                 return []
             }
 
@@ -162,7 +169,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         }
 
         override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-            guard canReadPayload(from: sender.draggingPasteboard) else {
+            guard acceptedPayload(from: sender.draggingPasteboard) != nil else {
                 setTargeted(false)
                 return []
             }
@@ -172,7 +179,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         }
 
         override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
-            canReadPayload(from: sender.draggingPasteboard)
+            acceptedPayload(from: sender.draggingPasteboard) != nil
         }
 
         override func draggingExited(_ sender: NSDraggingInfo?) {
@@ -186,7 +193,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
             defer { setTargeted(false) }
 
-            guard let payload = payload(from: sender.draggingPasteboard) ?? fallbackPayload() else {
+            guard let payload = acceptedPayload(from: sender.draggingPasteboard) else {
                 return false
             }
 
@@ -216,6 +223,21 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
             return pasteboard.pasteboardItems?.contains { item in
                 item.availableType(from: [Self.payloadType]) != nil
             } ?? false
+        }
+
+        private func acceptedPayload(from pasteboard: NSPasteboard) -> GitDragPayload? {
+            guard canReadPayload(from: pasteboard),
+                  let payload = payload(from: pasteboard) ?? fallbackPayload(),
+                  acceptsPayload(payload)
+            else {
+                return nil
+            }
+
+            return payload
+        }
+
+        func acceptsPayload(_ payload: GitDragPayload) -> Bool {
+            canAcceptDrop(payload)
         }
 
         private func payload(from pasteboard: NSPasteboard) -> GitDragPayload? {

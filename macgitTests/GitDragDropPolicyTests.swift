@@ -141,6 +141,37 @@ final class GitDragDropPolicyTests: XCTestCase {
         XCTAssertEqual(try GitDragPayload.decodeTransferData(data), payload)
     }
 
+    func testNativeBranchDropTargetRejectsSelfDropBeforeHover() {
+        let target = GitDragTarget.localBranch(name: "release", isCurrent: true)
+        let dropTargetView = SidebarBranchDropTarget.DropTargetView(
+            onTap: {},
+            onTargetedChange: { _ in },
+            fallbackPayload: { nil },
+            canAcceptDrop: { [repoURL] payload in
+                if case .accept = GitDragDropPolicy.decision(
+                    for: payload,
+                    target: target,
+                    receivingRepositoryURL: repoURL,
+                    optionKeyPressed: false
+                ) {
+                    return true
+                }
+                return false
+            },
+            dragPayload: { nil },
+            dragTitle: { "" },
+            onDragEnded: { _ in },
+            onDrop: { _ in true }
+        )
+
+        XCTAssertFalse(
+            dropTargetView.acceptsPayload(.branch("release", repositoryURL: repoURL))
+        )
+        XCTAssertTrue(
+            dropTargetView.acceptsPayload(.branch("feature", repositoryURL: repoURL))
+        )
+    }
+
     func testRemoteBranchDragPayloadRoundTripsTransferData() throws {
         let payload = GitDragPayload.remoteBranch("origin/feature", repositoryURL: repoURL)
 
