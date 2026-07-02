@@ -28,6 +28,11 @@ import SwiftUI
 struct macgitApp: App {
     @StateObject private var appState = AppState.shared
     @StateObject private var appUpdateController = AppUpdateController(updater: SparkleAppUpdater())
+    private let firebaseStatus: FirebaseBootstrapStatus
+
+    init() {
+        firebaseStatus = FirebaseBootstrap.configure()
+    }
 
     var body: some Scene {
         WindowGroup(id: "main") {
