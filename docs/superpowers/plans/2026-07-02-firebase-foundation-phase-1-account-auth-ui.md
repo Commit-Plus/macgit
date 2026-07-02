@@ -29,7 +29,7 @@
 - Create: `macgit/App/AccountSessionController.swift`
 - Create: `macgitTests/AccountSessionControllerTests.swift`
 
-- [ ] **Step 1: Write failing controller tests**
+- [x] **Step 1: Write failing controller tests**
 
 ```swift
 import XCTest
@@ -52,13 +52,13 @@ final class AccountSessionControllerTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run and confirm missing-type failure**
+- [x] **Step 2: Run and confirm missing-type failure**
 
 ```bash
 xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/AccountSessionControllerTests
 ```
 
-- [ ] **Step 3: Add protocol, errors, and state**
+- [x] **Step 3: Add protocol, errors, and state**
 
 ```swift
 import Foundation
@@ -97,11 +97,11 @@ enum AccountSessionState: Equatable { case guest, loading, authenticated(Account
 
 Implement `@MainActor final class AccountSessionController: ObservableObject` with `@Published private(set) var state`, `@Published var presentedSheet`, `@Published var errorMessage`, async sign-in/create/Google/reset methods, and synchronous sign-out. Initialize from `auth.currentAccount`; missing Firebase config remains `.guest` and sets `cloudFeaturesAvailable = false`.
 
-- [ ] **Step 4: Add the fake shown in the test file and make tests pass**
+- [x] **Step 4: Add the fake shown in the test file and make tests pass**
 
 Expected: `AccountSessionControllerTests` passes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add macgit/Services/AccountAuthenticating.swift macgit/App/AccountSessionController.swift macgitTests/AccountSessionControllerTests.swift
