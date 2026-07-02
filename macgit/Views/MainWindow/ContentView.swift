@@ -27,6 +27,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.openWindow) private var openWindow
+    @ObservedObject var accountController: AccountSessionController
 
     @State private var repositoryURL: URL?
     @State private var showingRepoPickerSheet = false
@@ -63,6 +64,14 @@ struct ContentView: View {
                 repositoryURL = url
             })
             .frame(minWidth: 480)
+        }
+        .sheet(item: $accountController.presentedSheet) { sheet in
+            switch sheet {
+            case .authentication(let mode):
+                AuthenticationSheet(controller: accountController, mode: mode)
+            case .manageAccount:
+                ManageAccountSheet(controller: accountController)
+            }
         }
         .alert("Current Repository is Open", isPresented: $showingKeepCurrentAlert) {
             Button("Cancel", role: .cancel) {}
@@ -108,6 +117,11 @@ struct ContentView: View {
         .overlay(
             WindowCloseButtonModifier(isVisible: repositoryURL == nil)
         )
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                AccountToolbarMenu(controller: accountController)
+            }
+        }
     }
 
     private func handlePendingWindowFlags() {
