@@ -22,6 +22,7 @@
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
+import GoogleSignIn
 import SwiftUI
 
 @main
@@ -39,6 +40,9 @@ struct macgitApp: App {
             ContentView()
                 .environmentObject(appState)
                 .environmentObject(appUpdateController)
+                .onOpenURL { url in
+                    _ = GIDSignIn.sharedInstance.handle(url)
+                }
                 .task {
                     appUpdateController.start()
                 }

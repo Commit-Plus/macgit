@@ -114,7 +114,7 @@ git commit -m "feat: add account session controller"
 - Create: `macgit/Services/FirebaseAuthService.swift`
 - Modify: `macgit/App/macgitApp.swift`
 
-- [ ] **Step 1: Add the Firebase adapter**
+- [x] **Step 1: Add the Firebase adapter**
 
 ```swift
 import AppKit
@@ -166,7 +166,7 @@ Add a private `map(_:)` that maps `AuthErrorCode.wrongPassword`, `invalidCredent
 
 For `accountExistsWithDifferentCredential`, retain the pending Google `AuthCredential` in memory. Implement `completePendingLink(email:password:)` by signing in with email/password, calling `user.link(with: pendingCredential)`, clearing the pending credential on success, and returning the linked `AccountSnapshot`. The authentication sheet asks for the existing password; it never creates a second Firebase UID.
 
-- [ ] **Step 2: Route Google callback URLs**
+- [x] **Step 2: Route Google callback URLs**
 
 Attach to the root `ContentView` scene:
 
@@ -176,11 +176,11 @@ Attach to the root `ContentView` scene:
 }
 ```
 
-- [ ] **Step 3: Build and run controller tests**
+- [x] **Step 3: Build and run controller tests**
 
 Expected: BUILD SUCCEEDED and controller tests pass without contacting Firebase.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add macgit/Services/FirebaseAuthService.swift macgit/App/macgitApp.swift
