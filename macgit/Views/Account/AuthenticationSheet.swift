@@ -30,10 +30,12 @@ struct AuthenticationSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading) {
+        VStack(alignment: .center, spacing: 18) {
             Text(title)
                 .font(.title2)
                 .bold()
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
 
             if controller.pendingLinkEmail == nil {
                 Picker("Account action", selection: $mode) {
@@ -43,33 +45,42 @@ struct AuthenticationSheet: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .frame(maxWidth: 320)
                 .onChange(of: mode) {
                     controller.errorMessage = nil
                 }
             } else {
                 Text("Enter the password for your existing Commit+ account. Google will be linked to the same account.")
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
             }
 
-            Form {
+            VStack(spacing: 12) {
                 TextField("Email", text: $email)
                     .textContentType(.emailAddress)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
                     .disabled(controller.pendingLinkEmail != nil)
                 SecureField("Password", text: $password)
                     .textContentType(.password)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
                     .onSubmit(submit)
             }
-            .formStyle(.grouped)
+            .frame(maxWidth: 360)
 
             if let errorMessage = controller.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
                     .accessibilityLabel("Error: \(errorMessage)")
             }
 
             if let passwordResetMessage = controller.passwordResetMessage {
                 Label(passwordResetMessage, systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
+                    .multilineTextAlignment(.center)
             }
 
             if mode == .signIn, controller.pendingLinkEmail == nil {
@@ -78,32 +89,52 @@ struct AuthenticationSheet: View {
                     .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || controller.isLoading)
             }
 
-            Button("Continue with Google", systemImage: "person.crop.circle.badge.plus", action: signInWithGoogle)
-                .frame(maxWidth: .infinity)
+            VStack(spacing: 10) {
+                Button(action: signInWithGoogle) {
+                    Label("Continue with Google", systemImage: "person.crop.circle.badge.plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.roundedRectangle(radius: 12))
+                .controlSize(.large)
                 .disabled(controller.isLoading || controller.pendingLinkEmail != nil)
 
-            Button("Sign in with Apple · Coming later", systemImage: "apple.logo") {}
-                .frame(maxWidth: .infinity)
+                Button(action: {}) {
+                    Label("Sign in with Apple · Coming later", systemImage: "apple.logo")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.roundedRectangle(radius: 12))
+                .controlSize(.large)
                 .disabled(true)
+            }
+            .frame(maxWidth: 320)
 
             Text("You can keep using Commit+ and all local Git features without an account.")
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
 
-            HStack {
+            HStack(spacing: 12) {
                 Button("Cancel", role: .cancel, action: cancel)
-                Spacer()
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.roundedRectangle(radius: 12))
+
                 if controller.isLoading {
                     ProgressView()
                         .controlSize(.small)
                         .accessibilityLabel("Signing in")
                 }
                 Button(primaryActionTitle, action: submit)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.roundedRectangle(radius: 12))
                     .disabled(primaryActionDisabled)
             }
+            .controlSize(.large)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .padding()
-        .frame(minWidth: 440)
+        .padding(28)
+        .frame(minWidth: 460)
         .interactiveDismissDisabled(controller.isLoading)
         .onAppear(perform: populatePendingLinkEmail)
         .onChange(of: controller.pendingLinkEmail) {
