@@ -193,11 +193,11 @@ git commit -m "feat: implement Firebase account authentication"
 - Create: `macgit/Views/Account/AccountMenuPolicy.swift`
 - Create: `macgitTests/AccountMenuPolicyTests.swift`
 
-- [ ] **Step 1: Test guest, Free, and Pro action ordering**
+- [x] **Step 1: Test guest, Free, and Pro action ordering**
 
 Define expected arrays exactly as approved: guest `[signIn, createAccount, upgrade]`; Free `[manageAccount, syncLocked, upgrade, signOut]`; Pro `[manageAccount, syncStatus, manageSubscriptionComingLater, signOut]`.
 
-- [ ] **Step 2: Implement pure policy**
+- [x] **Step 2: Implement pure policy**
 
 ```swift
 enum AccountMenuAction: Equatable {
@@ -215,7 +215,7 @@ enum AccountMenuPolicy {
 }
 ```
 
-- [ ] **Step 3: Run focused tests and commit**
+- [x] **Step 3: Run focused tests and commit**
 
 Expected: all `AccountMenuPolicyTests` pass.
 
