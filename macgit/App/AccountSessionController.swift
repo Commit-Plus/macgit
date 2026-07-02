@@ -44,7 +44,7 @@ final class AccountSessionController: ObservableObject {
     init(auth: AccountAuthenticating, bootstrapStatus: FirebaseBootstrapStatus) {
         self.auth = auth
         cloudFeaturesAvailable = bootstrapStatus == .configured
-        if let account = auth.currentAccount, cloudFeaturesAvailable {
+        if cloudFeaturesAvailable, let account = auth.currentAccount {
             state = .authenticated(account)
         } else {
             state = .guest

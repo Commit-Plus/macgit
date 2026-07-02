@@ -16,7 +16,7 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-enum AccountMenuAction: Equatable {
+enum AccountMenuAction: Hashable {
     case signIn
     case createAccount
     case manageAccount

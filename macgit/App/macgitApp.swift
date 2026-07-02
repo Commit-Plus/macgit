@@ -29,15 +29,21 @@ import SwiftUI
 struct macgitApp: App {
     @StateObject private var appState = AppState.shared
     @StateObject private var appUpdateController = AppUpdateController(updater: SparkleAppUpdater())
-    private let firebaseStatus: FirebaseBootstrapStatus
+    @StateObject private var accountController: AccountSessionController
 
     init() {
-        firebaseStatus = FirebaseBootstrap.configure()
+        let firebaseStatus = FirebaseBootstrap.configure()
+        _accountController = StateObject(
+            wrappedValue: AccountSessionController(
+                auth: FirebaseAuthService(),
+                bootstrapStatus: firebaseStatus
+            )
+        )
     }
 
     var body: some Scene {
         WindowGroup(id: "main") {
-            ContentView()
+            ContentView(accountController: accountController)
                 .environmentObject(appState)
                 .environmentObject(appUpdateController)
                 .onOpenURL { url in

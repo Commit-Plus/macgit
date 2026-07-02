@@ -228,19 +228,19 @@ Expected: all `AccountMenuPolicyTests` pass.
 - Modify: `macgit/Views/MainWindow/ContentView.swift`
 - Modify: `macgit/App/macgitApp.swift`
 
-- [ ] **Step 1: Create `AuthenticationSheet`**
+- [x] **Step 1: Create `AuthenticationSheet`**
 
 Implement a native sheet with segmented `Sign In`/`Create Account`, email/password fields, inline error, primary action, password reset, Google action, disabled `Sign in with Apple · Coming later`, Cancel, loading disablement, and the guest-use reminder. Bind actions only to `AccountSessionController`.
 
-- [ ] **Step 2: Create `ManageAccountSheet`**
+- [x] **Step 2: Create `ManageAccountSheet`**
 
 Render identity/provider summary, plan badge, a Phase-2-ready sync row, disabled billing action labelled `Upgrade to Pro · Coming later` or `Manage Subscription · Coming later`, Sign Out, and `Delete Account...` disabled with an explanatory accessibility hint until Phase 2.
 
-- [ ] **Step 3: Create `AccountToolbarMenu`**
+- [x] **Step 3: Create `AccountToolbarMenu`**
 
 Use `Menu` with label `Label("Account", systemImage: "person.crop.circle")`. Render actions from `AccountMenuPolicy` in the approved order and keep the menu available with or without an open repository.
 
-- [ ] **Step 4: Mount at the root**
+- [x] **Step 4: Mount at the root**
 
 Add to `ContentView`:
 
@@ -257,11 +257,11 @@ Add to `ContentView`:
 
 Inject one `@StateObject AccountSessionController` from `macgitApp`; do not instantiate controllers per repository window content subtree.
 
-- [ ] **Step 5: Run targeted tests and full suite**
+- [x] **Step 5: Run targeted tests and full suite**
 
 Expected: account policy/controller tests pass, then TEST SUCCEEDED for the full suite.
 
-- [ ] **Step 6: Commit and mark Phase 1 complete in the roadmap**
+- [x] **Step 6: Commit and mark Phase 1 complete in the roadmap**
 
 ```bash
 git add macgit/Views/Account macgit/Views/MainWindow/ContentView.swift macgit/App/macgitApp.swift docs/superpowers/plans/2026-07-02-firebase-foundation-roadmap.md
