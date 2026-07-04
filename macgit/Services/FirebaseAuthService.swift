@@ -19,6 +19,7 @@
 import AppKit
 import FirebaseAuth
 import FirebaseCore
+import FirebaseFunctions
 import GoogleSignIn
 
 @MainActor
@@ -103,6 +104,22 @@ final class FirebaseAuthService: AccountAuthenticating {
         do {
             try await Auth.auth().sendPasswordReset(withEmail: email)
         } catch {
+            throw map(error)
+        }
+    }
+
+    func deleteAccount() async throws {
+        do {
+            _ = try await Functions.functions().httpsCallable("deleteAccount").call()
+            try? Auth.auth().signOut()
+            GIDSignIn.sharedInstance.signOut()
+            pendingGoogleCredential = nil
+        } catch {
+            let nsError = error as NSError
+            if nsError.domain == FunctionsErrorDomain,
+               FunctionsErrorCode(rawValue: nsError.code) == .failedPrecondition {
+                throw AccountAuthError.requiresRecentAuthentication
+            }
             throw map(error)
         }
     }

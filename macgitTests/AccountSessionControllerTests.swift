@@ -76,11 +76,60 @@ final class AccountSessionControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .guest)
         XCTAssertEqual(auth.signOutCallCount, 1)
     }
+
+    func testSuccessfulAccountDeletionReturnsToGuest() async {
+        let account = AccountSnapshot(
+            uid: "u1",
+            email: "a@example.com",
+            displayName: nil,
+            providerIDs: ["password"]
+        )
+        let auth = FakeAccountAuth(current: account)
+        let controller = AccountSessionController(auth: auth, bootstrapStatus: .configured)
+
+        await controller.deleteAccount()
+
+        XCTAssertEqual(auth.deleteAccountCallCount, 1)
+        XCTAssertEqual(controller.state, .guest)
+    }
+
+    func testFailedAccountDeletionKeepsAuthenticatedState() async {
+        let account = AccountSnapshot(
+            uid: "u1",
+            email: "a@example.com",
+            displayName: nil,
+            providerIDs: ["password"]
+        )
+        let auth = FakeAccountAuth(current: account, error: .networkUnavailable)
+        let controller = AccountSessionController(auth: auth, bootstrapStatus: .configured)
+
+        await controller.deleteAccount()
+
+        XCTAssertEqual(controller.state, .authenticated(account))
+        XCTAssertEqual(controller.errorMessage, "Connect to the internet and try again.")
+    }
+
+    func testRecentAuthenticationFailureKeepsAccountAndOffersRecovery() async {
+        let account = AccountSnapshot(
+            uid: "u1",
+            email: "a@example.com",
+            displayName: nil,
+            providerIDs: ["password"]
+        )
+        let auth = FakeAccountAuth(current: account, error: .requiresRecentAuthentication)
+        let controller = AccountSessionController(auth: auth, bootstrapStatus: .configured)
+
+        await controller.deleteAccount()
+
+        XCTAssertEqual(controller.state, .authenticated(account))
+        XCTAssertTrue(controller.requiresRecentAuthentication)
+    }
 }
 
 private final class FakeAccountAuth: AccountAuthenticating {
     var currentAccount: AccountSnapshot?
     var signOutCallCount = 0
+    var deleteAccountCallCount = 0
 
     private let signInResult: AccountSnapshot?
     private let error: AccountAuthError?
@@ -114,6 +163,12 @@ private final class FakeAccountAuth: AccountAuthenticating {
 
     func sendPasswordReset(email: String) async throws {
         if let error { throw error }
+    }
+
+    func deleteAccount() async throws {
+        if let error { throw error }
+        deleteAccountCallCount += 1
+        currentAccount = nil
     }
 
     func signOut() throws {

@@ -1,0 +1,42 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/settings/app {
+      allow read: if signedInAs(uid);
+      allow write: if signedInAs(uid)
+        && request.resource.data.keys().hasOnly([
+          'schemaVersion',
+          'showToolbarButtonText',
+          'showSubmodules',
+          'showSubtrees',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'schemaVersion',
+          'showToolbarButtonText',
+          'showSubmodules',
+          'showSubtrees',
+          'updatedAt'
+        ])
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.showToolbarButtonText is bool
+        && request.resource.data.showSubmodules is bool
+        && request.resource.data.showSubtrees is bool
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    match /entitlements/{uid} {
+      allow read: if signedInAs(uid);
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function signedInAs(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

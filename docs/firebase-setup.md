@@ -47,6 +47,45 @@ firebase use --add
 
 Phase 2 adds Firestore and Functions emulator configuration. Run the commands from the repository root so `firebase.json` and rules files resolve consistently.
 
+Install the repository-local JavaScript dependencies:
+
+```bash
+npm --prefix firebase-tests install
+npm --prefix functions install
+npm --prefix scripts/firebase install
+```
+
+Run Firestore rules tests and Functions tests:
+
+```bash
+npx firebase-tools emulators:exec --project macgit-local --only firestore "npm --prefix firebase-tests test"
+npm --prefix functions test
+```
+
+## Test Pro entitlement assignment
+
+`scripts/firebase/set-entitlement.mjs` is an operator-only Admin SDK tool. It is never bundled into Commit+ and must never be exposed as a client action.
+
+For a deployed Firebase project, authenticate Application Default Credentials and select the project before using the script:
+
+```bash
+gcloud auth application-default login
+export GOOGLE_CLOUD_PROJECT="your-firebase-project-id"
+node scripts/firebase/set-entitlement.mjs <firebase-uid> grant
+node scripts/firebase/set-entitlement.mjs <firebase-uid> revoke
+```
+
+Against the local Firestore emulator, set the emulator host and project explicitly:
+
+```bash
+export FIRESTORE_EMULATOR_HOST="127.0.0.1:8080"
+export GCLOUD_PROJECT="macgit-local"
+node scripts/firebase/set-entitlement.mjs <firebase-uid> grant
+node scripts/firebase/set-entitlement.mjs <firebase-uid> revoke
+```
+
+The grant command writes active test Pro access with `source: admin_test`. The revoke command writes a normalized Free entitlement. Do not run this script with production credentials unless the target UID and requested mode have been independently verified.
+
 ## Validation
 
 Check required local keys without printing their values:

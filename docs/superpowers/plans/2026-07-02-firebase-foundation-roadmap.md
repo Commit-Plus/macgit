@@ -18,7 +18,7 @@
 
 - Phase 0: [completed] [2026-07-02-firebase-foundation-phase-0-bootstrap.md](2026-07-02-firebase-foundation-phase-0-bootstrap.md) (branch: `codex/firebase-foundation-phase-0`, verified at `2da458a`)
 - Phase 1: [completed] [2026-07-02-firebase-foundation-phase-1-account-auth-ui.md](2026-07-02-firebase-foundation-phase-1-account-auth-ui.md) (merged to `main` at `e6059fe`)
-- Phase 2: [pending] [2026-07-02-firebase-foundation-phase-2-entitlement-lifecycle.md](2026-07-02-firebase-foundation-phase-2-entitlement-lifecycle.md) (branch: `codex/firebase-foundation-phase-2`)
+- Phase 2: [completed] [2026-07-02-firebase-foundation-phase-2-entitlement-lifecycle.md](2026-07-02-firebase-foundation-phase-2-entitlement-lifecycle.md) (branch: `codex/firebase-foundation-phase-2`)
 - Phase 3: [pending] [2026-07-02-firebase-foundation-phase-3-settings-sync.md](2026-07-02-firebase-foundation-phase-3-settings-sync.md) (branch: `codex/firebase-foundation-phase-3`)
 
 ## Recommended Order

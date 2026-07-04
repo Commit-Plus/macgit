@@ -25,6 +25,7 @@ enum AccountAuthError: LocalizedError, Equatable {
     case networkUnavailable
     case needsExistingMethod(email: String, providerIDs: [String])
     case googlePresentationUnavailable
+    case requiresRecentAuthentication
     case cloudNotConfigured
     case message(String)
 
@@ -42,6 +43,8 @@ enum AccountAuthError: LocalizedError, Equatable {
             return "Sign in using the existing method to link this account."
         case .googlePresentationUnavailable:
             return "Commit+ could not present Google Sign-In."
+        case .requiresRecentAuthentication:
+            return "For security, sign in again before deleting your account."
         case .cloudNotConfigured:
             return "Cloud accounts are not configured in this build."
         case .message(let text):
@@ -58,6 +61,7 @@ protocol AccountAuthenticating {
     func signInWithGoogle() async throws -> AccountSnapshot
     func completePendingLink(email: String, password: String) async throws -> AccountSnapshot
     func sendPasswordReset(email: String) async throws
+    func deleteAccount() async throws
     func signOut() throws
 }
 

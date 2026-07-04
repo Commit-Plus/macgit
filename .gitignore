@@ -6,3 +6,6 @@
 macgit/GoogleService-Info.plist
 .firebase/
 firebase-debug.log
+firestore-debug.log
+node_modules/
+functions/lib/

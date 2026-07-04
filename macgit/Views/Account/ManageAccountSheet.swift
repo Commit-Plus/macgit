@@ -20,6 +20,7 @@ import SwiftUI
 
 struct ManageAccountSheet: View {
     @ObservedObject var controller: AccountSessionController
+    @State private var confirmsDeletion = false
 
     var body: some View {
         VStack(alignment: .leading) {
@@ -41,6 +42,12 @@ struct ManageAccountSheet: View {
                         Text(controller.entitlement.hasProAccess ? "Coming in Phase 3" : "Requires Pro")
                             .foregroundStyle(.secondary)
                     }
+                    if let entitlementError = controller.entitlementError {
+                        LabeledContent("Cloud status") {
+                            Text(entitlementError)
+                                .foregroundStyle(.red)
+                        }
+                    }
                 }
                 .formStyle(.grouped)
 
@@ -51,9 +58,25 @@ struct ManageAccountSheet: View {
 
                 Button("Sign Out", action: controller.signOut)
 
-                Button("Delete Account...", role: .destructive) {}
-                    .disabled(true)
-                    .accessibilityHint("Account deletion will be available after secure reauthentication is added in Phase 2.")
+                if controller.requiresRecentAuthentication {
+                    Button("Sign In Again...", action: controller.presentReauthentication)
+                }
+
+                Button("Delete Account...", role: .destructive) {
+                    confirmsDeletion = true
+                }
+                .disabled(controller.isDeletingAccount)
+
+                if controller.isDeletingAccount {
+                    ProgressView("Deleting account...")
+                        .controlSize(.small)
+                }
+
+                if let errorMessage = controller.errorMessage {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else {
                 ContentUnavailableView(
                     "Not Signed In",
@@ -70,6 +93,14 @@ struct ManageAccountSheet: View {
         }
         .padding()
         .frame(minWidth: 440, minHeight: 360)
+        .alert("Delete Commit+ Account?", isPresented: $confirmsDeletion) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete Account", role: .destructive) {
+                Task { await controller.deleteAccount() }
+            }
+        } message: {
+            Text("This removes your Commit+ cloud settings, entitlement record, and account. Local repositories and Git data will not be changed.")
+        }
     }
 
     private var billingActionTitle: String {

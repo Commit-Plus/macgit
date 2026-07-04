@@ -26,11 +26,16 @@ final class AccountSessionController: ObservableObject {
     @Published var errorMessage: String?
     @Published private(set) var passwordResetMessage: String?
     @Published private(set) var pendingLinkEmail: String?
-    @Published var entitlement: AccountEntitlement = .free
+    @Published private(set) var isDeletingAccount = false
+    @Published private(set) var requiresRecentAuthentication = false
+    @Published private(set) var entitlement: AccountEntitlement = .free
+    @Published private(set) var entitlementError: String?
 
     let cloudFeaturesAvailable: Bool
 
     private let auth: AccountAuthenticating
+    private let entitlementProvider: EntitlementProviding?
+    private var entitlementObservation: ObservationToken?
 
     var account: AccountSnapshot? {
         guard case .authenticated(let account) = state else { return nil }
@@ -41,11 +46,17 @@ final class AccountSessionController: ObservableObject {
         state == .loading
     }
 
-    init(auth: AccountAuthenticating, bootstrapStatus: FirebaseBootstrapStatus) {
+    init(
+        auth: AccountAuthenticating,
+        bootstrapStatus: FirebaseBootstrapStatus,
+        entitlementProvider: EntitlementProviding? = nil
+    ) {
         self.auth = auth
+        self.entitlementProvider = entitlementProvider
         cloudFeaturesAvailable = bootstrapStatus == .configured
         if cloudFeaturesAvailable, let account = auth.currentAccount {
             state = .authenticated(account)
+            startEntitlementObservation(for: account.uid)
         } else {
             state = .guest
         }
@@ -109,14 +120,39 @@ final class AccountSessionController: ObservableObject {
     func signOut() {
         do {
             try auth.signOut()
+            stopEntitlementObservation()
             state = .guest
-            entitlement = .free
             presentedSheet = nil
             errorMessage = nil
             pendingLinkEmail = nil
         } catch {
             errorMessage = Self.message(for: error)
         }
+    }
+
+    func deleteAccount() async {
+        guard account != nil else { return }
+        isDeletingAccount = true
+        errorMessage = nil
+        requiresRecentAuthentication = false
+        defer { isDeletingAccount = false }
+
+        do {
+            try await auth.deleteAccount()
+            stopEntitlementObservation()
+            state = .guest
+            presentedSheet = nil
+            pendingLinkEmail = nil
+        } catch let error as AccountAuthError where error == .requiresRecentAuthentication {
+            requiresRecentAuthentication = true
+            errorMessage = error.localizedDescription
+        } catch {
+            errorMessage = Self.message(for: error)
+        }
+    }
+
+    func presentReauthentication() {
+        presentAuthentication(.signIn)
     }
 
     private func authenticate(
@@ -135,6 +171,8 @@ final class AccountSessionController: ObservableObject {
         do {
             let account = try await operation()
             state = .authenticated(account)
+            startEntitlementObservation(for: account.uid)
+            requiresRecentAuthentication = false
             pendingLinkEmail = nil
             presentedSheet = nil
         } catch let error as AccountAuthError {
@@ -147,6 +185,31 @@ final class AccountSessionController: ObservableObject {
             state = previousState == .loading ? .guest : previousState
             errorMessage = Self.message(for: error)
         }
+    }
+
+    private func startEntitlementObservation(for uid: String) {
+        stopEntitlementObservation()
+        guard let entitlementProvider else { return }
+        entitlementObservation = entitlementProvider.observe(
+            uid: uid,
+            onChange: { [weak self] entitlement in
+                guard self?.account?.uid == uid else { return }
+                self?.entitlement = entitlement
+                self?.entitlementError = nil
+            },
+            onError: { [weak self] message in
+                guard self?.account?.uid == uid else { return }
+                self?.entitlement = .free
+                self?.entitlementError = message
+            }
+        )
+    }
+
+    private func stopEntitlementObservation() {
+        entitlementObservation?.cancel()
+        entitlementObservation = nil
+        entitlement = .free
+        entitlementError = nil
     }
 
     private static func message(for error: Error) -> String {

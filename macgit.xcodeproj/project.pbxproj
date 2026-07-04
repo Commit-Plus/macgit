@@ -11,6 +11,7 @@
 		8AFB000627B0000100A1B2C3 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 8AFB000327B0000100A1B2C3 /* FirebaseAuth */; };
 		8AFB000727B0000100A1B2C3 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 8AFB000427B0000100A1B2C3 /* FirebaseFirestore */; };
 		8AFB000827B0000100A1B2C3 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 8AFB000527B0000100A1B2C3 /* GoogleSignIn */; };
+		8AFB000927B0000100A1B2C3 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 8AFB000A27B0000100A1B2C3 /* FirebaseFunctions */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +49,7 @@
 			files = (
 				8AFB000627B0000100A1B2C3 /* FirebaseAuth in Frameworks */,
 				8AFB000727B0000100A1B2C3 /* FirebaseFirestore in Frameworks */,
+				8AFB000927B0000100A1B2C3 /* FirebaseFunctions in Frameworks */,
 				8AFB000827B0000100A1B2C3 /* GoogleSignIn in Frameworks */,
 				8A19F0F127AA100100A1B2C3 /* Sparkle in Frameworks */,
 			);
@@ -103,6 +105,7 @@
 			packageProductDependencies = (
 				8AFB000327B0000100A1B2C3 /* FirebaseAuth */,
 				8AFB000427B0000100A1B2C3 /* FirebaseFirestore */,
+				8AFB000A27B0000100A1B2C3 /* FirebaseFunctions */,
 				8AFB000527B0000100A1B2C3 /* GoogleSignIn */,
 				8A19F0F027AA100100A1B2C3 /* Sparkle */,
 			);
@@ -248,6 +251,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 8AFB000127B0000100A1B2C3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseFirestore;
+		};
+		8AFB000A27B0000100A1B2C3 /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AFB000127B0000100A1B2C3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
 		};
 		8AFB000527B0000100A1B2C3 /* GoogleSignIn */ = {
 			isa = XCSwiftPackageProductDependency;

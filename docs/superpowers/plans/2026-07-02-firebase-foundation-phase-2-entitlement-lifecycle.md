@@ -24,11 +24,11 @@
 - Create: `macgit/Services/FirestoreEntitlementStore.swift`
 - Create: `macgitTests/EntitlementDocumentDecoderTests.swift`
 
-- [ ] **Step 1: Write decoder tests**
+- [x] **Step 1: Write decoder tests**
 
 Test a valid active Pro document, a missing document returning `.free`, and unknown/wrong-type fields returning `.free` with a nonfatal diagnostic.
 
-- [ ] **Step 2: Add protocol and decoder**
+- [x] **Step 2: Add protocol and decoder**
 
 ```swift
 protocol ObservationToken { func cancel() }
@@ -59,11 +59,11 @@ enum EntitlementDocumentDecoder {
 }
 ```
 
-- [ ] **Step 3: Implement Firestore listener**
+- [x] **Step 3: Implement Firestore listener**
 
 Observe `entitlements/{uid}` on the main queue; map document/error to entitlement state without granting Pro on error. Return an app-owned cancellation token rather than exposing Firebase's concrete listener type from views.
 
-- [ ] **Step 4: Run focused tests and commit**
+- [x] **Step 4: Run focused tests and commit**
 
 Expected: decoder tests pass.
 
@@ -75,11 +75,11 @@ Expected: decoder tests pass.
 - Modify: `macgit/Views/Account/ManageAccountSheet.swift`
 - Create: `macgitTests/EntitlementGateTests.swift`
 
-- [ ] **Step 1: Test listener lifecycle**
+- [x] **Step 1: Test listener lifecycle**
 
 Assert sign-in starts exactly one entitlement observation, a Pro update changes menu policy, sign-out cancels observation and resets `.free`, and listener failure never grants access.
 
-- [ ] **Step 2: Add published entitlement state**
+- [x] **Step 2: Add published entitlement state**
 
 ```swift
 @Published private(set) var entitlement: AccountEntitlement = .free
@@ -88,7 +88,7 @@ Assert sign-in starts exactly one entitlement observation, a Pro update changes 
 
 Start/stop observation on auth transitions. Update menu and Manage Account labels from the normalized state. Keep upgrade and subscription actions disabled with `Coming later` until Polar work.
 
-- [ ] **Step 3: Run focused tests and commit**
+- [x] **Step 3: Run focused tests and commit**
 
 Expected: entitlement gate and menu tests pass.
 
@@ -100,7 +100,7 @@ Expected: entitlement gate and menu tests pass.
 - Create: `firebase-tests/package.json`
 - Create: `firebase-tests/firestore.rules.test.mjs`
 
-- [ ] **Step 1: Add deny-by-default rules**
+- [x] **Step 1: Add deny-by-default rules**
 
 ```text
 rules_version = '2';
@@ -122,11 +122,11 @@ service cloud.firestore {
 }
 ```
 
-- [ ] **Step 2: Test isolation and escalation denial**
+- [x] **Step 2: Test isolation and escalation denial**
 
 Use `@firebase/rules-unit-testing` to prove user A reads only its own settings/entitlement, cannot read user B, and cannot create/update/delete an entitlement. Use rules-disabled context to seed documents.
 
-- [ ] **Step 3: Run emulator tests**
+- [x] **Step 3: Run emulator tests**
 
 ```bash
 firebase emulators:exec --only firestore "npm --prefix firebase-tests test"
@@ -134,7 +134,7 @@ firebase emulators:exec --only firestore "npm --prefix firebase-tests test"
 
 Expected: all rules tests pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add firebase.json firestore.rules firebase-tests
@@ -148,7 +148,7 @@ git commit -m "test: secure Firebase account documents"
 - Create: `scripts/firebase/set-entitlement.mjs`
 - Modify: `docs/firebase-setup.md`
 
-- [ ] **Step 1: Implement explicit grant/revoke commands**
+- [x] **Step 1: Implement explicit grant/revoke commands**
 
 ```javascript
 import { initializeApp, applicationDefault } from "firebase-admin/app";
@@ -170,11 +170,11 @@ await getFirestore().doc(`entitlements/${uid}`).set({
 });
 ```
 
-- [ ] **Step 2: Document Application Default Credentials and emulator usage**
+- [x] **Step 2: Document Application Default Credentials and emulator usage**
 
 Include exact grant/revoke commands and warn that the script is an operator tool, never bundled into the app.
 
-- [ ] **Step 3: Verify against emulator and commit**
+- [x] **Step 3: Verify against emulator and commit**
 
 Expected: granting changes the seeded user's entitlement to active Pro; revoking returns Free.
 
@@ -189,7 +189,7 @@ Expected: granting changes the seeded user's entitlement to active Pro; revoking
 - Modify: `macgit/Services/FirebaseAuthService.swift`
 - Modify: `macgit/Views/Account/ManageAccountSheet.swift`
 
-- [ ] **Step 1: Implement callable deletion**
+- [x] **Step 1: Implement callable deletion**
 
 Add the `FirebaseFunctions` product from the existing Firebase package to the `macgit` target, then implement:
 
@@ -217,19 +217,19 @@ export const deleteAccount = onCall(async (request) => {
 });
 ```
 
-- [ ] **Step 2: Add client confirmation and recent-auth recovery**
+- [x] **Step 2: Add client confirmation and recent-auth recovery**
 
 Expose `deleteAccount()` on the auth boundary. Manage Account shows a destructive confirmation, requests reauthentication when Firebase returns `requires-recent-login`, calls the function, then resets local session state. Never touch local repositories or recent paths.
 
-- [ ] **Step 3: Test idempotent backend behavior and controller failure restoration**
+- [x] **Step 3: Test idempotent backend behavior and controller failure restoration**
 
 Expected: deletion clears both documents and auth user; a failed call leaves the controller authenticated with an actionable error.
 
-- [ ] **Step 4: Run all Firebase tests and full Xcode suite**
+- [x] **Step 4: Run all Firebase tests and full Xcode suite**
 
 Expected: Firebase tests pass and TEST SUCCEEDED.
 
-- [ ] **Step 5: Commit and mark Phase 2 complete**
+- [x] **Step 5: Commit and mark Phase 2 complete**
 
 ```bash
 git add functions macgit/Services macgit/Views/Account macgitTests docs/superpowers/plans/2026-07-02-firebase-foundation-roadmap.md

@@ -36,7 +36,10 @@ struct macgitApp: App {
         _accountController = StateObject(
             wrappedValue: AccountSessionController(
                 auth: FirebaseAuthService(),
-                bootstrapStatus: firebaseStatus
+                bootstrapStatus: firebaseStatus,
+                entitlementProvider: firebaseStatus == .configured
+                    ? FirestoreEntitlementStore()
+                    : nil
             )
         )
     }
