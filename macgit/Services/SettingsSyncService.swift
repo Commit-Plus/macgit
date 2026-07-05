@@ -120,7 +120,7 @@ final class SettingsSyncService: ObservableObject {
         }
 
         if activeUID == uid,
-           observation != nil || pendingCloudSnapshot != nil || status == .starting {
+           observation != nil || pendingCloudSnapshot != nil {
             return
         }
 

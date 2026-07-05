@@ -64,6 +64,16 @@ final class SettingsSyncControllerTests: XCTestCase {
         XCTAssertNil(harness.controller.presentedSheet)
     }
 
+    func testConflictReplacesManageAccountSheetImmediately() async {
+        let harness = makeHarness(cloud: cloud, enabled: true)
+        harness.controller.presentManageAccount()
+
+        await harness.controller.synchronizeSettingsNow()
+        await Task.yield()
+
+        XCTAssertEqual(harness.controller.presentedSheet, .settingsConflict)
+    }
+
     func testDisplayTextShowsOffImmediatelyWhenDeviceSyncIsDisabled() async {
         let harness = makeHarness(cloud: nil, enabled: true)
 
@@ -77,6 +87,26 @@ final class SettingsSyncControllerTests: XCTestCase {
 
         XCTAssertEqual(harness.controller.settingsSyncStatus, .off)
         XCTAssertEqual(harness.controller.settingsSyncDisplayText, "Starting...")
+    }
+
+    func testEnablingSyncImmediatelyStartsAutomaticSyncSession() async {
+        let harness = makeHarness(cloud: nil, enabled: false)
+
+        harness.controller.setSettingsSyncEnabled(true)
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertEqual(harness.controller.settingsSyncStatus, .syncing)
+    }
+
+    func testLocalSettingChangeUploadsNewSnapshotWithoutRestart() async {
+        let harness = makeHarness(cloud: nil, enabled: true)
+        await harness.controller.synchronizeSettingsNow()
+
+        harness.appState.showSubtrees = true
+        try? await Task.sleep(for: .milliseconds(600))
+
+        XCTAssertEqual(harness.store.cloud?.showSubtrees, true)
     }
 
     private func makeHarness(cloud: AppSettingsSnapshot?, enabled: Bool) -> ControllerHarness {
@@ -97,7 +127,12 @@ final class SettingsSyncControllerTests: XCTestCase {
         addTeardownBlock {
             defaults.removePersistentDomain(forName: suiteName)
         }
-        return ControllerHarness(controller: controller, entitlements: entitlements)
+        return ControllerHarness(
+            controller: controller,
+            entitlements: entitlements,
+            appState: appState,
+            store: store
+        )
     }
 }
 
@@ -105,6 +140,8 @@ final class SettingsSyncControllerTests: XCTestCase {
 private struct ControllerHarness {
     let controller: AccountSessionController
     let entitlements: ControllerFakeEntitlements
+    let appState: AppState
+    let store: ControllerFakeSettingsStore
 }
 
 private extension AccountEntitlement {

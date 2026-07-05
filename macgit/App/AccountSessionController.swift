@@ -313,7 +313,7 @@ final class AccountSessionController: ObservableObject {
                 guard let self else { return }
                 settingsSyncStatus = status
                 if case .needsInitialChoice = status {
-                    presentedSheet = .settingsConflict
+                    presentSettingsConflictSheet()
                 } else if presentedSheet == .settingsConflict {
                     presentedSheet = nil
                 }
@@ -326,33 +326,54 @@ final class AccountSessionController: ObservableObject {
             appState.$showSubtrees
         )
         .dropFirst()
-        .sink { [weak self] _, _, _ in
-            guard let self else { return }
-            settingsSyncService.localSettingsDidChange(appState.snapshot)
+        .sink { showToolbarButtonText, showSubmodules, showSubtrees in
+            settingsSyncService.localSettingsDidChange(
+                AppSettingsSnapshot(
+                    showToolbarButtonText: showToolbarButtonText,
+                    showSubmodules: showSubmodules,
+                    showSubtrees: showSubtrees
+                )
+            )
         }
         .store(in: &cancellables)
 
         appState.$syncEnabled
             .dropFirst()
-            .sink { [weak self] _ in
-                self?.scheduleSettingsSyncEligibilityUpdate()
+            .sink { [weak self] enabled in
+                self?.scheduleSettingsSyncEligibilityUpdate(enabled: enabled)
             }
             .store(in: &cancellables)
     }
 
-    private func scheduleSettingsSyncEligibilityUpdate() {
+    private func scheduleSettingsSyncEligibilityUpdate(enabled enabledOverride: Bool? = nil) {
         settingsEligibilityTask?.cancel()
         guard let settingsSyncService else {
             settingsSyncStatus = account == nil ? .off : .locked
             return
         }
         let uid = account?.uid
-        let enabled = appState.syncEnabled
+        let enabled = enabledOverride ?? appState.syncEnabled
         settingsEligibilityTask = Task {
+            guard !Task.isCancelled else { return }
             await settingsSyncService.updateEligibility(
                 uid: uid,
                 enabled: enabled
             )
+        }
+    }
+
+    private func presentSettingsConflictSheet() {
+        guard presentedSheet != .settingsConflict else { return }
+        guard presentedSheet != nil else {
+            presentedSheet = .settingsConflict
+            return
+        }
+
+        presentedSheet = nil
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard case .needsInitialChoice = settingsSyncStatus else { return }
+            presentedSheet = .settingsConflict
         }
     }
 

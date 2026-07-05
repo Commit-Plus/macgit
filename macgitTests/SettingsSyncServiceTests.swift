@@ -179,6 +179,32 @@ final class SettingsSyncServiceTests: XCTestCase {
         XCTAssertEqual(harness.service.status, .syncing)
     }
 
+    func testRepeatedEligibilityUpdateRestartsAnUnfinishedStartup() async {
+        let harness = makeHarness(cloud: local)
+        harness.store.shouldSuspendLoads = true
+
+        let firstUpdate = Task {
+            await harness.service.updateEligibility(uid: "u1", enabled: true)
+        }
+        await Task.yield()
+        XCTAssertEqual(harness.store.loadedUIDs, ["u1"])
+        XCTAssertEqual(harness.service.status, .starting)
+
+        firstUpdate.cancel()
+        let replacementUpdate = Task {
+            await harness.service.updateEligibility(uid: "u1", enabled: true)
+        }
+        await Task.yield()
+
+        XCTAssertEqual(harness.store.loadedUIDs, ["u1", "u1"])
+
+        harness.store.resumeSuspendedLoads()
+        await firstUpdate.value
+        await replacementUpdate.value
+        XCTAssertEqual(harness.store.observedUIDs, ["u1"])
+        XCTAssertEqual(harness.service.status, .syncing)
+    }
+
     private func makeHarness(cloud: AppSettingsSnapshot?) -> Harness {
         let store = FakeCloudSettingsStore(cloud: cloud)
         let localBox = SnapshotBox(local)
@@ -231,7 +257,9 @@ private final class FakeCloudSettingsStore: CloudSettingsStore {
     var observedUIDs: [String] = []
     var saves: [Save] = []
     var tokens: [SyncFakeObservationToken] = []
+    var shouldSuspendLoads = false
     private var onChange: ((Result<AppSettingsSnapshot, Error>) -> Void)?
+    private var suspendedLoadContinuations: [CheckedContinuation<AppSettingsSnapshot?, Never>] = []
 
     init(cloud: AppSettingsSnapshot?) {
         self.cloud = cloud
@@ -239,7 +267,20 @@ private final class FakeCloudSettingsStore: CloudSettingsStore {
 
     func load(uid: String) async throws -> AppSettingsSnapshot? {
         loadedUIDs.append(uid)
+        if shouldSuspendLoads {
+            return await withCheckedContinuation { continuation in
+                suspendedLoadContinuations.append(continuation)
+            }
+        }
         return cloud
+    }
+
+    func resumeSuspendedLoads() {
+        let continuations = suspendedLoadContinuations
+        suspendedLoadContinuations.removeAll()
+        for continuation in continuations {
+            continuation.resume(returning: cloud)
+        }
     }
 
     func save(_ snapshot: AppSettingsSnapshot, uid: String) async throws {
