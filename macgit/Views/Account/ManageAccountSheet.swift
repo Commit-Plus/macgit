@@ -39,8 +39,7 @@ struct ManageAccountSheet: View {
                         )
                     }
                     LabeledContent("Sync Settings") {
-                        Text(controller.entitlement.hasProAccess ? "Coming in Phase 3" : "Requires Pro")
-                            .foregroundStyle(.secondary)
+                        syncSettingsControl
                     }
                     if let entitlementError = controller.entitlementError {
                         LabeledContent("Cloud status") {
@@ -77,6 +76,12 @@ struct ManageAccountSheet: View {
                         .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                if let settingsSyncError = controller.settingsSyncError {
+                    Text(settingsSyncError)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else {
                 ContentUnavailableView(
                     "Not Signed In",
@@ -109,6 +114,29 @@ struct ManageAccountSheet: View {
             : "Upgrade to Pro · Coming later"
     }
 
+    @ViewBuilder
+    private var syncSettingsControl: some View {
+        if controller.entitlement.plan == .pro {
+            HStack(spacing: 8) {
+                Toggle(
+                    "Sync Settings",
+                    isOn: Binding(
+                        get: { controller.settingsSyncEnabled },
+                        set: controller.setSettingsSyncEnabled
+                    )
+                )
+                .labelsHidden()
+                .disabled(!controller.entitlement.hasProAccess)
+
+                Text(controller.settingsSyncStatusText)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Label("Requires Pro", systemImage: "lock.fill")
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private func providerSummary(for account: AccountSnapshot) -> String {
         let names = account.providerIDs.map { providerID in
             switch providerID {
@@ -122,5 +150,68 @@ struct ManageAccountSheet: View {
 
     private func dismiss() {
         controller.presentedSheet = nil
+    }
+}
+
+struct SettingsSyncConflictSheet: View {
+    @ObservedObject var controller: AccountSessionController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Choose Settings to Sync")
+                .font(.title2)
+                .bold()
+
+            Text("This Mac and your cloud account have different settings. Choose which version Commit+ should use on all synced devices.")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(alignment: .top, spacing: 12) {
+                settingsGroup(title: "Current Mac", snapshot: controller.localSettingsSnapshot)
+                settingsGroup(title: "Cloud", snapshot: controller.pendingCloudSettings ?? controller.localSettingsSnapshot)
+            }
+
+            HStack {
+                Button("Cancel") {
+                    resolve(.cancel)
+                }
+                Spacer()
+                Button("Use Cloud Settings") {
+                    resolve(.useCloud)
+                }
+                Button("Keep This Mac's Settings") {
+                    resolve(.keepThisMac)
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding()
+        .frame(minWidth: 560)
+        .interactiveDismissDisabled()
+    }
+
+    private func settingsGroup(title: String, snapshot: AppSettingsSnapshot) -> some View {
+        GroupBox(title) {
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+                settingRow("Toolbar button text", enabled: snapshot.showToolbarButtonText)
+                settingRow("Submodules", enabled: snapshot.showSubmodules)
+                settingRow("Subtrees", enabled: snapshot.showSubtrees)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func settingRow(_ label: String, enabled: Bool) -> some View {
+        GridRow {
+            Text(label)
+            Label(enabled ? "Shown" : "Hidden", systemImage: enabled ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(enabled ? .primary : .secondary)
+        }
+    }
+
+    private func resolve(_ choice: InitialSettingsChoice) {
+        Task { await controller.resolveInitialSettingsChoice(choice) }
     }
 }

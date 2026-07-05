@@ -62,6 +62,26 @@ npx firebase-tools emulators:exec --project macgit-local --only firestore "npm -
 npm --prefix functions test
 ```
 
+Run the complete Firebase foundation emulator suite with Auth, Firestore, and Functions available:
+
+```bash
+firebase emulators:exec --project macgit-local --only auth,firestore,functions "npm --prefix firebase-tests test"
+```
+
+## Pro settings sync
+
+Settings sync is optional and device-local. It starts only when the user is signed in, has active Pro access, and enables **Sync Settings** on that Mac. Guest and Free workflows remain fully local. Past-due or inactive Pro access pauses cloud observation and uploads without clearing the device's enabled preference; restoring active Pro access resumes sync.
+
+The first time a Mac finds different local and cloud values, Commit+ asks whether to use the cloud values or keep that Mac's values. Canceling this choice disables sync on that device. After the initial choice, local changes are debounced and remote changes apply without being uploaded back as echoes.
+
+The only synchronized values are:
+
+- Toolbar button text visibility.
+- Submodule visibility.
+- Subtree visibility.
+
+Firestore stores these values at `users/{uid}/settings/app`. The document must contain exactly `schemaVersion`, the three boolean settings, and the server timestamp `updatedAt`. Repository state, credentials, Git history, and other preferences are never included.
+
 ## Test Pro entitlement assignment
 
 `scripts/firebase/set-entitlement.mjs` is an operator-only Admin SDK tool. It is never bundled into Commit+ and must never be exposed as a client action.

@@ -4,8 +4,11 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{uid}/settings/app {
       allow read: if signedInAs(uid);
-      allow write: if signedInAs(uid)
-        && request.resource.data.keys().hasOnly([
+      allow write: if signedInAs(uid) && validAppSettings();
+    }
+
+    function validAppSettings() {
+      return request.resource.data.keys().hasOnly([
           'schemaVersion',
           'showToolbarButtonText',
           'showSubmodules',
@@ -20,6 +23,7 @@ service cloud.firestore {
           'updatedAt'
         ])
         && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion == 1
         && request.resource.data.showToolbarButtonText is bool
         && request.resource.data.showSubmodules is bool
         && request.resource.data.showSubtrees is bool

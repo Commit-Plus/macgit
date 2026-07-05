@@ -1,11 +1,4 @@
 //
-//  macgitApp.swift
-//  macgit
-//
-//  Created by Thanh Tran on 26/5/26.
-//
-
-//
 //  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
 //  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
 //
@@ -27,18 +20,24 @@ import SwiftUI
 
 @main
 struct macgitApp: App {
-    @StateObject private var appState = AppState.shared
+    @StateObject private var appState: AppState
     @StateObject private var appUpdateController = AppUpdateController(updater: SparkleAppUpdater())
     @StateObject private var accountController: AccountSessionController
 
     init() {
         let firebaseStatus = FirebaseBootstrap.configure()
+        let appState = AppState.shared
+        _appState = StateObject(wrappedValue: appState)
         _accountController = StateObject(
             wrappedValue: AccountSessionController(
                 auth: FirebaseAuthService(),
                 bootstrapStatus: firebaseStatus,
                 entitlementProvider: firebaseStatus == .configured
                     ? FirestoreEntitlementStore()
+                    : nil,
+                appState: appState,
+                settingsStore: firebaseStatus == .configured
+                    ? FirestoreSettingsStore()
                     : nil
             )
         )

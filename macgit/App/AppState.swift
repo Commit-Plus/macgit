@@ -1,11 +1,4 @@
 //
-//  AppState.swift
-//  macgit
-//
-//  Created by AI Assistant on 30/5/26.
-//
-
-//
 //  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
 //  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
 //
@@ -37,6 +30,9 @@ final class AppState: ObservableObject {
     private static let showToolbarButtonTextKey = "showToolbarButtonText"
     private static let showSubmodulesKey = "showSubmodules"
     private static let showSubtreesKey = "showSubtrees"
+    private static let settingsSyncEnabledKey = "settingsSyncEnabled"
+
+    private let userDefaults: UserDefaults
 
     @Published var fileMenuAction: FileMenuAction?
     @Published var openWindowWithCloneSheet = false
@@ -44,23 +40,44 @@ final class AppState: ObservableObject {
     @Published var hasOpenRepository = false
     @Published var showToolbarButtonText: Bool {
         didSet {
-            UserDefaults.standard.set(showToolbarButtonText, forKey: Self.showToolbarButtonTextKey)
+            userDefaults.set(showToolbarButtonText, forKey: Self.showToolbarButtonTextKey)
         }
     }
     @Published var showSubmodules: Bool {
         didSet {
-            UserDefaults.standard.set(showSubmodules, forKey: Self.showSubmodulesKey)
+            userDefaults.set(showSubmodules, forKey: Self.showSubmodulesKey)
         }
     }
     @Published var showSubtrees: Bool {
         didSet {
-            UserDefaults.standard.set(showSubtrees, forKey: Self.showSubtreesKey)
+            userDefaults.set(showSubtrees, forKey: Self.showSubtreesKey)
+        }
+    }
+    @Published var syncEnabled: Bool {
+        didSet {
+            userDefaults.set(syncEnabled, forKey: Self.settingsSyncEnabledKey)
         }
     }
 
-    private init() {
-        showToolbarButtonText = UserDefaults.standard.object(forKey: Self.showToolbarButtonTextKey) as? Bool ?? true
-        showSubmodules = UserDefaults.standard.object(forKey: Self.showSubmodulesKey) as? Bool ?? false
-        showSubtrees = UserDefaults.standard.object(forKey: Self.showSubtreesKey) as? Bool ?? false
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+        showToolbarButtonText = userDefaults.object(forKey: Self.showToolbarButtonTextKey) as? Bool ?? true
+        showSubmodules = userDefaults.object(forKey: Self.showSubmodulesKey) as? Bool ?? false
+        showSubtrees = userDefaults.object(forKey: Self.showSubtreesKey) as? Bool ?? false
+        syncEnabled = userDefaults.object(forKey: Self.settingsSyncEnabledKey) as? Bool ?? false
+    }
+
+    var snapshot: AppSettingsSnapshot {
+        AppSettingsSnapshot(
+            showToolbarButtonText: showToolbarButtonText,
+            showSubmodules: showSubmodules,
+            showSubtrees: showSubtrees
+        )
+    }
+
+    func apply(_ snapshot: AppSettingsSnapshot) {
+        showToolbarButtonText = snapshot.showToolbarButtonText
+        showSubmodules = snapshot.showSubmodules
+        showSubtrees = snapshot.showSubtrees
     }
 }

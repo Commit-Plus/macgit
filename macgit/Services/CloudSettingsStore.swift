@@ -16,28 +16,25 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-enum AccountMenuAction: Hashable {
-    case signIn
-    case createAccount
-    case manageAccount
-    case syncLocked
-    case syncStatus
-    case upgrade
-    case manageSubscriptionComingLater
-    case signOut
+import Foundation
+
+enum CloudSettingsError: Error, Equatable, LocalizedError {
+    case invalidDocument
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidDocument:
+            return "Cloud settings are malformed."
+        }
+    }
 }
 
-enum AccountMenuPolicy {
-    static func actions(
-        account: AccountSnapshot?,
-        entitlement: AccountEntitlement
-    ) -> [AccountMenuAction] {
-        guard account != nil else {
-            return [.signIn, .createAccount, .syncLocked, .upgrade]
-        }
-
-        return entitlement.plan == .pro
-            ? [.manageAccount, .syncStatus, .manageSubscriptionComingLater, .signOut]
-            : [.manageAccount, .syncLocked, .upgrade, .signOut]
-    }
+@MainActor
+protocol CloudSettingsStore {
+    func load(uid: String) async throws -> AppSettingsSnapshot?
+    func save(_ snapshot: AppSettingsSnapshot, uid: String) async throws
+    func observe(
+        uid: String,
+        onChange: @escaping (Result<AppSettingsSnapshot, Error>) -> Void
+    ) -> ObservationToken
 }

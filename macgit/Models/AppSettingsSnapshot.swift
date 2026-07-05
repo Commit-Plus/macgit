@@ -16,28 +16,22 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-enum AccountMenuAction: Hashable {
-    case signIn
-    case createAccount
-    case manageAccount
-    case syncLocked
-    case syncStatus
-    case upgrade
-    case manageSubscriptionComingLater
-    case signOut
-}
+import Foundation
 
-enum AccountMenuPolicy {
-    static func actions(
-        account: AccountSnapshot?,
-        entitlement: AccountEntitlement
-    ) -> [AccountMenuAction] {
-        guard account != nil else {
-            return [.signIn, .createAccount, .syncLocked, .upgrade]
-        }
+struct AppSettingsSnapshot: Codable, Equatable, Sendable {
+    let schemaVersion: Int
+    var showToolbarButtonText: Bool
+    var showSubmodules: Bool
+    var showSubtrees: Bool
 
-        return entitlement.plan == .pro
-            ? [.manageAccount, .syncStatus, .manageSubscriptionComingLater, .signOut]
-            : [.manageAccount, .syncLocked, .upgrade, .signOut]
+    init(
+        showToolbarButtonText: Bool,
+        showSubmodules: Bool,
+        showSubtrees: Bool
+    ) {
+        schemaVersion = 1
+        self.showToolbarButtonText = showToolbarButtonText
+        self.showSubmodules = showSubmodules
+        self.showSubtrees = showSubtrees
     }
 }

@@ -30,12 +30,17 @@ final class AccountSessionController: ObservableObject {
     @Published private(set) var requiresRecentAuthentication = false
     @Published private(set) var entitlement: AccountEntitlement = .free
     @Published private(set) var entitlementError: String?
+    @Published private(set) var settingsSyncStatus: SettingsSyncStatus = .off
 
     let cloudFeaturesAvailable: Bool
 
     private let auth: AccountAuthenticating
     private let entitlementProvider: EntitlementProviding?
+    private let appState: AppState
+    private let settingsSyncService: SettingsSyncService?
     private var entitlementObservation: ObservationToken?
+    private var settingsEligibilityTask: Task<Void, Never>?
+    private var cancellables = Set<AnyCancellable>()
 
     var account: AccountSnapshot? {
         guard case .authenticated(let account) = state else { return nil }
@@ -46,20 +51,70 @@ final class AccountSessionController: ObservableObject {
         state == .loading
     }
 
+    var settingsSyncEnabled: Bool {
+        appState.syncEnabled
+    }
+
+    var pendingCloudSettings: AppSettingsSnapshot? {
+        guard case .needsInitialChoice(let snapshot) = settingsSyncStatus else { return nil }
+        return snapshot
+    }
+
+    var localSettingsSnapshot: AppSettingsSnapshot {
+        appState.snapshot
+    }
+
+    var settingsSyncStatusText: String {
+        switch settingsSyncStatus {
+        case .off: "Off"
+        case .locked: "Requires Pro"
+        case .starting: "Starting..."
+        case .needsInitialChoice: "Choose Settings"
+        case .syncing: "Syncing"
+        case .paused: "Paused"
+        case .failed: "Error"
+        }
+    }
+
+    var settingsSyncError: String? {
+        guard case .failed(let message) = settingsSyncStatus else { return nil }
+        return message
+    }
+
     init(
         auth: AccountAuthenticating,
         bootstrapStatus: FirebaseBootstrapStatus,
-        entitlementProvider: EntitlementProviding? = nil
+        entitlementProvider: EntitlementProviding? = nil,
+        appState: AppState? = nil,
+        settingsStore: CloudSettingsStore? = nil
     ) {
         self.auth = auth
         self.entitlementProvider = entitlementProvider
+        let resolvedAppState = appState ?? AppState.shared
+        self.appState = resolvedAppState
+        if let settingsStore {
+            settingsSyncService = SettingsSyncService(
+                store: settingsStore,
+                currentSnapshot: { resolvedAppState.snapshot },
+                applySnapshot: { resolvedAppState.apply($0) },
+                setSyncEnabled: { resolvedAppState.syncEnabled = $0 }
+            )
+        } else {
+            settingsSyncService = nil
+        }
         cloudFeaturesAvailable = bootstrapStatus == .configured
-        if cloudFeaturesAvailable, let account = auth.currentAccount {
-            state = .authenticated(account)
-            startEntitlementObservation(for: account.uid)
+        let initialAccount = cloudFeaturesAvailable ? auth.currentAccount : nil
+        if let initialAccount {
+            state = .authenticated(initialAccount)
         } else {
             state = .guest
         }
+
+        bindSettingsSync()
+        if let initialAccount {
+            startEntitlementObservation(for: initialAccount.uid)
+        }
+        scheduleSettingsSyncEligibilityUpdate()
     }
 
     func presentAuthentication(_ mode: AuthenticationMode) {
@@ -125,6 +180,7 @@ final class AccountSessionController: ObservableObject {
             presentedSheet = nil
             errorMessage = nil
             pendingLinkEmail = nil
+            scheduleSettingsSyncEligibilityUpdate()
         } catch {
             errorMessage = Self.message(for: error)
         }
@@ -143,6 +199,7 @@ final class AccountSessionController: ObservableObject {
             state = .guest
             presentedSheet = nil
             pendingLinkEmail = nil
+            scheduleSettingsSyncEligibilityUpdate()
         } catch let error as AccountAuthError where error == .requiresRecentAuthentication {
             requiresRecentAuthentication = true
             errorMessage = error.localizedDescription
@@ -175,6 +232,7 @@ final class AccountSessionController: ObservableObject {
             requiresRecentAuthentication = false
             pendingLinkEmail = nil
             presentedSheet = nil
+            scheduleSettingsSyncEligibilityUpdate()
         } catch let error as AccountAuthError {
             state = previousState == .loading ? .guest : previousState
             if case .needsExistingMethod(let email, _) = error {
@@ -196,11 +254,13 @@ final class AccountSessionController: ObservableObject {
                 guard self?.account?.uid == uid else { return }
                 self?.entitlement = entitlement
                 self?.entitlementError = nil
+                self?.scheduleSettingsSyncEligibilityUpdate()
             },
             onError: { [weak self] message in
                 guard self?.account?.uid == uid else { return }
                 self?.entitlement = .free
                 self?.entitlementError = message
+                self?.scheduleSettingsSyncEligibilityUpdate()
             }
         )
     }
@@ -210,6 +270,81 @@ final class AccountSessionController: ObservableObject {
         entitlementObservation = nil
         entitlement = .free
         entitlementError = nil
+        scheduleSettingsSyncEligibilityUpdate()
+    }
+
+    func setSettingsSyncEnabled(_ enabled: Bool) {
+        guard entitlement.hasProAccess else { return }
+        appState.syncEnabled = enabled
+    }
+
+    func resolveInitialSettingsChoice(_ choice: InitialSettingsChoice) async {
+        await settingsSyncService?.resolveInitialChoice(choice)
+    }
+
+    func synchronizeSettingsNow() async {
+        guard let settingsSyncService else {
+            settingsSyncStatus = account == nil ? .off : .locked
+            return
+        }
+        await settingsSyncService.updateEligibility(
+            uid: account?.uid,
+            entitlement: entitlement,
+            enabled: appState.syncEnabled
+        )
+    }
+
+    private func bindSettingsSync() {
+        guard let settingsSyncService else { return }
+
+        settingsSyncService.$status
+            .sink { [weak self] status in
+                guard let self else { return }
+                settingsSyncStatus = status
+                if case .needsInitialChoice = status {
+                    presentedSheet = .settingsConflict
+                } else if presentedSheet == .settingsConflict {
+                    presentedSheet = nil
+                }
+            }
+            .store(in: &cancellables)
+
+        Publishers.CombineLatest3(
+            appState.$showToolbarButtonText,
+            appState.$showSubmodules,
+            appState.$showSubtrees
+        )
+        .dropFirst()
+        .sink { [weak self] _, _, _ in
+            guard let self else { return }
+            settingsSyncService.localSettingsDidChange(appState.snapshot)
+        }
+        .store(in: &cancellables)
+
+        appState.$syncEnabled
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.scheduleSettingsSyncEligibilityUpdate()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func scheduleSettingsSyncEligibilityUpdate() {
+        settingsEligibilityTask?.cancel()
+        guard let settingsSyncService else {
+            settingsSyncStatus = account == nil ? .off : .locked
+            return
+        }
+        let uid = account?.uid
+        let entitlement = entitlement
+        let enabled = appState.syncEnabled
+        settingsEligibilityTask = Task {
+            await settingsSyncService.updateEligibility(
+                uid: uid,
+                entitlement: entitlement,
+                enabled: enabled
+            )
+        }
     }
 
     private static func message(for error: Error) -> String {
