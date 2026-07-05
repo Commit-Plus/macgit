@@ -6,7 +6,7 @@
 
 ## Overview
 
-Add an optional Firebase-backed Commit+ account without changing the app's guest-first local Git experience. Users can continue using every existing local feature without signing in. Authentication is required only for cloud-backed capabilities: Pro settings sync, future billing, and future Git provider connections.
+Add an optional Firebase-backed Commit+ account without changing the app's guest-first local Git experience. Users can continue using every existing local feature without signing in. Authentication is required only for cloud-backed capabilities: settings sync, future billing, and future Git provider connections.
 
 This foundation intentionally precedes GitHub, GitLab, and Bitbucket account integration. It establishes the app user, entitlement, security, and serverless infrastructure that those provider flows will later depend on.
 
@@ -19,7 +19,7 @@ This foundation intentionally precedes GitHub, GitLab, and Bitbucket account int
 - Email verification is not required.
 - Firebase users represent Commit+ accounts, not Git provider accounts.
 - GitHub, GitLab, and Bitbucket credentials are never linked to or persisted under Firebase Auth.
-- Pro is required for settings sync.
+- Settings sync is available to every signed-in Free or Pro account.
 - The project adopts the Firebase Apple SDK through Swift Package Manager, replacing the existing zero-external-dependencies constraint.
 
 ## Goals
@@ -63,7 +63,7 @@ Signed-in Free state, in order:
 
 1. Email and `Free plan` summary.
 2. `Manage Account...`
-3. `Sync Settings` status, shown as locked because it requires Pro.
+3. `Sync Settings` status and toggle, available to Free and Pro accounts.
 4. Separator.
 5. `Upgrade to Pro...`
 6. Separator.
@@ -212,13 +212,12 @@ An admin-only script assigns or revokes `source: admin_test` Pro access. No admi
 
 ### Eligibility
 
-Sync runs only when all are true:
+Sync runs only when both are true:
 
 - A Firebase user is signed in.
-- Entitlement grants active Pro access.
 - `syncEnabled` is true on the current device.
 
-Guest and Free users see the control locked with an Upgrade action.
+Guests see the control locked until sign-in. Free and Pro users can enable it.
 
 ### First Enable
 
@@ -238,8 +237,7 @@ Guest and Free users see the control locked with an Upgrade action.
 ### Pause and Resume
 
 - Turning sync off or signing out stops listeners and uploads but keeps local and cloud values.
-- `past_due`, expired, or inactive entitlement pauses sync without deleting data.
-- A previously enabled device automatically resumes when Pro access becomes active again.
+- Entitlement changes do not affect settings sync.
 - Sync errors appear in Account UI and never block Git operations.
 
 ## Firestore Security
@@ -330,6 +328,6 @@ Do not launch the app after successful automated verification; manual UI testing
 
 ## Delivery Boundary
 
-The Firebase foundation is complete when guest behavior is unchanged, authentication and Account UI work, three settings sync only for Pro, entitlement rules prevent self-upgrade, admin test assignment works, account deletion is safe, emulator tests pass, and the full macOS test suite is green.
+The Firebase foundation is complete when guest behavior is unchanged, authentication and Account UI work, three settings sync for every signed-in account, entitlement rules prevent self-upgrade, admin test assignment works, account deletion is safe, emulator tests pass, and the full macOS test suite is green.
 
 Polar billing, provider authentication, and repository-history sync each require their own follow-up design and roadmap.

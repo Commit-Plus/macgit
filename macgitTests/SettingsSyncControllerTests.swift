@@ -33,9 +33,8 @@ final class SettingsSyncControllerTests: XCTestCase {
         showSubtrees: true
     )
 
-    func testProConflictPresentsSingleInitialChoiceSheet() async {
+    func testFreeAccountConflictPresentsSingleInitialChoiceSheet() async {
         let harness = makeHarness(cloud: cloud, enabled: true)
-        harness.entitlements.send(.activePro)
 
         await harness.controller.synchronizeSettingsNow()
 
@@ -44,19 +43,18 @@ final class SettingsSyncControllerTests: XCTestCase {
         XCTAssertEqual(harness.controller.pendingCloudSettings, cloud)
     }
 
-    func testPastDuePreservesEnabledPreferenceAndPauses() async {
-        let harness = makeHarness(cloud: cloud, enabled: true)
+    func testPastDueAccountKeepsSyncAvailable() async {
+        let harness = makeHarness(cloud: nil, enabled: true)
         harness.entitlements.send(.pastDuePro)
 
         await harness.controller.synchronizeSettingsNow()
 
         XCTAssertTrue(harness.controller.settingsSyncEnabled)
-        XCTAssertEqual(harness.controller.settingsSyncStatus, .paused)
+        XCTAssertEqual(harness.controller.settingsSyncStatus, .syncing)
     }
 
     func testCancelInitialChoiceTurnsDeviceSyncOff() async {
         let harness = makeHarness(cloud: cloud, enabled: true)
-        harness.entitlements.send(.activePro)
         await harness.controller.synchronizeSettingsNow()
 
         await harness.controller.resolveInitialSettingsChoice(.cancel)
@@ -64,6 +62,21 @@ final class SettingsSyncControllerTests: XCTestCase {
         XCTAssertFalse(harness.controller.settingsSyncEnabled)
         XCTAssertEqual(harness.controller.settingsSyncStatus, .off)
         XCTAssertNil(harness.controller.presentedSheet)
+    }
+
+    func testDisplayTextShowsOffImmediatelyWhenDeviceSyncIsDisabled() async {
+        let harness = makeHarness(cloud: nil, enabled: true)
+
+        harness.controller.setSettingsSyncEnabled(false)
+
+        XCTAssertEqual(harness.controller.settingsSyncDisplayText, "Off")
+    }
+
+    func testDisplayTextShowsStartingWhenEnabledBeforeObservationBegins() {
+        let harness = makeHarness(cloud: nil, enabled: true)
+
+        XCTAssertEqual(harness.controller.settingsSyncStatus, .off)
+        XCTAssertEqual(harness.controller.settingsSyncDisplayText, "Starting...")
     }
 
     private func makeHarness(cloud: AppSettingsSnapshot?, enabled: Bool) -> ControllerHarness {
@@ -95,13 +108,6 @@ private struct ControllerHarness {
 }
 
 private extension AccountEntitlement {
-    static let activePro = AccountEntitlement(
-        plan: .pro,
-        access: .active,
-        billingStatus: .active,
-        source: .adminTest
-    )
-
     static let pastDuePro = AccountEntitlement(
         plan: .pro,
         access: .inactive,

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an optional Commit+ account, server-controlled Pro entitlement, and Pro-only sync for three app preferences without blocking guest Git workflows.
+**Goal:** Add an optional Commit+ account, server-controlled Pro entitlement, and account settings sync for three app preferences without blocking guest Git workflows.
 
-**Architecture:** Phase 0 adds Firebase/Google dependencies and app-owned boundaries while preserving guest startup when configuration is absent. Phase 1 builds authentication and Account UI, Phase 2 adds entitlements and secure account lifecycle, and Phase 3 adds conflict-aware Pro settings sync.
+**Architecture:** Phase 0 adds Firebase/Google dependencies and app-owned boundaries while preserving guest startup when configuration is absent. Phase 1 builds authentication and Account UI, Phase 2 adds entitlements and secure account lifecycle, and Phase 3 adds conflict-aware settings sync for every signed-in account.
 
 **Tech Stack:** Swift 5, SwiftUI, Firebase Apple SDK 12.15.0, GoogleSignIn-iOS 9.2.0, Cloud Firestore, Firebase Auth, Cloud Functions 2nd gen, Firebase Emulator Suite, XCTest, `xcodebuild`.
 
@@ -26,7 +26,7 @@
 1. Phase 0 first: configuration, dependencies, and protocols must compile before any Firebase-backed feature.
 2. Phase 1 next: establish Firebase identity and the always-visible Account entry point.
 3. Phase 2 next: make Pro server-owned and add secure deletion before gating cloud behavior.
-4. Phase 3 last: settings sync depends on both authenticated identity and entitlement.
+4. Phase 3 last: settings sync depends on authenticated identity; entitlement remains available for future paid features.
 
 ## Shared Rules
 

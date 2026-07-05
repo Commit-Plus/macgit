@@ -35,25 +35,25 @@ final class SettingsSyncServiceTests: XCTestCase {
     func testGuestIsOffAndDoesNotTouchCloud() async {
         let harness = makeHarness(cloud: cloud)
 
-        await harness.service.updateEligibility(uid: nil, entitlement: .free, enabled: true)
+        await harness.service.updateEligibility(uid: nil, enabled: true)
 
         XCTAssertEqual(harness.service.status, .off)
         XCTAssertTrue(harness.store.loadedUIDs.isEmpty)
     }
 
-    func testFreeAccountIsLocked() async {
+    func testFreeAccountCanSync() async {
         let harness = makeHarness(cloud: cloud)
 
-        await harness.service.updateEligibility(uid: "u1", entitlement: .free, enabled: true)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
 
-        XCTAssertEqual(harness.service.status, .locked)
-        XCTAssertTrue(harness.store.loadedUIDs.isEmpty)
+        XCTAssertEqual(harness.service.status, .needsInitialChoice(cloud))
+        XCTAssertEqual(harness.store.loadedUIDs, ["u1"])
     }
 
-    func testProWithDeviceSyncDisabledIsOff() async {
+    func testAuthenticatedAccountWithDeviceSyncDisabledIsOff() async {
         let harness = makeHarness(cloud: cloud)
 
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: false)
+        await harness.service.updateEligibility(uid: "u1", enabled: false)
 
         XCTAssertEqual(harness.service.status, .off)
         XCTAssertTrue(harness.store.loadedUIDs.isEmpty)
@@ -62,7 +62,7 @@ final class SettingsSyncServiceTests: XCTestCase {
     func testFirstEnableWithNoCloudSettingsUploadsLocalAndObserves() async {
         let harness = makeHarness(cloud: nil)
 
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: true)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
 
         XCTAssertEqual(harness.store.saves, [.init(uid: "u1", snapshot: local)])
         XCTAssertEqual(harness.store.observedUIDs, ["u1"])
@@ -72,7 +72,7 @@ final class SettingsSyncServiceTests: XCTestCase {
     func testEqualCloudSettingsStartObservationWithoutUpload() async {
         let harness = makeHarness(cloud: local)
 
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: true)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
 
         XCTAssertTrue(harness.store.saves.isEmpty)
         XCTAssertEqual(harness.store.observedUIDs, ["u1"])
@@ -82,7 +82,7 @@ final class SettingsSyncServiceTests: XCTestCase {
     func testConflictingCloudSettingsRequireInitialChoice() async {
         let harness = makeHarness(cloud: cloud)
 
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: true)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
 
         XCTAssertEqual(harness.service.status, .needsInitialChoice(cloud))
         XCTAssertTrue(harness.store.observedUIDs.isEmpty)
@@ -90,7 +90,7 @@ final class SettingsSyncServiceTests: XCTestCase {
 
     func testUseCloudChoiceAppliesCloudWithoutUploadingAndStartsObservation() async {
         let harness = makeHarness(cloud: cloud)
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: true)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
 
         await harness.service.resolveInitialChoice(.useCloud)
 
@@ -102,7 +102,7 @@ final class SettingsSyncServiceTests: XCTestCase {
 
     func testKeepThisMacChoiceUploadsCurrentLocalAndStartsObservation() async {
         let harness = makeHarness(cloud: cloud)
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: true)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
 
         await harness.service.resolveInitialChoice(.keepThisMac)
 
@@ -113,7 +113,7 @@ final class SettingsSyncServiceTests: XCTestCase {
 
     func testCancelChoiceTurnsDeviceSyncOff() async {
         let harness = makeHarness(cloud: cloud)
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: true)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
 
         await harness.service.resolveInitialChoice(.cancel)
 
@@ -123,7 +123,7 @@ final class SettingsSyncServiceTests: XCTestCase {
 
     func testRemoteApplyDoesNotEchoUpload() async {
         let harness = makeHarness(cloud: local)
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: true)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
 
         harness.store.send(cloud)
         harness.service.localSettingsDidChange(cloud)
@@ -135,7 +135,7 @@ final class SettingsSyncServiceTests: XCTestCase {
 
     func testLocalEditsAreDebouncedAndOnlyLatestSnapshotUploads() async {
         let harness = makeHarness(cloud: local)
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: true)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
         let first = AppSettingsSnapshot(
             showToolbarButtonText: false,
             showSubmodules: false,
@@ -149,35 +149,30 @@ final class SettingsSyncServiceTests: XCTestCase {
         XCTAssertEqual(harness.store.saves, [.init(uid: "u1", snapshot: cloud)])
     }
 
-    func testSignOutDisableAndPastDueCancelObservationAndPendingUpload() async {
+    func testSignOutAndDisableCancelObservationAndPendingUpload() async {
         let harness = makeHarness(cloud: local)
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: true)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
         harness.service.localSettingsDidChange(cloud)
 
-        await harness.service.updateEligibility(uid: nil, entitlement: .free, enabled: true)
+        await harness.service.updateEligibility(uid: nil, enabled: true)
         XCTAssertEqual(harness.store.tokens.last?.cancelCount, 1)
         XCTAssertEqual(harness.service.status, .off)
 
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: true)
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: false)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
+        await harness.service.updateEligibility(uid: "u1", enabled: false)
         XCTAssertEqual(harness.store.tokens.last?.cancelCount, 1)
         XCTAssertEqual(harness.service.status, .off)
-
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: true)
-        await harness.service.updateEligibility(uid: "u1", entitlement: .pastDuePro, enabled: true)
-        XCTAssertEqual(harness.store.tokens.last?.cancelCount, 1)
-        XCTAssertEqual(harness.service.status, .paused)
 
         await harness.scheduler.fireAll()
         XCTAssertTrue(harness.store.saves.isEmpty)
     }
 
-    func testProRestorationResumesWhenDevicePreferenceRemainsEnabled() async {
+    func testAuthenticatedAccountResumesWhenDevicePreferenceIsReenabled() async {
         let harness = makeHarness(cloud: local)
-        await harness.service.updateEligibility(uid: "u1", entitlement: .pastDuePro, enabled: true)
-        XCTAssertEqual(harness.service.status, .paused)
+        await harness.service.updateEligibility(uid: "u1", enabled: false)
+        XCTAssertEqual(harness.service.status, .off)
 
-        await harness.service.updateEligibility(uid: "u1", entitlement: .activePro, enabled: true)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
 
         XCTAssertEqual(harness.store.loadedUIDs, ["u1"])
         XCTAssertEqual(harness.store.observedUIDs, ["u1"])
@@ -222,22 +217,6 @@ private final class SnapshotBox {
 
 private final class BoolRecorder {
     var values: [Bool] = []
-}
-
-private extension AccountEntitlement {
-    static let activePro = AccountEntitlement(
-        plan: .pro,
-        access: .active,
-        billingStatus: .active,
-        source: .adminTest
-    )
-
-    static let pastDuePro = AccountEntitlement(
-        plan: .pro,
-        access: .inactive,
-        billingStatus: .pastDue,
-        source: .adminTest
-    )
 }
 
 @MainActor

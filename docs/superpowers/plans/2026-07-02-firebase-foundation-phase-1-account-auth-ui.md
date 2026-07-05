@@ -195,7 +195,7 @@ git commit -m "feat: implement Firebase account authentication"
 
 - [x] **Step 1: Test guest, Free, and Pro action ordering**
 
-Define expected arrays exactly as approved: guest `[signIn, createAccount, upgrade]`; Free `[manageAccount, syncLocked, upgrade, signOut]`; Pro `[manageAccount, syncStatus, manageSubscriptionComingLater, signOut]`.
+Define expected arrays exactly as approved: guest `[signIn, createAccount, syncLocked, upgrade]`; Free `[manageAccount, syncStatus, upgrade, signOut]`; Pro `[manageAccount, syncStatus, manageSubscriptionComingLater, signOut]`.
 
 - [x] **Step 2: Implement pure policy**
 

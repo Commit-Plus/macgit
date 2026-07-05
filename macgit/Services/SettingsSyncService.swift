@@ -107,19 +107,10 @@ final class SettingsSyncService: ObservableObject {
 
     func updateEligibility(
         uid: String?,
-        entitlement: AccountEntitlement,
         enabled: Bool
     ) async {
         guard let uid else {
             deactivate(status: .off)
-            return
-        }
-
-        guard entitlement.hasProAccess else {
-            let inactiveStatus: SettingsSyncStatus = entitlement.plan == .pro && enabled
-                ? .paused
-                : .locked
-            deactivate(status: inactiveStatus)
             return
         }
 

@@ -38,6 +38,6 @@ enum AccountMenuPolicy {
 
         return entitlement.plan == .pro
             ? [.manageAccount, .syncStatus, .manageSubscriptionComingLater, .signOut]
-            : [.manageAccount, .syncLocked, .upgrade, .signOut]
+            : [.manageAccount, .syncStatus, .upgrade, .signOut]
     }
 }

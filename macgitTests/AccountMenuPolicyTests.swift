@@ -37,7 +37,7 @@ final class AccountMenuPolicyTests: XCTestCase {
     func testFreeActionsUseApprovedOrder() {
         XCTAssertEqual(
             AccountMenuPolicy.actions(account: account, entitlement: .free),
-            [.manageAccount, .syncLocked, .upgrade, .signOut]
+            [.manageAccount, .syncStatus, .upgrade, .signOut]
         )
     }
 

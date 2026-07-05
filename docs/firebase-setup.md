@@ -68,9 +68,9 @@ Run the complete Firebase foundation emulator suite with Auth, Firestore, and Fu
 firebase emulators:exec --project macgit-local --only auth,firestore,functions "npm --prefix firebase-tests test"
 ```
 
-## Pro settings sync
+## Settings sync
 
-Settings sync is optional and device-local. It starts only when the user is signed in, has active Pro access, and enables **Sync Settings** on that Mac. Guest and Free workflows remain fully local. Past-due or inactive Pro access pauses cloud observation and uploads without clearing the device's enabled preference; restoring active Pro access resumes sync.
+Settings sync is optional and device-local. It starts when a Free or Pro user is signed in and enables **Sync Settings** on that Mac. Guest workflows remain fully local, and entitlement changes do not pause cloud observation or uploads.
 
 The first time a Mac finds different local and cloud values, Commit+ asks whether to use the cloud values or keep that Mac's values. Canceling this choice disables sync on that device. After the initial choice, local changes are debounced and remote changes apply without being uploaded back as echoes.
 

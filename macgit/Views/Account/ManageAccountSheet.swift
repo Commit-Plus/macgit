@@ -116,23 +116,17 @@ struct ManageAccountSheet: View {
 
     @ViewBuilder
     private var syncSettingsControl: some View {
-        if controller.entitlement.plan == .pro {
-            HStack(spacing: 8) {
-                Toggle(
-                    "Sync Settings",
-                    isOn: Binding(
-                        get: { controller.settingsSyncEnabled },
-                        set: controller.setSettingsSyncEnabled
-                    )
+        HStack(spacing: 8) {
+            Toggle(
+                "Sync Settings",
+                isOn: Binding(
+                    get: { controller.settingsSyncEnabled },
+                    set: controller.setSettingsSyncEnabled
                 )
-                .labelsHidden()
-                .disabled(!controller.entitlement.hasProAccess)
+            )
+            .labelsHidden()
 
-                Text(controller.settingsSyncStatusText)
-                    .foregroundStyle(.secondary)
-            }
-        } else {
-            Label("Requires Pro", systemImage: "lock.fill")
+            Text(controller.settingsSyncDisplayText)
                 .foregroundStyle(.secondary)
         }
     }

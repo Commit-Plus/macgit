@@ -67,12 +67,24 @@ final class AccountSessionController: ObservableObject {
     var settingsSyncStatusText: String {
         switch settingsSyncStatus {
         case .off: "Off"
-        case .locked: "Requires Pro"
+        case .locked: "Sign In Required"
         case .starting: "Starting..."
         case .needsInitialChoice: "Choose Settings"
         case .syncing: "Syncing"
         case .paused: "Paused"
         case .failed: "Error"
+        }
+    }
+
+    var settingsSyncDisplayText: String {
+        guard account != nil else { return "Sign In Required" }
+        guard settingsSyncEnabled else { return "Off" }
+
+        switch settingsSyncStatus {
+        case .off:
+            return "Starting..."
+        default:
+            return settingsSyncStatusText
         }
     }
 
@@ -274,7 +286,7 @@ final class AccountSessionController: ObservableObject {
     }
 
     func setSettingsSyncEnabled(_ enabled: Bool) {
-        guard entitlement.hasProAccess else { return }
+        guard account != nil else { return }
         appState.syncEnabled = enabled
     }
 
@@ -289,7 +301,6 @@ final class AccountSessionController: ObservableObject {
         }
         await settingsSyncService.updateEligibility(
             uid: account?.uid,
-            entitlement: entitlement,
             enabled: appState.syncEnabled
         )
     }
@@ -336,12 +347,10 @@ final class AccountSessionController: ObservableObject {
             return
         }
         let uid = account?.uid
-        let entitlement = entitlement
         let enabled = appState.syncEnabled
         settingsEligibilityTask = Task {
             await settingsSyncService.updateEligibility(
                 uid: uid,
-                entitlement: entitlement,
                 enabled: enabled
             )
         }

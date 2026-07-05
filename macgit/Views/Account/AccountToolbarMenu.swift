@@ -47,17 +47,16 @@ struct AccountToolbarMenu: View {
                 case .manageAccount:
                     Button("Manage Account...", action: controller.presentManageAccount)
                 case .syncLocked:
-                    Button("Sync Settings · Requires Pro") {}
+                    Button("Sync Settings · Sign In Required") {}
                         .disabled(true)
                 case .syncStatus:
                     Toggle(
-                        "Sync Settings · \(controller.settingsSyncStatusText)",
+                        "Sync Settings · \(controller.settingsSyncDisplayText)",
                         isOn: Binding(
                             get: { controller.settingsSyncEnabled },
                             set: controller.setSettingsSyncEnabled
                         )
                     )
-                    .disabled(!controller.entitlement.hasProAccess)
                 case .upgrade:
                     if controller.account == nil {
                         Button("Upgrade to Pro...", action: presentSignIn)
