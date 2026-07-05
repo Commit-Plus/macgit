@@ -54,17 +54,37 @@ describe("Firestore ownership rules", () => {
     await assertFails(setDoc(settings("user-a", userB), validSettings()));
   });
 
-  test("settings reject unknown fields and wrong types", async () => {
+  test("settings reject missing and unknown fields", async () => {
     const userA = environment.authenticatedContext("user-a");
 
     await assertFails(setDoc(settings("user-a", userA), {
       ...validSettings(),
       unexpected: true,
     }));
-    await assertFails(setDoc(settings("user-a", userA), {
-      ...validSettings(),
-      showSubmodules: "yes",
-    }));
+
+    for (const key of Object.keys(validSettings())) {
+      const missingField = validSettings();
+      delete missingField[key];
+      await assertFails(setDoc(settings("user-a", userA), missingField));
+    }
+  });
+
+  test("settings reject unsupported schema versions and every wrong field type", async () => {
+    const userA = environment.authenticatedContext("user-a");
+    const invalidValues = {
+      schemaVersion: 2,
+      showToolbarButtonText: "true",
+      showSubmodules: "false",
+      showSubtrees: 1,
+      updatedAt: "now",
+    };
+
+    for (const [key, value] of Object.entries(invalidValues)) {
+      await assertFails(setDoc(settings("user-a", userA), {
+        ...validSettings(),
+        [key]: value,
+      }));
+    }
   });
 
   test("a user can read only their own entitlement", async () => {
