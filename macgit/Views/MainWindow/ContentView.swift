@@ -1,11 +1,4 @@
 //
-//  ContentView.swift
-//  macgit
-//
-//  Created by Thanh Tran on 26/5/26.
-//
-
-//
 //  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
 //  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
 //
@@ -71,6 +64,8 @@ struct ContentView: View {
                 AuthenticationSheet(controller: accountController, mode: mode)
             case .manageAccount:
                 ManageAccountSheet(controller: accountController)
+            case .settingsConflict:
+                SettingsSyncConflictSheet(controller: accountController)
             }
         }
         .alert("Current Repository is Open", isPresented: $showingKeepCurrentAlert) {

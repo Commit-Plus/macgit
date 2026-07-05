@@ -50,8 +50,14 @@ struct AccountToolbarMenu: View {
                     Button("Sync Settings · Requires Pro") {}
                         .disabled(true)
                 case .syncStatus:
-                    Button("Sync Settings · Coming in Phase 3") {}
-                        .disabled(true)
+                    Toggle(
+                        "Sync Settings · \(controller.settingsSyncStatusText)",
+                        isOn: Binding(
+                            get: { controller.settingsSyncEnabled },
+                            set: controller.setSettingsSyncEnabled
+                        )
+                    )
+                    .disabled(!controller.entitlement.hasProAccess)
                 case .upgrade:
                     if controller.account == nil {
                         Button("Upgrade to Pro...", action: presentSignIn)

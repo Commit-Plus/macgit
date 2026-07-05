@@ -33,10 +33,10 @@ enum AccountMenuPolicy {
         entitlement: AccountEntitlement
     ) -> [AccountMenuAction] {
         guard account != nil else {
-            return [.signIn, .createAccount, .upgrade]
+            return [.signIn, .createAccount, .syncLocked, .upgrade]
         }
 
-        return entitlement.hasProAccess
+        return entitlement.plan == .pro
             ? [.manageAccount, .syncStatus, .manageSubscriptionComingLater, .signOut]
             : [.manageAccount, .syncLocked, .upgrade, .signOut]
     }
