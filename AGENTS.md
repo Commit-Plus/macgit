@@ -17,6 +17,38 @@ Always run the test command after non-trivial changes. Tests live in `macgitTest
 
 > **Agent note:** Do not launch the app after a successful build. Verification is complete once `xcodebuild` succeeds and the unit tests pass; the user will handle any manual UI testing.
 
+## License Header Requirement for Swift Files
+
+Every `.swift` file in the repository — including source files under `macgit/` and tests under `macgitTests/` — must start with the project’s AGPL v3 footprint header. The pre-commit hook (`.git/hooks/pre-commit`) blocks any commit that adds or modifies a Swift file missing these markers:
+
+- `Copyright (C)`
+- `GNU Affero General Public License`
+- `trantienthanh2412@gmail.com`
+
+**Agent rule:** When creating or editing any Swift file, prepend the standard header before the first import/declaration. Do not rely on the hook to catch this; verify the header is present before staging.
+
+Standard header to copy:
+
+```swift
+//
+//  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
+//  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
+//
+//  This program is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Affero General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  This program is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU Affero General Public License for more details.
+//
+//  You should have received a copy of the GNU Affero General Public License
+//  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+```
+
 ## Architecture
 
 ```
