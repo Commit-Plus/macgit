@@ -1,18 +1,4 @@
-import Foundation
-
-protocol ObservationToken: AnyObject {
-    func cancel()
-}
-
-@MainActor
-protocol EntitlementProviding {
-    func observe(
-        uid: String,
-        onChange: @escaping (AccountEntitlement) -> Void,
-        onError: @escaping (String) -> Void
-    ) -> ObservationToken
-}
-+//
+//
 //  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
 //  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
 //
@@ -30,3 +16,17 @@ protocol EntitlementProviding {
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+import Foundation
+
+protocol ObservationToken: AnyObject {
+    func cancel()
+}
+
+@MainActor
+protocol EntitlementProviding {
+    func observe(
+        uid: String,
+        onChange: @escaping (AccountEntitlement) -> Void,
+        onError: @escaping (String) -> Void
+    ) -> ObservationToken
+}
