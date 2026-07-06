@@ -1,0 +1,181 @@
+//
+//  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
+//  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
+//
+//  This program is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Affero General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  This program is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU Affero General Public License for more details.
+//
+//  You should have received a copy of the GNU Affero General Public License
+//  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
+import XCTest
+@testable import macgit
+
+final class GitHubProviderAuthServiceTests: XCTestCase {
+    func testAuthorizationURLIncludesClientIDRedirectStateAndPKCEChallenge() throws {
+        let service = makeService(httpClient: StubGitProviderHTTPClient())
+        let session = try makeOAuthSession()
+
+        let url = try service.authorizationURL(for: session)
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let query = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+
+        XCTAssertEqual(components.scheme, "https")
+        XCTAssertEqual(components.host, "github.com")
+        XCTAssertEqual(components.path, "/login/oauth/authorize")
+        XCTAssertEqual(query["client_id"], "github-client-id")
+        XCTAssertEqual(query["redirect_uri"], "macgit://git-provider/oauth/callback")
+        XCTAssertEqual(query["state"], "oauth-state")
+        XCTAssertEqual(query["scope"], "repo read:user")
+        XCTAssertEqual(query["code_challenge"], GitProviderPKCE.challenge(for: session.codeVerifier))
+        XCTAssertEqual(query["code_challenge_method"], "S256")
+    }
+
+    func testTokenExchangeSendsCodeVerifier() async throws {
+        let client = StubGitProviderHTTPClient(responses: [
+            .json(
+                statusCode: 200,
+                body: #"{"access_token":"secret-token","token_type":"bearer","scope":"repo read:user"}"#
+            )
+        ])
+        let service = makeService(httpClient: client)
+        let session = try makeOAuthSession()
+
+        let token = try await service.exchangeCallback(
+            GitProviderOAuthCallback(code: "oauth-code", state: session.state),
+            session: session
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        let body = try XCTUnwrap(request.httpBody.flatMap { String(data: $0, encoding: .utf8) })
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+        XCTAssertTrue(body.contains("code=oauth-code"))
+        XCTAssertTrue(body.contains("code_verifier=test-verifier"))
+        XCTAssertEqual(token.accessToken, "secret-token")
+        XCTAssertEqual(token.tokenType, "bearer")
+    }
+
+    func testProfileResponseCreatesProviderAccountMetadata() async throws {
+        let client = StubGitProviderHTTPClient(responses: [
+            .json(
+                statusCode: 200,
+                headers: ["X-OAuth-Scopes": "repo, read:user"],
+                body: #"{"id":583231,"login":"octocat","name":"The Octocat","avatar_url":"https://avatars.githubusercontent.com/u/583231"}"#
+            )
+        ])
+        let service = makeService(httpClient: client)
+        let token = GitProviderToken(
+            accessToken: "secret-token",
+            refreshToken: nil,
+            expiresAt: nil,
+            tokenType: "bearer"
+        )
+
+        let account = try await service.fetchAccount(
+            token: token,
+            macgitUID: "macgit-user-1",
+            host: .githubDotCom
+        )
+
+        XCTAssertEqual(account.id, "macgit-user-1:github:github.com:583231")
+        XCTAssertEqual(account.provider, .github)
+        XCTAssertEqual(account.hostURL, URL(string: "https://github.com"))
+        XCTAssertEqual(account.providerUserID, "583231")
+        XCTAssertEqual(account.username, "octocat")
+        XCTAssertEqual(account.displayName, "The Octocat")
+        XCTAssertEqual(account.scopes, ["repo", "read:user"])
+        XCTAssertEqual(account.permissions, [:])
+        XCTAssertEqual(account.tokenStatus, .valid)
+        XCTAssertEqual(account.connectedAt, Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(account.lastValidatedAt, Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(client.requests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer secret-token")
+    }
+
+    func testHTTPUnauthorizedMapsToReauthorizationRequired() async throws {
+        let client = StubGitProviderHTTPClient(responses: [.json(statusCode: 401, body: #"{"message":"Bad credentials"}"#)])
+        let service = makeService(httpClient: client)
+        let token = GitProviderToken(
+            accessToken: "expired-token",
+            refreshToken: nil,
+            expiresAt: nil,
+            tokenType: "bearer"
+        )
+
+        do {
+            _ = try await service.fetchAccount(
+                token: token,
+                macgitUID: "macgit-user-1",
+                host: .githubDotCom
+            )
+            XCTFail("Expected fetchAccount to throw")
+        } catch {
+            XCTAssertEqual(error as? GitProviderAuthError, .reauthorizationRequired)
+        }
+    }
+
+    private func makeService(httpClient: GitProviderHTTPClient) -> GitHubProviderAuthService {
+        GitHubProviderAuthService(
+            configuration: GitHubProviderAuthConfiguration(
+                clientID: "github-client-id",
+                redirectURI: URL(string: "macgit://git-provider/oauth/callback")!,
+                scopes: ["repo", "read:user"]
+            ),
+            httpClient: httpClient,
+            now: { Date(timeIntervalSince1970: 1_700_000_000) }
+        )
+    }
+
+    private func makeOAuthSession() throws -> GitProviderOAuthSession {
+        GitProviderOAuthSession(
+            provider: .github,
+            host: .githubDotCom,
+            state: "oauth-state",
+            codeVerifier: "test-verifier",
+            redirectURI: try XCTUnwrap(URL(string: "macgit://git-provider/oauth/callback"))
+        )
+    }
+}
+
+private final class StubGitProviderHTTPClient: GitProviderHTTPClient {
+    struct Response {
+        var statusCode: Int
+        var headers: [String: String]
+        var data: Data
+
+        static func json(statusCode: Int, headers: [String: String] = [:], body: String) -> Response {
+            Response(statusCode: statusCode, headers: headers, data: Data(body.utf8))
+        }
+    }
+
+    private(set) var requests: [URLRequest] = []
+    private var responses: [Response]
+
+    init(responses: [Response] = []) {
+        self.responses = responses
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requests.append(request)
+        let response = responses.removeFirst()
+        let httpResponse = try XCTUnwrap(
+            HTTPURLResponse(
+                url: request.url!,
+                statusCode: response.statusCode,
+                httpVersion: nil,
+                headerFields: response.headers
+            )
+        )
+        return (response.data, httpResponse)
+    }
+}
