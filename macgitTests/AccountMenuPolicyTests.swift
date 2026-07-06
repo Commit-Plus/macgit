@@ -66,4 +66,48 @@ final class AccountMenuPolicyTests: XCTestCase {
             [.manageAccount, .syncStatus, .manageSubscriptionComingLater, .signOut]
         )
     }
+
+    func testGuestSummaryReflectsCloudAvailability() {
+        XCTAssertEqual(
+            AccountMenuPresentation.summary(
+                account: nil,
+                entitlement: .free,
+                cloudFeaturesAvailable: true
+            ),
+            "Not signed in"
+        )
+        XCTAssertEqual(
+            AccountMenuPresentation.summary(
+                account: nil,
+                entitlement: .free,
+                cloudFeaturesAvailable: false
+            ),
+            "Cloud accounts unavailable in this build"
+        )
+    }
+
+    func testSignedInSummaryIncludesAccountAndPlan() {
+        XCTAssertEqual(
+            AccountMenuPresentation.summary(
+                account: account,
+                entitlement: .free,
+                cloudFeaturesAvailable: true
+            ),
+            "a@example.com · Free plan"
+        )
+
+        let pro = AccountEntitlement(
+            plan: .pro,
+            access: .active,
+            billingStatus: .active
+        )
+        XCTAssertEqual(
+            AccountMenuPresentation.summary(
+                account: account,
+                entitlement: pro,
+                cloudFeaturesAvailable: true
+            ),
+            "a@example.com · Pro plan"
+        )
+    }
 }

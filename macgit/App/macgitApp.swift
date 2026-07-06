@@ -173,6 +173,10 @@ struct macgitApp: App {
                 .keyboardShortcut("f", modifiers: [.command, .shift])
             }
 
+            CommandMenu("Accounts") {
+                AccountMenuContent(controller: accountController)
+            }
+
             CommandGroup(before: .toolbar) {
                 Toggle(isOn: $appState.showToolbarButtonText) {
                     Label("Show Button Text", systemImage: "character.textbox")

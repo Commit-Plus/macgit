@@ -21,6 +21,19 @@ import SwiftUI
 struct AccountToolbarMenu: View {
     @ObservedObject var controller: AccountSessionController
 
+    var body: some View {
+        Menu {
+            AccountMenuContent(controller: controller)
+        } label: {
+            Label("Account", systemImage: "person.crop.circle")
+        }
+        .help("Commit+ Account")
+    }
+}
+
+struct AccountMenuContent: View {
+    @ObservedObject var controller: AccountSessionController
+
     private var actions: [AccountMenuAction] {
         AccountMenuPolicy.actions(
             account: controller.account,
@@ -29,63 +42,56 @@ struct AccountToolbarMenu: View {
     }
 
     var body: some View {
-        Menu {
-            Text(summary)
+        Text(summary)
 
-            ForEach(actions, id: \.self) { action in
-                if action == .upgrade || action == .manageSubscriptionComingLater || action == .signOut {
-                    Divider()
-                }
-
-                switch action {
-                case .signIn:
-                    Button("Sign In...", action: presentSignIn)
-                        .disabled(!controller.cloudFeaturesAvailable)
-                case .createAccount:
-                    Button("Create Account...", action: presentCreateAccount)
-                        .disabled(!controller.cloudFeaturesAvailable)
-                case .manageAccount:
-                    Button("Manage Account...", action: controller.presentManageAccount)
-                case .syncLocked:
-                    Button("Sync Settings · Sign In Required") {}
-                        .disabled(true)
-                case .syncStatus:
-                    Toggle(
-                        "Sync Settings · \(controller.settingsSyncDisplayText)",
-                        isOn: Binding(
-                            get: { controller.settingsSyncEnabled },
-                            set: controller.setSettingsSyncEnabled
-                        )
-                    )
-                case .upgrade:
-                    if controller.account == nil {
-                        Button("Upgrade to Pro...", action: presentSignIn)
-                            .disabled(!controller.cloudFeaturesAvailable)
-                    } else {
-                        Button("Upgrade to Pro · Coming later") {}
-                            .disabled(true)
-                    }
-                case .manageSubscriptionComingLater:
-                    Button("Manage Subscription · Coming later") {}
-                        .disabled(true)
-                case .signOut:
-                    Button("Sign Out", action: controller.signOut)
-                }
+        ForEach(actions, id: \.self) { action in
+            if action == .upgrade || action == .manageSubscriptionComingLater || action == .signOut {
+                Divider()
             }
-        } label: {
-            Label("Account", systemImage: "person.crop.circle")
+
+            switch action {
+            case .signIn:
+                Button("Sign In...", action: presentSignIn)
+                    .disabled(!controller.cloudFeaturesAvailable)
+            case .createAccount:
+                Button("Create Account...", action: presentCreateAccount)
+                    .disabled(!controller.cloudFeaturesAvailable)
+            case .manageAccount:
+                Button("Manage Account...", action: controller.presentManageAccount)
+            case .syncLocked:
+                Button("Sync Settings · Sign In Required") {}
+                    .disabled(true)
+            case .syncStatus:
+                Toggle(
+                    "Sync Settings · \(controller.settingsSyncDisplayText)",
+                    isOn: Binding(
+                        get: { controller.settingsSyncEnabled },
+                        set: controller.setSettingsSyncEnabled
+                    )
+                )
+            case .upgrade:
+                if controller.account == nil {
+                    Button("Upgrade to Pro...", action: presentSignIn)
+                        .disabled(!controller.cloudFeaturesAvailable)
+                } else {
+                    Button("Upgrade to Pro · Coming later") {}
+                        .disabled(true)
+                }
+            case .manageSubscriptionComingLater:
+                Button("Manage Subscription · Coming later") {}
+                    .disabled(true)
+            case .signOut:
+                Button("Sign Out", action: controller.signOut)
+            }
         }
-        .help("Commit+ Account")
     }
 
     private var summary: String {
-        guard let account = controller.account else {
-            return controller.cloudFeaturesAvailable
-                ? "Not signed in"
-                : "Cloud accounts unavailable in this build"
-        }
-        let plan = controller.entitlement.hasProAccess ? "Pro plan" : "Free plan"
-        return "\(account.displayLabel) · \(plan)"
+        AccountMenuPresentation.summary(
+            account: controller.account,
+            entitlement: controller.entitlement,
+            cloudFeaturesAvailable: controller.cloudFeaturesAvailable
+        )
     }
 
     private func presentSignIn() {
