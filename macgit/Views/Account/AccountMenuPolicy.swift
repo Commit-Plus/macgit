@@ -41,3 +41,20 @@ enum AccountMenuPolicy {
             : [.manageAccount, .syncStatus, .upgrade, .signOut]
     }
 }
+
+enum AccountMenuPresentation {
+    static func summary(
+        account: AccountSnapshot?,
+        entitlement: AccountEntitlement,
+        cloudFeaturesAvailable: Bool
+    ) -> String {
+        guard let account else {
+            return cloudFeaturesAvailable
+                ? "Not signed in"
+                : "Cloud accounts unavailable in this build"
+        }
+
+        let plan = entitlement.hasProAccess ? "Pro plan" : "Free plan"
+        return "\(account.displayLabel) · \(plan)"
+    }
+}
