@@ -16,7 +16,7 @@
 
 ## Plan Index
 
-- Phase 0: [pending] [2026-07-06-git-provider-accounts-phase-0-foundation.md](2026-07-06-git-provider-accounts-phase-0-foundation.md)
+- Phase 0: [in progress] [2026-07-06-git-provider-accounts-phase-0-foundation.md](2026-07-06-git-provider-accounts-phase-0-foundation.md) (worktree: `.worktrees/git-provider-accounts-phase-0`, branch: `codex/git-provider-accounts-phase-0`)
 - Phase 1: [pending] [2026-07-06-git-provider-accounts-phase-1-github-connect.md](2026-07-06-git-provider-accounts-phase-1-github-connect.md)
 - Phase 2: [pending] [2026-07-06-git-provider-accounts-phase-2-private-repo-credentials.md](2026-07-06-git-provider-accounts-phase-2-private-repo-credentials.md)
 - Phase 3: [pending] [2026-07-06-git-provider-accounts-phase-3-pull-request-read.md](2026-07-06-git-provider-accounts-phase-3-pull-request-read.md)
