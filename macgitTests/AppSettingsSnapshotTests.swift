@@ -79,4 +79,18 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertTrue(AppState(userDefaults: defaults).syncEnabled)
         XCTAssertEqual(defaults.object(forKey: "settingsSyncEnabled") as? Bool, true)
     }
+
+    func testSearchFilterIsDeviceLocalAndPersisted() {
+        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let state = AppState(userDefaults: defaults)
+        XCTAssertEqual(state.searchFilter, .all)
+
+        state.searchFilter = .commit
+
+        XCTAssertEqual(AppState(userDefaults: defaults).searchFilter, .commit)
+        XCTAssertEqual(defaults.string(forKey: "searchFilter"), SearchFilter.commit.rawValue)
+    }
 }

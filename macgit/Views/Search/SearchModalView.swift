@@ -21,11 +21,24 @@ struct SearchModalView: View {
     @StateObject private var coordinator: SearchCoordinator
     @FocusState private var isSearchFieldFocused: Bool
     let onDismiss: () -> Void
+    let onSelectFilter: (SearchFilter) -> Void
     let onSelect: (SearchAction) -> Void
     
-    init(repositoryURL: URL, onDismiss: @escaping () -> Void, onSelect: @escaping (SearchAction) -> Void) {
-        self._coordinator = StateObject(wrappedValue: SearchCoordinator(repositoryURL: repositoryURL))
+    init(
+        repositoryURL: URL,
+        initialFilter: SearchFilter,
+        onDismiss: @escaping () -> Void,
+        onSelectFilter: @escaping (SearchFilter) -> Void,
+        onSelect: @escaping (SearchAction) -> Void
+    ) {
+        self._coordinator = StateObject(
+            wrappedValue: SearchCoordinator(
+                repositoryURL: repositoryURL,
+                selectedFilter: initialFilter
+            )
+        )
         self.onDismiss = onDismiss
+        self.onSelectFilter = onSelectFilter
         self.onSelect = onSelect
     }
     
@@ -33,6 +46,8 @@ struct SearchModalView: View {
         VStack(spacing: 0) {
             // Search bar
             searchBar
+
+            filterBar
             
             Divider()
             
@@ -41,7 +56,7 @@ struct SearchModalView: View {
                 ProgressView()
                     .scaleEffect(0.8)
                     .padding(40)
-            } else if coordinator.results.isEmpty && !coordinator.query.isEmpty {
+            } else if coordinator.filteredResults.isEmpty && !coordinator.query.isEmpty {
                 emptyState
             } else {
                 resultsList
@@ -116,6 +131,40 @@ struct SearchModalView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
     }
+
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            ForEach(SearchFilter.allCases, id: \.self) { filter in
+                filterChip(filter)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+
+    private func filterChip(_ filter: SearchFilter) -> some View {
+        let isSelected = coordinator.selectedFilter == filter
+
+        return Button {
+            coordinator.selectFilter(filter)
+            onSelectFilter(filter)
+        } label: {
+            Text(filter.title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? Color.accentColor : Color.secondary.opacity(0.12))
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Search \(filter.title)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
     
     private var resultsList: some View {
         ScrollViewReader { proxy in
@@ -188,7 +237,7 @@ struct SearchModalView: View {
     private var groupedResults: [ResultSection] {
         let typeOrder: [SearchResultType] = [.commit, .file, .branch, .tag]
         return typeOrder.compactMap { type in
-            let typeResults = coordinator.results.filter { $0.type == type }
+            let typeResults = coordinator.filteredResults.filter { $0.type == type }
             guard !typeResults.isEmpty else { return nil }
             return ResultSection(type: type, results: typeResults)
         }

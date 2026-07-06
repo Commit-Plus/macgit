@@ -31,6 +31,7 @@ final class AppState: ObservableObject {
     private static let showSubmodulesKey = "showSubmodules"
     private static let showSubtreesKey = "showSubtrees"
     private static let settingsSyncEnabledKey = "settingsSyncEnabled"
+    private static let searchFilterKey = "searchFilter"
 
     private let userDefaults: UserDefaults
 
@@ -58,6 +59,11 @@ final class AppState: ObservableObject {
             userDefaults.set(syncEnabled, forKey: Self.settingsSyncEnabledKey)
         }
     }
+    @Published var searchFilter: SearchFilter {
+        didSet {
+            userDefaults.set(searchFilter.rawValue, forKey: Self.searchFilterKey)
+        }
+    }
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
@@ -65,6 +71,8 @@ final class AppState: ObservableObject {
         showSubmodules = userDefaults.object(forKey: Self.showSubmodulesKey) as? Bool ?? false
         showSubtrees = userDefaults.object(forKey: Self.showSubtreesKey) as? Bool ?? false
         syncEnabled = userDefaults.object(forKey: Self.settingsSyncEnabledKey) as? Bool ?? false
+        searchFilter = userDefaults.string(forKey: Self.searchFilterKey)
+            .flatMap(SearchFilter.init(rawValue:)) ?? .all
     }
 
     var snapshot: AppSettingsSnapshot {

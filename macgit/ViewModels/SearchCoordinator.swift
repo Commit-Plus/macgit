@@ -24,13 +24,15 @@ final class SearchCoordinator: ObservableObject {
     @Published var results: [SearchResult] = []
     @Published var isLoading: Bool = false
     @Published var selectedResultID: UUID?
+    @Published var selectedFilter: SearchFilter
     
     private var cancellables = Set<AnyCancellable>()
     private var searchTask: Task<Void, Never>?
     private let repositoryURL: URL
     
-    init(repositoryURL: URL) {
+    init(repositoryURL: URL, selectedFilter: SearchFilter = .all) {
         self.repositoryURL = repositoryURL
+        self.selectedFilter = selectedFilter
         
         $query
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
@@ -62,29 +64,39 @@ final class SearchCoordinator: ObservableObject {
             
             await MainActor.run {
                 self.results = searchResults
-                self.selectedResultID = searchResults.first?.id
+                self.selectedResultID = self.filteredResults.first?.id
                 self.isLoading = false
             }
         }
     }
+
+    var filteredResults: [SearchResult] {
+        guard let resultType = selectedFilter.resultType else { return results }
+        return results.filter { $0.type == resultType }
+    }
+
+    func selectFilter(_ filter: SearchFilter) {
+        selectedFilter = filter
+        selectedResultID = filteredResults.first?.id
+    }
     
     func selectNext() {
         guard let currentID = selectedResultID,
-              let currentIndex = results.firstIndex(where: { $0.id == currentID }),
-              currentIndex + 1 < results.count else { return }
-        selectedResultID = results[currentIndex + 1].id
+              let currentIndex = filteredResults.firstIndex(where: { $0.id == currentID }),
+              currentIndex + 1 < filteredResults.count else { return }
+        selectedResultID = filteredResults[currentIndex + 1].id
     }
     
     func selectPrevious() {
         guard let currentID = selectedResultID,
-              let currentIndex = results.firstIndex(where: { $0.id == currentID }),
+              let currentIndex = filteredResults.firstIndex(where: { $0.id == currentID }),
               currentIndex > 0 else { return }
-        selectedResultID = results[currentIndex - 1].id
+        selectedResultID = filteredResults[currentIndex - 1].id
     }
     
     func selectedResult() -> SearchResult? {
         guard let selectedResultID = selectedResultID else { return nil }
-        return results.first(where: { $0.id == selectedResultID })
+        return filteredResults.first(where: { $0.id == selectedResultID })
     }
     
     func clear() {

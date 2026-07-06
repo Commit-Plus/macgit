@@ -33,6 +33,34 @@ enum SearchResultType: String, CaseIterable {
     }
 }
 
+enum SearchFilter: String, CaseIterable {
+    case all
+    case commit
+    case file
+    case branch
+    case tag
+
+    var title: String {
+        switch self {
+        case .all: return "All"
+        case .commit: return "Commits"
+        case .file: return "Files"
+        case .branch: return "Branches"
+        case .tag: return "Tags"
+        }
+    }
+
+    var resultType: SearchResultType? {
+        switch self {
+        case .all: return nil
+        case .commit: return .commit
+        case .file: return .file
+        case .branch: return .branch
+        case .tag: return .tag
+        }
+    }
+}
+
 enum SearchAction: Hashable {
     case showCommit(String)        // commit hash
     case showFile(String)           // file path relative to repo root

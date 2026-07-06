@@ -264,7 +264,9 @@ struct MainWindowView: View {
 
                     SearchModalView(
                         repositoryURL: repositoryURL,
+                        initialFilter: appState.searchFilter,
                         onDismiss: { showingSearchModal = false },
+                        onSelectFilter: { appState.searchFilter = $0 },
                         onSelect: { action in
                             handleSearchAction(action)
                             showingSearchModal = false
@@ -1738,8 +1740,17 @@ struct MainWindowView: View {
         case .showCommit(let hash):
             selectedItem = .item(.history)
             selectedBranchName = hash
-        case .showFile(_):
-            selectedItem = .item(.fileStatus)
+        case .showFile(let path):
+            Task {
+                do {
+                    try await SearchFileOpener.open(
+                        relativePath: path,
+                        in: repositoryURL
+                    )
+                } catch {
+                    syncState.showError(error.localizedDescription)
+                }
+            }
         case .checkoutBranch(let branch):
             if branch.hasPrefix("remotes/") {
                 let localName = branch.replacingOccurrences(of: "remotes/", with: "")
