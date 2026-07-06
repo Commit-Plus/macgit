@@ -26,7 +26,7 @@
 - Create: `macgit/Models/GitProviderAccountModels.swift`
 - Test: `macgitTests/GitProviderAccountModelsTests.swift`
 
-- [ ] **Step 1: Write model tests**
+- [x] **Step 1: Write model tests**
 
 Add tests for:
 
@@ -44,7 +44,7 @@ Expected assertions:
 - Codable round-trip preserves `providerUserID`, `username`, `scopes`, `permissions`, and `tokenStatus`.
 - `.unavailableOnThisDevice != .revoked`.
 
-- [ ] **Step 2: Run the model test and confirm missing-type failure**
+- [x] **Step 2: Run the model test and confirm missing-type failure**
 
 Run:
 
@@ -54,7 +54,7 @@ xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS
 
 Expected: compile fails because `GitProviderAccount` and related types do not exist.
 
-- [ ] **Step 3: Implement the models**
+- [x] **Step 3: Implement the models**
 
 Create:
 
@@ -121,13 +121,13 @@ struct GitRepositoryIdentity: Equatable, Codable {
 }
 ```
 
-- [ ] **Step 4: Run the model tests**
+- [x] **Step 4: Run the model tests**
 
 Run the same focused test command.
 
 Expected: all model tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add macgit/Models/GitProviderAccountModels.swift macgitTests/GitProviderAccountModelsTests.swift
@@ -140,7 +140,7 @@ git commit -m "feat: add git provider account models"
 - Create: `macgit/Services/GitProviderTokenVault.swift`
 - Test: `macgitTests/GitProviderTokenVaultTests.swift`
 
-- [ ] **Step 1: Write vault tests**
+- [x] **Step 1: Write vault tests**
 
 Cover these behaviors:
 
@@ -150,7 +150,7 @@ func testKeychainAccountKeyIncludesMacgitUIDProviderHostAndProviderUserID()
 func testMissingTokenReturnsNil()
 ```
 
-- [ ] **Step 2: Implement the vault protocol and account key helper**
+- [x] **Step 2: Implement the vault protocol and account key helper**
 
 Add:
 
@@ -169,7 +169,7 @@ enum GitProviderTokenVaultKey {
 }
 ```
 
-- [ ] **Step 3: Implement the Keychain vault**
+- [x] **Step 3: Implement the Keychain vault**
 
 Use Security framework calls:
 
@@ -185,7 +185,7 @@ Use:
 - `kSecAttrAccount = GitProviderTokenVaultKey.key(for:)`
 - `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`
 
-- [ ] **Step 4: Run focused vault tests**
+- [x] **Step 4: Run focused vault tests**
 
 Run:
 
@@ -195,7 +195,7 @@ xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS
 
 Expected: tests pass without touching real provider networks.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add macgit/Services/GitProviderTokenVault.swift macgitTests/GitProviderTokenVaultTests.swift
@@ -209,7 +209,7 @@ git commit -m "feat: add git provider token vault"
 - Create: `macgit/App/GitProviderAccountController.swift`
 - Test: `macgitTests/GitProviderAccountControllerTests.swift`
 
-- [ ] **Step 1: Write controller tests**
+- [x] **Step 1: Write controller tests**
 
 Cover:
 
@@ -220,7 +220,7 @@ func testAccountWithoutLocalTokenIsMarkedUnavailableOnThisDevice()
 func testDisconnectDeletesLocalTokenBeforeMetadata()
 ```
 
-- [ ] **Step 2: Add metadata-store protocol**
+- [x] **Step 2: Add metadata-store protocol**
 
 Add:
 
@@ -234,7 +234,7 @@ protocol GitProviderAccountStore {
 
 Include an in-memory fake inside tests for deterministic behavior.
 
-- [ ] **Step 3: Add controller**
+- [x] **Step 3: Add controller**
 
 Implement `@MainActor final class GitProviderAccountController: ObservableObject` with:
 
@@ -247,7 +247,7 @@ Implement `@MainActor final class GitProviderAccountController: ObservableObject
 
 When loading accounts, call the token vault for each metadata record. If token read returns nil, publish the account with `.unavailableOnThisDevice`.
 
-- [ ] **Step 4: Run focused controller tests**
+- [x] **Step 4: Run focused controller tests**
 
 Run:
 
@@ -257,7 +257,7 @@ xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS
 
 Expected: controller tests pass.
 
-- [ ] **Step 5: Run the full test suite**
+- [x] **Step 5: Run the full test suite**
 
 Run:
 
@@ -267,7 +267,7 @@ xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS
 
 Expected: full suite passes.
 
-- [ ] **Step 6: Update roadmap and commit**
+- [x] **Step 6: Update roadmap and commit**
 
 Update `docs/superpowers/plans/2026-07-06-git-provider-accounts-roadmap.md` Phase 0 to `[completed]` with the branch or merge commit.
 
