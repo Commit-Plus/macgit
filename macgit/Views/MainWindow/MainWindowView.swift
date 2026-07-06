@@ -99,6 +99,7 @@ struct MainWindowView: View {
     @State private var pullPreselectedBranch: String? = nil
     @State private var showingSearchModal = false
     @State private var showingRepositorySettings = false
+    @State private var pendingSearchFileOpenRequest: SearchFileOpenRequest?
     @State private var repoSettings = RepoSettings.defaults(currentBranch: nil, remotes: [])
     @State private var pendingConfirmedUndo: (entry: GitUndoEntry, action: GitUndoMenuAction)?
     @State private var pendingCommitDropConfirmation: PendingCommitDropConfirmation?
@@ -164,6 +165,15 @@ struct MainWindowView: View {
             .sheet(isPresented: $showingMergeSheet) { mergeSheet }
             .sheet(isPresented: $showingStashSheet) { stashSheet }
             .sheet(isPresented: $showingRepositorySettings) { repositorySettingsSheet }
+            .sheet(item: $pendingSearchFileOpenRequest) { request in
+                SearchFileOpenSheet(request: request) { application, rememberChoice in
+                    pendingSearchFileOpenRequest = nil
+                    if rememberChoice {
+                        appState.preferredSearchFileApplicationBundleIdentifier = application.bundleIdentifier
+                    }
+                    openSearchFile(request.relativePath, using: application)
+                }
+            }
             .sheet(isPresented: stashActionSheetBinding) { stashActionSheet }
             .sheet(item: $pendingCommitDropConfirmation) { confirmation in
                 commitDropConfirmationSheet(for: confirmation)
@@ -1741,16 +1751,7 @@ struct MainWindowView: View {
             selectedItem = .item(.history)
             selectedBranchName = hash
         case .showFile(let path):
-            Task {
-                do {
-                    try await SearchFileOpener.open(
-                        relativePath: path,
-                        in: repositoryURL
-                    )
-                } catch {
-                    syncState.showError(error.localizedDescription)
-                }
-            }
+            prepareToOpenSearchFile(path)
         case .checkoutBranch(let branch):
             if branch.hasPrefix("remotes/") {
                 let localName = branch.replacingOccurrences(of: "remotes/", with: "")
@@ -1766,6 +1767,54 @@ struct MainWindowView: View {
         case .showTag(let tag):
             tagToCheckout = tag
             showingDetachedHeadConfirmation = true
+        }
+    }
+
+    private func prepareToOpenSearchFile(_ relativePath: String) {
+        let applications = SearchFileApplicationResolver.availableApplications()
+
+        if let preferredBundleIdentifier = appState.preferredSearchFileApplicationBundleIdentifier {
+            if let preferredApplication = applications.first(where: {
+                $0.bundleIdentifier == preferredBundleIdentifier
+            }) {
+                openSearchFile(relativePath, using: preferredApplication)
+                return
+            }
+
+            appState.preferredSearchFileApplicationBundleIdentifier = nil
+        }
+
+        guard !applications.isEmpty else {
+            syncState.showError("No supported application is available to open this file.")
+            return
+        }
+
+        pendingSearchFileOpenRequest = SearchFileOpenRequest(
+            relativePath: relativePath,
+            applications: applications
+        )
+    }
+
+    private func openSearchFile(
+        _ relativePath: String,
+        using application: SearchFileApplication
+    ) {
+        let progressID = operationProgress.begin(
+            message: "Opening \((relativePath as NSString).lastPathComponent) in \(application.displayName)...",
+            canCancel: false
+        )
+
+        Task {
+            defer { operationProgress.end(progressID) }
+            do {
+                try await SearchFileOpener.open(
+                    relativePath: relativePath,
+                    in: repositoryURL,
+                    using: application
+                )
+            } catch {
+                syncState.showError(error.localizedDescription)
+            }
         }
     }
 }

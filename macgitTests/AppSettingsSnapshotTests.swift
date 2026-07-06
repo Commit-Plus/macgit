@@ -93,4 +93,23 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertEqual(AppState(userDefaults: defaults).searchFilter, .commit)
         XCTAssertEqual(defaults.string(forKey: "searchFilter"), SearchFilter.commit.rawValue)
     }
+
+    func testPreferredSearchFileApplicationIsDeviceLocalAndPersisted() {
+        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let state = AppState(userDefaults: defaults)
+        XCTAssertNil(state.preferredSearchFileApplicationBundleIdentifier)
+
+        state.preferredSearchFileApplicationBundleIdentifier = "com.microsoft.VSCode"
+
+        XCTAssertEqual(
+            AppState(userDefaults: defaults).preferredSearchFileApplicationBundleIdentifier,
+            "com.microsoft.VSCode"
+        )
+
+        state.preferredSearchFileApplicationBundleIdentifier = nil
+        XCTAssertNil(defaults.string(forKey: "preferredSearchFileApplication"))
+    }
 }

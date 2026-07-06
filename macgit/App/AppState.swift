@@ -32,6 +32,7 @@ final class AppState: ObservableObject {
     private static let showSubtreesKey = "showSubtrees"
     private static let settingsSyncEnabledKey = "settingsSyncEnabled"
     private static let searchFilterKey = "searchFilter"
+    private static let preferredSearchFileApplicationKey = "preferredSearchFileApplication"
 
     private let userDefaults: UserDefaults
 
@@ -64,6 +65,18 @@ final class AppState: ObservableObject {
             userDefaults.set(searchFilter.rawValue, forKey: Self.searchFilterKey)
         }
     }
+    @Published var preferredSearchFileApplicationBundleIdentifier: String? {
+        didSet {
+            if let preferredSearchFileApplicationBundleIdentifier {
+                userDefaults.set(
+                    preferredSearchFileApplicationBundleIdentifier,
+                    forKey: Self.preferredSearchFileApplicationKey
+                )
+            } else {
+                userDefaults.removeObject(forKey: Self.preferredSearchFileApplicationKey)
+            }
+        }
+    }
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
@@ -73,6 +86,9 @@ final class AppState: ObservableObject {
         syncEnabled = userDefaults.object(forKey: Self.settingsSyncEnabledKey) as? Bool ?? false
         searchFilter = userDefaults.string(forKey: Self.searchFilterKey)
             .flatMap(SearchFilter.init(rawValue:)) ?? .all
+        preferredSearchFileApplicationBundleIdentifier = userDefaults.string(
+            forKey: Self.preferredSearchFileApplicationKey
+        )
     }
 
     var snapshot: AppSettingsSnapshot {

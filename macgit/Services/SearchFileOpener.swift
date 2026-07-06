@@ -32,31 +32,57 @@ enum SearchFileOpenError: LocalizedError {
     }
 }
 
+struct SearchFileApplication: Identifiable, Equatable {
+    let bundleIdentifier: String
+    let displayName: String
+    let applicationURL: URL
+
+    var id: String { bundleIdentifier }
+}
+
+private struct SearchFileApplicationCandidate {
+    let bundleIdentifier: String
+    let displayName: String
+}
+
 enum SearchFileApplicationResolver {
     static let previewBundleIdentifier = "com.apple.Preview"
 
-    static let editorBundleIdentifiers = [
-        "com.microsoft.VSCode",
-        "com.microsoft.VSCodeInsiders",
-        "com.jetbrains.intellij",
-        "com.jetbrains.intellij.ce",
-        "com.jetbrains.WebStorm",
-        "com.jetbrains.pycharm",
-        "com.jetbrains.CLion",
-        "com.google.android.studio",
-        "com.todesktop.230313mzl4w4u92",
-        "dev.zed.Zed",
-        "com.sublimetext.4",
-        "com.apple.dt.Xcode",
-        "com.panic.Nova",
-        "com.barebones.bbedit",
-        "com.macromates.TextMate"
+    private static let candidates = [
+        SearchFileApplicationCandidate(bundleIdentifier: "com.microsoft.VSCode", displayName: "Visual Studio Code"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.microsoft.VSCodeInsiders", displayName: "Visual Studio Code Insiders"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.jetbrains.intellij", displayName: "IntelliJ IDEA"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.jetbrains.intellij.ce", displayName: "IntelliJ IDEA Community Edition"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.jetbrains.WebStorm", displayName: "WebStorm"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.jetbrains.pycharm", displayName: "PyCharm"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.jetbrains.CLion", displayName: "CLion"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.google.android.studio", displayName: "Android Studio"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.todesktop.230313mzl4w4u92", displayName: "Cursor"),
+        SearchFileApplicationCandidate(bundleIdentifier: "dev.zed.Zed", displayName: "Zed"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.sublimetext.4", displayName: "Sublime Text"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.apple.dt.Xcode", displayName: "Xcode"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.panic.Nova", displayName: "Nova"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.barebones.bbedit", displayName: "BBEdit"),
+        SearchFileApplicationCandidate(bundleIdentifier: "com.macromates.TextMate", displayName: "TextMate"),
+        SearchFileApplicationCandidate(bundleIdentifier: previewBundleIdentifier, displayName: "Preview")
     ]
 
-    static func preferredBundleIdentifier(
-        isInstalled: (String) -> Bool
-    ) -> String {
-        editorBundleIdentifiers.first(where: isInstalled) ?? previewBundleIdentifier
+    static func availableApplications(
+        applicationURL: (String) -> URL?
+    ) -> [SearchFileApplication] {
+        candidates.compactMap { candidate in
+            guard let url = applicationURL(candidate.bundleIdentifier) else { return nil }
+            return SearchFileApplication(
+                bundleIdentifier: candidate.bundleIdentifier,
+                displayName: candidate.displayName,
+                applicationURL: url
+            )
+        }
+    }
+
+    @MainActor
+    static func availableApplications(workspace: NSWorkspace = .shared) -> [SearchFileApplication] {
+        availableApplications { workspace.urlForApplication(withBundleIdentifier: $0) }
     }
 }
 
@@ -65,6 +91,7 @@ enum SearchFileOpener {
     static func open(
         relativePath: String,
         in repositoryURL: URL,
+        using application: SearchFileApplication,
         workspace: NSWorkspace = .shared
     ) async throws {
         let fileURL = repositoryURL
@@ -75,12 +102,8 @@ enum SearchFileOpener {
             throw SearchFileOpenError.fileNotFound(relativePath)
         }
 
-        let bundleIdentifier = SearchFileApplicationResolver.preferredBundleIdentifier { identifier in
-            workspace.urlForApplication(withBundleIdentifier: identifier) != nil
-        }
-
-        guard let applicationURL = workspace.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
-            throw SearchFileOpenError.applicationNotFound("Preview")
+        guard FileManager.default.fileExists(atPath: application.applicationURL.path) else {
+            throw SearchFileOpenError.applicationNotFound(application.displayName)
         }
 
         let configuration = NSWorkspace.OpenConfiguration()
@@ -89,7 +112,7 @@ enum SearchFileOpener {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             workspace.open(
                 [fileURL],
-                withApplicationAt: applicationURL,
+                withApplicationAt: application.applicationURL,
                 configuration: configuration
             ) { _, error in
                 if let error {

@@ -20,35 +20,40 @@ import XCTest
 
 final class SearchFileOpenerTests: XCTestCase {
     func testVisualStudioCodeTakesPriorityOverOtherInstalledEditors() {
-        let installed = Set([
-            "com.jetbrains.intellij",
-            "com.microsoft.VSCode",
-            "com.apple.dt.Xcode"
+        let installed = applicationURLs(for: [
+            "com.jetbrains.intellij", "com.microsoft.VSCode", "com.apple.dt.Xcode"
         ])
 
-        let selected = SearchFileApplicationResolver.preferredBundleIdentifier {
-            installed.contains($0)
+        let applications = SearchFileApplicationResolver.availableApplications {
+            installed[$0]
         }
 
-        XCTAssertEqual(selected, "com.microsoft.VSCode")
+        XCTAssertEqual(applications.first?.bundleIdentifier, "com.microsoft.VSCode")
     }
 
     func testIntelliJIsUsedWhenVisualStudioCodeIsNotInstalled() {
-        let installed = Set([
-            "com.jetbrains.intellij",
-            "com.apple.dt.Xcode"
-        ])
+        let installed = applicationURLs(for: ["com.jetbrains.intellij", "com.apple.dt.Xcode"])
 
-        let selected = SearchFileApplicationResolver.preferredBundleIdentifier {
-            installed.contains($0)
+        let applications = SearchFileApplicationResolver.availableApplications {
+            installed[$0]
         }
 
-        XCTAssertEqual(selected, "com.jetbrains.intellij")
+        XCTAssertEqual(applications.first?.bundleIdentifier, "com.jetbrains.intellij")
     }
 
-    func testPreviewIsFallbackWhenNoEditorIsInstalled() {
-        let selected = SearchFileApplicationResolver.preferredBundleIdentifier { _ in false }
+    func testOnlyInstalledApplicationsAreReturnedIncludingPreview() {
+        let installed = applicationURLs(for: ["dev.zed.Zed", "com.apple.Preview"])
 
-        XCTAssertEqual(selected, SearchFileApplicationResolver.previewBundleIdentifier)
+        let applications = SearchFileApplicationResolver.availableApplications {
+            installed[$0]
+        }
+
+        XCTAssertEqual(applications.map(\.bundleIdentifier), ["dev.zed.Zed", "com.apple.Preview"])
+    }
+
+    private func applicationURLs(for bundleIdentifiers: [String]) -> [String: URL] {
+        Dictionary(uniqueKeysWithValues: bundleIdentifiers.map { identifier in
+            (identifier, URL(fileURLWithPath: "/Applications/\(identifier).app"))
+        })
     }
 }
