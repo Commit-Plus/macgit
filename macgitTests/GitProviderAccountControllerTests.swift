@@ -110,6 +110,36 @@ final class GitProviderAccountControllerTests: XCTestCase {
         XCTAssertEqual(openedURLs, [try XCTUnwrap(URL(string: "https://github.com/login/device"))])
         XCTAssertEqual(controller.pendingDeviceAuthorization?.userCode, "ABCD-EFGH")
         connectionTask.cancel()
+        await connectionTask.value
+    }
+
+    func testCancellingDeviceAuthorizationClearsLoadingStateWithoutError() async {
+        let authService = FakeGitProviderAuthService(
+            account: makeProviderAccount(macgitUID: "macgit-user-1"),
+            devicePollInterval: 30
+        )
+        let controller = GitProviderAccountController(
+            store: FakeGitProviderAccountStore(),
+            tokenVault: FakeGitProviderTokenVault(),
+            authService: authService,
+            configuration: makeConfiguration(),
+            openURL: { _ in true }
+        )
+        await controller.updateMacgitAccount(makeMacgitAccount(uid: "macgit-user-1"))
+
+        let connectionTask = Task {
+            await controller.connectGitHub()
+        }
+        while controller.pendingDeviceAuthorization == nil {
+            await Task.yield()
+        }
+
+        connectionTask.cancel()
+        await connectionTask.value
+
+        XCTAssertFalse(controller.isLoading)
+        XCTAssertNil(controller.pendingDeviceAuthorization)
+        XCTAssertNil(controller.errorMessage)
     }
 
     func testDeviceAuthorizationSavesTokenBeforeMetadataAndPublishesAccount() async throws {

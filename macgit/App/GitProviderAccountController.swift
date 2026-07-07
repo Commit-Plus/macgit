@@ -144,6 +144,8 @@ final class GitProviderAccountController: ObservableObject {
                 host: .githubDotCom
             )
             try await saveAuthorizedAccount(account, token: token)
+        } catch is CancellationError {
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }

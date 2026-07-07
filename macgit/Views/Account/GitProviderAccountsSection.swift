@@ -22,6 +22,7 @@ import SwiftUI
 struct GitProviderAccountsSection: View {
     @ObservedObject var controller: GitProviderAccountController
     let isSignedIn: Bool
+    @State private var connectionTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -39,7 +40,7 @@ struct GitProviderAccountsSection: View {
                         ForEach(controller.accounts) { account in
                             GitProviderAccountRow(
                                 account: account,
-                                reconnect: { Task { await controller.reconnect(account) } },
+                                reconnect: { startConnection { await controller.reconnect(account) } },
                                 disconnect: { Task { await controller.disconnect(account) } }
                             )
                         }
@@ -47,7 +48,7 @@ struct GitProviderAccountsSection: View {
                 }
 
                 Button("Add GitHub Account...", systemImage: "plus") {
-                    Task { await controller.connectGitHub() }
+                    startConnection { await controller.connectGitHub() }
                 }
                 .disabled(controller.isLoading)
 
@@ -55,7 +56,8 @@ struct GitProviderAccountsSection: View {
                     GitProviderDeviceAuthorizationView(
                         authorization: authorization,
                         openVerification: controller.openPendingDeviceVerification,
-                        copyToPasteboard: copyToPasteboard
+                        copyToPasteboard: copyToPasteboard,
+                        cancel: cancelConnection
                     )
                 }
             } else {
@@ -64,8 +66,12 @@ struct GitProviderAccountsSection: View {
             }
 
             if controller.isLoading {
-                ProgressView("Updating Git provider accounts...")
-                    .controlSize(.small)
+                HStack {
+                    Spacer()
+                    ProgressView("Updating Git provider accounts...")
+                        .controlSize(.small)
+                    Spacer()
+                }
             }
 
             if let errorMessage = controller.errorMessage {
@@ -75,6 +81,20 @@ struct GitProviderAccountsSection: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onDisappear(perform: cancelConnection)
+    }
+
+    private func startConnection(_ operation: @escaping @MainActor () async -> Void) {
+        connectionTask?.cancel()
+        connectionTask = Task { @MainActor in
+            await operation()
+            connectionTask = nil
+        }
+    }
+
+    private func cancelConnection() {
+        connectionTask?.cancel()
+        connectionTask = nil
     }
 
     private func copyToPasteboard(_ value: String) {
@@ -87,9 +107,10 @@ private struct GitProviderDeviceAuthorizationView: View {
     let authorization: GitProviderDeviceAuthorization
     let openVerification: () -> Void
     let copyToPasteboard: (String) -> Void
+    let cancel: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .center, spacing: 10) {
             Text("Enter this code on GitHub to finish connecting:")
                 .foregroundStyle(.secondary)
 
@@ -108,8 +129,12 @@ private struct GitProviderDeviceAuthorizationView: View {
                 .help("Copy code")
             }
 
-            Button("Open GitHub Device Page", action: openVerification)
+            HStack(spacing: 10) {
+                Button("Open GitHub Device Page", action: openVerification)
+                Button("Cancel", role: .cancel, action: cancel)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .center)
         .padding(.top, 2)
     }
 }
