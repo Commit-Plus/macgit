@@ -29,7 +29,7 @@ extension GitStatusService {
             return DiffParser.parse(output)
         }
 
-        let output = (try? await runGit(arguments: ["show", "--no-color", "-p", commit, "--", file], in: repositoryURL)) ?? ""
+        let output = (try? await runGit(arguments: ["show", "--no-color", "--first-parent", "-p", commit, "--", file], in: repositoryURL)) ?? ""
         // Strip the commit header; diff starts at "diff --git"
         guard let diffStart = output.range(of: "diff --git") else { return [] }
         let diffText = String(output[diffStart.lowerBound...])
@@ -77,7 +77,7 @@ extension GitStatusService {
     }
 
     func changedFiles(in commit: String, in repositoryURL: URL) async -> [CommitFileChange] {
-        let output = (try? await runGit(arguments: ["show", "--name-status", "--format=", commit], in: repositoryURL)) ?? ""
+        let output = (try? await runGit(arguments: ["show", "--name-status", "--first-parent", "--format=", commit], in: repositoryURL)) ?? ""
         var changes: [CommitFileChange] = []
         for line in output.split(separator: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
