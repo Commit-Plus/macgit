@@ -56,16 +56,18 @@ struct ManageAccountSheet: View {
 
                 Divider()
 
-                Button("Sign Out", action: controller.signOut)
+                HStack(spacing: 10) {
+                    Button("Sign Out", action: controller.signOut)
 
-                if controller.requiresRecentAuthentication {
-                    Button("Sign In Again...", action: controller.presentReauthentication)
-                }
+                    if controller.requiresRecentAuthentication {
+                        Button("Sign In Again...", action: controller.presentReauthentication)
+                    }
 
-                Button("Delete Account...", role: .destructive) {
-                    confirmsDeletion = true
+                    Button("Delete Account...", role: .destructive) {
+                        confirmsDeletion = true
+                    }
+                    .disabled(controller.isDeletingAccount)
                 }
-                .disabled(controller.isDeletingAccount)
 
                 if controller.isDeletingAccount {
                     ProgressView("Deleting account...")

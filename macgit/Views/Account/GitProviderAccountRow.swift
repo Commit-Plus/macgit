@@ -74,8 +74,13 @@ struct GitProviderAccountRow: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(nsColor: .textBackgroundColor).opacity(0.72))
+                    .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 2)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+            }
         }
         .accessibilityElement(children: .contain)
     }
