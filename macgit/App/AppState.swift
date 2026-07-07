@@ -41,43 +41,77 @@ final class AppState: ObservableObject {
     private static let preferredSearchFileApplicationKey = "preferredSearchFileApplication"
 
     private let userDefaults: UserDefaults
+    @Published private var _currentSettingsSnapshot: AppSettingsSnapshot
 
     @Published var fileMenuAction: FileMenuAction?
     @Published var openWindowWithCloneSheet = false
     @Published var newWindowRepoURL: URL?
     @Published var hasOpenRepository = false
     @Published var showToolbarButtonText: Bool {
-        didSet { userDefaults.set(showToolbarButtonText, forKey: Self.showToolbarButtonTextKey) }
+        didSet {
+            userDefaults.set(showToolbarButtonText, forKey: Self.showToolbarButtonTextKey)
+            _currentSettingsSnapshot = snapshot
+        }
     }
     @Published var showSubmodules: Bool {
-        didSet { userDefaults.set(showSubmodules, forKey: Self.showSubmodulesKey) }
+        didSet {
+            userDefaults.set(showSubmodules, forKey: Self.showSubmodulesKey)
+            _currentSettingsSnapshot = snapshot
+        }
     }
     @Published var showSubtrees: Bool {
-        didSet { userDefaults.set(showSubtrees, forKey: Self.showSubtreesKey) }
+        didSet {
+            userDefaults.set(showSubtrees, forKey: Self.showSubtreesKey)
+            _currentSettingsSnapshot = snapshot
+        }
     }
     @Published var showHeaderBranchButton: Bool {
-        didSet { userDefaults.set(showHeaderBranchButton, forKey: Self.showHeaderBranchButtonKey) }
+        didSet {
+            userDefaults.set(showHeaderBranchButton, forKey: Self.showHeaderBranchButtonKey)
+            _currentSettingsSnapshot = snapshot
+        }
     }
     @Published var showHeaderMergeButton: Bool {
-        didSet { userDefaults.set(showHeaderMergeButton, forKey: Self.showHeaderMergeButtonKey) }
+        didSet {
+            userDefaults.set(showHeaderMergeButton, forKey: Self.showHeaderMergeButtonKey)
+            _currentSettingsSnapshot = snapshot
+        }
     }
     @Published var showHeaderStashButton: Bool {
-        didSet { userDefaults.set(showHeaderStashButton, forKey: Self.showHeaderStashButtonKey) }
+        didSet {
+            userDefaults.set(showHeaderStashButton, forKey: Self.showHeaderStashButtonKey)
+            _currentSettingsSnapshot = snapshot
+        }
     }
     @Published var showHeaderRemoteButton: Bool {
-        didSet { userDefaults.set(showHeaderRemoteButton, forKey: Self.showHeaderRemoteButtonKey) }
+        didSet {
+            userDefaults.set(showHeaderRemoteButton, forKey: Self.showHeaderRemoteButtonKey)
+            _currentSettingsSnapshot = snapshot
+        }
     }
     @Published var showHeaderFinderButton: Bool {
-        didSet { userDefaults.set(showHeaderFinderButton, forKey: Self.showHeaderFinderButtonKey) }
+        didSet {
+            userDefaults.set(showHeaderFinderButton, forKey: Self.showHeaderFinderButtonKey)
+            _currentSettingsSnapshot = snapshot
+        }
     }
     @Published var showHeaderTerminalButton: Bool {
-        didSet { userDefaults.set(showHeaderTerminalButton, forKey: Self.showHeaderTerminalButtonKey) }
+        didSet {
+            userDefaults.set(showHeaderTerminalButton, forKey: Self.showHeaderTerminalButtonKey)
+            _currentSettingsSnapshot = snapshot
+        }
     }
     @Published var syncEnabled: Bool {
-        didSet { userDefaults.set(syncEnabled, forKey: Self.settingsSyncEnabledKey) }
+        didSet {
+            userDefaults.set(syncEnabled, forKey: Self.settingsSyncEnabledKey)
+            _currentSettingsSnapshot = snapshot
+        }
     }
     @Published var searchFilter: SearchFilter {
-        didSet { userDefaults.set(searchFilter.rawValue, forKey: Self.searchFilterKey) }
+        didSet {
+            userDefaults.set(searchFilter.rawValue, forKey: Self.searchFilterKey)
+            _currentSettingsSnapshot = snapshot
+        }
     }
     @Published var preferredSearchFileApplicationBundleIdentifier: String? {
         didSet {
@@ -93,38 +127,49 @@ final class AppState: ObservableObject {
     }
 
     var settingsSnapshotPublisher: AnyPublisher<AppSettingsSnapshot, Never> {
-        let publishers: [AnyPublisher<AppSettingsSnapshot, Never>] = [
-            $showToolbarButtonText.map { [weak self] _ in self?.snapshot ?? AppSettingsSnapshot(showToolbarButtonText: true, showSubmodules: false, showSubtrees: false) }.eraseToAnyPublisher(),
-            $showSubmodules.map { [weak self] _ in self?.snapshot ?? AppSettingsSnapshot(showToolbarButtonText: true, showSubmodules: false, showSubtrees: false) }.eraseToAnyPublisher(),
-            $showSubtrees.map { [weak self] _ in self?.snapshot ?? AppSettingsSnapshot(showToolbarButtonText: true, showSubmodules: false, showSubtrees: false) }.eraseToAnyPublisher(),
-            $showHeaderBranchButton.map { [weak self] _ in self?.snapshot ?? AppSettingsSnapshot(showToolbarButtonText: true, showSubmodules: false, showSubtrees: false) }.eraseToAnyPublisher(),
-            $showHeaderMergeButton.map { [weak self] _ in self?.snapshot ?? AppSettingsSnapshot(showToolbarButtonText: true, showSubmodules: false, showSubtrees: false) }.eraseToAnyPublisher(),
-            $showHeaderStashButton.map { [weak self] _ in self?.snapshot ?? AppSettingsSnapshot(showToolbarButtonText: true, showSubmodules: false, showSubtrees: false) }.eraseToAnyPublisher(),
-            $showHeaderRemoteButton.map { [weak self] _ in self?.snapshot ?? AppSettingsSnapshot(showToolbarButtonText: true, showSubmodules: false, showSubtrees: false) }.eraseToAnyPublisher(),
-            $showHeaderFinderButton.map { [weak self] _ in self?.snapshot ?? AppSettingsSnapshot(showToolbarButtonText: true, showSubmodules: false, showSubtrees: false) }.eraseToAnyPublisher(),
-            $showHeaderTerminalButton.map { [weak self] _ in self?.snapshot ?? AppSettingsSnapshot(showToolbarButtonText: true, showSubmodules: false, showSubtrees: false) }.eraseToAnyPublisher()
-        ]
-        return Publishers.MergeMany(publishers)
-            .removeDuplicates()
-            .eraseToAnyPublisher()
+        $_currentSettingsSnapshot.removeDuplicates().eraseToAnyPublisher()
     }
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
-        showToolbarButtonText = userDefaults.object(forKey: Self.showToolbarButtonTextKey) as? Bool ?? true
-        showSubmodules = userDefaults.object(forKey: Self.showSubmodulesKey) as? Bool ?? false
-        showSubtrees = userDefaults.object(forKey: Self.showSubtreesKey) as? Bool ?? false
-        showHeaderBranchButton = userDefaults.object(forKey: Self.showHeaderBranchButtonKey) as? Bool ?? true
-        showHeaderMergeButton = userDefaults.object(forKey: Self.showHeaderMergeButtonKey) as? Bool ?? true
-        showHeaderStashButton = userDefaults.object(forKey: Self.showHeaderStashButtonKey) as? Bool ?? true
-        showHeaderRemoteButton = userDefaults.object(forKey: Self.showHeaderRemoteButtonKey) as? Bool ?? true
-        showHeaderFinderButton = userDefaults.object(forKey: Self.showHeaderFinderButtonKey) as? Bool ?? true
-        showHeaderTerminalButton = userDefaults.object(forKey: Self.showHeaderTerminalButtonKey) as? Bool ?? true
-        syncEnabled = userDefaults.object(forKey: Self.settingsSyncEnabledKey) as? Bool ?? false
-        searchFilter = userDefaults.string(forKey: Self.searchFilterKey)
+        let showToolbarButtonText = userDefaults.object(forKey: Self.showToolbarButtonTextKey) as? Bool ?? true
+        let showSubmodules = userDefaults.object(forKey: Self.showSubmodulesKey) as? Bool ?? false
+        let showSubtrees = userDefaults.object(forKey: Self.showSubtreesKey) as? Bool ?? false
+        let showHeaderBranchButton = userDefaults.object(forKey: Self.showHeaderBranchButtonKey) as? Bool ?? true
+        let showHeaderMergeButton = userDefaults.object(forKey: Self.showHeaderMergeButtonKey) as? Bool ?? true
+        let showHeaderStashButton = userDefaults.object(forKey: Self.showHeaderStashButtonKey) as? Bool ?? true
+        let showHeaderRemoteButton = userDefaults.object(forKey: Self.showHeaderRemoteButtonKey) as? Bool ?? true
+        let showHeaderFinderButton = userDefaults.object(forKey: Self.showHeaderFinderButtonKey) as? Bool ?? true
+        let showHeaderTerminalButton = userDefaults.object(forKey: Self.showHeaderTerminalButtonKey) as? Bool ?? true
+        let syncEnabled = userDefaults.object(forKey: Self.settingsSyncEnabledKey) as? Bool ?? false
+        let searchFilter = userDefaults.string(forKey: Self.searchFilterKey)
             .flatMap(SearchFilter.init(rawValue:)) ?? .all
-        preferredSearchFileApplicationBundleIdentifier = userDefaults.string(
+        let preferredSearchFileApplicationBundleIdentifier = userDefaults.string(
             forKey: Self.preferredSearchFileApplicationKey
+        )
+
+        self.showToolbarButtonText = showToolbarButtonText
+        self.showSubmodules = showSubmodules
+        self.showSubtrees = showSubtrees
+        self.showHeaderBranchButton = showHeaderBranchButton
+        self.showHeaderMergeButton = showHeaderMergeButton
+        self.showHeaderStashButton = showHeaderStashButton
+        self.showHeaderRemoteButton = showHeaderRemoteButton
+        self.showHeaderFinderButton = showHeaderFinderButton
+        self.showHeaderTerminalButton = showHeaderTerminalButton
+        self.syncEnabled = syncEnabled
+        self.searchFilter = searchFilter
+        self.preferredSearchFileApplicationBundleIdentifier = preferredSearchFileApplicationBundleIdentifier
+        _currentSettingsSnapshot = AppSettingsSnapshot(
+            showToolbarButtonText: showToolbarButtonText,
+            showSubmodules: showSubmodules,
+            showSubtrees: showSubtrees,
+            showHeaderBranchButton: showHeaderBranchButton,
+            showHeaderMergeButton: showHeaderMergeButton,
+            showHeaderStashButton: showHeaderStashButton,
+            showHeaderRemoteButton: showHeaderRemoteButton,
+            showHeaderFinderButton: showHeaderFinderButton,
+            showHeaderTerminalButton: showHeaderTerminalButton
         )
     }
 
