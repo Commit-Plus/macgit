@@ -20,6 +20,12 @@ import XCTest
 @testable import macgit
 
 final class GitHubProviderAuthServiceTests: XCTestCase {
+    func testAppConfigurationFallsBackToBundledPublicOAuthClientIDWhenInfoPlistKeyIsMissing() {
+        let configuration = GitHubProviderAuthConfiguration.appConfiguration(bundle: Bundle(for: Self.self))
+
+        XCTAssertEqual(configuration.clientID, "Ov23lictC3FXsN0kjsbs")
+    }
+
     func testDeviceAuthorizationRequestsUserCodeWithClientIDAndScopes() async throws {
         let client = StubGitProviderHTTPClient(responses: [
             .json(

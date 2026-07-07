@@ -49,8 +49,11 @@ struct GitHubProviderAuthConfiguration: Equatable {
     var scopes: [String]
 
     static func appConfiguration(bundle: Bundle = .main) -> GitHubProviderAuthConfiguration {
-        let clientID = (bundle.object(forInfoDictionaryKey: "GitHubOAuthClientID") as? String)?
+        let configuredClientID = (bundle.object(forInfoDictionaryKey: "GitHubOAuthClientID") as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let clientID = configuredClientID.isEmpty
+            ? "Ov23lictC3FXsN0kjsbs"
+            : configuredClientID
         return GitHubProviderAuthConfiguration(
             clientID: clientID,
             scopes: ["repo", "read:user"]
