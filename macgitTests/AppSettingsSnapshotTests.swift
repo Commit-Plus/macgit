@@ -141,4 +141,33 @@ final class AppSettingsSnapshotTests: XCTestCase {
         state.preferredSearchFileApplicationBundleIdentifier = nil
         XCTAssertNil(defaults.string(forKey: "preferredSearchFileApplication"))
     }
+
+    func testHeaderButtonVisibilityDefaultsToTrueAndPersists() {
+        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let state = AppState(userDefaults: defaults)
+        XCTAssertTrue(state.showHeaderBranchButton)
+        XCTAssertTrue(state.showHeaderMergeButton)
+        XCTAssertTrue(state.showHeaderStashButton)
+        XCTAssertTrue(state.showHeaderRemoteButton)
+        XCTAssertTrue(state.showHeaderFinderButton)
+        XCTAssertTrue(state.showHeaderTerminalButton)
+
+        state.showHeaderBranchButton = false
+        state.showHeaderMergeButton = false
+        state.showHeaderStashButton = false
+        state.showHeaderRemoteButton = false
+        state.showHeaderFinderButton = false
+        state.showHeaderTerminalButton = false
+
+        let reloaded = AppState(userDefaults: defaults)
+        XCTAssertFalse(reloaded.showHeaderBranchButton)
+        XCTAssertFalse(reloaded.showHeaderMergeButton)
+        XCTAssertFalse(reloaded.showHeaderStashButton)
+        XCTAssertFalse(reloaded.showHeaderRemoteButton)
+        XCTAssertFalse(reloaded.showHeaderFinderButton)
+        XCTAssertFalse(reloaded.showHeaderTerminalButton)
+    }
 }
