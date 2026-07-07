@@ -104,13 +104,11 @@ final class AppState: ObservableObject {
     @Published var syncEnabled: Bool {
         didSet {
             userDefaults.set(syncEnabled, forKey: Self.settingsSyncEnabledKey)
-            _currentSettingsSnapshot = snapshot
         }
     }
     @Published var searchFilter: SearchFilter {
         didSet {
             userDefaults.set(searchFilter.rawValue, forKey: Self.searchFilterKey)
-            _currentSettingsSnapshot = snapshot
         }
     }
     @Published var preferredSearchFileApplicationBundleIdentifier: String? {

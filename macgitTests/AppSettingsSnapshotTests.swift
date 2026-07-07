@@ -171,6 +171,21 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertFalse(reloaded.showHeaderTerminalButton)
     }
 
+    func testSettingsSnapshotPublisherDoesNotEmitOnDeviceLocalSettings() {
+        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let state = AppState(userDefaults: defaults)
+        var emissions: [AppSettingsSnapshot] = []
+        let cancellable = state.settingsSnapshotPublisher.sink { emissions.append($0) }
+
+        state.syncEnabled = true
+        state.searchFilter = .commit
+
+        XCTAssertEqual(emissions.count, 1)
+        _ = cancellable
+    }
+
     func testSettingsSnapshotPublisherEmitsUpdatedSnapshot() {
         let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
