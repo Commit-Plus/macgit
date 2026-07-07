@@ -16,6 +16,7 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+import AppKit
 import SwiftUI
 
 struct GitProviderAccountsSection: View {
@@ -49,9 +50,20 @@ struct GitProviderAccountsSection: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Enter this code on GitHub to finish connecting:")
                                 .foregroundStyle(.secondary)
-                            Text(authorization.userCode)
-                                .font(.system(.title3, design: .monospaced).weight(.semibold))
-                                .textSelection(.enabled)
+                            HStack(spacing: 8) {
+                                Text(authorization.userCode)
+                                    .font(.system(.title, design: .monospaced).weight(.semibold))
+                                    .textSelection(.enabled)
+
+                                Button {
+                                    copyToPasteboard(authorization.userCode)
+                                } label: {
+                                    Image(systemName: "doc.on.doc")
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Copy GitHub device code")
+                                .help("Copy code")
+                            }
                             Button("Open GitHub Device Page", action: controller.openPendingDeviceVerification)
                         }
                         .padding(.top, 2)
@@ -75,5 +87,10 @@ struct GitProviderAccountsSection: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
         }
+    }
+
+    private func copyToPasteboard(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
 }
