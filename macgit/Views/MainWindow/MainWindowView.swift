@@ -94,6 +94,7 @@ struct MainWindowView: View {
     @State private var pendingStashPaths: [String] = []
     @StateObject private var syncState = SyncState()
     @StateObject private var undoManager = GitUndoManager()
+    @StateObject private var pullRequestController: PullRequestController
     @State private var repoIconName: String = "code-branch"
     @State private var remoteURLString: String = ""
     @State private var selectedBranchName: String? = nil
@@ -108,6 +109,17 @@ struct MainWindowView: View {
     @State private var pendingPushBranchDropConfirmation: PendingPushBranchDropConfirmation?
     @State private var isPerformingBranchDropOperation = false
     @StateObject private var operationProgress = RepositoryOperationProgress()
+
+    init(repositoryURL: URL, providerAccountController: GitProviderAccountController) {
+        self.repositoryURL = repositoryURL
+        self.providerAccountController = providerAccountController
+        _pullRequestController = StateObject(wrappedValue: PullRequestController(
+            providerAccountController: providerAccountController,
+            tokenVault: KeychainGitProviderTokenVault(),
+            services: [.github: GitHubPullRequestService()],
+            openURL: NSWorkspace.shared.open
+        ))
+    }
 
     var body: some View {
         mainContent
@@ -537,6 +549,14 @@ struct MainWindowView: View {
                     undoManager: undoManager,
                     syncState: syncState,
                     onRunRepositoryOperation: runRepositoryOperation
+                )
+            case .item(.pullRequests):
+                PullRequestListView(
+                    controller: pullRequestController,
+                    repositoryURL: repositoryURL,
+                    onConnectAccount: {
+                        Task { await providerAccountController.connectGitHub() }
+                    }
                 )
             case .stash(let ref):
                 StashView(repositoryURL: repositoryURL, stashRef: ref)

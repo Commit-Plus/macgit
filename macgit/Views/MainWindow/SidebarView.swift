@@ -39,6 +39,7 @@ enum SidebarSelection: Hashable {
 enum SidebarItem: String, CaseIterable, Identifiable {
     case fileStatus = "File status"
     case history = "History"
+    case pullRequests = "Pull Requests"
     case search = "Search"
 
     var id: String { rawValue }
@@ -47,6 +48,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         switch self {
         case .fileStatus: return "doc.text.magnifyingglass"
         case .history: return "clock.arrow.circlepath"
+        case .pullRequests: return "arrow.triangle.pull"
         case .search: return "magnifyingglass"
         }
     }
@@ -65,7 +67,7 @@ enum SidebarSection: String, CaseIterable {
     var items: [SidebarItem] {
         switch self {
         case .workspace:
-            return [.fileStatus, .history, .search]
+            return [.fileStatus, .history, .pullRequests, .search]
         default:
             return []
         }

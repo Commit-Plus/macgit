@@ -19,7 +19,7 @@
 - Phase 0: [completed] [2026-07-06-git-provider-accounts-phase-0-foundation.md](2026-07-06-git-provider-accounts-phase-0-foundation.md) (branch: `codex/git-provider-accounts-phase-0`)
 - Phase 1: [completed] [2026-07-06-git-provider-accounts-phase-1-github-connect.md](2026-07-06-git-provider-accounts-phase-1-github-connect.md) (branch: `codex/git-provider-accounts-phase-1`)
 - Phase 2: [completed] [2026-07-06-git-provider-accounts-phase-2-private-repo-credentials.md](2026-07-06-git-provider-accounts-phase-2-private-repo-credentials.md) (branch: `codex/git-provider-accounts-phase-2`)
-- Phase 3: [pending] [2026-07-06-git-provider-accounts-phase-3-pull-request-read.md](2026-07-06-git-provider-accounts-phase-3-pull-request-read.md)
+- Phase 3: [completed] [2026-07-06-git-provider-accounts-phase-3-pull-request-read.md](2026-07-06-git-provider-accounts-phase-3-pull-request-read.md) (branch: `codex/git-provider-accounts-phase-3`)
 - Phase 4: [pending] [2026-07-06-git-provider-accounts-phase-4-pull-request-actions.md](2026-07-06-git-provider-accounts-phase-4-pull-request-actions.md)
 - Phase 5: [pending] [2026-07-06-git-provider-accounts-phase-5-gitlab-and-hardening.md](2026-07-06-git-provider-accounts-phase-5-gitlab-and-hardening.md)
 
