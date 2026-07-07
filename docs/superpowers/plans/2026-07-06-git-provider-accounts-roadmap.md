@@ -17,7 +17,7 @@
 ## Plan Index
 
 - Phase 0: [completed] [2026-07-06-git-provider-accounts-phase-0-foundation.md](2026-07-06-git-provider-accounts-phase-0-foundation.md) (branch: `codex/git-provider-accounts-phase-0`)
-- Phase 1: [in progress] [2026-07-06-git-provider-accounts-phase-1-github-connect.md](2026-07-06-git-provider-accounts-phase-1-github-connect.md) (worktree: `codex/git-provider-accounts-phase-1`)
+- Phase 1: [completed] [2026-07-06-git-provider-accounts-phase-1-github-connect.md](2026-07-06-git-provider-accounts-phase-1-github-connect.md) (branch: `codex/git-provider-accounts-phase-1`)
 - Phase 2: [pending] [2026-07-06-git-provider-accounts-phase-2-private-repo-credentials.md](2026-07-06-git-provider-accounts-phase-2-private-repo-credentials.md)
 - Phase 3: [pending] [2026-07-06-git-provider-accounts-phase-3-pull-request-read.md](2026-07-06-git-provider-accounts-phase-3-pull-request-read.md)
 - Phase 4: [pending] [2026-07-06-git-provider-accounts-phase-4-pull-request-actions.md](2026-07-06-git-provider-accounts-phase-4-pull-request-actions.md)
@@ -26,7 +26,7 @@
 ## Recommended Order
 
 1. Phase 0 first. It creates the provider account model, token vault, metadata store boundary, and controller without touching real provider auth.
-2. Phase 1 next. It connects GitHub through browser-based authorization and proves the model with one real provider.
+2. Phase 1 connects GitHub through OAuth App device flow and proves the model with one real provider.
 3. Phase 2 next. It uses connected accounts for private HTTPS Git operations while keeping tokens out of logs and command arguments.
 4. Phase 3 next. It adds read-only pull request visibility so auth, remote parsing, and API clients can stabilize before write actions.
 5. Phase 4 next. It adds create/comment/checkout PR actions with targeted permission and branch-state checks.

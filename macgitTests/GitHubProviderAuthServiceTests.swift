@@ -20,28 +20,32 @@ import XCTest
 @testable import macgit
 
 final class GitHubProviderAuthServiceTests: XCTestCase {
-    func testAuthorizationURLIncludesClientIDRedirectStateAndPKCEChallenge() throws {
-        let service = makeService(httpClient: StubGitProviderHTTPClient())
-        let session = try makeOAuthSession()
+    func testDeviceAuthorizationRequestsUserCodeWithClientIDAndScopes() async throws {
+        let client = StubGitProviderHTTPClient(responses: [
+            .json(
+                statusCode: 200,
+                body: #"{"device_code":"device-code","user_code":"ABCD-EFGH","verification_uri":"https://github.com/login/device","expires_in":900,"interval":5}"#
+            )
+        ])
+        let service = makeService(httpClient: client)
 
-        let url = try service.authorizationURL(for: session)
-        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
-        let query = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
-            item.value.map { (item.name, $0) }
-        })
+        let authorization = try await service.requestDeviceAuthorization()
 
-        XCTAssertEqual(components.scheme, "https")
-        XCTAssertEqual(components.host, "github.com")
-        XCTAssertEqual(components.path, "/login/oauth/authorize")
-        XCTAssertEqual(query["client_id"], "github-client-id")
-        XCTAssertEqual(query["redirect_uri"], "macgit://git-provider/oauth/callback")
-        XCTAssertEqual(query["state"], "oauth-state")
-        XCTAssertEqual(query["scope"], "repo read:user")
-        XCTAssertEqual(query["code_challenge"], GitProviderPKCE.challenge(for: session.codeVerifier))
-        XCTAssertEqual(query["code_challenge_method"], "S256")
+        let request = try XCTUnwrap(client.requests.first)
+        let body = try XCTUnwrap(request.httpBody.flatMap { String(data: $0, encoding: .utf8) })
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.absoluteString, "https://github.com/login/device/code")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+        XCTAssertTrue(body.contains("client_id=github-client-id"))
+        XCTAssertTrue(body.contains("scope=repo%20read:user"))
+        XCTAssertEqual(authorization.deviceCode, "device-code")
+        XCTAssertEqual(authorization.userCode, "ABCD-EFGH")
+        XCTAssertEqual(authorization.verificationURI, URL(string: "https://github.com/login/device"))
+        XCTAssertEqual(authorization.expiresIn, 900)
+        XCTAssertEqual(authorization.interval, 5)
     }
 
-    func testTokenExchangeSendsCodeVerifier() async throws {
+    func testDeviceTokenPollSendsDeviceCodeWithoutClientSecret() async throws {
         let client = StubGitProviderHTTPClient(responses: [
             .json(
                 statusCode: 200,
@@ -49,21 +53,34 @@ final class GitHubProviderAuthServiceTests: XCTestCase {
             )
         ])
         let service = makeService(httpClient: client)
-        let session = try makeOAuthSession()
 
-        let token = try await service.exchangeCallback(
-            GitProviderOAuthCallback(code: "oauth-code", state: session.state),
-            session: session
-        )
+        let token = try await service.pollDeviceAuthorization(makeDeviceAuthorization())
 
         let request = try XCTUnwrap(client.requests.first)
         let body = try XCTUnwrap(request.httpBody.flatMap { String(data: $0, encoding: .utf8) })
         XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.absoluteString, "https://github.com/login/oauth/access_token")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
-        XCTAssertTrue(body.contains("code=oauth-code"))
-        XCTAssertTrue(body.contains("code_verifier=test-verifier"))
+        XCTAssertTrue(body.contains("client_id=github-client-id"))
+        XCTAssertTrue(body.contains("device_code=device-code"))
+        XCTAssertTrue(body.contains("grant_type=urn:ietf:params:oauth:grant-type:device_code"))
+        XCTAssertFalse(body.contains("client_secret"))
         XCTAssertEqual(token.accessToken, "secret-token")
         XCTAssertEqual(token.tokenType, "bearer")
+    }
+
+    func testDevicePollPendingMapsToAuthorizationPending() async throws {
+        let client = StubGitProviderHTTPClient(responses: [
+            .json(statusCode: 200, body: #"{"error":"authorization_pending"}"#)
+        ])
+        let service = makeService(httpClient: client)
+
+        do {
+            _ = try await service.pollDeviceAuthorization(makeDeviceAuthorization())
+            XCTFail("Expected pending device authorization to throw")
+        } catch {
+            XCTAssertEqual(error as? GitProviderAuthError, .authorizationPending)
+        }
     }
 
     func testProfileResponseCreatesProviderAccountMetadata() async throws {
@@ -128,21 +145,21 @@ final class GitHubProviderAuthServiceTests: XCTestCase {
         GitHubProviderAuthService(
             configuration: GitHubProviderAuthConfiguration(
                 clientID: "github-client-id",
-                redirectURI: URL(string: "macgit://git-provider/oauth/callback")!,
                 scopes: ["repo", "read:user"]
             ),
             httpClient: httpClient,
+            deviceEndpoint: URL(string: "https://github.com/login/device/code")!,
             now: { Date(timeIntervalSince1970: 1_700_000_000) }
         )
     }
 
-    private func makeOAuthSession() throws -> GitProviderOAuthSession {
-        GitProviderOAuthSession(
-            provider: .github,
-            host: .githubDotCom,
-            state: "oauth-state",
-            codeVerifier: "test-verifier",
-            redirectURI: try XCTUnwrap(URL(string: "macgit://git-provider/oauth/callback"))
+    private func makeDeviceAuthorization() -> GitProviderDeviceAuthorization {
+        GitProviderDeviceAuthorization(
+            deviceCode: "device-code",
+            userCode: "ABCD-EFGH",
+            verificationURI: URL(string: "https://github.com/login/device")!,
+            expiresIn: 900,
+            interval: 5
         )
     }
 }

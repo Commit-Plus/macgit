@@ -7,6 +7,11 @@ service cloud.firestore {
       allow write: if signedInAs(uid) && validAppSettings();
     }
 
+    match /users/{uid}/gitProviderAccounts/{connectionID} {
+      allow read, delete: if signedInAs(uid);
+      allow create, update: if signedInAs(uid) && validGitProviderAccount();
+    }
+
     function validAppSettings() {
       return request.resource.data.keys().hasOnly([
           'schemaVersion',
@@ -28,6 +33,52 @@ service cloud.firestore {
         && request.resource.data.showSubmodules is bool
         && request.resource.data.showSubtrees is bool
         && request.resource.data.updatedAt is timestamp;
+    }
+
+    function validGitProviderAccount() {
+      return request.resource.data.keys().hasOnly([
+          'schemaVersion',
+          'provider',
+          'hostURL',
+          'providerUserID',
+          'username',
+          'displayName',
+          'avatarURL',
+          'scopes',
+          'permissions',
+          'tokenStatus',
+          'connectedAt',
+          'lastValidatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'schemaVersion',
+          'provider',
+          'hostURL',
+          'providerUserID',
+          'username',
+          'scopes',
+          'permissions',
+          'tokenStatus',
+          'connectedAt'
+        ])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.provider in ['github', 'gitlab']
+        && request.resource.data.hostURL is string
+        && request.resource.data.providerUserID is string
+        && request.resource.data.username is string
+        && (!('displayName' in request.resource.data) || request.resource.data.displayName is string)
+        && (!('avatarURL' in request.resource.data) || request.resource.data.avatarURL is string)
+        && request.resource.data.scopes is list
+        && request.resource.data.permissions is map
+        && request.resource.data.tokenStatus in [
+          'valid',
+          'expired',
+          'revoked',
+          'reauthorizationRequired',
+          'unavailableOnThisDevice'
+        ]
+        && request.resource.data.connectedAt is timestamp
+        && (!('lastValidatedAt' in request.resource.data) || request.resource.data.lastValidatedAt is timestamp);
     }
 
     match /entitlements/{uid} {

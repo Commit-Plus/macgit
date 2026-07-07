@@ -19,11 +19,8 @@
 import Foundation
 
 protocol GitProviderAuthenticating {
-    func authorizationURL(for session: GitProviderOAuthSession) throws -> URL
-    func exchangeCallback(
-        _ callback: GitProviderOAuthCallback,
-        session: GitProviderOAuthSession
-    ) async throws -> GitProviderToken
+    func requestDeviceAuthorization() async throws -> GitProviderDeviceAuthorization
+    func pollDeviceAuthorization(_ authorization: GitProviderDeviceAuthorization) async throws -> GitProviderToken
     func fetchAccount(
         token: GitProviderToken,
         macgitUID: String,
@@ -49,13 +46,33 @@ struct URLSessionGitProviderHTTPClient: GitProviderHTTPClient {
 
 struct GitHubProviderAuthConfiguration: Equatable {
     var clientID: String
-    var redirectURI: URL
     var scopes: [String]
+
+    static func appConfiguration(bundle: Bundle = .main) -> GitHubProviderAuthConfiguration {
+        let clientID = (bundle.object(forInfoDictionaryKey: "GitHubOAuthClientID") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return GitHubProviderAuthConfiguration(
+            clientID: clientID,
+            scopes: ["repo", "read:user"]
+        )
+    }
+}
+
+struct GitProviderDeviceAuthorization: Equatable {
+    var deviceCode: String
+    var userCode: String
+    var verificationURI: URL
+    var expiresIn: Int
+    var interval: Int
 }
 
 enum GitProviderAuthError: LocalizedError, Equatable {
     case invalidConfiguration
     case invalidResponse
+    case authorizationPending
+    case deviceCodeExpired
+    case accessDenied
+    case slowDown(Int)
     case reauthorizationRequired
     case providerMessage(String)
 
@@ -65,6 +82,14 @@ enum GitProviderAuthError: LocalizedError, Equatable {
             "GitHub account connection is not configured."
         case .invalidResponse:
             "The Git provider returned an invalid response."
+        case .authorizationPending:
+            "Waiting for GitHub authorization."
+        case .deviceCodeExpired:
+            "The GitHub device code expired. Try connecting again."
+        case .accessDenied:
+            "GitHub authorization was cancelled."
+        case .slowDown:
+            "GitHub asked Commit+ to slow down authorization polling."
         case .reauthorizationRequired:
             "The Git provider account needs to be connected again."
         case .providerMessage(let message):
@@ -76,7 +101,7 @@ enum GitProviderAuthError: LocalizedError, Equatable {
 struct GitHubProviderAuthService: GitProviderAuthenticating {
     private let configuration: GitHubProviderAuthConfiguration
     private let httpClient: GitProviderHTTPClient
-    private let authorizationEndpoint: URL
+    private let deviceEndpoint: URL
     private let tokenEndpoint: URL
     private let apiBaseURL: URL
     private let now: () -> Date
@@ -84,49 +109,52 @@ struct GitHubProviderAuthService: GitProviderAuthenticating {
     init(
         configuration: GitHubProviderAuthConfiguration,
         httpClient: GitProviderHTTPClient = URLSessionGitProviderHTTPClient(),
-        authorizationEndpoint: URL = URL(string: "https://github.com/login/oauth/authorize")!,
+        deviceEndpoint: URL = URL(string: "https://github.com/login/device/code")!,
         tokenEndpoint: URL = URL(string: "https://github.com/login/oauth/access_token")!,
         apiBaseURL: URL = URL(string: "https://api.github.com")!,
         now: @escaping () -> Date = Date.init
     ) {
         self.configuration = configuration
         self.httpClient = httpClient
-        self.authorizationEndpoint = authorizationEndpoint
+        self.deviceEndpoint = deviceEndpoint
         self.tokenEndpoint = tokenEndpoint
         self.apiBaseURL = apiBaseURL
         self.now = now
     }
 
-    func authorizationURL(for session: GitProviderOAuthSession) throws -> URL {
-        guard !configuration.clientID.isEmpty,
-              session.provider == .github,
-              session.redirectURI == configuration.redirectURI else {
+    func requestDeviceAuthorization() async throws -> GitProviderDeviceAuthorization {
+        guard !configuration.clientID.isEmpty else {
             throw GitProviderAuthError.invalidConfiguration
         }
 
-        guard var components = URLComponents(url: authorizationEndpoint, resolvingAgainstBaseURL: false) else {
-            throw GitProviderAuthError.invalidConfiguration
-        }
-        components.queryItems = [
+        var request = URLRequest(url: deviceEndpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = formEncoded([
             URLQueryItem(name: "client_id", value: configuration.clientID),
-            URLQueryItem(name: "redirect_uri", value: configuration.redirectURI.absoluteString),
-            URLQueryItem(name: "state", value: session.state),
-            URLQueryItem(name: "scope", value: configuration.scopes.joined(separator: " ")),
-            URLQueryItem(name: "code_challenge", value: GitProviderPKCE.challenge(for: session.codeVerifier)),
-            URLQueryItem(name: "code_challenge_method", value: "S256")
-        ]
-        guard let url = components.url else {
-            throw GitProviderAuthError.invalidConfiguration
+            URLQueryItem(name: "scope", value: configuration.scopes.joined(separator: " "))
+        ])
+
+        let (data, response) = try await httpClient.data(for: request)
+        try validate(response: response, data: data)
+        let payload = try decode(DeviceAuthorizationResponse.self, from: data)
+        guard let verificationURI = URL(string: payload.verificationURI) else {
+            throw GitProviderAuthError.invalidResponse
         }
-        return url
+
+        return GitProviderDeviceAuthorization(
+            deviceCode: payload.deviceCode,
+            userCode: payload.userCode,
+            verificationURI: verificationURI,
+            expiresIn: payload.expiresIn,
+            interval: payload.interval
+        )
     }
 
-    func exchangeCallback(
-        _ callback: GitProviderOAuthCallback,
-        session: GitProviderOAuthSession
-    ) async throws -> GitProviderToken {
-        guard callback.state == session.state else {
-            throw GitProviderOAuthError.stateMismatch
+    func pollDeviceAuthorization(_ authorization: GitProviderDeviceAuthorization) async throws -> GitProviderToken {
+        guard !configuration.clientID.isEmpty else {
+            throw GitProviderAuthError.invalidConfiguration
         }
 
         var request = URLRequest(url: tokenEndpoint)
@@ -135,19 +163,17 @@ struct GitHubProviderAuthService: GitProviderAuthenticating {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = formEncoded([
             URLQueryItem(name: "client_id", value: configuration.clientID),
-            URLQueryItem(name: "code", value: callback.code),
-            URLQueryItem(name: "redirect_uri", value: session.redirectURI.absoluteString),
-            URLQueryItem(name: "code_verifier", value: session.codeVerifier)
+            URLQueryItem(name: "device_code", value: authorization.deviceCode),
+            URLQueryItem(name: "grant_type", value: "urn:ietf:params:oauth:grant-type:device_code")
         ])
 
         let (data, response) = try await httpClient.data(for: request)
         try validate(response: response, data: data)
-        let payload: TokenResponse
-        do {
-            payload = try JSONDecoder().decode(TokenResponse.self, from: data)
-        } catch {
-            throw GitProviderAuthError.invalidResponse
+        if let payload = try? JSONDecoder().decode(ErrorResponse.self, from: data),
+           let error = payload.error {
+            throw mapDevicePollError(error, interval: authorization.interval, message: payload.errorDescription)
         }
+        let payload = try decode(TokenResponse.self, from: data)
 
         return GitProviderToken(
             accessToken: payload.accessToken,
@@ -169,12 +195,7 @@ struct GitHubProviderAuthService: GitProviderAuthenticating {
 
         let (data, response) = try await httpClient.data(for: request)
         try validate(response: response, data: data)
-        let profile: UserResponse
-        do {
-            profile = try JSONDecoder().decode(UserResponse.self, from: data)
-        } catch {
-            throw GitProviderAuthError.invalidResponse
-        }
+        let profile = try decode(UserResponse.self, from: data)
 
         let timestamp = now()
         let normalizedHost = host.normalized.baseURL
@@ -218,9 +239,48 @@ struct GitHubProviderAuthService: GitProviderAuthenticating {
             )
         }
     }
+
+    private func decode<Response: Decodable>(_ type: Response.Type, from data: Data) throws -> Response {
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw GitProviderAuthError.invalidResponse
+        }
+    }
+
+    private func mapDevicePollError(_ error: String, interval: Int, message: String?) -> GitProviderAuthError {
+        switch error {
+        case "authorization_pending":
+            return .authorizationPending
+        case "slow_down":
+            return .slowDown(interval + 5)
+        case "expired_token":
+            return .deviceCodeExpired
+        case "access_denied":
+            return .accessDenied
+        default:
+            return .providerMessage(message ?? "GitHub device authorization failed.")
+        }
+    }
 }
 
 private extension GitHubProviderAuthService {
+    struct DeviceAuthorizationResponse: Decodable {
+        var deviceCode: String
+        var userCode: String
+        var verificationURI: String
+        var expiresIn: Int
+        var interval: Int
+
+        enum CodingKeys: String, CodingKey {
+            case deviceCode = "device_code"
+            case userCode = "user_code"
+            case verificationURI = "verification_uri"
+            case expiresIn = "expires_in"
+            case interval
+        }
+    }
+
     struct TokenResponse: Decodable {
         var accessToken: String
         var refreshToken: String?
@@ -250,10 +310,12 @@ private extension GitHubProviderAuthService {
     }
 
     struct ErrorResponse: Decodable {
+        var error: String?
         var message: String?
         var errorDescription: String?
 
         enum CodingKeys: String, CodingKey {
+            case error
             case message
             case errorDescription = "error_description"
         }

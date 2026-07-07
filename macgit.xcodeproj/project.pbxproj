@@ -405,7 +405,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				FIREBASE_REVERSED_CLIENT_ID = com.googleusercontent.apps.214252692507-g6hlj4tlu981ju0dakktfvcoblsd7dmt;
+				GITHUB_OAUTH_CLIENT_ID = "";
 				INFOPLIST_KEY_CFBundleURLTypes = "({CFBundleTypeRole=Editor;CFBundleURLName=GoogleSignIn;CFBundleURLSchemes=(\"$(FIREBASE_REVERSED_CLIENT_ID)\");})";
+				INFOPLIST_KEY_GitHubOAuthClientID = "$(GITHUB_OAUTH_CLIENT_ID)";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright (C) 2026 Thanh Tran. Licensed under the GNU Affero General Public License v3.";
 				INFOPLIST_KEY_SUAllowsAutomaticUpdates = NO;
 				INFOPLIST_KEY_SUAutomaticallyUpdate = NO;
@@ -447,7 +449,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				FIREBASE_REVERSED_CLIENT_ID = com.googleusercontent.apps.214252692507-g6hlj4tlu981ju0dakktfvcoblsd7dmt;
+				GITHUB_OAUTH_CLIENT_ID = "";
 				INFOPLIST_KEY_CFBundleURLTypes = "({CFBundleTypeRole=Editor;CFBundleURLName=GoogleSignIn;CFBundleURLSchemes=(\"$(FIREBASE_REVERSED_CLIENT_ID)\");})";
+				INFOPLIST_KEY_GitHubOAuthClientID = "$(GITHUB_OAUTH_CLIENT_ID)";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright (C) 2026 Thanh Tran. Licensed under the GNU Affero General Public License v3.";
 				INFOPLIST_KEY_SUAllowsAutomaticUpdates = NO;
 				INFOPLIST_KEY_SUAutomaticallyUpdate = NO;

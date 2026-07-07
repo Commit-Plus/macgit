@@ -2,21 +2,21 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let a signed-in macgit user connect and disconnect a GitHub account through external-browser authorization, saving tokens to Keychain and metadata through the Phase 0 controller.
+**Goal:** Let a signed-in macgit user connect and disconnect a GitHub account through GitHub OAuth App Device Flow, saving tokens to Keychain and metadata through the Phase 0 controller.
 
-**Architecture:** A provider-auth protocol owns browser URL construction, callback validation, token exchange, and profile fetch. SwiftUI renders provider account settings and does not handle raw tokens.
+**Architecture:** A provider-auth protocol owns device-code authorization, token polling, and profile fetch. SwiftUI renders provider account settings and the short user code; it never handles raw tokens.
 
-**Tech Stack:** Swift, SwiftUI, AppKit URL opening, callback URL handling, `URLSession`, PKCE helpers, XCTest, `xcodebuild`.
+**Tech Stack:** Swift, SwiftUI, AppKit URL opening, GitHub OAuth Device Flow endpoints, `URLSession`, XCTest, `xcodebuild`.
 
 ---
 
 ## File Structure
 
-- Create `macgit/Services/GitProviderOAuthModels.swift`: state, PKCE, callback, and auth-result models.
-- Create `macgit/Services/GitHubProviderAuthService.swift`: GitHub auth URL, token exchange, and `/user` profile fetch.
+- Create `macgit/Services/GitProviderOAuthModels.swift`: OAuth callback/PKCE support kept as reusable model groundwork.
+- Create `macgit/Services/GitHubProviderAuthService.swift`: device-code request, token polling, and `/user` profile fetch.
 - Create `macgit/Views/Account/GitProviderAccountsSection.swift`: connected account list and add/remove actions.
 - Modify `macgit/Views/Account/ManageAccountSheet.swift`: show provider accounts below macgit account controls.
-- Modify `macgit/App/macgitApp.swift`: route provider auth callback URLs to the provider account controller.
+- Modify `macgit/App/macgitApp.swift`: wire provider account controller and open GitHub device verification URLs externally.
 - Test with `GitProviderOAuthTests.swift`, `GitHubProviderAuthServiceTests.swift`, and `GitProviderAccountsSectionTests.swift`.
 
 ### Task 1: Add OAuth Session and PKCE Models
