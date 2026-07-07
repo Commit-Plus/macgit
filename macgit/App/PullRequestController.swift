@@ -24,13 +24,20 @@ final class PullRequestController: ObservableObject {
     @Published private(set) var items: [PullRequestSummary] = []
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
+    @Published var detailErrorMessage: String?
+    @Published var stateFilter: PullRequestListFilter = .all
+    @Published var createdByMeOnly = false
     @Published private(set) var selectedProviderAccountID: String?
+    @Published private(set) var selectedDetail: PullRequestDetail?
+    @Published private(set) var isLoadingDetail = false
 
     private let providerAccountController: GitProviderAccountController
     private let tokenVault: GitProviderTokenVault
     private let services: [GitProviderKind: any PullRequestProviding]
     private let remoteURLProvider: (URL) async -> String?
     private let openURL: (URL) -> Bool
+    private var activeRepository: GitRepositoryIdentity?
+    private var activeToken: GitProviderToken?
 
     init(
         providerAccountController: GitProviderAccountController,
@@ -52,6 +59,18 @@ final class PullRequestController: ObservableObject {
         self.openURL = openURL
     }
 
+    var visibleItems: [PullRequestSummary] {
+        items.filter { item in
+            stateFilter.includes(item.state)
+                && (!createdByMeOnly || item.author.username == selectedProviderAccountUsername)
+        }
+    }
+
+    var selectedProviderAccountUsername: String? {
+        guard let selectedProviderAccountID else { return nil }
+        return providerAccountController.accounts.first { $0.id == selectedProviderAccountID }?.username
+    }
+
     func loadPullRequests(repositoryURL: URL) async {
         guard let remoteURLString = await remoteURLProvider(repositoryURL) else {
             items = []
@@ -69,6 +88,8 @@ final class PullRequestController: ObservableObject {
         guard let remoteIdentity = GitRemoteIdentityResolver.identity(from: remoteURLString) else {
             items = []
             selectedProviderAccountID = nil
+            activeRepository = nil
+            activeToken = nil
             errorMessage = PullRequestProviderError.unsupportedProvider.localizedDescription
             return
         }
@@ -83,6 +104,8 @@ final class PullRequestController: ObservableObject {
         guard let account = matchingAccount(for: repository) else {
             items = []
             selectedProviderAccountID = nil
+            activeRepository = nil
+            activeToken = nil
             errorMessage = "Connect Account..."
             return
         }
@@ -92,6 +115,8 @@ final class PullRequestController: ObservableObject {
         do {
             guard let storedToken = try tokenVault.readToken(for: account) else {
                 items = []
+                activeRepository = nil
+                activeToken = nil
                 errorMessage = "Reconnect..."
                 return
             }
@@ -104,12 +129,16 @@ final class PullRequestController: ObservableObject {
 
         guard let service = services[repository.provider] else {
             items = []
+            activeRepository = nil
+            activeToken = nil
             errorMessage = PullRequestProviderError.unsupportedProvider.localizedDescription
             return
         }
 
         do {
             items = try await service.listPullRequests(repository: repository, token: token)
+            activeRepository = repository
+            activeToken = token
             errorMessage = nil
         } catch let error as PullRequestProviderError {
             items = []
@@ -122,6 +151,37 @@ final class PullRequestController: ObservableObject {
 
     func openInBrowser(_ summary: PullRequestSummary) {
         _ = openURL(summary.webURL)
+    }
+
+    func loadPullRequestDetail(_ summary: PullRequestSummary) async {
+        guard let repository = activeRepository,
+              let token = activeToken,
+              let service = services[repository.provider] else {
+            detailErrorMessage = "Pull request details are unavailable."
+            return
+        }
+
+        isLoadingDetail = true
+        detailErrorMessage = nil
+        defer { isLoadingDetail = false }
+
+        do {
+            selectedDetail = try await service.pullRequestDetail(
+                repository: repository,
+                token: token,
+                number: summary.number
+            )
+        } catch {
+            detailErrorMessage = error.localizedDescription
+        }
+    }
+
+    func clearSelectedDetail() {
+        selectedDetail = nil
+    }
+
+    func openChangesInBrowser(_ detail: PullRequestDetail) {
+        _ = openURL(detail.changesURL)
     }
 
     private func matchingAccount(for repository: GitRepositoryIdentity) -> GitProviderAccount? {

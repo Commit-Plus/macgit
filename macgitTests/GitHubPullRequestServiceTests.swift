@@ -30,7 +30,9 @@ final class GitHubPullRequestServiceTests: XCTestCase {
                 "state": "open",
                 "draft": false,
                 "html_url": "https://github.com/octocat/Hello-World/pull/12",
+                "created_at": "2026-07-01T09:10:11Z",
                 "updated_at": "2026-07-06T10:11:12Z",
+                "merged_at": null,
                 "user": {
                   "login": "octocat",
                   "avatar_url": "https://avatars.githubusercontent.com/u/1"
@@ -47,7 +49,9 @@ final class GitHubPullRequestServiceTests: XCTestCase {
                 }
               }
             ]
-            """)
+            """),
+            .json(statusCode: 200, body: #"{"state":"success","total_count":2}"#),
+            .json(statusCode: 200, body: #"{"mergeable":true}"#)
         ])
         let service = GitHubPullRequestService(httpClient: client)
 
@@ -59,7 +63,7 @@ final class GitHubPullRequestServiceTests: XCTestCase {
         let request = try XCTUnwrap(client.requests.first)
         XCTAssertEqual(
             request.url?.absoluteString,
-            "https://api.github.com/repos/octocat/Hello-World/pulls?state=open"
+            "https://api.github.com/repos/octocat/Hello-World/pulls?state=all"
         )
         XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/vnd.github+json")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret-token")
@@ -72,7 +76,177 @@ final class GitHubPullRequestServiceTests: XCTestCase {
         XCTAssertEqual(pullRequests[0].source.ref, "feature/pr-read")
         XCTAssertEqual(pullRequests[0].target.ref, "main")
         XCTAssertEqual(pullRequests[0].webURL.absoluteString, "https://github.com/octocat/Hello-World/pull/12")
+        XCTAssertEqual(pullRequests[0].createdAt, ISO8601DateFormatter().date(from: "2026-07-01T09:10:11Z"))
         XCTAssertEqual(pullRequests[0].updatedAt, ISO8601DateFormatter().date(from: "2026-07-06T10:11:12Z"))
+        XCTAssertEqual(pullRequests[0].checkState, .success)
+        XCTAssertEqual(pullRequests[0].mergeReadiness, .ready)
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            [
+                "https://api.github.com/repos/octocat/Hello-World/pulls?state=all",
+                "https://api.github.com/repos/octocat/Hello-World/commits/abc123/status",
+                "https://api.github.com/repos/octocat/Hello-World/pulls/12",
+            ]
+        )
+    }
+
+    func testClosedMergedGitHubPRDecodesAsMergedState() async throws {
+        let client = StubPullRequestHTTPClient(responses: [
+            .json(statusCode: 200, body: """
+            [
+              {
+                "number": 14,
+                "title": "Merged pull request",
+                "state": "closed",
+                "draft": false,
+                "html_url": "https://github.com/octocat/Hello-World/pull/14",
+                "created_at": "2026-07-01T09:10:11Z",
+                "updated_at": "2026-07-06T10:11:12Z",
+                "merged_at": "2026-07-06T10:11:12Z",
+                "user": { "login": "octocat", "avatar_url": null },
+                "head": { "label": "octocat:merged", "ref": "merged", "sha": null },
+                "base": { "label": "octocat:main", "ref": "main", "sha": "def456" }
+              }
+            ]
+            """)
+        ])
+        let service = GitHubPullRequestService(httpClient: client)
+
+        let pullRequests = try await service.listPullRequests(
+            repository: makeRepository(),
+            token: makeToken()
+        )
+
+        XCTAssertEqual(pullRequests[0].state, .merged)
+        XCTAssertEqual(pullRequests[0].mergedAt, ISO8601DateFormatter().date(from: "2026-07-06T10:11:12Z"))
+    }
+
+    func testCheckRunsProvideBuildStateWhenCommitStatusesAreEmpty() async throws {
+        let client = StubPullRequestHTTPClient(responses: [
+            .json(statusCode: 200, body: """
+            [
+              {
+                "number": 15,
+                "title": "GitHub Actions pull request",
+                "state": "open",
+                "draft": false,
+                "html_url": "https://github.com/octocat/Hello-World/pull/15",
+                "created_at": "2026-07-01T09:10:11Z",
+                "updated_at": "2026-07-06T10:11:12Z",
+                "merged_at": null,
+                "user": { "login": "octocat", "avatar_url": null },
+                "head": { "label": "octocat:checks", "ref": "checks", "sha": "fed789" },
+                "base": { "label": "octocat:main", "ref": "main", "sha": "def456" }
+              }
+            ]
+            """),
+            .json(statusCode: 200, body: #"{"state":"pending","total_count":0}"#),
+            .json(statusCode: 200, body: #"{"total_count":1,"check_runs":[{"status":"completed","conclusion":"failure"}]}"#),
+            .json(statusCode: 200, body: #"{"mergeable":false}"#)
+        ])
+        let service = GitHubPullRequestService(httpClient: client)
+
+        let pullRequests = try await service.listPullRequests(
+            repository: makeRepository(),
+            token: makeToken()
+        )
+
+        XCTAssertEqual(pullRequests[0].checkState, .failure)
+        XCTAssertEqual(pullRequests[0].mergeReadiness, .blocked)
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            [
+                "https://api.github.com/repos/octocat/Hello-World/pulls?state=all",
+                "https://api.github.com/repos/octocat/Hello-World/commits/fed789/status",
+                "https://api.github.com/repos/octocat/Hello-World/commits/fed789/check-runs",
+                "https://api.github.com/repos/octocat/Hello-World/pulls/15",
+            ]
+        )
+    }
+
+    func testPullRequestDetailDecodesBodyAssigneesCommentsAndChangesURL() async throws {
+        let client = StubPullRequestHTTPClient(responses: [
+            .json(statusCode: 200, body: """
+            {
+              "number": 12,
+              "title": "Add provider-backed pull request read",
+              "state": "open",
+              "draft": false,
+              "html_url": "https://github.com/octocat/Hello-World/pull/12",
+              "body": "Adds the pull request list and detail view.",
+              "created_at": "2026-07-01T09:10:11Z",
+              "updated_at": "2026-07-06T10:11:12Z",
+              "merged_at": null,
+              "user": { "login": "octocat", "avatar_url": null },
+              "head": { "label": "octocat:feature/pr-read", "ref": "feature/pr-read", "sha": "abc123" },
+              "base": { "label": "octocat:main", "ref": "main", "sha": "def456" },
+              "assignees": [
+                { "login": "teammate", "avatar_url": "https://avatars.githubusercontent.com/u/2" }
+              ]
+            }
+            """),
+            .json(statusCode: 200, body: """
+            [
+              {
+                "id": 4646369306,
+                "body": "Please update this section.",
+                "submitted_at": "2026-07-06T11:30:00Z",
+                "html_url": "https://github.com/octocat/Hello-World/pull/12#pullrequestreview-4646369306",
+                "user": { "login": "reviewer", "avatar_url": null }
+              }
+            ]
+            """),
+            .json(statusCode: 200, body: """
+            [
+              {
+                "id": 202,
+                "body": "Inline note on the implementation.",
+                "created_at": "2026-07-06T11:45:00Z",
+                "updated_at": "2026-07-06T11:45:00Z",
+                "html_url": "https://github.com/octocat/Hello-World/pull/12#discussion_r202",
+                "user": { "login": "reviewer", "avatar_url": null }
+              }
+            ]
+            """),
+            .json(statusCode: 200, body: """
+            [
+              {
+                "id": 101,
+                "body": "Looks good to me.",
+                "created_at": "2026-07-06T11:00:00Z",
+                "updated_at": "2026-07-06T11:00:00Z",
+                "html_url": "https://github.com/octocat/Hello-World/pull/12#issuecomment-101",
+                "user": { "login": "reviewer", "avatar_url": null }
+              }
+            ]
+            """)
+        ])
+        let service = GitHubPullRequestService(httpClient: client)
+
+        let detail = try await service.pullRequestDetail(
+            repository: makeRepository(),
+            token: makeToken(),
+            number: 12
+        )
+
+        XCTAssertEqual(detail.summary.number, 12)
+        XCTAssertEqual(detail.body, "Adds the pull request list and detail view.")
+        XCTAssertEqual(detail.assignees.map(\.username), ["teammate"])
+        XCTAssertEqual(detail.comments.map(\.body), [
+            "Looks good to me.",
+            "Please update this section.",
+            "Inline note on the implementation.",
+        ])
+        XCTAssertEqual(detail.changesURL.absoluteString, "https://github.com/octocat/Hello-World/pull/12/files")
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            [
+                "https://api.github.com/repos/octocat/Hello-World/pulls/12",
+                "https://api.github.com/repos/octocat/Hello-World/issues/12/comments",
+                "https://api.github.com/repos/octocat/Hello-World/pulls/12/reviews",
+                "https://api.github.com/repos/octocat/Hello-World/pulls/12/comments",
+            ]
+        )
     }
 
     func testDraftGitHubPRDecodesAsDraftState() async throws {
@@ -85,7 +259,9 @@ final class GitHubPullRequestServiceTests: XCTestCase {
                 "state": "open",
                 "draft": true,
                 "html_url": "https://github.com/octocat/Hello-World/pull/13",
+                "created_at": "2026-07-01T09:10:11Z",
                 "updated_at": "2026-07-06T10:11:12Z",
+                "merged_at": null,
                 "user": { "login": "octocat", "avatar_url": null },
                 "head": { "label": "octocat:draft", "ref": "draft", "sha": null },
                 "base": { "label": "octocat:main", "ref": "main", "sha": "def456" }

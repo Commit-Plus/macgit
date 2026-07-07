@@ -29,6 +29,7 @@ final class PullRequestModelsTests: XCTestCase {
             source: PullRequestBranchRef(label: "octocat:feature", ref: "feature", sha: "abc123"),
             target: PullRequestBranchRef(label: "octocat:main", ref: "main", sha: "def456"),
             webURL: try XCTUnwrap(URL(string: "https://github.com/octocat/Hello-World/pull/42")),
+            createdAt: Date(timeIntervalSince1970: 1_779_900_000),
             updatedAt: Date(timeIntervalSince1970: 1_780_000_000)
         )
 
@@ -66,5 +67,11 @@ final class PullRequestModelsTests: XCTestCase {
             repository.browserURL?.absoluteString,
             "https://github.com/octocat/Hello-World"
         )
+    }
+
+    func testClosedPullRequestFilterIncludesMergedPullRequests() {
+        XCTAssertTrue(PullRequestListFilter.closed.includes(.closed))
+        XCTAssertTrue(PullRequestListFilter.closed.includes(.merged))
+        XCTAssertFalse(PullRequestListFilter.closed.includes(.open))
     }
 }

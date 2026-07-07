@@ -25,6 +25,40 @@ enum PullRequestState: String, Codable, Equatable {
     case draft
 }
 
+enum PullRequestListFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case open = "Open"
+    case closed = "Closed"
+
+    var id: String { rawValue }
+
+    func includes(_ state: PullRequestState) -> Bool {
+        switch self {
+        case .all:
+            return true
+        case .open:
+            return state == .open || state == .draft
+        case .closed:
+            return state == .closed || state == .merged
+        }
+    }
+}
+
+enum PullRequestCheckState: String, Codable, Equatable {
+    case unknown
+    case noChecks
+    case pending
+    case success
+    case failure
+    case error
+}
+
+enum PullRequestMergeReadiness: String, Codable, Equatable {
+    case unknown
+    case ready
+    case blocked
+}
+
 struct PullRequestAuthor: Equatable, Codable {
     var username: String
     var avatarURL: URL?
@@ -45,7 +79,57 @@ struct PullRequestSummary: Identifiable, Equatable, Codable {
     var source: PullRequestBranchRef
     var target: PullRequestBranchRef
     var webURL: URL
+    var createdAt: Date
     var updatedAt: Date
+    var mergedAt: Date?
+    var checkState: PullRequestCheckState
+    var mergeReadiness: PullRequestMergeReadiness
+
+    init(
+        number: Int,
+        title: String,
+        state: PullRequestState,
+        author: PullRequestAuthor,
+        source: PullRequestBranchRef,
+        target: PullRequestBranchRef,
+        webURL: URL,
+        createdAt: Date? = nil,
+        updatedAt: Date,
+        mergedAt: Date? = nil,
+        checkState: PullRequestCheckState = .unknown,
+        mergeReadiness: PullRequestMergeReadiness = .unknown
+    ) {
+        self.number = number
+        self.title = title
+        self.state = state
+        self.author = author
+        self.source = source
+        self.target = target
+        self.webURL = webURL
+        self.createdAt = createdAt ?? updatedAt
+        self.updatedAt = updatedAt
+        self.mergedAt = mergedAt
+        self.checkState = checkState
+        self.mergeReadiness = mergeReadiness
+    }
+}
+
+struct PullRequestComment: Identifiable, Equatable, Codable {
+    var id: Int
+    var author: PullRequestAuthor
+    var body: String
+    var webURL: URL
+    var createdAt: Date
+    var updatedAt: Date
+}
+
+struct PullRequestDetail: Identifiable, Equatable, Codable {
+    var id: Int { summary.id }
+    var summary: PullRequestSummary
+    var body: String
+    var assignees: [PullRequestAuthor]
+    var comments: [PullRequestComment]
+    var changesURL: URL
 }
 
 enum PullRequestDraftValidationError: LocalizedError, Equatable {

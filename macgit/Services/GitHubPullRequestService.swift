@@ -50,23 +50,232 @@ struct GitHubPullRequestService: PullRequestProviding {
                 .appendingPathComponent("pulls"),
             resolvingAgainstBaseURL: false
         )
-        components?.queryItems = [URLQueryItem(name: "state", value: "open")]
+        components?.queryItems = [URLQueryItem(name: "state", value: "all")]
         guard let url = components?.url else {
             throw PullRequestProviderError.repositoryUnavailable
         }
 
-        var request = URLRequest(url: url)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("Bearer \(token.accessToken)", forHTTPHeaderField: "Authorization")
+        let request = makeRequest(url: url, token: token)
 
         let (data, response) = try await httpClient.data(for: request)
         try validate(response: response, data: data)
         do {
-            return try decoder.decode([GitHubPullRequestResponse].self, from: data)
-                .map(\.summary)
+            let responses = try decoder.decode([GitHubPullRequestResponse].self, from: data)
+            var summaries: [PullRequestSummary] = []
+            for response in responses {
+                summaries.append(await enrichedSummary(
+                    response.summary,
+                    repository: repository,
+                    token: token
+                ))
+            }
+            return summaries
         } catch {
             throw PullRequestProviderError.providerMessage("GitHub returned an invalid pull request response.")
         }
+    }
+
+    func pullRequestDetail(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken,
+        number: Int
+    ) async throws -> PullRequestDetail {
+        guard repository.provider == .github else {
+            throw PullRequestProviderError.unsupportedProvider
+        }
+
+        let detailURL = apiBaseURL
+            .appendingPathComponent("repos")
+            .appendingPathComponent(repository.owner)
+            .appendingPathComponent(repository.name)
+            .appendingPathComponent("pulls")
+            .appendingPathComponent(String(number))
+        let (detailData, detailResponse) = try await httpClient.data(for: makeRequest(url: detailURL, token: token))
+        try validate(response: detailResponse, data: detailData)
+
+        do {
+            let response = try decoder.decode(GitHubPullRequestDetailPayload.self, from: detailData)
+            return PullRequestDetail(
+                summary: response.summary,
+                body: response.body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                assignees: response.assignees.map(\.author),
+                comments: try await pullRequestComments(repository: repository, token: token, number: number),
+                changesURL: response.changesURL
+            )
+        } catch let error as PullRequestProviderError {
+            throw error
+        } catch {
+            throw PullRequestProviderError.providerMessage("GitHub returned an invalid pull request detail response.")
+        }
+    }
+
+    private func issueComments(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken,
+        number: Int
+    ) async throws -> [PullRequestComment] {
+        let commentsURL = apiBaseURL
+            .appendingPathComponent("repos")
+            .appendingPathComponent(repository.owner)
+            .appendingPathComponent(repository.name)
+            .appendingPathComponent("issues")
+            .appendingPathComponent(String(number))
+            .appendingPathComponent("comments")
+        let (data, response) = try await httpClient.data(for: makeRequest(url: commentsURL, token: token))
+        try validate(response: response, data: data)
+        return try decoder.decode([GitHubIssueCommentResponse].self, from: data)
+            .map(\.comment)
+    }
+
+    private func pullRequestComments(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken,
+        number: Int
+    ) async throws -> [PullRequestComment] {
+        var comments = try await issueComments(repository: repository, token: token, number: number)
+        comments.append(contentsOf: try await pullRequestReviews(repository: repository, token: token, number: number))
+        comments.append(contentsOf: try await pullRequestReviewComments(repository: repository, token: token, number: number))
+        return comments.sorted { lhs, rhs in
+            lhs.createdAt < rhs.createdAt
+        }
+    }
+
+    private func pullRequestReviews(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken,
+        number: Int
+    ) async throws -> [PullRequestComment] {
+        let reviewsURL = apiBaseURL
+            .appendingPathComponent("repos")
+            .appendingPathComponent(repository.owner)
+            .appendingPathComponent(repository.name)
+            .appendingPathComponent("pulls")
+            .appendingPathComponent(String(number))
+            .appendingPathComponent("reviews")
+        let (data, response) = try await httpClient.data(for: makeRequest(url: reviewsURL, token: token))
+        try validate(response: response, data: data)
+        return try decoder.decode([GitHubPullRequestReviewResponse].self, from: data)
+            .compactMap(\.comment)
+    }
+
+    private func pullRequestReviewComments(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken,
+        number: Int
+    ) async throws -> [PullRequestComment] {
+        let commentsURL = apiBaseURL
+            .appendingPathComponent("repos")
+            .appendingPathComponent(repository.owner)
+            .appendingPathComponent(repository.name)
+            .appendingPathComponent("pulls")
+            .appendingPathComponent(String(number))
+            .appendingPathComponent("comments")
+        let (data, response) = try await httpClient.data(for: makeRequest(url: commentsURL, token: token))
+        try validate(response: response, data: data)
+        return try decoder.decode([GitHubReviewCommentResponse].self, from: data)
+            .map(\.comment)
+    }
+
+    private func enrichedSummary(
+        _ summary: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async -> PullRequestSummary {
+        var enriched = summary
+        enriched.checkState = await checkState(
+            for: summary,
+            repository: repository,
+            token: token
+        )
+        enriched.mergeReadiness = await mergeReadiness(
+            for: summary,
+            repository: repository,
+            token: token
+        )
+        return enriched
+    }
+
+    private func checkState(
+        for summary: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async -> PullRequestCheckState {
+        guard let sha = summary.source.sha, !sha.isEmpty else {
+            return .unknown
+        }
+        let url = apiBaseURL
+            .appendingPathComponent("repos")
+            .appendingPathComponent(repository.owner)
+            .appendingPathComponent(repository.name)
+            .appendingPathComponent("commits")
+            .appendingPathComponent(sha)
+            .appendingPathComponent("status")
+        do {
+            let (data, response) = try await httpClient.data(for: makeRequest(url: url, token: token))
+            guard (200..<300).contains(response.statusCode) else { return .unknown }
+            let status = try decoder.decode(GitHubCombinedStatusResponse.self, from: data)
+            guard status.totalCount > 0 else {
+                return await checkRunState(sha: sha, repository: repository, token: token)
+            }
+            return PullRequestCheckState(githubStatus: status.state)
+        } catch {
+            return .unknown
+        }
+    }
+
+    private func checkRunState(
+        sha: String,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async -> PullRequestCheckState {
+        let url = apiBaseURL
+            .appendingPathComponent("repos")
+            .appendingPathComponent(repository.owner)
+            .appendingPathComponent(repository.name)
+            .appendingPathComponent("commits")
+            .appendingPathComponent(sha)
+            .appendingPathComponent("check-runs")
+        do {
+            let (data, response) = try await httpClient.data(for: makeRequest(url: url, token: token))
+            guard (200..<300).contains(response.statusCode) else { return .unknown }
+            let checkRuns = try decoder.decode(GitHubCheckRunsResponse.self, from: data)
+            guard checkRuns.totalCount > 0 else { return .noChecks }
+            return PullRequestCheckState(checkRuns: checkRuns.checkRuns)
+        } catch {
+            return .unknown
+        }
+    }
+
+    private func mergeReadiness(
+        for summary: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async -> PullRequestMergeReadiness {
+        guard summary.state == .open else {
+            return .unknown
+        }
+        let url = apiBaseURL
+            .appendingPathComponent("repos")
+            .appendingPathComponent(repository.owner)
+            .appendingPathComponent(repository.name)
+            .appendingPathComponent("pulls")
+            .appendingPathComponent(String(summary.number))
+        do {
+            let (data, response) = try await httpClient.data(for: makeRequest(url: url, token: token))
+            guard (200..<300).contains(response.statusCode) else { return .unknown }
+            let detail = try decoder.decode(GitHubPullRequestDetailResponse.self, from: data)
+            guard let mergeable = detail.mergeable else { return .unknown }
+            return mergeable ? .ready : .blocked
+        } catch {
+            return .unknown
+        }
+    }
+
+    private func makeRequest(url: URL, token: GitProviderToken) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token.accessToken)", forHTTPHeaderField: "Authorization")
+        return request
     }
 
     private func validate(response: HTTPURLResponse, data: Data) throws {
@@ -93,7 +302,9 @@ private struct GitHubPullRequestResponse: Decodable {
     var state: String
     var draft: Bool
     var htmlURL: URL
+    var createdAt: Date
     var updatedAt: Date
+    var mergedAt: Date?
     var user: User
     var head: Branch
     var base: Branch
@@ -107,7 +318,9 @@ private struct GitHubPullRequestResponse: Decodable {
             source: head.summaryRef,
             target: base.summaryRef,
             webURL: htmlURL,
-            updatedAt: updatedAt
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            mergedAt: mergedAt
         )
     }
 
@@ -116,6 +329,8 @@ private struct GitHubPullRequestResponse: Decodable {
             return .draft
         }
         switch state {
+        case "closed" where mergedAt != nil:
+            return .merged
         case "closed":
             return .closed
         default:
@@ -129,7 +344,9 @@ private struct GitHubPullRequestResponse: Decodable {
         case state
         case draft
         case htmlURL = "html_url"
+        case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case mergedAt = "merged_at"
         case user
         case head
         case base
@@ -138,6 +355,10 @@ private struct GitHubPullRequestResponse: Decodable {
     struct User: Decodable {
         var login: String
         var avatarURL: URL?
+
+        var author: PullRequestAuthor {
+            PullRequestAuthor(username: login, avatarURL: avatarURL)
+        }
 
         private enum CodingKeys: String, CodingKey {
             case login
@@ -156,6 +377,189 @@ private struct GitHubPullRequestResponse: Decodable {
     }
 }
 
+private struct GitHubPullRequestDetailPayload: Decodable {
+    var pullRequest: GitHubPullRequestResponse
+    var body: String?
+    var assignees: [GitHubPullRequestResponse.User]
+
+    var summary: PullRequestSummary {
+        pullRequest.summary
+    }
+
+    var changesURL: URL {
+        pullRequest.htmlURL.appendingPathComponent("files")
+    }
+
+    init(from decoder: Decoder) throws {
+        pullRequest = try GitHubPullRequestResponse(from: decoder)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        body = try container.decodeIfPresent(String.self, forKey: .body)
+        assignees = try container.decodeIfPresent([GitHubPullRequestResponse.User].self, forKey: .assignees) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case body
+        case assignees
+    }
+}
+
+private struct GitHubIssueCommentResponse: Decodable {
+    var id: Int
+    var body: String
+    var htmlURL: URL
+    var createdAt: Date
+    var updatedAt: Date
+    var user: GitHubPullRequestResponse.User
+
+    var comment: PullRequestComment {
+        PullRequestComment(
+            id: id,
+            author: user.author,
+            body: body,
+            webURL: htmlURL,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case body
+        case htmlURL = "html_url"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case user
+    }
+}
+
+private struct GitHubPullRequestReviewResponse: Decodable {
+    var id: Int
+    var body: String?
+    var htmlURL: URL
+    var submittedAt: Date?
+    var user: GitHubPullRequestResponse.User
+
+    var comment: PullRequestComment? {
+        guard let submittedAt,
+              let body = body?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !body.isEmpty else {
+            return nil
+        }
+        return PullRequestComment(
+            id: id,
+            author: user.author,
+            body: body,
+            webURL: htmlURL,
+            createdAt: submittedAt,
+            updatedAt: submittedAt
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case body
+        case htmlURL = "html_url"
+        case submittedAt = "submitted_at"
+        case user
+    }
+}
+
+private struct GitHubReviewCommentResponse: Decodable {
+    var id: Int
+    var body: String
+    var htmlURL: URL
+    var createdAt: Date
+    var updatedAt: Date
+    var user: GitHubPullRequestResponse.User
+
+    var comment: PullRequestComment {
+        PullRequestComment(
+            id: id,
+            author: user.author,
+            body: body,
+            webURL: htmlURL,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case body
+        case htmlURL = "html_url"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case user
+    }
+}
+
 private struct GitHubErrorResponse: Decodable {
     var message: String
+}
+
+private struct GitHubCombinedStatusResponse: Decodable {
+    var state: String
+    var totalCount: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case totalCount = "total_count"
+    }
+}
+
+private struct GitHubPullRequestDetailResponse: Decodable {
+    var mergeable: Bool?
+}
+
+private struct GitHubCheckRunsResponse: Decodable {
+    var totalCount: Int
+    var checkRuns: [CheckRun]
+
+    private enum CodingKeys: String, CodingKey {
+        case totalCount = "total_count"
+        case checkRuns = "check_runs"
+    }
+
+    struct CheckRun: Decodable {
+        var status: String
+        var conclusion: String?
+    }
+}
+
+private extension PullRequestCheckState {
+    init(githubStatus: String) {
+        switch githubStatus {
+        case "success":
+            self = .success
+        case "pending":
+            self = .pending
+        case "failure":
+            self = .failure
+        case "error":
+            self = .error
+        default:
+            self = .unknown
+        }
+    }
+}
+
+private extension PullRequestCheckState {
+    init(checkRuns: [GitHubCheckRunsResponse.CheckRun]) {
+        if checkRuns.contains(where: { $0.status != "completed" }) {
+            self = .pending
+            return
+        }
+        if checkRuns.contains(where: { run in
+            switch run.conclusion {
+            case "failure", "cancelled", "timed_out", "action_required":
+                return true
+            default:
+                return false
+            }
+        }) {
+            self = .failure
+            return
+        }
+        self = .success
+    }
 }

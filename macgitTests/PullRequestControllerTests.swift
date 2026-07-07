@@ -122,6 +122,101 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(openedURL?.absoluteString, "https://github.com/octocat/Hello-World/pull/12")
     }
 
+    func testVisibleItemsApplyStateAndCreatedByMeFilters() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let service = FakePullRequestProvider(result: .success([
+            makeSummary(number: 12, state: .open, author: "octocat"),
+            makeSummary(number: 13, state: .merged, author: "teammate"),
+            makeSummary(number: 14, state: .closed, author: "octocat"),
+        ]))
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "https://github.com/octocat/Hello-World.git")
+        controller.stateFilter = .closed
+        controller.createdByMeOnly = true
+
+        XCTAssertEqual(controller.visibleItems.map(\.number), [14])
+    }
+
+    func testLoadPullRequestDetailPublishesSelectedDetail() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let detail = PullRequestDetail(
+            summary: makeSummary(),
+            body: "Adds pull request detail.",
+            assignees: [PullRequestAuthor(username: "teammate", avatarURL: nil)],
+            comments: [],
+            changesURL: URL(string: "https://github.com/octocat/Hello-World/pull/12/files")!
+        )
+        let service = FakePullRequestProvider(
+            result: .success([makeSummary()]),
+            detailResult: .success(detail)
+        )
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "https://github.com/octocat/Hello-World.git")
+        await controller.loadPullRequestDetail(makeSummary())
+
+        XCTAssertEqual(controller.selectedDetail, detail)
+        XCTAssertEqual(service.receivedDetailNumber, 12)
+    }
+
+    func testOpenChangesInBrowserUsesDetailChangesURL() {
+        var openedURL: URL?
+        let controller = PullRequestController(
+            providerAccountController: GitProviderAccountController(
+                store: FakePullRequestAccountStore(accounts: []),
+                tokenVault: FakePullRequestTokenVault()
+            ),
+            tokenVault: FakePullRequestTokenVault(),
+            services: [:],
+            openURL: { url in
+                openedURL = url
+                return true
+            }
+        )
+        let detail = PullRequestDetail(
+            summary: makeSummary(),
+            body: "",
+            assignees: [],
+            comments: [],
+            changesURL: URL(string: "https://github.com/octocat/Hello-World/pull/12/files")!
+        )
+
+        controller.openChangesInBrowser(detail)
+
+        XCTAssertEqual(openedURL?.absoluteString, "https://github.com/octocat/Hello-World/pull/12/files")
+    }
+
     private func makeAccount() -> GitProviderAccount {
         GitProviderAccount(
             id: "macgit-user-1:github:github.com:583231",
@@ -149,15 +244,20 @@ final class PullRequestControllerTests: XCTestCase {
         )
     }
 
-    private func makeSummary() -> PullRequestSummary {
+    private func makeSummary(
+        number: Int = 12,
+        state: PullRequestState = .open,
+        author: String = "octocat"
+    ) -> PullRequestSummary {
         PullRequestSummary(
-            number: 12,
+            number: number,
             title: "Add provider-backed pull request read",
-            state: .open,
-            author: PullRequestAuthor(username: "octocat", avatarURL: nil),
+            state: state,
+            author: PullRequestAuthor(username: author, avatarURL: nil),
             source: PullRequestBranchRef(label: "octocat:feature", ref: "feature", sha: "abc123"),
             target: PullRequestBranchRef(label: "octocat:main", ref: "main", sha: "def456"),
-            webURL: URL(string: "https://github.com/octocat/Hello-World/pull/12")!,
+            webURL: URL(string: "https://github.com/octocat/Hello-World/pull/\(number)")!,
+            createdAt: Date(timeIntervalSince1970: 1_779_900_000),
             updatedAt: Date(timeIntervalSince1970: 1_780_000_000)
         )
     }
@@ -206,11 +306,17 @@ private final class FakePullRequestTokenVault: GitProviderTokenVault {
 
 private final class FakePullRequestProvider: PullRequestProviding {
     private let result: Result<[PullRequestSummary], PullRequestProviderError>
+    private let detailResult: Result<PullRequestDetail, PullRequestProviderError>
     private(set) var receivedRepository: GitRepositoryIdentity?
     private(set) var receivedToken: GitProviderToken?
+    private(set) var receivedDetailNumber: Int?
 
-    init(result: Result<[PullRequestSummary], PullRequestProviderError> = .success([])) {
+    init(
+        result: Result<[PullRequestSummary], PullRequestProviderError> = .success([]),
+        detailResult: Result<PullRequestDetail, PullRequestProviderError> = .failure(.providerMessage("No detail"))
+    ) {
         self.result = result
+        self.detailResult = detailResult
     }
 
     func listPullRequests(
@@ -220,5 +326,16 @@ private final class FakePullRequestProvider: PullRequestProviding {
         receivedRepository = repository
         receivedToken = token
         return try result.get()
+    }
+
+    func pullRequestDetail(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken,
+        number: Int
+    ) async throws -> PullRequestDetail {
+        receivedRepository = repository
+        receivedToken = token
+        receivedDetailNumber = number
+        return try detailResult.get()
     }
 }
