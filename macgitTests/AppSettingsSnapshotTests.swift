@@ -24,7 +24,13 @@ final class AppSettingsSnapshotTests: XCTestCase {
         let value = AppSettingsSnapshot(
             showToolbarButtonText: false,
             showSubmodules: true,
-            showSubtrees: true
+            showSubtrees: true,
+            showHeaderBranchButton: false,
+            showHeaderMergeButton: true,
+            showHeaderStashButton: false,
+            showHeaderRemoteButton: true,
+            showHeaderFinderButton: false,
+            showHeaderTerminalButton: true
         )
 
         let data = try JSONEncoder().encode(value)
@@ -34,7 +40,18 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertEqual(decoded.schemaVersion, 1)
         XCTAssertEqual(
             Set(try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any]).keys),
-            ["schemaVersion", "showToolbarButtonText", "showSubmodules", "showSubtrees"]
+            [
+                "schemaVersion",
+                "showToolbarButtonText",
+                "showSubmodules",
+                "showSubtrees",
+                "showHeaderBranchButton",
+                "showHeaderMergeButton",
+                "showHeaderStashButton",
+                "showHeaderRemoteButton",
+                "showHeaderFinderButton",
+                "showHeaderTerminalButton"
+            ]
         )
     }
 
@@ -50,7 +67,13 @@ final class AppSettingsSnapshotTests: XCTestCase {
             AppSettingsSnapshot(
                 showToolbarButtonText: false,
                 showSubmodules: true,
-                showSubtrees: true
+                showSubtrees: true,
+                showHeaderBranchButton: true,
+                showHeaderMergeButton: true,
+                showHeaderStashButton: true,
+                showHeaderRemoteButton: true,
+                showHeaderFinderButton: true,
+                showHeaderTerminalButton: true
             )
         )
 
@@ -59,7 +82,13 @@ final class AppSettingsSnapshotTests: XCTestCase {
             AppSettingsSnapshot(
                 showToolbarButtonText: false,
                 showSubmodules: true,
-                showSubtrees: true
+                showSubtrees: true,
+                showHeaderBranchButton: true,
+                showHeaderMergeButton: true,
+                showHeaderStashButton: true,
+                showHeaderRemoteButton: true,
+                showHeaderFinderButton: true,
+                showHeaderTerminalButton: true
             )
         )
         XCTAssertTrue(state.hasOpenRepository)

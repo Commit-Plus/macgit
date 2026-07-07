@@ -23,15 +23,33 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
     var showToolbarButtonText: Bool
     var showSubmodules: Bool
     var showSubtrees: Bool
+    var showHeaderBranchButton: Bool
+    var showHeaderMergeButton: Bool
+    var showHeaderStashButton: Bool
+    var showHeaderRemoteButton: Bool
+    var showHeaderFinderButton: Bool
+    var showHeaderTerminalButton: Bool
 
     init(
         showToolbarButtonText: Bool,
         showSubmodules: Bool,
-        showSubtrees: Bool
+        showSubtrees: Bool,
+        showHeaderBranchButton: Bool = true,
+        showHeaderMergeButton: Bool = true,
+        showHeaderStashButton: Bool = true,
+        showHeaderRemoteButton: Bool = true,
+        showHeaderFinderButton: Bool = true,
+        showHeaderTerminalButton: Bool = true
     ) {
         schemaVersion = 1
         self.showToolbarButtonText = showToolbarButtonText
         self.showSubmodules = showSubmodules
         self.showSubtrees = showSubtrees
+        self.showHeaderBranchButton = showHeaderBranchButton
+        self.showHeaderMergeButton = showHeaderMergeButton
+        self.showHeaderStashButton = showHeaderStashButton
+        self.showHeaderRemoteButton = showHeaderRemoteButton
+        self.showHeaderFinderButton = showHeaderFinderButton
+        self.showHeaderTerminalButton = showHeaderTerminalButton
     }
 }
