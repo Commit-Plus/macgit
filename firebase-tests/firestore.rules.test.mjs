@@ -33,6 +33,10 @@ function entitlement(uid, context) {
   return doc(context.firestore(), `entitlements/${uid}`);
 }
 
+function gitProviderAccount(uid, connectionID, context) {
+  return doc(context.firestore(), `users/${uid}/gitProviderAccounts/${connectionID}`);
+}
+
 function validSettings() {
   return {
     schemaVersion: 1,
@@ -40,6 +44,23 @@ function validSettings() {
     showSubmodules: false,
     showSubtrees: true,
     updatedAt: serverTimestamp(),
+  };
+}
+
+function validGitProviderAccount() {
+  return {
+    schemaVersion: 1,
+    provider: "github",
+    hostURL: "https://github.com",
+    providerUserID: "583231",
+    username: "octocat",
+    displayName: "The Octocat",
+    avatarURL: "https://avatars.githubusercontent.com/u/583231",
+    scopes: ["repo", "read:user"],
+    permissions: {},
+    tokenStatus: "valid",
+    connectedAt: serverTimestamp(),
+    lastValidatedAt: serverTimestamp(),
   };
 }
 
@@ -100,6 +121,34 @@ describe("Firestore ownership rules", () => {
 
     await assertSucceeds(getDoc(entitlement("user-a", userA)));
     await assertFails(getDoc(entitlement("user-a", userB)));
+  });
+
+  test("a user can read and write only their own Git provider metadata", async () => {
+    const userA = environment.authenticatedContext("user-a");
+    const userB = environment.authenticatedContext("user-b");
+    const ownAccount = gitProviderAccount("user-a", "connection-1", userA);
+
+    await assertSucceeds(setDoc(ownAccount, validGitProviderAccount()));
+    await assertSucceeds(getDoc(ownAccount));
+    await assertFails(getDoc(gitProviderAccount("user-a", "connection-1", userB)));
+    await assertFails(setDoc(
+      gitProviderAccount("user-a", "connection-1", userB),
+      validGitProviderAccount(),
+    ));
+  });
+
+  test("Git provider metadata rejects secrets and unsupported providers", async () => {
+    const userA = environment.authenticatedContext("user-a");
+    const account = gitProviderAccount("user-a", "connection-1", userA);
+
+    await assertFails(setDoc(account, {
+      ...validGitProviderAccount(),
+      accessToken: "must-not-be-stored",
+    }));
+    await assertFails(setDoc(account, {
+      ...validGitProviderAccount(),
+      provider: "bitbucket",
+    }));
   });
 
   test("clients cannot create update or delete entitlements", async () => {

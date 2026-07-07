@@ -15,6 +15,7 @@
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
+import AppKit
 import GoogleSignIn
 import SwiftUI
 
@@ -23,6 +24,7 @@ struct macgitApp: App {
     @StateObject private var appState: AppState
     @StateObject private var appUpdateController = AppUpdateController(updater: SparkleAppUpdater())
     @StateObject private var accountController: AccountSessionController
+    @StateObject private var providerAccountController: GitProviderAccountController
 
     init() {
         let firebaseStatus = FirebaseBootstrap.configure()
@@ -41,11 +43,27 @@ struct macgitApp: App {
                     : nil
             )
         )
+        let providerConfiguration = GitHubProviderAuthConfiguration.appConfiguration()
+        let providerStore: GitProviderAccountStore = firebaseStatus == .configured
+            ? FirestoreGitProviderAccountStore()
+            : UnavailableGitProviderAccountStore()
+        _providerAccountController = StateObject(
+            wrappedValue: GitProviderAccountController(
+                store: providerStore,
+                tokenVault: KeychainGitProviderTokenVault(),
+                authService: GitHubProviderAuthService(configuration: providerConfiguration),
+                configuration: providerConfiguration,
+                openURL: NSWorkspace.shared.open
+            )
+        )
     }
 
     var body: some Scene {
         WindowGroup(id: "main") {
-            ContentView(accountController: accountController)
+            ContentView(
+                accountController: accountController,
+                providerAccountController: providerAccountController
+            )
                 .environmentObject(appState)
                 .environmentObject(appUpdateController)
                 .onOpenURL { url in

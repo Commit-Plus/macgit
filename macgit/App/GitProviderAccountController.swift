@@ -23,15 +23,28 @@ import Foundation
 final class GitProviderAccountController: ObservableObject {
     @Published private(set) var accounts: [GitProviderAccount] = []
     @Published private(set) var isLoading = false
+    @Published private(set) var pendingDeviceAuthorization: GitProviderDeviceAuthorization?
     @Published var errorMessage: String?
 
     private let store: GitProviderAccountStore
     private let tokenVault: GitProviderTokenVault
+    private let authService: GitProviderAuthenticating?
+    private let configuration: GitHubProviderAuthConfiguration?
+    private let openURL: (URL) -> Bool
     private var macgitUID: String?
 
-    init(store: GitProviderAccountStore, tokenVault: GitProviderTokenVault) {
+    init(
+        store: GitProviderAccountStore,
+        tokenVault: GitProviderTokenVault,
+        authService: GitProviderAuthenticating? = nil,
+        configuration: GitHubProviderAuthConfiguration? = nil,
+        openURL: @escaping (URL) -> Bool = { _ in false }
+    ) {
         self.store = store
         self.tokenVault = tokenVault
+        self.authService = authService
+        self.configuration = configuration
+        self.openURL = openURL
     }
 
     func updateMacgitAccount(_ account: AccountSnapshot?) async {
@@ -40,9 +53,19 @@ final class GitProviderAccountController: ObservableObject {
             accounts = []
             errorMessage = nil
             isLoading = false
+            pendingDeviceAuthorization = nil
             return
         }
         await reload()
+    }
+
+    func connectGitHub() async {
+        await startGitHubDeviceAuthorization()
+    }
+
+    func reconnect(_ account: GitProviderAccount) async {
+        guard account.provider == .github else { return }
+        await startGitHubDeviceAuthorization()
     }
 
     func reload() async {
@@ -81,5 +104,88 @@ final class GitProviderAccountController: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func openPendingDeviceVerification() {
+        guard let pendingDeviceAuthorization else { return }
+        _ = openURL(pendingDeviceAuthorization.verificationURI)
+    }
+
+    private func startGitHubDeviceAuthorization() async {
+        guard macgitUID != nil,
+              let authService,
+              let configuration,
+              !configuration.clientID.isEmpty else {
+            errorMessage = GitProviderAuthError.invalidConfiguration.localizedDescription
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+        pendingDeviceAuthorization = nil
+        defer {
+            isLoading = false
+            pendingDeviceAuthorization = nil
+        }
+
+        do {
+            let authorization = try await authService.requestDeviceAuthorization()
+            pendingDeviceAuthorization = authorization
+            guard openURL(authorization.verificationURI) else {
+                errorMessage = "Commit+ could not open the GitHub device authorization page."
+                return
+            }
+
+            let token = try await waitForGitHubDeviceAuthorization(authorization, authService: authService)
+            guard let macgitUID else { return }
+            let account = try await authService.fetchAccount(
+                token: token,
+                macgitUID: macgitUID,
+                host: .githubDotCom
+            )
+            try await saveAuthorizedAccount(account, token: token)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func waitForGitHubDeviceAuthorization(
+        _ authorization: GitProviderDeviceAuthorization,
+        authService: GitProviderAuthenticating
+    ) async throws -> GitProviderToken {
+        let startedAt = Date()
+        var interval = authorization.interval
+
+        while Date().timeIntervalSince(startedAt) < TimeInterval(authorization.expiresIn) {
+            if interval > 0 {
+                try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
+            } else {
+                await Task.yield()
+            }
+
+            do {
+                return try await authService.pollDeviceAuthorization(authorization)
+            } catch GitProviderAuthError.authorizationPending {
+                continue
+            } catch GitProviderAuthError.slowDown(let nextInterval) {
+                interval = nextInterval
+                continue
+            }
+        }
+
+        throw GitProviderAuthError.deviceCodeExpired
+    }
+
+    private func saveAuthorizedAccount(_ account: GitProviderAccount, token: GitProviderToken) async throws {
+        try tokenVault.saveToken(token, for: account)
+        do {
+            try await store.save(account)
+        } catch {
+            try? tokenVault.deleteToken(for: account)
+            throw error
+        }
+
+        accounts.removeAll { $0.id == account.id }
+        accounts.append(account)
     }
 }

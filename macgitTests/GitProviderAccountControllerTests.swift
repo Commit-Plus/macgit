@@ -84,6 +84,57 @@ final class GitProviderAccountControllerTests: XCTestCase {
         XCTAssertEqual(controller.accounts, [])
     }
 
+    func testConnectGitHubRequestsDeviceCodeAndOpensVerificationURL() async throws {
+        let authService = FakeGitProviderAuthService(
+            account: makeProviderAccount(macgitUID: "macgit-user-1"),
+            devicePollInterval: 5
+        )
+        var openedURLs: [URL] = []
+        let controller = GitProviderAccountController(
+            store: FakeGitProviderAccountStore(),
+            tokenVault: FakeGitProviderTokenVault(),
+            authService: authService,
+            configuration: makeConfiguration(),
+            openURL: { url in
+                openedURLs.append(url)
+                return true
+            }
+        )
+        await controller.updateMacgitAccount(makeMacgitAccount(uid: "macgit-user-1"))
+
+        let connectionTask = Task {
+            await controller.connectGitHub()
+        }
+        await Task.yield()
+
+        XCTAssertEqual(openedURLs, [try XCTUnwrap(URL(string: "https://github.com/login/device"))])
+        XCTAssertEqual(controller.pendingDeviceAuthorization?.userCode, "ABCD-EFGH")
+        connectionTask.cancel()
+    }
+
+    func testDeviceAuthorizationSavesTokenBeforeMetadataAndPublishesAccount() async throws {
+        let events = EventRecorder()
+        let providerAccount = makeProviderAccount(macgitUID: "macgit-user-1")
+        let authService = FakeGitProviderAuthService(account: providerAccount)
+        let store = FakeGitProviderAccountStore(events: events)
+        let vault = FakeGitProviderTokenVault(events: events)
+        let controller = GitProviderAccountController(
+            store: store,
+            tokenVault: vault,
+            authService: authService,
+            configuration: makeConfiguration(),
+            openURL: { _ in true }
+        )
+        await controller.updateMacgitAccount(makeMacgitAccount(uid: "macgit-user-1"))
+        events.values.removeAll()
+
+        await controller.connectGitHub()
+
+        XCTAssertEqual(events.values, ["save-token", "save-metadata"])
+        XCTAssertEqual(controller.accounts, [providerAccount])
+        XCTAssertNil(controller.pendingDeviceAuthorization)
+    }
+
     private func makeMacgitAccount(uid: String) -> AccountSnapshot {
         AccountSnapshot(uid: uid, email: nil, displayName: nil, providerIDs: ["password"])
     }
@@ -108,6 +159,13 @@ final class GitProviderAccountControllerTests: XCTestCase {
             lastValidatedAt: nil
         )
     }
+
+    private func makeConfiguration() -> GitHubProviderAuthConfiguration {
+        GitHubProviderAuthConfiguration(
+            clientID: "github-client-id",
+            scopes: ["repo", "read:user"]
+        )
+    }
 }
 
 @MainActor
@@ -130,6 +188,8 @@ private final class FakeGitProviderAccountStore: GitProviderAccountStore {
     }
 
     func save(_ account: GitProviderAccount) async throws {
+        events?.values.append("save-metadata")
+        accountsByUID[account.macgitUID, default: []].removeAll { $0.id == account.id }
         accountsByUID[account.macgitUID, default: []].append(account)
     }
 
@@ -157,6 +217,7 @@ private final class FakeGitProviderTokenVault: GitProviderTokenVault {
     }
 
     func saveToken(_ token: GitProviderToken, for account: GitProviderAccount) throws {
+        events?.values.append("save-token")
         tokensByAccountID[account.id] = token
     }
 
@@ -169,4 +230,42 @@ private final class FakeGitProviderTokenVault: GitProviderTokenVault {
 @MainActor
 private final class EventRecorder {
     var values: [String] = []
+}
+
+@MainActor
+private final class FakeGitProviderAuthService: GitProviderAuthenticating {
+    private let account: GitProviderAccount
+    private let devicePollInterval: Int
+
+    init(account: GitProviderAccount, devicePollInterval: Int = 0) {
+        self.account = account
+        self.devicePollInterval = devicePollInterval
+    }
+
+    func requestDeviceAuthorization() async throws -> GitProviderDeviceAuthorization {
+        GitProviderDeviceAuthorization(
+            deviceCode: "device-code",
+            userCode: "ABCD-EFGH",
+            verificationURI: URL(string: "https://github.com/login/device")!,
+            expiresIn: 900,
+            interval: devicePollInterval
+        )
+    }
+
+    func pollDeviceAuthorization(_ authorization: GitProviderDeviceAuthorization) async throws -> GitProviderToken {
+        GitProviderToken(
+            accessToken: "secret-token",
+            refreshToken: nil,
+            expiresAt: nil,
+            tokenType: "bearer"
+        )
+    }
+
+    func fetchAccount(
+        token: GitProviderToken,
+        macgitUID: String,
+        host: GitProviderHost
+    ) async throws -> GitProviderAccount {
+        account
+    }
 }

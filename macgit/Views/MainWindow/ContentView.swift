@@ -21,6 +21,7 @@ struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var accountController: AccountSessionController
+    @ObservedObject var providerAccountController: GitProviderAccountController
 
     @State private var repositoryURL: URL?
     @State private var showingRepoPickerSheet = false
@@ -63,7 +64,10 @@ struct ContentView: View {
             case .authentication(let mode):
                 AuthenticationSheet(controller: accountController, mode: mode)
             case .manageAccount:
-                ManageAccountSheet(controller: accountController)
+                ManageAccountSheet(
+                    controller: accountController,
+                    providerAccountController: providerAccountController
+                )
             case .settingsConflict:
                 SettingsSyncConflictSheet(controller: accountController)
             }
@@ -108,6 +112,9 @@ struct ContentView: View {
         .onAppear {
             appState.hasOpenRepository = repositoryURL != nil
             handlePendingWindowFlags()
+        }
+        .task(id: accountController.account?.uid) {
+            await providerAccountController.updateMacgitAccount(accountController.account)
         }
         .overlay(
             WindowCloseButtonModifier(isVisible: repositoryURL == nil)

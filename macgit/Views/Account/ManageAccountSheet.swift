@@ -20,6 +20,7 @@ import SwiftUI
 
 struct ManageAccountSheet: View {
     @ObservedObject var controller: AccountSessionController
+    @ObservedObject var providerAccountController: GitProviderAccountController
     @State private var confirmsDeletion = false
 
     var body: some View {
@@ -90,6 +91,11 @@ struct ManageAccountSheet: View {
                 )
             }
 
+            GitProviderAccountsSection(
+                controller: providerAccountController,
+                isSignedIn: controller.account != nil
+            )
+
             HStack {
                 Spacer()
                 Button("Done", action: dismiss)
@@ -97,7 +103,7 @@ struct ManageAccountSheet: View {
             }
         }
         .padding()
-        .frame(minWidth: 440, minHeight: 360)
+        .frame(minWidth: 440, minHeight: 480)
         .alert("Delete Commit+ Account?", isPresented: $confirmsDeletion) {
             Button("Cancel", role: .cancel) {}
             Button("Delete Account", role: .destructive) {
