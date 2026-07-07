@@ -64,6 +64,7 @@ private struct BranchTagStartPoint: Equatable {
 
 struct MainWindowView: View {
     let repositoryURL: URL
+    @ObservedObject var providerAccountController: GitProviderAccountController
     @EnvironmentObject private var appState: AppState
     @Environment(\.openWindow) private var openWindow
     private let repoSettingsStore = RepoSettingsStore.shared
@@ -378,7 +379,8 @@ struct MainWindowView: View {
                 runRepositoryOperation("Fetching \(branch)...") {
                     await syncState.performFetchBranch(
                         branch: branch,
-                        repositoryURL: repositoryURL
+                        repositoryURL: repositoryURL,
+                        credentialResolver: providerAccountController.credentialResolver()
                     )
                 }
             },
@@ -389,7 +391,8 @@ struct MainWindowView: View {
                         branch: branch,
                         options: GitStatusService.PullOptions(),
                         repositoryURL: repositoryURL,
-                        undoManager: undoManager
+                        undoManager: undoManager,
+                        credentialResolver: providerAccountController.credentialResolver()
                     )
                 }
             },
@@ -398,7 +401,8 @@ struct MainWindowView: View {
                     await syncState.performPullBranch(
                         branch: branch,
                         repositoryURL: repositoryURL,
-                        undoManager: undoManager
+                        undoManager: undoManager,
+                        credentialResolver: providerAccountController.credentialResolver()
                     )
                 }
             },
@@ -456,7 +460,8 @@ struct MainWindowView: View {
                     await syncState.performPush(
                         options: options,
                         repositoryURL: repositoryURL,
-                        undoManager: undoManager
+                        undoManager: undoManager,
+                        credentialResolver: providerAccountController.credentialResolver()
                     )
                 }
             },
@@ -610,7 +615,8 @@ struct MainWindowView: View {
                     branch: branch,
                     options: options,
                     repositoryURL: repositoryURL,
-                    undoManager: undoManager
+                    undoManager: undoManager,
+                    credentialResolver: providerAccountController.credentialResolver()
                 )
             }
         }
@@ -623,7 +629,8 @@ struct MainWindowView: View {
                 await syncState.performPush(
                     options: options,
                     repositoryURL: repositoryURL,
-                    undoManager: undoManager
+                    undoManager: undoManager,
+                    credentialResolver: providerAccountController.credentialResolver()
                 )
             }
         }
@@ -633,7 +640,11 @@ struct MainWindowView: View {
     private var fetchSheet: some View {
         FetchSheetView(repositoryURL: repositoryURL) { options in
             runRepositoryOperation("Fetching remotes...") {
-                await syncState.performFetch(options: options, repositoryURL: repositoryURL)
+                await syncState.performFetch(
+                    options: options,
+                    repositoryURL: repositoryURL,
+                    credentialResolver: providerAccountController.credentialResolver()
+                )
             }
         }
     }
@@ -1646,7 +1657,8 @@ struct MainWindowView: View {
         await syncState.performPush(
             options: options,
             repositoryURL: repositoryURL,
-            undoManager: undoManager
+            undoManager: undoManager,
+            credentialResolver: providerAccountController.credentialResolver()
         )
     }
 

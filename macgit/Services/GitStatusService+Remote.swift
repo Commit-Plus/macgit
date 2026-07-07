@@ -23,22 +23,50 @@
 import Foundation
 
 extension GitStatusService {
-    func push(options: PushOptions, in repositoryURL: URL) async throws -> String {
+    func push(
+        options: PushOptions,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver? = nil,
+        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector()
+    ) async throws -> String {
+        let injection = try await credentialInjection(
+            for: options.remote,
+            in: repositoryURL,
+            credentialResolver: credentialResolver,
+            credentialInjector: credentialInjector
+        )
+        defer { injection?.cleanup() }
+
         var outputs: [String] = []
         for branch in options.branches {
             let remoteBranch = options.branchMappings[branch] ?? branch
             let refSpec = remoteBranch == branch ? branch : "\(branch):\(remoteBranch)"
-            let output = try await runGit(arguments: ["push", options.remote, refSpec], in: repositoryURL)
+            let output = try await runRemoteGit(
+                arguments: ["push", options.remote, refSpec],
+                in: repositoryURL,
+                injection: injection
+            )
             outputs.append(output)
         }
         if options.pushTags {
-            let tagOutput = try await runGit(arguments: ["push", options.remote, "--tags"], in: repositoryURL)
+            let tagOutput = try await runRemoteGit(
+                arguments: ["push", options.remote, "--tags"],
+                in: repositoryURL,
+                injection: injection
+            )
             outputs.append(tagOutput)
         }
         return outputs.joined(separator: "\n")
     }
 
-    func pull(remote: String, branch: String, options: PullOptions, in repositoryURL: URL) async throws -> String {
+    func pull(
+        remote: String,
+        branch: String,
+        options: PullOptions,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver? = nil,
+        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector()
+    ) async throws -> String {
         var arguments = ["pull", remote, branch]
         if !options.commitMerged { arguments.append("--no-commit") }
         if !options.includeMessages { arguments.append("--no-log") }
@@ -48,20 +76,43 @@ extension GitStatusService {
         } else {
             arguments.append("--no-rebase")
         }
-        return try await runGit(arguments: arguments, in: repositoryURL)
+        let injection = try await credentialInjection(
+            for: remote,
+            in: repositoryURL,
+            credentialResolver: credentialResolver,
+            credentialInjector: credentialInjector
+        )
+        defer { injection?.cleanup() }
+        return try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
     }
 
-    func pullBranchFromUpstream(branch: String, in repositoryURL: URL, options: PullOptions = PullOptions()) async throws -> String {
+    func pullBranchFromUpstream(
+        branch: String,
+        in repositoryURL: URL,
+        options: PullOptions = PullOptions(),
+        credentialResolver: GitProviderCredentialResolver? = nil
+    ) async throws -> String {
         guard let upstreamRef = await upstreamBranch(for: branch, in: repositoryURL) else {
             throw GitError.commandFailed("Branch '\(branch)' does not have an upstream branch.")
         }
         guard let remoteBranch = remoteBranchRef(from: upstreamRef) else {
             throw GitError.commandFailed("Could not parse upstream branch '\(upstreamRef)'.")
         }
-        return try await pull(remote: remoteBranch.remote, branch: remoteBranch.branch, options: options, in: repositoryURL)
+        return try await pull(
+            remote: remoteBranch.remote,
+            branch: remoteBranch.branch,
+            options: options,
+            in: repositoryURL,
+            credentialResolver: credentialResolver
+        )
     }
 
-    func fetch(options: FetchOptions, in repositoryURL: URL) async throws {
+    func fetch(
+        options: FetchOptions,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver? = nil,
+        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector()
+    ) async throws {
         var arguments = ["fetch"]
         if options.fetchAllRemotes {
             arguments.append("--all")
@@ -72,11 +123,31 @@ extension GitStatusService {
         if options.fetchTags {
             arguments.append("--tags")
         }
-        _ = try await runGit(arguments: arguments, in: repositoryURL)
+        let injection = try await credentialInjectionForFetch(
+            options: options,
+            in: repositoryURL,
+            credentialResolver: credentialResolver,
+            credentialInjector: credentialInjector
+        )
+        defer { injection?.cleanup() }
+        _ = try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
     }
 
-    func fetchBranch(remote: String, branch: String, in repositoryURL: URL) async throws {
-        _ = try await runGit(arguments: ["fetch", remote, branch], in: repositoryURL)
+    func fetchBranch(
+        remote: String,
+        branch: String,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver? = nil,
+        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector()
+    ) async throws {
+        let injection = try await credentialInjection(
+            for: remote,
+            in: repositoryURL,
+            credentialResolver: credentialResolver,
+            credentialInjector: credentialInjector
+        )
+        defer { injection?.cleanup() }
+        _ = try await runRemoteGit(arguments: ["fetch", remote, branch], in: repositoryURL, injection: injection)
     }
 
     @discardableResult
@@ -145,5 +216,66 @@ extension GitStatusService {
         let parts = upstreamRef.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
         guard parts.count == 2 else { return nil }
         return (remote: String(parts[0]), branch: String(parts[1]))
+    }
+
+    private func runRemoteGit(
+        arguments: [String],
+        in repositoryURL: URL,
+        injection: GitCredentialInjection?
+    ) async throws -> String {
+        if let injection {
+            return try await runGit(arguments: arguments, in: repositoryURL, environment: injection.environment)
+        }
+        return try await runGit(arguments: arguments, in: repositoryURL)
+    }
+
+    private func credentialInjection(
+        for remote: String,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver?,
+        credentialInjector: GitCredentialInjecting
+    ) async throws -> GitCredentialInjection? {
+        guard let credentialResolver else { return nil }
+        let remoteURLString = await remoteURL(remote: remote, in: repositoryURL)
+        guard let credential = try credentialResolver.credential(for: remoteURLString) else { return nil }
+        return try credentialInjector.injection(for: credential)
+    }
+
+    private func credentialInjectionForFetch(
+        options: FetchOptions,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver?,
+        credentialInjector: GitCredentialInjecting
+    ) async throws -> GitCredentialInjection? {
+        guard let credentialResolver else { return nil }
+        let remoteNames = await remotes(in: repositoryURL)
+        let credentials = try await remoteNames.asyncCompactMap { remote -> GitCredential? in
+            let remoteURLString = await remoteURL(remote: remote, in: repositoryURL)
+            return try credentialResolver.credential(for: remoteURLString)
+        }
+        let uniqueCredentials = credentials.reduce(into: [GitCredential]()) { result, credential in
+            if !result.contains(credential) {
+                result.append(credential)
+            }
+        }
+        guard let credential = uniqueCredentials.first else { return nil }
+        guard uniqueCredentials.count == 1 else {
+            throw GitProviderCredentialError.multipleMatchingAccounts(host: "configured remotes")
+        }
+        return try credentialInjector.injection(for: credential)
+    }
+}
+
+private extension Sequence {
+    func asyncCompactMap<Element>(
+        _ transform: (Self.Element) async throws -> Element?
+    ) async throws -> [Element] {
+        var values: [Element] = []
+        for element in self {
+            if let value = try await transform(element) {
+                values.append(value)
+            }
+        }
+        return values
     }
 }

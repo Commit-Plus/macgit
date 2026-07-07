@@ -26,6 +26,12 @@ protocol GitCommandRunning {
     func runGit(arguments: [String], in directory: URL) async throws -> String
 }
 
+extension GitCommandRunning {
+    func runGit(arguments: [String], in directory: URL, environment: [String: String]) async throws -> String {
+        try await runGit(arguments: arguments, in: directory)
+    }
+}
+
 protocol GitPatchApplying {
     func applyPatch(_ patch: String, in repositoryURL: URL, cached: Bool, reverse: Bool) async throws
 }
