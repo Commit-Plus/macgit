@@ -1,0 +1,49 @@
+//
+//  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
+//  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
+//
+//  This program is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Affero General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  This program is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU Affero General Public License for more details.
+//
+//  You should have received a copy of the GNU Affero General Public License
+//  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
+import Foundation
+
+protocol PullRequestProviding {
+    func listPullRequests(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws -> [PullRequestSummary]
+}
+
+enum PullRequestProviderError: LocalizedError, Equatable {
+    case reauthorizationRequired
+    case permissionDenied
+    case repositoryUnavailable
+    case unsupportedProvider
+    case providerMessage(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .reauthorizationRequired:
+            "The Git provider account needs to be connected again."
+        case .permissionDenied:
+            "The connected account does not have permission to read pull requests."
+        case .repositoryUnavailable:
+            "The repository is unavailable from the connected provider account."
+        case .unsupportedProvider:
+            "This provider does not support pull request loading yet."
+        case .providerMessage(let message):
+            message
+        }
+    }
+}
