@@ -202,4 +202,32 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertEqual(emissions.last?.showHeaderMergeButton, true)
         _ = cancellable
     }
+
+    func testApplyEmitsSingleSnapshot() {
+        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let state = AppState(userDefaults: defaults)
+        var emissions: [AppSettingsSnapshot] = []
+        let cancellable = state.settingsSnapshotPublisher.sink { emissions.append($0) }
+
+        state.apply(
+            AppSettingsSnapshot(
+                showToolbarButtonText: false,
+                showSubmodules: true,
+                showSubtrees: true,
+                showHeaderBranchButton: false,
+                showHeaderMergeButton: false,
+                showHeaderStashButton: false,
+                showHeaderRemoteButton: false,
+                showHeaderFinderButton: false,
+                showHeaderTerminalButton: false
+            )
+        )
+
+        XCTAssertEqual(emissions.count, 2)
+        XCTAssertEqual(emissions.last?.showToolbarButtonText, false)
+        XCTAssertEqual(emissions.last?.showHeaderBranchButton, false)
+        _ = cancellable
+    }
 }
