@@ -41,7 +41,8 @@ final class AppState: ObservableObject {
     private static let preferredSearchFileApplicationKey = "preferredSearchFileApplication"
 
     private let userDefaults: UserDefaults
-    @Published private var _currentSettingsSnapshot: AppSettingsSnapshot
+    private var isApplyingSnapshot = false
+    @Published private var currentSettingsSnapshot: AppSettingsSnapshot
 
     @Published var fileMenuAction: FileMenuAction?
     @Published var openWindowWithCloneSheet = false
@@ -50,55 +51,73 @@ final class AppState: ObservableObject {
     @Published var showToolbarButtonText: Bool {
         didSet {
             userDefaults.set(showToolbarButtonText, forKey: Self.showToolbarButtonTextKey)
-            _currentSettingsSnapshot = snapshot
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
         }
     }
     @Published var showSubmodules: Bool {
         didSet {
             userDefaults.set(showSubmodules, forKey: Self.showSubmodulesKey)
-            _currentSettingsSnapshot = snapshot
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
         }
     }
     @Published var showSubtrees: Bool {
         didSet {
             userDefaults.set(showSubtrees, forKey: Self.showSubtreesKey)
-            _currentSettingsSnapshot = snapshot
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
         }
     }
     @Published var showHeaderBranchButton: Bool {
         didSet {
             userDefaults.set(showHeaderBranchButton, forKey: Self.showHeaderBranchButtonKey)
-            _currentSettingsSnapshot = snapshot
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
         }
     }
     @Published var showHeaderMergeButton: Bool {
         didSet {
             userDefaults.set(showHeaderMergeButton, forKey: Self.showHeaderMergeButtonKey)
-            _currentSettingsSnapshot = snapshot
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
         }
     }
     @Published var showHeaderStashButton: Bool {
         didSet {
             userDefaults.set(showHeaderStashButton, forKey: Self.showHeaderStashButtonKey)
-            _currentSettingsSnapshot = snapshot
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
         }
     }
     @Published var showHeaderRemoteButton: Bool {
         didSet {
             userDefaults.set(showHeaderRemoteButton, forKey: Self.showHeaderRemoteButtonKey)
-            _currentSettingsSnapshot = snapshot
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
         }
     }
     @Published var showHeaderFinderButton: Bool {
         didSet {
             userDefaults.set(showHeaderFinderButton, forKey: Self.showHeaderFinderButtonKey)
-            _currentSettingsSnapshot = snapshot
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
         }
     }
     @Published var showHeaderTerminalButton: Bool {
         didSet {
             userDefaults.set(showHeaderTerminalButton, forKey: Self.showHeaderTerminalButtonKey)
-            _currentSettingsSnapshot = snapshot
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
         }
     }
     @Published var syncEnabled: Bool {
@@ -125,7 +144,9 @@ final class AppState: ObservableObject {
     }
 
     var settingsSnapshotPublisher: AnyPublisher<AppSettingsSnapshot, Never> {
-        $_currentSettingsSnapshot.removeDuplicates().eraseToAnyPublisher()
+        $currentSettingsSnapshot
+            .removeDuplicates()
+            .eraseToAnyPublisher()
     }
 
     init(userDefaults: UserDefaults = .standard) {
@@ -158,7 +179,7 @@ final class AppState: ObservableObject {
         self.syncEnabled = syncEnabled
         self.searchFilter = searchFilter
         self.preferredSearchFileApplicationBundleIdentifier = preferredSearchFileApplicationBundleIdentifier
-        _currentSettingsSnapshot = AppSettingsSnapshot(
+        currentSettingsSnapshot = AppSettingsSnapshot(
             showToolbarButtonText: showToolbarButtonText,
             showSubmodules: showSubmodules,
             showSubtrees: showSubtrees,
@@ -186,6 +207,8 @@ final class AppState: ObservableObject {
     }
 
     func apply(_ snapshot: AppSettingsSnapshot) {
+        isApplyingSnapshot = true
+        defer { isApplyingSnapshot = false }
         showToolbarButtonText = snapshot.showToolbarButtonText
         showSubmodules = snapshot.showSubmodules
         showSubtrees = snapshot.showSubtrees
@@ -195,5 +218,6 @@ final class AppState: ObservableObject {
         showHeaderRemoteButton = snapshot.showHeaderRemoteButton
         showHeaderFinderButton = snapshot.showHeaderFinderButton
         showHeaderTerminalButton = snapshot.showHeaderTerminalButton
+        currentSettingsSnapshot = snapshot
     }
 }

@@ -179,6 +179,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
         var emissions: [AppSettingsSnapshot] = []
         let cancellable = state.settingsSnapshotPublisher.sink { emissions.append($0) }
 
+        // The publisher emits the current snapshot on subscription; device-local settings should not add more.
         state.syncEnabled = true
         state.searchFilter = .commit
 
@@ -196,6 +197,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
 
         state.showHeaderBranchButton = false
 
+        XCTAssertEqual(emissions.count, 2)
         XCTAssertEqual(emissions.last?.showHeaderBranchButton, false)
         XCTAssertEqual(emissions.last?.showHeaderMergeButton, true)
         _ = cancellable
