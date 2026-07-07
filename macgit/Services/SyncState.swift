@@ -121,7 +121,12 @@ class SyncState: ObservableObject {
         return hasConflicts
     }
 
-    func performPush(options: GitStatusService.PushOptions, repositoryURL: URL, undoManager: GitUndoManager? = nil) async {
+    func performPush(
+        options: GitStatusService.PushOptions,
+        repositoryURL: URL,
+        undoManager: GitUndoManager? = nil,
+        credentialResolver: GitProviderCredentialResolver? = nil
+    ) async {
         if await checkConflicts(repositoryURL: repositoryURL) { return }
         await MainActor.run { isPushing = true }
         defer {
@@ -151,7 +156,11 @@ class SyncState: ObservableObject {
             await MainActor.run {
                 activeSyncBranch = options.branches.count == 1 ? options.branches.first : nil
             }
-            let output = try await GitStatusService.shared.push(options: options, in: repositoryURL)
+            let output = try await GitStatusService.shared.push(
+                options: options,
+                in: repositoryURL,
+                credentialResolver: credentialResolver
+            )
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
             for mapping in unpublishedBranches {
@@ -198,7 +207,14 @@ class SyncState: ObservableObject {
         }
     }
 
-    func performPull(remote: String, branch: String, options: GitStatusService.PullOptions, repositoryURL: URL, undoManager: GitUndoManager? = nil) async {
+    func performPull(
+        remote: String,
+        branch: String,
+        options: GitStatusService.PullOptions,
+        repositoryURL: URL,
+        undoManager: GitUndoManager? = nil,
+        credentialResolver: GitProviderCredentialResolver? = nil
+    ) async {
         if await checkConflicts(repositoryURL: repositoryURL) { return }
         await MainActor.run { isPulling = true }
         defer {
@@ -210,7 +226,13 @@ class SyncState: ObservableObject {
         let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
         do {
             await MainActor.run { activeSyncBranch = branch }
-            let output = try await GitStatusService.shared.pull(remote: remote, branch: branch, options: options, in: repositoryURL)
+            let output = try await GitStatusService.shared.pull(
+                remote: remote,
+                branch: branch,
+                options: options,
+                in: repositoryURL,
+                credentialResolver: credentialResolver
+            )
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
             if let oldHead,
@@ -244,7 +266,12 @@ class SyncState: ObservableObject {
         }
     }
 
-    func performPullBranch(branch: String, repositoryURL: URL, undoManager: GitUndoManager? = nil) async {
+    func performPullBranch(
+        branch: String,
+        repositoryURL: URL,
+        undoManager: GitUndoManager? = nil,
+        credentialResolver: GitProviderCredentialResolver? = nil
+    ) async {
         if await checkConflicts(repositoryURL: repositoryURL) { return }
         await MainActor.run { isPulling = true }
         defer {
@@ -256,7 +283,11 @@ class SyncState: ObservableObject {
         let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
         do {
             await MainActor.run { activeSyncBranch = branch }
-            let output = try await GitStatusService.shared.pullBranchFromUpstream(branch: branch, in: repositoryURL)
+            let output = try await GitStatusService.shared.pullBranchFromUpstream(
+                branch: branch,
+                in: repositoryURL,
+                credentialResolver: credentialResolver
+            )
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
             if let oldHead,
@@ -290,7 +321,12 @@ class SyncState: ObservableObject {
         }
     }
 
-    func performPushToTracked(branch: String, repositoryURL: URL, undoManager: GitUndoManager? = nil) async {
+    func performPushToTracked(
+        branch: String,
+        repositoryURL: URL,
+        undoManager: GitUndoManager? = nil,
+        credentialResolver: GitProviderCredentialResolver? = nil
+    ) async {
         guard let upstream = await GitStatusService.shared.upstreamBranch(for: branch, in: repositoryURL) else {
             showError("Branch '\(branch)' has no upstream to push to.")
             return
@@ -305,7 +341,12 @@ class SyncState: ObservableObject {
             branches: [branch],
             branchMappings: [branch: parts[1]]
         )
-        await performPush(options: options, repositoryURL: repositoryURL, undoManager: undoManager)
+        await performPush(
+            options: options,
+            repositoryURL: repositoryURL,
+            undoManager: undoManager,
+            credentialResolver: credentialResolver
+        )
     }
 
     func performRebaseOnto(branch: String, repositoryURL: URL, undoManager: GitUndoManager? = nil) async {
@@ -340,12 +381,20 @@ class SyncState: ObservableObject {
         }
     }
 
-    func performFetch(options: GitStatusService.FetchOptions, repositoryURL: URL) async {
+    func performFetch(
+        options: GitStatusService.FetchOptions,
+        repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver? = nil
+    ) async {
         await MainActor.run { isFetching = true }
         defer { Task { @MainActor in isFetching = false } }
         let before = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
         do {
-            try await GitStatusService.shared.fetch(options: options, in: repositoryURL)
+            try await GitStatusService.shared.fetch(
+                options: options,
+                in: repositoryURL,
+                credentialResolver: credentialResolver
+            )
             let after = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
@@ -357,7 +406,11 @@ class SyncState: ObservableObject {
         }
     }
 
-    func performFetchBranch(branch: String, repositoryURL: URL) async {
+    func performFetchBranch(
+        branch: String,
+        repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver? = nil
+    ) async {
         await MainActor.run { isFetching = true }
         defer { Task { @MainActor in isFetching = false } }
         guard let upstream = await GitStatusService.shared.upstreamBranch(for: branch, in: repositoryURL) else {
@@ -374,7 +427,8 @@ class SyncState: ObservableObject {
             try await GitStatusService.shared.fetchBranch(
                 remote: parts[0],
                 branch: parts[1],
-                in: repositoryURL
+                in: repositoryURL,
+                credentialResolver: credentialResolver
             )
             let after = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
             await refresh(repositoryURL: repositoryURL)

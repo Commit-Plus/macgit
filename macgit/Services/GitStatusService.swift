@@ -168,12 +168,25 @@ actor GitStatusService {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
+    func runGit(arguments: [String], in directory: URL, environment: [String: String]) async throws -> String {
+        let data = try await runGitRaw(arguments: arguments, in: directory, environment: environment)
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
     func runGitRaw(arguments: [String], in directory: URL) async throws -> Data {
+        try await runGitRaw(
+            arguments: arguments,
+            in: directory,
+            environment: ProcessInfo.processInfo.environment
+        )
+    }
+
+    func runGitRaw(arguments: [String], in directory: URL, environment: [String: String]) async throws -> Data {
         try await GitProcessExecution(
             executable: gitExecutable(),
             arguments: arguments,
             directory: directory,
-            environment: ProcessInfo.processInfo.environment
+            environment: environment
         ).run()
     }
 

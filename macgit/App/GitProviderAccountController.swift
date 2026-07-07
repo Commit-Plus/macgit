@@ -111,6 +111,10 @@ final class GitProviderAccountController: ObservableObject {
         _ = openURL(pendingDeviceAuthorization.verificationURI)
     }
 
+    func credentialResolver() -> GitProviderCredentialResolver {
+        GitProviderCredentialResolver(accounts: accounts, tokenVault: tokenVault)
+    }
+
     private func startGitHubDeviceAuthorization() async {
         guard macgitUID != nil,
               let authService,

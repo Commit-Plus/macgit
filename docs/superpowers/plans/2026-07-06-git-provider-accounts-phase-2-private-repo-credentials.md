@@ -25,7 +25,7 @@
 - Create: `macgit/Services/GitRemoteIdentityResolver.swift`
 - Test: `macgitTests/GitRemoteIdentityResolverTests.swift`
 
-- [ ] **Step 1: Write resolver tests**
+- [x] **Step 1: Write resolver tests**
 
 Cover:
 
@@ -43,7 +43,7 @@ Use examples:
 - `git@github.com:octocat/Hello-World.git`
 - `https://gitlab.com/group/subgroup/project.git`
 
-- [ ] **Step 2: Implement resolver**
+- [x] **Step 2: Implement resolver**
 
 Return:
 
@@ -59,7 +59,7 @@ struct GitRemoteIdentity: Equatable {
 
 For GitHub, `ownerPath` is one segment. For GitLab, `ownerPath` can include subgroups.
 
-- [ ] **Step 3: Run resolver tests and commit**
+- [x] **Step 3: Run resolver tests and commit**
 
 Run:
 
@@ -81,7 +81,7 @@ git commit -m "feat: resolve git provider remotes"
 - Modify: `macgit/Services/GitCommandRunning.swift`
 - Test: `macgitTests/GitCredentialInjectorTests.swift`
 
-- [ ] **Step 1: Write injector tests**
+- [x] **Step 1: Write injector tests**
 
 Cover:
 
@@ -93,7 +93,7 @@ func testAskpassHelperReturnsTokenForPasswordPrompt()
 func testCleanupRemovesHelperFile()
 ```
 
-- [ ] **Step 2: Implement injector**
+- [x] **Step 2: Implement injector**
 
 Create:
 
@@ -121,11 +121,11 @@ The production helper:
 - Sets `GIT_ASKPASS` to the helper path.
 - Removes temporary files in `cleanup`.
 
-- [ ] **Step 3: Allow command environment overrides**
+- [x] **Step 3: Allow command environment overrides**
 
 If `GitCommandRunning` does not currently accept environment overrides, add an overload that merges extra environment values into the subprocess environment while preserving existing behavior for callers that do not pass credentials.
 
-- [ ] **Step 4: Run injector tests and commit**
+- [x] **Step 4: Run injector tests and commit**
 
 Run:
 
@@ -147,7 +147,7 @@ git commit -m "feat: inject provider git credentials"
 - Modify: remote action callers in `macgit/Views/MainWindow/MainWindowView.swift` only if credentials must be selected before action execution.
 - Test: focused remote service tests using fake credential injector.
 
-- [ ] **Step 1: Add tests for credential-aware remote actions**
+- [x] **Step 1: Add tests for credential-aware remote actions**
 
 Cover fetch and push paths with a fake runner:
 
@@ -158,7 +158,7 @@ func testRemoteActionWithoutProviderAccountKeepsExistingBehavior()
 func testMissingTokenReturnsUserFacingAuthenticationError()
 ```
 
-- [ ] **Step 2: Add provider account selection seam**
+- [x] **Step 2: Add provider account selection seam**
 
 Create a small resolver that accepts:
 
@@ -178,11 +178,11 @@ enum GitProviderCredentialError: LocalizedError, Equatable {
 }
 ```
 
-- [ ] **Step 3: Wire fetch, pull, and push**
+- [x] **Step 3: Wire fetch, pull, and push**
 
 Use credential injection for HTTPS remotes that resolve to a connected provider account. Preserve existing behavior for local file remotes, unsupported hosts, and SSH remotes until SSH credential support is explicitly designed.
 
-- [ ] **Step 4: Run targeted and full tests**
+- [x] **Step 4: Run targeted and full tests**
 
 Run:
 
@@ -193,7 +193,7 @@ xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS
 
 Expected: targeted and full test suites pass.
 
-- [ ] **Step 5: Update roadmap and commit**
+- [x] **Step 5: Update roadmap and commit**
 
 Update the roadmap Phase 2 entry to `[completed]` with the branch or merge commit.
 

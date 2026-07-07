@@ -32,7 +32,10 @@ struct ContentView: View {
     var body: some View {
         Group {
             if let url = repositoryURL {
-                MainWindowView(repositoryURL: url)
+                MainWindowView(
+                    repositoryURL: url,
+                    providerAccountController: providerAccountController
+                )
             } else {
                 RepoPickerView(
                     showCloneSheetInitially: false,
