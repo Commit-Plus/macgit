@@ -24,14 +24,18 @@ struct GitProviderAccountsSection: View {
     let isSignedIn: Bool
 
     var body: some View {
-        GroupBox("Git Provider Accounts") {
-            VStack(alignment: .leading, spacing: 12) {
-                if isSignedIn {
-                    if controller.accounts.isEmpty {
-                        Text("Connect a Git provider account to use private repositories and pull request workflows.")
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Git Provider Accounts")
+                .font(.headline)
+                .fontWeight(.semibold)
+
+            if isSignedIn {
+                if controller.accounts.isEmpty {
+                    Text("Connect a Git provider account to use private repositories and pull request workflows.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    VStack(spacing: 10) {
                         ForEach(controller.accounts) { account in
                             GitProviderAccountRow(
                                 account: account,
@@ -40,57 +44,72 @@ struct GitProviderAccountsSection: View {
                             )
                         }
                     }
-
-                    Button("Add GitHub Account...", systemImage: "plus") {
-                        Task { await controller.connectGitHub() }
-                    }
-                    .disabled(controller.isLoading)
-
-                    if let authorization = controller.pendingDeviceAuthorization {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Enter this code on GitHub to finish connecting:")
-                                .foregroundStyle(.secondary)
-                            HStack(spacing: 8) {
-                                Text(authorization.userCode)
-                                    .font(.system(.title, design: .monospaced).weight(.semibold))
-                                    .textSelection(.enabled)
-
-                                Button {
-                                    copyToPasteboard(authorization.userCode)
-                                } label: {
-                                    Image(systemName: "doc.on.doc")
-                                }
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel("Copy GitHub device code")
-                                .help("Copy code")
-                            }
-                            Button("Open GitHub Device Page", action: controller.openPendingDeviceVerification)
-                        }
-                        .padding(.top, 2)
-                    }
-                } else {
-                    Button("Sign in to Commit+ to connect a Git provider account", systemImage: "person.crop.circle.badge.exclamationmark") {}
-                        .disabled(true)
                 }
 
-                if controller.isLoading {
-                    ProgressView("Updating Git provider accounts...")
-                        .controlSize(.small)
+                Button("Add GitHub Account...", systemImage: "plus") {
+                    Task { await controller.connectGitHub() }
                 }
+                .disabled(controller.isLoading)
 
-                if let errorMessage = controller.errorMessage {
-                    Text(errorMessage)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
+                if let authorization = controller.pendingDeviceAuthorization {
+                    GitProviderDeviceAuthorizationView(
+                        authorization: authorization,
+                        openVerification: controller.openPendingDeviceVerification,
+                        copyToPasteboard: copyToPasteboard
+                    )
                 }
+            } else {
+                Button("Sign in to Commit+ to connect a Git provider account", systemImage: "person.crop.circle.badge.exclamationmark") {}
+                    .disabled(true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 4)
+
+            if controller.isLoading {
+                ProgressView("Updating Git provider accounts...")
+                    .controlSize(.small)
+            }
+
+            if let errorMessage = controller.errorMessage {
+                Text(errorMessage)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func copyToPasteboard(_ value: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
+    }
+}
+
+private struct GitProviderDeviceAuthorizationView: View {
+    let authorization: GitProviderDeviceAuthorization
+    let openVerification: () -> Void
+    let copyToPasteboard: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Enter this code on GitHub to finish connecting:")
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Text(authorization.userCode)
+                    .font(.system(.title, design: .monospaced).weight(.semibold))
+                    .textSelection(.enabled)
+
+                Button {
+                    copyToPasteboard(authorization.userCode)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Copy GitHub device code")
+                .help("Copy code")
+            }
+
+            Button("Open GitHub Device Page", action: openVerification)
+        }
+        .padding(.top, 2)
     }
 }

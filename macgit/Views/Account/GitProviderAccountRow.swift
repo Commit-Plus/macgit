@@ -24,34 +24,80 @@ struct GitProviderAccountRow: View {
     let disconnect: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Label(providerName, systemImage: "chevron.left.forwardslash.chevron.right")
-                    .bold()
-                Spacer()
-                Text(statusText)
-                    .foregroundStyle(account.tokenStatus == .valid ? Color.secondary : Color.orange)
-            }
+        HStack(alignment: .top, spacing: 12) {
+            Image(providerAssetName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 28, height: 28)
+                .accessibilityHidden(true)
 
-            LabeledContent("Account", value: account.username)
-            LabeledContent("Host", value: account.hostURL.host() ?? account.hostURL.absoluteString)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(providerName)
+                        .font(.headline)
+                        .fontWeight(.semibold)
 
-            HStack {
-                Spacer()
-                if account.tokenStatus != .valid {
-                    Button("Reconnect...", action: reconnect)
+                    Spacer()
+
+                    Text(statusText)
+                        .font(.callout)
+                        .foregroundStyle(statusColor)
                 }
-                Button("Disconnect...", role: .destructive, action: disconnect)
+
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 8) {
+                    GridRow {
+                        Text("Account")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+                        Text(account.username)
+                    }
+
+                    GridRow {
+                        Text("Host")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+                        Text(account.hostURL.host() ?? account.hostURL.absoluteString)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Spacer()
+                    Button("Reconnect...", action: reconnect)
+                        .buttonStyle(.bordered)
+                    Button("Disconnect...", role: .destructive, action: disconnect)
+                        .foregroundStyle(.red)
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                }
             }
         }
-        .padding(.vertical, 4)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        }
         .accessibilityElement(children: .contain)
+    }
+
+    private var providerAssetName: String {
+        switch account.provider {
+        case .github: "github"
+        case .gitlab: "gitlab"
+        }
     }
 
     private var providerName: String {
         switch account.provider {
         case .github: "GitHub"
         case .gitlab: "GitLab"
+        }
+    }
+
+    private var statusColor: Color {
+        switch account.tokenStatus {
+        case .valid: .green
+        case .expired, .revoked, .reauthorizationRequired, .unavailableOnThisDevice: .orange
         }
     }
 
