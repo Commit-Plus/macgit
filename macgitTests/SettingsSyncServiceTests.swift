@@ -24,12 +24,24 @@ final class SettingsSyncServiceTests: XCTestCase {
     private let local = AppSettingsSnapshot(
         showToolbarButtonText: true,
         showSubmodules: false,
-        showSubtrees: false
+        showSubtrees: false,
+        showHeaderBranchButton: true,
+        showHeaderMergeButton: true,
+        showHeaderStashButton: true,
+        showHeaderRemoteButton: true,
+        showHeaderFinderButton: true,
+        showHeaderTerminalButton: true
     )
     private let cloud = AppSettingsSnapshot(
         showToolbarButtonText: false,
         showSubmodules: true,
-        showSubtrees: true
+        showSubtrees: true,
+        showHeaderBranchButton: false,
+        showHeaderMergeButton: false,
+        showHeaderStashButton: false,
+        showHeaderRemoteButton: false,
+        showHeaderFinderButton: false,
+        showHeaderTerminalButton: false
     )
 
     func testGuestIsOffAndDoesNotTouchCloud() async {
@@ -139,7 +151,13 @@ final class SettingsSyncServiceTests: XCTestCase {
         let first = AppSettingsSnapshot(
             showToolbarButtonText: false,
             showSubmodules: false,
-            showSubtrees: false
+            showSubtrees: false,
+            showHeaderBranchButton: true,
+            showHeaderMergeButton: true,
+            showHeaderStashButton: true,
+            showHeaderRemoteButton: true,
+            showHeaderFinderButton: true,
+            showHeaderTerminalButton: true
         )
 
         harness.service.localSettingsDidChange(first)
