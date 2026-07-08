@@ -88,6 +88,52 @@ final class RepoPickerViewTests: XCTestCase {
         XCTAssertEqual(pathMatch.map { $0.name }, ["Docs"])
     }
 
+    func testCloneSheetDefaultsRepositoryNameFromHTTPRemoteURL() {
+        let name = CloneSheetView.defaultRepositoryName(
+            from: "https://gitlab.com/cki-project/cki-tools.git"
+        )
+
+        XCTAssertEqual(name, "cki-tools")
+    }
+
+    func testCloneSheetDefaultsRepositoryNameFromSSHRemoteURL() {
+        let name = CloneSheetView.defaultRepositoryName(
+            from: "git@github.com:owner/example-repo.git"
+        )
+
+        XCTAssertEqual(name, "example-repo")
+    }
+
+    func testCloneSheetFinalCloneURLAppendsRepositoryNameToDestinationFolder() throws {
+        let finalURL = try XCTUnwrap(CloneSheetView.finalCloneURL(
+            destinationPath: "/Users/thanhtran/Project",
+            repositoryName: "test-repo"
+        ))
+
+        XCTAssertEqual(finalURL.path, "/Users/thanhtran/Project/test-repo")
+    }
+
+    func testCloneSheetFinalCloneURLRejectsNestedRepositoryName() {
+        let finalURL = CloneSheetView.finalCloneURL(
+            destinationPath: "/Users/thanhtran/Project",
+            repositoryName: "../test-repo"
+        )
+
+        XCTAssertNil(finalURL)
+    }
+
+    func testRemoteBranchParserExtractsHeadNames() {
+        let output = """
+        abcdef1234567890\trefs/heads/main
+        1234567890abcdef\trefs/heads/feature/clone-picker
+        feedfacefeedface\trefs/tags/v1.0.0
+        """
+
+        let branches = GitStatusService.parseRemoteBranches(from: output)
+
+        XCTAssertEqual(branches, ["feature/clone-picker", "main"])
+    }
+
     private func makeRepository(name: String, path: String, lastOpened: Date) -> RecentRepository {
         var repo = RecentRepository(url: URL(fileURLWithPath: path), lastOpened: lastOpened)
         repo.name = name

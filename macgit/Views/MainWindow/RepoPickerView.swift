@@ -529,69 +529,155 @@ struct CloneSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var remoteURL = ""
     @State private var destinationPath = ""
+    @State private var repositoryName = ""
+    @State private var repositoryNameWasEdited = false
+    @State private var checkoutBranch = ""
+    @State private var remoteBranches: [String] = []
+    @State private var isLoadingRemoteBranches = false
+    @State private var remoteBranchLoadError: String?
+    @State private var recurseSubmodules = false
+    @State private var advancedOptionsExpanded = false
     @State private var showingDestinationPicker = false
+    @State private var isCloning = false
     @State private var errorMessage: String?
     @State private var showingError = false
     @State private var repoIconName: String = "code-branch"
 
+    private static let labelWidth: CGFloat = 120
+    private static let controlHeight: CGFloat = 30
+    private static let trailingControlWidth: CGFloat = 52
+
     var onClone: (URL) -> Void
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Clone Repository")
-                .font(.title2)
-                .fontWeight(.semibold)
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Clone a repository")
+                .font(.largeTitle)
+                .bold()
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Remote URL")
-                    .font(.headline)
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
+                    Text("Source URL:")
+                        .frame(width: Self.labelWidth, alignment: .trailing)
+
+                    TextField("https://github.com/user/repo.git", text: $remoteURL)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(height: Self.controlHeight)
+
                     Image(repoIconName)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 18, height: 18)
-                    TextField("https://github.com/user/repo.git", text: $remoteURL)
-                        .textFieldStyle(.roundedBorder)
+                        .frame(width: Self.trailingControlWidth, height: Self.controlHeight)
+                        .accessibilityLabel("Repository provider")
                 }
-                .frame(width: 400)
                 .onChange(of: remoteURL) { _, newValue in
                     repoIconName = determineRepoIconName(from: newValue)
+                    guard !repositoryNameWasEdited else { return }
+                    repositoryName = Self.defaultRepositoryName(from: newValue)
                 }
-            }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Destination")
-                    .font(.headline)
-                HStack {
-                    Text(destinationPath.isEmpty ? "Choose a folder…" : destinationPath)
-                        .foregroundStyle(destinationPath.isEmpty ? .secondary : .primary)
-                        .lineLimit(1)
-                    Spacer()
-                    Button("Choose…") {
+                HStack(alignment: .center, spacing: 12) {
+                    Text("Destination Path:")
+                        .frame(width: Self.labelWidth, alignment: .trailing)
+
+                    TextField("/Users/you/Project", text: $destinationPath)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(height: Self.controlHeight)
+
+                    Button("Choose destination folder", systemImage: "ellipsis") {
                         showingDestinationPicker = true
                     }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .frame(width: Self.trailingControlWidth, height: Self.controlHeight)
+                    .help("Choose destination folder")
+                    .disabled(isCloning)
                 }
-                .padding(8)
-                .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(8)
-                .frame(width: 400)
+
+                HStack(alignment: .center, spacing: 12) {
+                    Text("Name:")
+                        .frame(width: Self.labelWidth, alignment: .trailing)
+
+                    TextField("repository-name", text: repositoryNameBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(height: Self.controlHeight)
+
+                    Color.clear
+                        .frame(width: Self.trailingControlWidth, height: Self.controlHeight)
+                }
+
+                Button(action: toggleAdvancedOptions) {
+                    Label {
+                        Text("Advanced Options")
+                            .font(.headline)
+                    } icon: {
+                        Image(systemName: advancedOptionsExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption.bold())
+                            .frame(width: 14)
+                    }
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .padding(.leading, Self.labelWidth + 12)
+
+                if advancedOptionsExpanded {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .center, spacing: 12) {
+                            Text("Checkout branch:")
+                                .frame(width: Self.labelWidth, alignment: .trailing)
+
+                            Picker("", selection: $checkoutBranch) {
+                                ForEach(branchPickerOptions, id: \.branch) { option in
+                                    Text(option.title).tag(option.branch)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(height: Self.controlHeight)
+                            .disabled(isBranchPickerDisabled)
+
+                            Color.clear
+                                .frame(width: Self.trailingControlWidth, height: Self.controlHeight)
+                        }
+
+                        Toggle("Recurse submodules", isOn: $recurseSubmodules)
+                            .padding(.leading, Self.labelWidth + 12)
+                    }
+                    .transition(.opacity)
+                }
             }
 
-            HStack(spacing: 12) {
+            HStack {
+                Label(repositoryStatusText, systemImage: "chevron.left.forwardslash.chevron.right")
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
                 Button("Cancel", role: .cancel) {
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
+                .disabled(isCloning)
 
-                Button("Clone") {
-                    performClone()
+                Button(action: performClone) {
+                    if isCloning {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Text("Clone")
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(remoteURL.isEmpty || destinationPath.isEmpty)
+                .disabled(!canClone)
             }
         }
         .padding(30)
-        .frame(minWidth: 480)
+        .frame(minWidth: 680)
+        .task(id: trimmedRemoteURL) {
+            await loadRemoteBranches(for: trimmedRemoteURL)
+        }
         .alert("Error", isPresented: $showingError, actions: {
             Button("OK", role: .cancel) {}
         }, message: {
@@ -618,25 +704,182 @@ struct CloneSheetView: View {
         }
     }
 
+    private var canClone: Bool {
+        !isCloning
+            && !remoteURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !destinationPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !repositoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var repositoryStatusText: String {
+        remoteURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Enter a Git repository URL"
+            : "This is a Git repository"
+    }
+
+    private var trimmedRemoteURL: String {
+        remoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var branchPickerOptions: [(title: String, branch: String)] {
+        if trimmedRemoteURL.isEmpty {
+            return [("Source URL not found", "")]
+        }
+
+        if isLoadingRemoteBranches {
+            return [("Loading branches...", checkoutBranch)]
+        }
+
+        if remoteBranchLoadError != nil {
+            return [("Remote branches not found", "")]
+        }
+
+        guard !remoteBranches.isEmpty else {
+            return [("No remote branches found", "")]
+        }
+
+        return [("Default branch", "")]
+            + remoteBranches.map { ("origin/\($0)", $0) }
+    }
+
+    private var isBranchPickerDisabled: Bool {
+        trimmedRemoteURL.isEmpty
+            || isLoadingRemoteBranches
+            || remoteBranchLoadError != nil
+            || remoteBranches.isEmpty
+            || isCloning
+    }
+
+    private var repositoryNameBinding: Binding<String> {
+        Binding(
+            get: { repositoryName },
+            set: { newValue in
+                repositoryName = newValue
+                repositoryNameWasEdited = true
+            }
+        )
+    }
+
+    private func toggleAdvancedOptions() {
+        advancedOptionsExpanded.toggle()
+    }
+
+    private func loadRemoteBranches(for sourceURL: String) async {
+        remoteBranchLoadError = nil
+        remoteBranches = []
+
+        guard !sourceURL.isEmpty else {
+            checkoutBranch = ""
+            isLoadingRemoteBranches = false
+            return
+        }
+
+        isLoadingRemoteBranches = true
+
+        do {
+            try await Task.sleep(nanoseconds: 500_000_000)
+            let branches = try await GitStatusService.shared.remoteBranches(remoteURL: sourceURL)
+            guard !Task.isCancelled else { return }
+            remoteBranches = branches
+            remoteBranchLoadError = nil
+            if !branches.contains(checkoutBranch) {
+                checkoutBranch = ""
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            remoteBranches = []
+            remoteBranchLoadError = error.localizedDescription
+            checkoutBranch = ""
+        }
+
+        isLoadingRemoteBranches = false
+    }
+
     private func performClone() {
-        guard let url = URL(string: remoteURL), url.scheme != nil else {
-            errorMessage = "Please enter a valid remote URL."
+        let trimmedRemoteURL = remoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedRemoteURL.isEmpty else {
+            errorMessage = "Please enter a Git repository URL."
             showingError = true
             return
         }
 
-        let destURL = URL(fileURLWithPath: destinationPath)
-        let repoName = url.deletingPathExtension().lastPathComponent
-        let finalURL = destURL.appendingPathComponent(repoName)
+        guard let finalURL = Self.finalCloneURL(destinationPath: destinationPath, repositoryName: repositoryName) else {
+            errorMessage = "Please enter a valid destination path and repository name."
+            showingError = true
+            return
+        }
 
         if FileManager.default.fileExists(atPath: finalURL.path) {
-            errorMessage = "A folder named \"\(repoName)\" already exists at the destination."
+            errorMessage = "A folder named \"\(finalURL.lastPathComponent)\" already exists at the destination."
             showingError = true
             return
         }
 
-        // For now, accept the UI flow. Actual git clone via Process can be added later.
-        onClone(finalURL)
-        dismiss()
+        isCloning = true
+
+        Task {
+            do {
+                try await GitStatusService.shared.cloneRepository(
+                    remoteURL: trimmedRemoteURL,
+                    to: finalURL,
+                    checkoutBranch: checkoutBranch,
+                    recurseSubmodules: recurseSubmodules
+                )
+
+                await MainActor.run {
+                    onClone(finalURL)
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    showingError = true
+                    isCloning = false
+                }
+            }
+        }
+    }
+
+    static func defaultRepositoryName(from remoteURL: String) -> String {
+        var trimmed = remoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        trimmed = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+        if let components = URLComponents(string: trimmed),
+           let lastComponent = components.url?.deletingPathExtension().lastPathComponent,
+           !lastComponent.isEmpty {
+            return lastComponent
+        }
+
+        if let lastPathComponent = trimmed.split(separator: "/").last {
+            let name = removingGitSuffix(from: String(lastPathComponent))
+            if let colonIndex = name.lastIndex(of: ":") {
+                return String(name[name.index(after: colonIndex)...])
+            }
+            return name
+        }
+
+        return ""
+    }
+
+    static func finalCloneURL(destinationPath: String, repositoryName: String) -> URL? {
+        let trimmedDestination = destinationPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedName = repositoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedDestination.isEmpty,
+              !trimmedName.isEmpty,
+              trimmedName != ".",
+              trimmedName != "..",
+              !trimmedName.contains("/") else {
+            return nil
+        }
+
+        return URL(fileURLWithPath: trimmedDestination, isDirectory: true)
+            .appendingPathComponent(trimmedName, isDirectory: true)
+    }
+
+    private static func removingGitSuffix(from name: String) -> String {
+        name.hasSuffix(".git") ? String(name.dropLast(4)) : name
     }
 }
