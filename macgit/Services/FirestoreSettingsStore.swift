@@ -29,6 +29,12 @@ enum CloudSettingsDocument {
             "showToolbarButtonText": snapshot.showToolbarButtonText,
             "showSubmodules": snapshot.showSubmodules,
             "showSubtrees": snapshot.showSubtrees,
+            "showHeaderBranchButton": snapshot.showHeaderBranchButton,
+            "showHeaderMergeButton": snapshot.showHeaderMergeButton,
+            "showHeaderStashButton": snapshot.showHeaderStashButton,
+            "showHeaderRemoteButton": snapshot.showHeaderRemoteButton,
+            "showHeaderFinderButton": snapshot.showHeaderFinderButton,
+            "showHeaderTerminalButton": snapshot.showHeaderTerminalButton,
             "updatedAt": updatedAt
         ]
     }
@@ -47,7 +53,13 @@ enum CloudSettingsDocument {
         return AppSettingsSnapshot(
             showToolbarButtonText: showToolbarButtonText,
             showSubmodules: showSubmodules,
-            showSubtrees: showSubtrees
+            showSubtrees: showSubtrees,
+            showHeaderBranchButton: data["showHeaderBranchButton"] as? Bool ?? true,
+            showHeaderMergeButton: data["showHeaderMergeButton"] as? Bool ?? true,
+            showHeaderStashButton: data["showHeaderStashButton"] as? Bool ?? true,
+            showHeaderRemoteButton: data["showHeaderRemoteButton"] as? Bool ?? true,
+            showHeaderFinderButton: data["showHeaderFinderButton"] as? Bool ?? true,
+            showHeaderTerminalButton: data["showHeaderTerminalButton"] as? Bool ?? true
         )
     }
 }
