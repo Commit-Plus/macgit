@@ -16,6 +16,7 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+import Combine
 import XCTest
 @testable import macgit
 
@@ -177,14 +178,16 @@ final class AppSettingsSnapshotTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let state = AppState(userDefaults: defaults)
         var emissions: [AppSettingsSnapshot] = []
-        let cancellable = state.settingsSnapshotPublisher.sink { emissions.append($0) }
+        var cancellables = Set<AnyCancellable>()
+        state.settingsSnapshotPublisher
+            .sink { emissions.append($0) }
+            .store(in: &cancellables)
 
         // The publisher emits the current snapshot on subscription; device-local settings should not add more.
         state.syncEnabled = true
         state.searchFilter = .commit
 
         XCTAssertEqual(emissions.count, 1)
-        _ = cancellable
     }
 
     func testSettingsSnapshotPublisherEmitsUpdatedSnapshot() {
@@ -193,14 +196,16 @@ final class AppSettingsSnapshotTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let state = AppState(userDefaults: defaults)
         var emissions: [AppSettingsSnapshot] = []
-        let cancellable = state.settingsSnapshotPublisher.sink { emissions.append($0) }
+        var cancellables = Set<AnyCancellable>()
+        state.settingsSnapshotPublisher
+            .sink { emissions.append($0) }
+            .store(in: &cancellables)
 
         state.showHeaderBranchButton = false
 
         XCTAssertEqual(emissions.count, 2)
         XCTAssertEqual(emissions.last?.showHeaderBranchButton, false)
         XCTAssertEqual(emissions.last?.showHeaderMergeButton, true)
-        _ = cancellable
     }
 
     func testApplyEmitsSingleSnapshot() {
@@ -209,25 +214,25 @@ final class AppSettingsSnapshotTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let state = AppState(userDefaults: defaults)
         var emissions: [AppSettingsSnapshot] = []
-        let cancellable = state.settingsSnapshotPublisher.sink { emissions.append($0) }
+        var cancellables = Set<AnyCancellable>()
+        state.settingsSnapshotPublisher
+            .sink { emissions.append($0) }
+            .store(in: &cancellables)
 
-        state.apply(
-            AppSettingsSnapshot(
-                showToolbarButtonText: false,
-                showSubmodules: true,
-                showSubtrees: true,
-                showHeaderBranchButton: false,
-                showHeaderMergeButton: false,
-                showHeaderStashButton: false,
-                showHeaderRemoteButton: false,
-                showHeaderFinderButton: false,
-                showHeaderTerminalButton: false
-            )
+        let expected = AppSettingsSnapshot(
+            showToolbarButtonText: false,
+            showSubmodules: true,
+            showSubtrees: true,
+            showHeaderBranchButton: false,
+            showHeaderMergeButton: false,
+            showHeaderStashButton: false,
+            showHeaderRemoteButton: false,
+            showHeaderFinderButton: false,
+            showHeaderTerminalButton: false
         )
+        state.apply(expected)
 
         XCTAssertEqual(emissions.count, 2)
-        XCTAssertEqual(emissions.last?.showToolbarButtonText, false)
-        XCTAssertEqual(emissions.last?.showHeaderBranchButton, false)
-        _ = cancellable
+        XCTAssertEqual(emissions.last, expected)
     }
 }
