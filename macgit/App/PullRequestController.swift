@@ -25,8 +25,11 @@ final class PullRequestController: ObservableObject {
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
     @Published var detailErrorMessage: String?
-    @Published var stateFilter: PullRequestListFilter = .all
+    @Published var stateFilter: PullRequestListFilter = .open
     @Published var createdByMeOnly = false
+    @Published private(set) var currentPage = 1
+    @Published private(set) var hasPreviousPage = false
+    @Published private(set) var hasNextPage = false
     @Published private(set) var selectedProviderAccountID: String?
     @Published private(set) var selectedDetail: PullRequestDetail?
     @Published private(set) var isLoadingDetail = false
@@ -48,6 +51,7 @@ final class PullRequestController: ObservableObject {
     private var activeRemoteName: String?
     private var activeRemoteURLString: String?
     private var activeToken: GitProviderToken?
+    private let pullRequestPageSize = 30
 
     init(
         providerAccountController: GitProviderAccountController,
@@ -110,27 +114,29 @@ final class PullRequestController: ObservableObject {
         return providerAccountController.accounts.first { $0.id == selectedProviderAccountID }?.username
     }
 
-    func loadPullRequests(repositoryURL: URL) async {
+    func loadPullRequests(repositoryURL: URL, page: Int = 1) async {
         activeRepositoryURL = repositoryURL
         guard let remoteName = await remoteNameProvider(repositoryURL),
               let remoteURLString = await remoteURLProvider(repositoryURL, remoteName) else {
             items = []
+            resetPagination()
             activeRemoteName = nil
             activeRemoteURLString = nil
             errorMessage = "No remotes configured."
             return
         }
         activeRemoteName = remoteName
-        await loadPullRequests(remoteURLString: remoteURLString)
+        await loadPullRequests(remoteURLString: remoteURLString, page: page)
     }
 
-    func loadPullRequests(remoteURLString: String) async {
+    func loadPullRequests(remoteURLString: String, page: Int = 1) async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
 
         guard let remoteIdentity = GitRemoteIdentityResolver.identity(from: remoteURLString) else {
             items = []
+            resetPagination()
             selectedProviderAccountID = nil
             activeRepository = nil
             activeToken = nil
@@ -148,6 +154,7 @@ final class PullRequestController: ObservableObject {
 
         guard let account = matchingAccount(for: repository) else {
             items = []
+            resetPagination()
             selectedProviderAccountID = nil
             activeRepository = nil
             activeToken = nil
@@ -160,6 +167,7 @@ final class PullRequestController: ObservableObject {
         do {
             guard let storedToken = try tokenVault.readToken(for: account) else {
                 items = []
+                resetPagination()
                 activeRepository = nil
                 activeToken = nil
                 errorMessage = "Reconnect..."
@@ -168,12 +176,14 @@ final class PullRequestController: ObservableObject {
             token = storedToken
         } catch {
             items = []
+            resetPagination()
             errorMessage = "Reconnect..."
             return
         }
 
         guard let service = services[repository.provider] else {
             items = []
+            resetPagination()
             activeRepository = nil
             activeToken = nil
             errorMessage = PullRequestProviderError.unsupportedProvider.localizedDescription
@@ -181,17 +191,39 @@ final class PullRequestController: ObservableObject {
         }
 
         do {
-            items = try await service.listPullRequests(repository: repository, token: token)
+            let pageResult = try await service.listPullRequests(
+                repository: repository,
+                token: token,
+                filter: stateFilter,
+                page: page,
+                perPage: pullRequestPageSize
+            )
+            items = pageResult.items
+            currentPage = pageResult.page
+            hasPreviousPage = pageResult.hasPreviousPage
+            hasNextPage = pageResult.hasNextPage
             activeRepository = repository
             activeToken = token
             errorMessage = nil
         } catch let error as PullRequestProviderError {
             items = []
+            resetPagination()
             errorMessage = error.localizedDescription
         } catch {
             items = []
+            resetPagination()
             errorMessage = error.localizedDescription
         }
+    }
+
+    func loadPreviousPage(repositoryURL: URL) async {
+        guard hasPreviousPage, currentPage > 1 else { return }
+        await loadPullRequests(repositoryURL: repositoryURL, page: currentPage - 1)
+    }
+
+    func loadNextPage(repositoryURL: URL) async {
+        guard hasNextPage else { return }
+        await loadPullRequests(repositoryURL: repositoryURL, page: currentPage + 1)
     }
 
     func openInBrowser(_ summary: PullRequestSummary) {
@@ -286,7 +318,7 @@ final class PullRequestController: ObservableObject {
             _ = try await service.createPullRequest(draft, token: token)
             createDraftSeed = nil
             if let activeRemoteURLString {
-                await loadPullRequests(remoteURLString: activeRemoteURLString)
+                await loadPullRequests(remoteURLString: activeRemoteURLString, page: 1)
             }
         } catch {
             detailErrorMessage = error.localizedDescription
@@ -368,6 +400,12 @@ final class PullRequestController: ObservableObject {
             account.provider == repository.provider && normalizedHost(account.hostURL) == repositoryHost
         }
         return accounts.first(where: { $0.id == selectedProviderAccountID }) ?? accounts.first
+    }
+
+    private func resetPagination() {
+        currentPage = 1
+        hasPreviousPage = false
+        hasNextPage = false
     }
 
     private func normalizedHost(_ url: URL) -> String {

@@ -72,6 +72,9 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(service.receivedRepository?.owner, "octocat")
         XCTAssertEqual(service.receivedRepository?.name, "Hello-World")
         XCTAssertEqual(service.receivedToken, token)
+        XCTAssertEqual(service.receivedFilter, .open)
+        XCTAssertEqual(service.receivedPage, 1)
+        XCTAssertEqual(service.receivedPerPage, 30)
     }
 
     func testLoadPullRequestsPublishesPermissionError() async throws {
@@ -151,6 +154,40 @@ final class PullRequestControllerTests: XCTestCase {
         controller.createdByMeOnly = true
 
         XCTAssertEqual(controller.visibleItems.map(\.number), [14])
+    }
+
+    func testLoadNextPageRequestsNextProviderPage() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let service = FakePullRequestProvider(
+            result: .success([makeSummary(number: 12)]),
+            hasNextPage: true
+        )
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let repositoryURL = URL(fileURLWithPath: "/tmp/macgit-pr-pagination")
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service],
+            remoteNameProvider: { _ in "origin" },
+            remoteURLProvider: { _, _ in "https://github.com/octocat/Hello-World.git" }
+        )
+
+        await controller.loadPullRequests(repositoryURL: repositoryURL)
+        await controller.loadNextPage(repositoryURL: repositoryURL)
+
+        XCTAssertEqual(service.receivedPage, 2)
+        XCTAssertEqual(controller.currentPage, 2)
+        XCTAssertTrue(controller.hasNextPage)
     }
 
     func testLoadPullRequestDetailPublishesSelectedDetail() async throws {
@@ -503,8 +540,13 @@ private final class FakePullRequestProvider: PullRequestProviding {
     private let detailResult: Result<PullRequestDetail, PullRequestProviderError>
     private let createResult: Result<PullRequestSummary, PullRequestProviderError>
     private let commentResult: Result<Void, PullRequestProviderError>
+    private let hasPreviousPage: Bool
+    private let hasNextPage: Bool
     private(set) var receivedRepository: GitRepositoryIdentity?
     private(set) var receivedToken: GitProviderToken?
+    private(set) var receivedFilter: PullRequestListFilter?
+    private(set) var receivedPage: Int?
+    private(set) var receivedPerPage: Int?
     private(set) var receivedDetailNumber: Int?
     private(set) var createdDraft: PullRequestDraft?
     private(set) var createdCommentBody: String?
@@ -513,21 +555,37 @@ private final class FakePullRequestProvider: PullRequestProviding {
         result: Result<[PullRequestSummary], PullRequestProviderError> = .success([]),
         detailResult: Result<PullRequestDetail, PullRequestProviderError> = .failure(.providerMessage("No detail")),
         createResult: Result<PullRequestSummary, PullRequestProviderError> = .failure(.providerMessage("No create")),
-        commentResult: Result<Void, PullRequestProviderError> = .success(())
+        commentResult: Result<Void, PullRequestProviderError> = .success(()),
+        hasPreviousPage: Bool = false,
+        hasNextPage: Bool = false
     ) {
         self.result = result
         self.detailResult = detailResult
         self.createResult = createResult
         self.commentResult = commentResult
+        self.hasPreviousPage = hasPreviousPage
+        self.hasNextPage = hasNextPage
     }
 
     func listPullRequests(
         repository: GitRepositoryIdentity,
-        token: GitProviderToken
-    ) async throws -> [PullRequestSummary] {
+        token: GitProviderToken,
+        filter: PullRequestListFilter,
+        page: Int,
+        perPage: Int
+    ) async throws -> PullRequestListPage {
         receivedRepository = repository
         receivedToken = token
-        return try result.get()
+        receivedFilter = filter
+        receivedPage = page
+        receivedPerPage = perPage
+        return PullRequestListPage(
+            items: try result.get(),
+            page: page,
+            perPage: perPage,
+            hasPreviousPage: hasPreviousPage,
+            hasNextPage: hasNextPage
+        )
     }
 
     func pullRequestDetail(

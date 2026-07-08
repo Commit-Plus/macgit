@@ -21,8 +21,11 @@ import Foundation
 protocol PullRequestProviding {
     func listPullRequests(
         repository: GitRepositoryIdentity,
-        token: GitProviderToken
-    ) async throws -> [PullRequestSummary]
+        token: GitProviderToken,
+        filter: PullRequestListFilter,
+        page: Int,
+        perPage: Int
+    ) async throws -> PullRequestListPage
 
     func pullRequestDetail(
         repository: GitRepositoryIdentity,

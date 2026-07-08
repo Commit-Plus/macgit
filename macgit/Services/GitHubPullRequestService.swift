@@ -36,11 +36,16 @@ struct GitHubPullRequestService: PullRequestProviding {
 
     func listPullRequests(
         repository: GitRepositoryIdentity,
-        token: GitProviderToken
-    ) async throws -> [PullRequestSummary] {
+        token: GitProviderToken,
+        filter: PullRequestListFilter,
+        page: Int,
+        perPage: Int
+    ) async throws -> PullRequestListPage {
         guard repository.provider == .github else {
             throw PullRequestProviderError.unsupportedProvider
         }
+        let normalizedPage = max(1, page)
+        let normalizedPerPage = min(max(1, perPage), 100)
 
         var components = URLComponents(
             url: apiBaseURL
@@ -50,7 +55,11 @@ struct GitHubPullRequestService: PullRequestProviding {
                 .appendingPathComponent("pulls"),
             resolvingAgainstBaseURL: false
         )
-        components?.queryItems = [URLQueryItem(name: "state", value: "all")]
+        components?.queryItems = [
+            URLQueryItem(name: "state", value: filter.apiState),
+            URLQueryItem(name: "per_page", value: String(normalizedPerPage)),
+            URLQueryItem(name: "page", value: String(normalizedPage)),
+        ]
         guard let url = components?.url else {
             throw PullRequestProviderError.repositoryUnavailable
         }
@@ -69,7 +78,13 @@ struct GitHubPullRequestService: PullRequestProviding {
                     token: token
                 ))
             }
-            return summaries
+            return PullRequestListPage(
+                items: summaries,
+                page: normalizedPage,
+                perPage: normalizedPerPage,
+                hasPreviousPage: hasLinkRelation("prev", in: response) || normalizedPage > 1,
+                hasNextPage: hasLinkRelation("next", in: response)
+            )
         } catch {
             throw PullRequestProviderError.providerMessage("GitHub returned an invalid pull request response.")
         }
@@ -335,6 +350,17 @@ struct GitHubPullRequestService: PullRequestProviding {
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token.accessToken)", forHTTPHeaderField: "Authorization")
         return request
+    }
+
+    private func hasLinkRelation(_ relation: String, in response: HTTPURLResponse) -> Bool {
+        guard let linkHeader = response.value(forHTTPHeaderField: "Link") else {
+            return false
+        }
+        return linkHeader
+            .split(separator: ",")
+            .contains { segment in
+                segment.range(of: "rel=\"\(relation)\"") != nil
+            }
     }
 
     private func makeJSONRequest<Body: Encodable>(

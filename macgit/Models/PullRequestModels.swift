@@ -26,21 +26,54 @@ enum PullRequestState: String, Codable, Equatable {
 }
 
 enum PullRequestListFilter: String, CaseIterable, Identifiable {
-    case all = "All"
     case open = "Open"
     case closed = "Closed"
+    case all = "All"
 
     var id: String { rawValue }
 
+    var apiState: String {
+        switch self {
+        case .open:
+            "open"
+        case .closed:
+            "closed"
+        case .all:
+            "all"
+        }
+    }
+
     func includes(_ state: PullRequestState) -> Bool {
         switch self {
-        case .all:
-            return true
         case .open:
             return state == .open || state == .draft
         case .closed:
             return state == .closed || state == .merged
+        case .all:
+            return true
         }
+    }
+}
+
+struct PullRequestListPage: Equatable {
+    var items: [PullRequestSummary]
+    var page: Int
+    var perPage: Int
+    var hasPreviousPage: Bool
+    var hasNextPage: Bool
+
+    init(
+        items: [PullRequestSummary],
+        page: Int,
+        perPage: Int,
+        hasPreviousPage: Bool,
+        hasNextPage: Bool
+    ) {
+        self.items = items
+        self.page = max(1, page)
+        self.perPage = max(1, perPage)
+        self.hasPreviousPage = hasPreviousPage
+        self.hasNextPage = hasNextPage
     }
 }
 

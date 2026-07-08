@@ -46,24 +46,28 @@ struct PullRequestListView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(controller.visibleItems) { item in
-                    PullRequestRow(
-                        summary: item,
-                        isBusy: controller.isPerformingAction,
-                        onOpen: { controller.openInBrowser(item) },
-                        onCheckout: {
-                            Task { await controller.checkout(item) }
-                        },
-                        onComment: {
-                            pendingCommentPullRequest = item
+                VStack(spacing: 0) {
+                    List(controller.visibleItems) { item in
+                        PullRequestRow(
+                            summary: item,
+                            isBusy: controller.isPerformingAction,
+                            onOpen: { controller.openInBrowser(item) },
+                            onCheckout: {
+                                Task { await controller.checkout(item) }
+                            },
+                            onComment: {
+                                pendingCommentPullRequest = item
+                            }
+                        )
+                        .onTapGesture(count: 2) {
+                            Task { await controller.loadPullRequestDetail(item) }
                         }
-                    )
-                    .onTapGesture(count: 2) {
-                        Task { await controller.loadPullRequestDetail(item) }
+                        .listRowSeparator(.visible)
                     }
-                    .listRowSeparator(.visible)
+                    .listStyle(.plain)
+
+                    paginationFooter
                 }
-                .listStyle(.plain)
             }
         }
         .overlay {
@@ -118,6 +122,9 @@ struct PullRequestListView: View {
         }
         .task(id: repositoryURL) {
             await controller.loadPullRequests(repositoryURL: repositoryURL)
+        }
+        .onChange(of: controller.stateFilter) { _, _ in
+            Task { await controller.loadPullRequests(repositoryURL: repositoryURL) }
         }
     }
 
@@ -184,6 +191,40 @@ struct PullRequestListView: View {
         .padding(.vertical, 10)
         .background(Color(nsColor: .controlBackgroundColor))
         .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(.separator)
+                .frame(height: 0.5)
+        }
+    }
+
+    private var paginationFooter: some View {
+        HStack(spacing: 10) {
+            Button("Previous page", systemImage: "chevron.left") {
+                Task { await controller.loadPreviousPage(repositoryURL: repositoryURL) }
+            }
+            .buttonStyle(.borderless)
+            .labelStyle(.iconOnly)
+            .disabled(controller.isLoading || !controller.hasPreviousPage)
+            .help("Previous page")
+
+            Text("Page \(controller.currentPage)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 54)
+
+            Button("Next page", systemImage: "chevron.right") {
+                Task { await controller.loadNextPage(repositoryURL: repositoryURL) }
+            }
+            .buttonStyle(.borderless)
+            .labelStyle(.iconOnly)
+            .disabled(controller.isLoading || !controller.hasNextPage)
+            .help("Next page")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .overlay(alignment: .top) {
             Rectangle()
                 .fill(.separator)
                 .frame(height: 0.5)

@@ -49,21 +49,27 @@ final class GitHubPullRequestServiceTests: XCTestCase {
                 }
               }
             ]
-            """),
+            """, headers: [
+                "Link": "<https://api.github.com/repos/octocat/Hello-World/pulls?state=open&per_page=30&page=2>; rel=\"next\""
+            ]),
             .json(statusCode: 200, body: #"{"state":"success","total_count":2}"#),
             .json(statusCode: 200, body: #"{"mergeable":true}"#)
         ])
         let service = GitHubPullRequestService(httpClient: client)
 
-        let pullRequests = try await service.listPullRequests(
+        let page = try await service.listPullRequests(
             repository: makeRepository(),
-            token: makeToken()
+            token: makeToken(),
+            filter: .open,
+            page: 1,
+            perPage: 30
         )
+        let pullRequests = page.items
 
         let request = try XCTUnwrap(client.requests.first)
         XCTAssertEqual(
             request.url?.absoluteString,
-            "https://api.github.com/repos/octocat/Hello-World/pulls?state=all"
+            "https://api.github.com/repos/octocat/Hello-World/pulls?state=open&per_page=30&page=1"
         )
         XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/vnd.github+json")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret-token")
@@ -80,10 +86,14 @@ final class GitHubPullRequestServiceTests: XCTestCase {
         XCTAssertEqual(pullRequests[0].updatedAt, ISO8601DateFormatter().date(from: "2026-07-06T10:11:12Z"))
         XCTAssertEqual(pullRequests[0].checkState, .success)
         XCTAssertEqual(pullRequests[0].mergeReadiness, .ready)
+        XCTAssertEqual(page.page, 1)
+        XCTAssertEqual(page.perPage, 30)
+        XCTAssertFalse(page.hasPreviousPage)
+        XCTAssertTrue(page.hasNextPage)
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
             [
-                "https://api.github.com/repos/octocat/Hello-World/pulls?state=all",
+                "https://api.github.com/repos/octocat/Hello-World/pulls?state=open&per_page=30&page=1",
                 "https://api.github.com/repos/octocat/Hello-World/commits/abc123/status",
                 "https://api.github.com/repos/octocat/Hello-World/pulls/12",
             ]
@@ -112,13 +122,23 @@ final class GitHubPullRequestServiceTests: XCTestCase {
         ])
         let service = GitHubPullRequestService(httpClient: client)
 
-        let pullRequests = try await service.listPullRequests(
+        let page = try await service.listPullRequests(
             repository: makeRepository(),
-            token: makeToken()
+            token: makeToken(),
+            filter: .closed,
+            page: 2,
+            perPage: 25
         )
+        let pullRequests = page.items
 
         XCTAssertEqual(pullRequests[0].state, .merged)
         XCTAssertEqual(pullRequests[0].mergedAt, ISO8601DateFormatter().date(from: "2026-07-06T10:11:12Z"))
+        XCTAssertEqual(
+            client.requests.first?.url?.absoluteString,
+            "https://api.github.com/repos/octocat/Hello-World/pulls?state=closed&per_page=25&page=2"
+        )
+        XCTAssertEqual(page.page, 2)
+        XCTAssertTrue(page.hasPreviousPage)
     }
 
     func testCheckRunsProvideBuildStateWhenCommitStatusesAreEmpty() async throws {
@@ -146,17 +166,21 @@ final class GitHubPullRequestServiceTests: XCTestCase {
         ])
         let service = GitHubPullRequestService(httpClient: client)
 
-        let pullRequests = try await service.listPullRequests(
+        let page = try await service.listPullRequests(
             repository: makeRepository(),
-            token: makeToken()
+            token: makeToken(),
+            filter: .all,
+            page: 3,
+            perPage: 30
         )
+        let pullRequests = page.items
 
         XCTAssertEqual(pullRequests[0].checkState, .failure)
         XCTAssertEqual(pullRequests[0].mergeReadiness, .blocked)
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
             [
-                "https://api.github.com/repos/octocat/Hello-World/pulls?state=all",
+                "https://api.github.com/repos/octocat/Hello-World/pulls?state=all&per_page=30&page=3",
                 "https://api.github.com/repos/octocat/Hello-World/commits/fed789/status",
                 "https://api.github.com/repos/octocat/Hello-World/commits/fed789/check-runs",
                 "https://api.github.com/repos/octocat/Hello-World/pulls/15",
@@ -271,10 +295,14 @@ final class GitHubPullRequestServiceTests: XCTestCase {
         ])
         let service = GitHubPullRequestService(httpClient: client)
 
-        let pullRequests = try await service.listPullRequests(
+        let page = try await service.listPullRequests(
             repository: makeRepository(),
-            token: makeToken()
+            token: makeToken(),
+            filter: .open,
+            page: 1,
+            perPage: 30
         )
+        let pullRequests = page.items
 
         XCTAssertEqual(pullRequests[0].state, .draft)
     }
@@ -406,7 +434,13 @@ final class GitHubPullRequestServiceTests: XCTestCase {
         let service = GitHubPullRequestService(httpClient: client)
 
         do {
-            _ = try await service.listPullRequests(repository: makeRepository(), token: makeToken())
+            _ = try await service.listPullRequests(
+                repository: makeRepository(),
+                token: makeToken(),
+                filter: .open,
+                page: 1,
+                perPage: 30
+            )
             XCTFail("Expected listPullRequests to throw", file: file, line: line)
         } catch {
             XCTAssertEqual(error as? PullRequestProviderError, expectedError, file: file, line: line)
@@ -460,9 +494,10 @@ private final class StubPullRequestHTTPClient: GitProviderHTTPClient {
     struct Response {
         var statusCode: Int
         var data: Data
+        var headers: [String: String]
 
-        static func json(statusCode: Int, body: String) -> Response {
-            Response(statusCode: statusCode, data: Data(body.utf8))
+        static func json(statusCode: Int, body: String, headers: [String: String] = [:]) -> Response {
+            Response(statusCode: statusCode, data: Data(body.utf8), headers: headers)
         }
     }
 
@@ -481,7 +516,7 @@ private final class StubPullRequestHTTPClient: GitProviderHTTPClient {
                 url: request.url!,
                 statusCode: response.statusCode,
                 httpVersion: nil,
-                headerFields: nil
+                headerFields: response.headers
             )
         )
         return (response.data, httpResponse)
