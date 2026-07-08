@@ -598,14 +598,20 @@ struct MainWindowView: View {
                 action: { handleGitUndoMenuAction(.undo) }
             )
         }
-        ToolbarItem(placement: .automatic) {
-            toolbarButton(icon: "network", label: "Remote", showText: appState.showToolbarButtonText, disabled: remoteURLString.isEmpty, action: { openRemoteURL() })
+        if appState.showHeaderRemoteButton {
+            ToolbarItem(placement: .automatic) {
+                toolbarButton(icon: "network", label: "Remote", showText: appState.showToolbarButtonText, disabled: remoteURLString.isEmpty, action: { openRemoteURL() })
+            }
         }
-        ToolbarItem(placement: .automatic) {
-            toolbarButton(icon: "folder", label: "Finder", showText: appState.showToolbarButtonText, action: showInFinder)
+        if appState.showHeaderFinderButton {
+            ToolbarItem(placement: .automatic) {
+                toolbarButton(icon: "folder", label: "Finder", showText: appState.showToolbarButtonText, action: showInFinder)
+            }
         }
-        ToolbarItem(placement: .automatic) {
-            toolbarButton(icon: "terminal", label: "Terminal", showText: appState.showToolbarButtonText, action: openTerminal)
+        if appState.showHeaderTerminalButton {
+            ToolbarItem(placement: .automatic) {
+                toolbarButton(icon: "terminal", label: "Terminal", showText: appState.showToolbarButtonText, action: openTerminal)
+            }
         }
         ToolbarItem(placement: .automatic) {
             toolbarButton(icon: "gear", label: "Settings", showText: appState.showToolbarButtonText, action: { showingRepositorySettings = true })
@@ -909,9 +915,15 @@ struct MainWindowView: View {
                 BadgeToolbarButton(icon: "arrow.down.to.line", label: "Pull", badgeCount: syncState.pullBadgeCount, isLoading: syncState.isPulling, disabled: syncing, showText: showText, action: { showingPullSheet = true })
                 BadgeToolbarButton(icon: "arrow.up.to.line", label: "Push", badgeCount: syncState.pushBadgeCount, isLoading: syncState.isPushing, disabled: syncing, showText: showText, action: { showingPushSheet = true })
                 toolbarButton(icon: "arrow.down.circle", label: "Fetch", showText: showText, isLoading: syncState.isFetching, disabled: syncing, action: { showingFetchSheet = true })
-                toolbarButton(icon: "arrow.triangle.branch", label: "Branch", showText: showText, action: { presentBranchSheet(startPoint: nil) })
-                toolbarButton(icon: "arrow.triangle.merge", label: "Merge", showText: showText, isLoading: syncState.isMerging, disabled: syncing, action: { showingMergeSheet = true })
-                toolbarButton(icon: "archivebox", label: "Stash", showText: showText, isLoading: syncState.isStashing, disabled: syncing || syncState.stashableCount == 0, action: { showingStashSheet = true })
+                if appState.showHeaderBranchButton {
+                    toolbarButton(icon: "arrow.triangle.branch", label: "Branch", showText: showText, action: { presentBranchSheet(startPoint: nil) })
+                }
+                if appState.showHeaderMergeButton {
+                    toolbarButton(icon: "arrow.triangle.merge", label: "Merge", showText: showText, isLoading: syncState.isMerging, disabled: syncing, action: { showingMergeSheet = true })
+                }
+                if appState.showHeaderStashButton {
+                    toolbarButton(icon: "archivebox", label: "Stash", showText: showText, isLoading: syncState.isStashing, disabled: syncing || syncState.stashableCount == 0, action: { showingStashSheet = true })
+                }
             }
         } else if windowWidth > 800 {
             HStack(spacing: 2) {
@@ -941,11 +953,17 @@ struct MainWindowView: View {
                     .disabled(syncing)
             }
             if windowWidth <= 1000 {
-                Button("Branch") { presentBranchSheet(startPoint: nil) }
-                Button("Merge") { showingMergeSheet = true }
-                    .disabled(syncing)
-                Button("Stash", action: { showingStashSheet = true })
-                    .disabled(syncing || syncState.stashableCount == 0)
+                if appState.showHeaderBranchButton {
+                    Button("Branch") { presentBranchSheet(startPoint: nil) }
+                }
+                if appState.showHeaderMergeButton {
+                    Button("Merge") { showingMergeSheet = true }
+                        .disabled(syncing)
+                }
+                if appState.showHeaderStashButton {
+                    Button("Stash", action: { showingStashSheet = true })
+                        .disabled(syncing || syncState.stashableCount == 0)
+                }
             }
         } label: {
             ToolbarButtonLabel(icon: "ellipsis", label: "More", showText: appState.showToolbarButtonText)
