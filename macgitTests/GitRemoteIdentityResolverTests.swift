@@ -68,6 +68,18 @@ final class GitRemoteIdentityResolverTests: XCTestCase {
         XCTAssertEqual(identity.canonicalHTTPSURL.absoluteString, "https://gitlab.example.com/platform/mobile/app.git")
     }
 
+    func testParsesConfiguredSelfHostedGitLabRemote() throws {
+        let identity = try XCTUnwrap(GitRemoteIdentityResolver.identity(
+            from: "https://source.company.com/platform/mobile/app.git",
+            knownGitLabHosts: ["source.company.com"]
+        ))
+
+        XCTAssertEqual(identity.provider, .gitlab)
+        XCTAssertEqual(identity.hostURL.absoluteString, "https://source.company.com")
+        XCTAssertEqual(identity.ownerPath, "platform/mobile")
+        XCTAssertEqual(identity.repositoryName, "app")
+    }
+
     func testUnsupportedHostReturnsNil() {
         XCTAssertNil(GitRemoteIdentityResolver.identity(from: "https://example.com/octocat/Hello-World.git"))
     }

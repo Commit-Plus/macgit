@@ -44,7 +44,10 @@ struct GitProviderCredentialResolver {
 
     func credential(for remoteURLString: String, preferredAccountID: String? = nil) throws -> GitCredential? {
         guard isHTTPSRemote(remoteURLString) else { return nil }
-        guard let identity = GitRemoteIdentityResolver.identity(from: remoteURLString) else {
+        guard let identity = GitRemoteIdentityResolver.identity(
+            from: remoteURLString,
+            knownGitLabHosts: connectedGitLabHosts
+        ) else {
             return nil
         }
 
@@ -78,6 +81,13 @@ struct GitProviderCredentialResolver {
             return false
         }
         return scheme == "https"
+    }
+
+    private var connectedGitLabHosts: Set<String> {
+        Set(accounts.compactMap { account in
+            guard account.provider == .gitlab else { return nil }
+            return normalizedHost(account.hostURL)
+        })
     }
 
     private func normalizedHost(_ url: URL) -> String {

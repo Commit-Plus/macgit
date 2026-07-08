@@ -148,7 +148,10 @@ final class PullRequestController: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
 
-        guard let remoteIdentity = GitRemoteIdentityResolver.identity(from: remoteURLString) else {
+        guard let remoteIdentity = GitRemoteIdentityResolver.identity(
+            from: remoteURLString,
+            knownGitLabHosts: connectedGitLabHosts
+        ) else {
             items = []
             resetPagination()
             selectedProviderAccountID = nil
@@ -424,6 +427,13 @@ final class PullRequestController: ObservableObject {
         currentPage = 1
         hasPreviousPage = false
         hasNextPage = false
+    }
+
+    private var connectedGitLabHosts: Set<String> {
+        Set(providerAccountController.accounts.compactMap { account in
+            guard account.provider == .gitlab else { return nil }
+            return normalizedHost(account.hostURL)
+        })
     }
 
     private func normalizedHost(_ url: URL) -> String {

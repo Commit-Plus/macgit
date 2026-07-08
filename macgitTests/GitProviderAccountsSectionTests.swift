@@ -27,10 +27,32 @@ final class GitProviderAccountsSectionTests: XCTestCase {
         )
     }
 
-    func testSignedInUserSeesAddGitHubAction() {
+    func testSignedInUserSeesAddGitHubAndAddGitLabActions() {
         XCTAssertEqual(
             GitProviderAccountsPresentationPolicy.actions(isSignedIn: true, account: nil),
-            [.addGitHub]
+            [.addGitHub, .addGitLabDotCom, .addSelfHostedGitLab]
+        )
+    }
+
+    func testSelfHostedGitLabRequiresHostURL() throws {
+        XCTAssertNil(GitProviderAccountsPresentationPolicy.normalizedSelfHostedGitLabHost(from: ""))
+        XCTAssertNil(GitProviderAccountsPresentationPolicy.normalizedSelfHostedGitLabHost(from: "not a host"))
+
+        let host = try XCTUnwrap(
+            GitProviderAccountsPresentationPolicy.normalizedSelfHostedGitLabHost(from: "gitlab.example.com/gitlab")
+        )
+
+        XCTAssertEqual(host.kind, .gitlab)
+        XCTAssertEqual(host.baseURL.absoluteString, "https://gitlab.example.com")
+    }
+
+    func testGitLabAccountUsesSameDisconnectFlowAsGitHub() {
+        XCTAssertEqual(
+            GitProviderAccountsPresentationPolicy.actions(
+                isSignedIn: true,
+                account: makeAccount(provider: .gitlab, tokenStatus: .valid)
+            ),
+            [.disconnect]
         )
     }
 
@@ -38,7 +60,7 @@ final class GitProviderAccountsSectionTests: XCTestCase {
         XCTAssertEqual(
             GitProviderAccountsPresentationPolicy.actions(
                 isSignedIn: true,
-                account: makeAccount(tokenStatus: .unavailableOnThisDevice)
+                account: makeAccount(provider: .github, tokenStatus: .unavailableOnThisDevice)
             ),
             [.reconnect, .disconnect]
         )
@@ -48,18 +70,23 @@ final class GitProviderAccountsSectionTests: XCTestCase {
         XCTAssertEqual(
             GitProviderAccountsPresentationPolicy.actions(
                 isSignedIn: true,
-                account: makeAccount(tokenStatus: .valid)
+                account: makeAccount(provider: .github, tokenStatus: .valid)
             ),
             [.disconnect]
         )
     }
 
-    private func makeAccount(tokenStatus: GitProviderTokenStatus) -> GitProviderAccount {
+    private func makeAccount(
+        provider: GitProviderKind,
+        tokenStatus: GitProviderTokenStatus
+    ) -> GitProviderAccount {
         GitProviderAccount(
             id: "connection-1",
             macgitUID: "macgit-user-1",
-            provider: .github,
-            hostURL: URL(string: "https://github.com")!,
+            provider: provider,
+            hostURL: provider == .github
+                ? URL(string: "https://github.com")!
+                : URL(string: "https://gitlab.com")!,
             providerUserID: "583231",
             username: "octocat",
             displayName: "The Octocat",

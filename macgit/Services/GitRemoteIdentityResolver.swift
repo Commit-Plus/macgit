@@ -27,21 +27,32 @@ struct GitRemoteIdentity: Equatable {
 }
 
 enum GitRemoteIdentityResolver {
-    static func identity(from remoteURLString: String) -> GitRemoteIdentity? {
+    static func identity(
+        from remoteURLString: String,
+        knownGitLabHosts: Set<String> = []
+    ) -> GitRemoteIdentity? {
         let trimmed = remoteURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        if let sshIdentity = identityFromScpLikeURL(trimmed) {
+        let normalizedKnownGitLabHosts = Set(knownGitLabHosts.map { $0.lowercased() })
+        if let sshIdentity = identityFromScpLikeURL(trimmed, knownGitLabHosts: normalizedKnownGitLabHosts) {
             return sshIdentity
         }
         guard let url = URL(string: trimmed),
               let host = url.host(percentEncoded: false) else {
             return nil
         }
-        return identity(host: host, pathComponents: url.pathComponents)
+        return identity(
+            host: host,
+            pathComponents: url.pathComponents,
+            knownGitLabHosts: normalizedKnownGitLabHosts
+        )
     }
 
-    private static func identityFromScpLikeURL(_ remoteURLString: String) -> GitRemoteIdentity? {
+    private static func identityFromScpLikeURL(
+        _ remoteURLString: String,
+        knownGitLabHosts: Set<String>
+    ) -> GitRemoteIdentity? {
         guard let atIndex = remoteURLString.firstIndex(of: "@"),
               let colonIndex = remoteURLString[atIndex...].firstIndex(of: ":") else {
             return nil
@@ -52,12 +63,16 @@ enum GitRemoteIdentityResolver {
         let pathStart = remoteURLString.index(after: colonIndex)
         let path = String(remoteURLString[pathStart...])
         let pathComponents = path.split(separator: "/").map(String.init)
-        return identity(host: host, pathComponents: pathComponents)
+        return identity(host: host, pathComponents: pathComponents, knownGitLabHosts: knownGitLabHosts)
     }
 
-    private static func identity(host: String, pathComponents rawPathComponents: [String]) -> GitRemoteIdentity? {
+    private static func identity(
+        host: String,
+        pathComponents rawPathComponents: [String],
+        knownGitLabHosts: Set<String>
+    ) -> GitRemoteIdentity? {
         let normalizedHost = host.lowercased()
-        guard let provider = provider(for: normalizedHost) else { return nil }
+        guard let provider = provider(for: normalizedHost, knownGitLabHosts: knownGitLabHosts) else { return nil }
 
         let pathComponents = rawPathComponents
             .filter { $0 != "/" }
@@ -93,14 +108,14 @@ enum GitRemoteIdentityResolver {
         )
     }
 
-    private static func provider(for host: String) -> GitProviderKind? {
+    private static func provider(for host: String, knownGitLabHosts: Set<String>) -> GitProviderKind? {
         switch host {
         case "github.com":
             return .github
         case "gitlab.com":
             return .gitlab
         default:
-            return host.contains("gitlab") ? .gitlab : nil
+            return knownGitLabHosts.contains(host) || host.contains("gitlab") ? .gitlab : nil
         }
     }
 

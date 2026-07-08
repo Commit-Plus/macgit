@@ -165,21 +165,75 @@ final class GitProviderAccountControllerTests: XCTestCase {
         XCTAssertNil(controller.pendingDeviceAuthorization)
     }
 
+    func testConnectGitLabDotComOpensAuthorizationURL() async throws {
+        let gitLabAuthService = FakeGitLabProviderAuthService(
+            account: makeProviderAccount(macgitUID: "macgit-user-1", provider: .gitlab)
+        )
+        var openedURLs: [URL] = []
+        let controller = GitProviderAccountController(
+            store: FakeGitProviderAccountStore(),
+            tokenVault: FakeGitProviderTokenVault(),
+            gitLabAuthService: gitLabAuthService,
+            gitLabRedirectURI: URL(string: "macgit://git-provider/oauth/callback")!,
+            openURL: { url in
+                openedURLs.append(url)
+                return true
+            }
+        )
+        await controller.updateMacgitAccount(makeMacgitAccount(uid: "macgit-user-1"))
+
+        await controller.connectGitLabDotCom()
+
+        let openedURL = try XCTUnwrap(openedURLs.first)
+        XCTAssertEqual(openedURL.host, "gitlab.com")
+        XCTAssertEqual(openedURL.path, "/oauth/authorize")
+        XCTAssertTrue(gitLabAuthService.authorizationSessions.contains { $0.host == .gitlabDotCom })
+    }
+
+    func testGitLabOAuthCallbackSavesTokenBeforeMetadataAndPublishesAccount() async throws {
+        let events = EventRecorder()
+        let providerAccount = makeProviderAccount(macgitUID: "macgit-user-1", provider: .gitlab)
+        let gitLabAuthService = FakeGitLabProviderAuthService(account: providerAccount)
+        let store = FakeGitProviderAccountStore(events: events)
+        let vault = FakeGitProviderTokenVault(events: events)
+        let controller = GitProviderAccountController(
+            store: store,
+            tokenVault: vault,
+            gitLabAuthService: gitLabAuthService,
+            gitLabRedirectURI: URL(string: "macgit://git-provider/oauth/callback")!,
+            openURL: { _ in true }
+        )
+        await controller.updateMacgitAccount(makeMacgitAccount(uid: "macgit-user-1"))
+        await controller.connectGitLabDotCom()
+        events.values.removeAll()
+        let state = try XCTUnwrap(gitLabAuthService.authorizationSessions.first?.state)
+        let callbackURL = try XCTUnwrap(URL(string: "macgit://git-provider/oauth/callback?code=oauth-code&state=\(state)"))
+
+        let handled = await controller.handleProviderOAuthCallback(callbackURL)
+
+        XCTAssertTrue(handled)
+        XCTAssertEqual(events.values, ["save-token", "save-metadata"])
+        XCTAssertEqual(controller.accounts, [providerAccount])
+    }
+
     private func makeMacgitAccount(uid: String) -> AccountSnapshot {
         AccountSnapshot(uid: uid, email: nil, displayName: nil, providerIDs: ["password"])
     }
 
     private func makeProviderAccount(
         macgitUID: String,
+        provider: GitProviderKind = .github,
         tokenStatus: GitProviderTokenStatus = .valid
     ) -> GitProviderAccount {
         GitProviderAccount(
             id: "connection-1",
             macgitUID: macgitUID,
-            provider: .github,
-            hostURL: URL(string: "https://github.com")!,
+            provider: provider,
+            hostURL: provider == .github
+                ? URL(string: "https://github.com")!
+                : URL(string: "https://gitlab.com")!,
             providerUserID: "provider-user-42",
-            username: "octocat",
+            username: provider == .github ? "octocat" : "tanuki",
             displayName: nil,
             avatarURL: nil,
             scopes: [],
@@ -195,6 +249,43 @@ final class GitProviderAccountControllerTests: XCTestCase {
             clientID: "github-client-id",
             scopes: ["repo", "read:user"]
         )
+    }
+}
+
+@MainActor
+private final class FakeGitLabProviderAuthService: GitLabProviderOAuthAuthenticating {
+    private let account: GitProviderAccount
+    private(set) var authorizationSessions: [GitProviderOAuthSession] = []
+
+    init(account: GitProviderAccount) {
+        self.account = account
+    }
+
+    func authorizationURL(for session: GitProviderOAuthSession) throws -> URL {
+        authorizationSessions.append(session)
+        return session.host.normalized.baseURL
+            .appendingPathComponent("oauth")
+            .appendingPathComponent("authorize")
+    }
+
+    func exchangeCallback(
+        _ callback: GitProviderOAuthCallback,
+        session: GitProviderOAuthSession
+    ) async throws -> GitProviderToken {
+        GitProviderToken(
+            accessToken: "gitlab-token",
+            refreshToken: nil,
+            expiresAt: nil,
+            tokenType: "Bearer"
+        )
+    }
+
+    func fetchAccount(
+        token: GitProviderToken,
+        macgitUID: String,
+        host: GitProviderHost
+    ) async throws -> GitProviderAccount {
+        account
     }
 }
 
