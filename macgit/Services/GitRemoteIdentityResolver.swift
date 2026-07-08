@@ -100,7 +100,7 @@ enum GitRemoteIdentityResolver {
         case "gitlab.com":
             return .gitlab
         default:
-            return nil
+            return host.contains("gitlab") ? .gitlab : nil
         }
     }
 
