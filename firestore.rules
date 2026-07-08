@@ -18,6 +18,12 @@ service cloud.firestore {
           'showToolbarButtonText',
           'showSubmodules',
           'showSubtrees',
+          'showHeaderBranchButton',
+          'showHeaderMergeButton',
+          'showHeaderStashButton',
+          'showHeaderRemoteButton',
+          'showHeaderFinderButton',
+          'showHeaderTerminalButton',
           'updatedAt'
         ])
         && request.resource.data.keys().hasAll([
@@ -32,6 +38,12 @@ service cloud.firestore {
         && request.resource.data.showToolbarButtonText is bool
         && request.resource.data.showSubmodules is bool
         && request.resource.data.showSubtrees is bool
+        && (!('showHeaderBranchButton' in request.resource.data) || request.resource.data.showHeaderBranchButton is bool)
+        && (!('showHeaderMergeButton' in request.resource.data) || request.resource.data.showHeaderMergeButton is bool)
+        && (!('showHeaderStashButton' in request.resource.data) || request.resource.data.showHeaderStashButton is bool)
+        && (!('showHeaderRemoteButton' in request.resource.data) || request.resource.data.showHeaderRemoteButton is bool)
+        && (!('showHeaderFinderButton' in request.resource.data) || request.resource.data.showHeaderFinderButton is bool)
+        && (!('showHeaderTerminalButton' in request.resource.data) || request.resource.data.showHeaderTerminalButton is bool)
         && request.resource.data.updatedAt is timestamp;
     }
 
