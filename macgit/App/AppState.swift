@@ -42,7 +42,8 @@ final class AppState: ObservableObject {
 
     private let userDefaults: UserDefaults
     private var isApplyingSnapshot = false
-    @Published private var currentSettingsSnapshot: AppSettingsSnapshot
+    @Published private var currentSettingsSnapshot: AppSettingsSnapshot =
+        AppSettingsSnapshot(showToolbarButtonText: true, showSubmodules: false, showSubtrees: false)
 
     @Published var fileMenuAction: FileMenuAction?
     @Published var openWindowWithCloneSheet = false
