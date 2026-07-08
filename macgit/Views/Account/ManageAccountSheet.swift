@@ -198,6 +198,12 @@ struct SettingsSyncConflictSheet: View {
                 settingRow("Toolbar button text", enabled: snapshot.showToolbarButtonText)
                 settingRow("Submodules", enabled: snapshot.showSubmodules)
                 settingRow("Subtrees", enabled: snapshot.showSubtrees)
+                settingRow("Header: Branch", enabled: snapshot.showHeaderBranchButton)
+                settingRow("Header: Merge", enabled: snapshot.showHeaderMergeButton)
+                settingRow("Header: Stash", enabled: snapshot.showHeaderStashButton)
+                settingRow("Header: Remote", enabled: snapshot.showHeaderRemoteButton)
+                settingRow("Header: Finder", enabled: snapshot.showHeaderFinderButton)
+                settingRow("Header: Terminal", enabled: snapshot.showHeaderTerminalButton)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
