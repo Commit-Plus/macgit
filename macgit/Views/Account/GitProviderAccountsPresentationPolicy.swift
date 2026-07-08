@@ -20,6 +20,8 @@ import Foundation
 
 enum GitProviderAccountPresentationAction: Equatable {
     case addGitHub
+    case addGitLabDotCom
+    case addSelfHostedGitLab
     case reconnect
     case disconnect
 }
@@ -30,11 +32,29 @@ enum GitProviderAccountsPresentationPolicy {
         account: GitProviderAccount?
     ) -> [GitProviderAccountPresentationAction] {
         guard isSignedIn else { return [] }
-        guard let account else { return [.addGitHub] }
+        guard let account else { return [.addGitHub, .addGitLabDotCom, .addSelfHostedGitLab] }
 
         if account.tokenStatus == .valid {
             return [.disconnect]
         }
         return [.reconnect, .disconnect]
+    }
+
+    static func normalizedSelfHostedGitLabHost(from value: String) -> GitProviderHost? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !trimmed.contains(" ") else {
+            return nil
+        }
+
+        let candidate = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
+        guard let url = URL(string: candidate),
+              let host = url.host(percentEncoded: false),
+              !host.isEmpty,
+              host.lowercased() != "gitlab.com" else {
+            return nil
+        }
+
+        return GitProviderHost(kind: .gitlab, baseURL: url).normalized
     }
 }

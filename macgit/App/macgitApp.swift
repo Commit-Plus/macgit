@@ -44,6 +44,7 @@ struct macgitApp: App {
             )
         )
         let providerConfiguration = GitHubProviderAuthConfiguration.appConfiguration()
+        let gitLabProviderConfiguration = GitLabProviderAuthConfiguration.appConfiguration()
         let providerStore: GitProviderAccountStore = firebaseStatus == .configured
             ? FirestoreGitProviderAccountStore()
             : UnavailableGitProviderAccountStore()
@@ -53,6 +54,8 @@ struct macgitApp: App {
                 tokenVault: KeychainGitProviderTokenVault(),
                 authService: GitHubProviderAuthService(configuration: providerConfiguration),
                 configuration: providerConfiguration,
+                gitLabAuthService: GitLabProviderAuthService(configuration: gitLabProviderConfiguration),
+                gitLabRedirectURI: gitLabProviderConfiguration.redirectURI,
                 openURL: NSWorkspace.shared.open
             )
         )
@@ -67,7 +70,12 @@ struct macgitApp: App {
                 .environmentObject(appState)
                 .environmentObject(appUpdateController)
                 .onOpenURL { url in
-                    _ = GIDSignIn.sharedInstance.handle(url)
+                    Task { @MainActor in
+                        if await providerAccountController.handleProviderOAuthCallback(url) {
+                            return
+                        }
+                        _ = GIDSignIn.sharedInstance.handle(url)
+                    }
                 }
                 .task {
                     appUpdateController.start()

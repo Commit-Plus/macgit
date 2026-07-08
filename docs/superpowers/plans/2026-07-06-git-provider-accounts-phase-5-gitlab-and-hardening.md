@@ -25,7 +25,7 @@
 - Create: `macgit/Services/GitLabProviderAuthService.swift`
 - Test: `macgitTests/GitLabProviderAuthServiceTests.swift`
 
-- [ ] **Step 1: Write GitLab auth tests**
+- [x] **Step 1: Write GitLab auth tests**
 
 Use fake HTTP responses and cover:
 
@@ -37,7 +37,7 @@ func testSelfHostedHostIsPreserved()
 func testUnauthorizedMapsToReauthorizationRequired()
 ```
 
-- [ ] **Step 2: Implement GitLab adapter**
+- [x] **Step 2: Implement GitLab adapter**
 
 `GitLabProviderAuthService` must:
 
@@ -47,7 +47,7 @@ func testUnauthorizedMapsToReauthorizationRequired()
 - Fetch the current user profile.
 - Save `GitProviderAccount(provider: .gitlab, hostURL: configuredHost.baseURL, ...)`.
 
-- [ ] **Step 3: Run focused tests and commit**
+- [x] **Step 3: Run focused tests and commit**
 
 Run:
 
@@ -69,7 +69,7 @@ git commit -m "feat: add gitlab provider auth"
 - Modify: `macgit/Services/GitRemoteIdentityResolver.swift`
 - Test: `macgitTests/GitLabPullRequestServiceTests.swift`
 
-- [ ] **Step 1: Write GitLab MR tests**
+- [x] **Step 1: Write GitLab MR tests**
 
 Cover:
 
@@ -80,7 +80,7 @@ func testRepositoryPathIsURLEncodedForSubgroups()
 func testForbiddenMapsToPermissionDenied()
 ```
 
-- [ ] **Step 2: Implement GitLab service**
+- [x] **Step 2: Implement GitLab service**
 
 Use:
 
@@ -92,7 +92,7 @@ POST /api/v4/projects/{urlEncodedPath}/merge_requests/{iid}/notes
 
 Map GitLab merge requests into existing `PullRequestSummary` values so UI does not branch on provider.
 
-- [ ] **Step 3: Run focused tests and commit**
+- [x] **Step 3: Run focused tests and commit**
 
 Run:
 
@@ -115,7 +115,7 @@ git commit -m "feat: add gitlab merge request service"
 - Create: `docs/superpowers/plans/2026-07-06-git-provider-backend-hardening-followup.md`
 - Test: updated provider account UI tests.
 
-- [ ] **Step 1: Add UI tests**
+- [x] **Step 1: Add UI tests**
 
 Cover:
 
@@ -125,7 +125,7 @@ func testSelfHostedGitLabRequiresHostURL()
 func testGitLabAccountUsesSameDisconnectFlowAsGitHub()
 ```
 
-- [ ] **Step 2: Implement GitLab account entry**
+- [x] **Step 2: Implement GitLab account entry**
 
 Add:
 
@@ -135,7 +135,7 @@ Add:
 
 Self-hosted GitLab prompts for a host URL, normalizes it, and starts GitLab OAuth against that host.
 
-- [ ] **Step 3: Write backend hardening follow-up**
+- [x] **Step 3: Write backend hardening follow-up**
 
 Create `docs/superpowers/plans/2026-07-06-git-provider-backend-hardening-followup.md` with concrete triggers:
 
@@ -148,7 +148,7 @@ Create `docs/superpowers/plans/2026-07-06-git-provider-backend-hardening-followu
 
 State that Firebase Functions or Cloud Run requires Blaze billing when deployed, and that the client-only roadmap remains usable without it.
 
-- [ ] **Step 4: Run tests, build, and full suite**
+- [x] **Step 4: Run tests, build, and full suite**
 
 Run:
 
@@ -160,7 +160,7 @@ xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS
 
 Expected: all commands pass. Do not launch the app.
 
-- [ ] **Step 5: Update roadmap and commit**
+- [x] **Step 5: Update roadmap and commit**
 
 Update the roadmap Phase 5 entry to `[completed]` with the branch or merge commit.
 

@@ -34,6 +34,11 @@ struct GitProviderHost: Hashable, Codable {
         baseURL: URL(string: "https://github.com")!
     )
 
+    static let gitlabDotCom = GitProviderHost(
+        kind: .gitlab,
+        baseURL: URL(string: "https://gitlab.com")!
+    )
+
     var normalized: GitProviderHost {
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
         if components?.scheme == nil {

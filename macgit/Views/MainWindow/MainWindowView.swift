@@ -116,7 +116,7 @@ struct MainWindowView: View {
         _pullRequestController = StateObject(wrappedValue: PullRequestController(
             providerAccountController: providerAccountController,
             tokenVault: KeychainGitProviderTokenVault(),
-            services: [.github: GitHubPullRequestService()],
+            services: [.github: GitHubPullRequestService(), .gitlab: GitLabPullRequestService()],
             openURL: NSWorkspace.shared.open
         ))
     }
