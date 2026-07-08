@@ -150,6 +150,33 @@ extension GitStatusService {
         _ = try await runRemoteGit(arguments: ["fetch", remote, branch], in: repositoryURL, injection: injection)
     }
 
+    func fetchPullRequestRef(
+        remote: String,
+        reference: String,
+        localBranch: String,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver? = nil,
+        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector()
+    ) async throws {
+        let trimmedRemote = remote.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLocalBranch = localBranch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRemote.isEmpty, !trimmedReference.isEmpty, !trimmedLocalBranch.isEmpty else {
+            throw GitError.commandFailed("Pull request fetch reference is required.")
+        }
+
+        let injection = try await credentialInjection(
+            for: trimmedRemote,
+            in: repositoryURL,
+            credentialResolver: credentialResolver,
+            credentialInjector: credentialInjector
+        )
+        defer { injection?.cleanup() }
+
+        let refspec = "\(trimmedReference):refs/heads/\(trimmedLocalBranch)"
+        _ = try await runRemoteGit(arguments: ["fetch", trimmedRemote, refspec], in: repositoryURL, injection: injection)
+    }
+
     @discardableResult
     func checkoutRemoteBranch(remote: String, branch: String, in repositoryURL: URL) async throws -> String {
         let trimmedRemote = remote.trimmingCharacters(in: .whitespacesAndNewlines)
