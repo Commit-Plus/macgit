@@ -31,8 +31,8 @@ enum BranchUpstreamActionPolicy {
         hasUpstream(upstream)
     }
 
-    static func shouldEnableCreatePullRequest(for upstream: String?) -> Bool {
-        hasUpstream(upstream)
+    static func shouldEnableCreatePullRequest(for _: String?) -> Bool {
+        true
     }
 
     private static func hasUpstream(_ upstream: String?) -> Bool {

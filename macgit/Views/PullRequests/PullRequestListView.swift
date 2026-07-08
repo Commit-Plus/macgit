@@ -86,18 +86,6 @@ struct PullRequestListView: View {
                 )
             }
         }
-        .sheet(isPresented: createSheetPresented) {
-            if let seed = controller.createDraftSeed {
-                CreatePullRequestSheet(
-                    seed: seed,
-                    isSubmitting: controller.isPerformingAction,
-                    onCancel: { controller.dismissCreatePullRequest() },
-                    onCreate: { draft in
-                        Task { await controller.createPullRequest(draft) }
-                    }
-                )
-            }
-        }
         .sheet(item: $pendingCommentPullRequest) { pullRequest in
             PullRequestCommentSheet(
                 pullRequest: pullRequest,
@@ -126,17 +114,6 @@ struct PullRequestListView: View {
         .onChange(of: controller.stateFilter) { _, _ in
             Task { await controller.loadPullRequests(repositoryURL: repositoryURL) }
         }
-    }
-
-    private var createSheetPresented: Binding<Bool> {
-        Binding(
-            get: { controller.createDraftSeed != nil },
-            set: { isPresented in
-                if !isPresented {
-                    controller.dismissCreatePullRequest()
-                }
-            }
-        )
     }
 
     private var detailSheetPresented: Binding<Bool> {

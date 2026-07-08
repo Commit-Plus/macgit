@@ -129,6 +129,20 @@ final class PullRequestController: ObservableObject {
         await loadPullRequests(remoteURLString: remoteURLString, page: page)
     }
 
+    func loadPullRequests(repositoryURL: URL, remoteName: String, page: Int = 1) async {
+        activeRepositoryURL = repositoryURL
+        guard let remoteURLString = await remoteURLProvider(repositoryURL, remoteName) else {
+            items = []
+            resetPagination()
+            activeRemoteName = nil
+            activeRemoteURLString = nil
+            errorMessage = "No remotes configured."
+            return
+        }
+        activeRemoteName = remoteName
+        await loadPullRequests(remoteURLString: remoteURLString, page: page)
+    }
+
     func loadPullRequests(remoteURLString: String, page: Int = 1) async {
         isLoading = true
         errorMessage = nil
@@ -261,7 +275,7 @@ final class PullRequestController: ObservableObject {
         _ = openURL(detail.changesURL)
     }
 
-    func presentCreatePullRequest() async {
+    func presentCreatePullRequest(sourceBranch requestedSourceBranch: String? = nil) async {
         guard let repository = activeRepository,
               let repositoryURL = activeRepositoryURL else {
             detailErrorMessage = "Pull request creation is unavailable."
@@ -270,7 +284,11 @@ final class PullRequestController: ObservableObject {
 
         let localBranches = await localBranchesProvider(repositoryURL).filter { !$0.isEmpty }
         let currentBranch = await currentBranchProvider(repositoryURL)
-        let sourceBranch = currentBranch ?? localBranches.first
+        let normalizedRequestedSource = requestedSourceBranch?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let sourceBranch = (normalizedRequestedSource?.isEmpty == false ? normalizedRequestedSource : nil)
+            ?? currentBranch
+            ?? localBranches.first
         guard let sourceBranch else {
             detailErrorMessage = "No local branches are available for a pull request."
             return
@@ -285,7 +303,7 @@ final class PullRequestController: ObservableObject {
 
         createDraftSeed = PullRequestDraftSeed(
             repository: repository,
-            sourceBranches: localBranches.isEmpty ? [sourceBranch] : localBranches,
+            sourceBranches: Array(Set(localBranches).union([sourceBranch])).sorted(),
             targetBranches: targetBranches,
             sourceBranch: sourceBranch,
             targetBranch: defaultTargetBranch,

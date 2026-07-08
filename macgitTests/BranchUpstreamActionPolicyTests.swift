@@ -50,12 +50,12 @@ final class BranchUpstreamActionPolicyTests: XCTestCase {
         XCTAssertTrue(BranchUpstreamActionPolicy.shouldEnablePushToUpstream(for: "upstream/feature"))
     }
 
-    func testShouldEnableCreatePullRequestIsFalseWhenUpstreamIsNil() {
-        XCTAssertFalse(BranchUpstreamActionPolicy.shouldEnableCreatePullRequest(for: nil))
+    func testShouldEnableCreatePullRequestIsTrueWhenUpstreamIsNil() {
+        XCTAssertTrue(BranchUpstreamActionPolicy.shouldEnableCreatePullRequest(for: nil))
     }
 
-    func testShouldEnableCreatePullRequestIsFalseWhenUpstreamIsEmpty() {
-        XCTAssertFalse(BranchUpstreamActionPolicy.shouldEnableCreatePullRequest(for: ""))
+    func testShouldEnableCreatePullRequestIsTrueWhenUpstreamIsEmpty() {
+        XCTAssertTrue(BranchUpstreamActionPolicy.shouldEnableCreatePullRequest(for: ""))
     }
 
     func testShouldEnableCreatePullRequestIsTrueWhenUpstreamIsNonEmpty() {

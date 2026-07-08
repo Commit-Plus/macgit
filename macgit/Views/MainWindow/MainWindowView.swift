@@ -178,6 +178,7 @@ struct MainWindowView: View {
             .sheet(isPresented: $showingMergeSheet) { mergeSheet }
             .sheet(isPresented: $showingStashSheet) { stashSheet }
             .sheet(isPresented: $showingRepositorySettings) { repositorySettingsSheet }
+            .sheet(isPresented: createPullRequestSheetPresented) { createPullRequestSheet }
             .sheet(item: $pendingSearchFileOpenRequest) { request in
                 SearchFileOpenSheet(request: request) { application, rememberChoice in
                     pendingSearchFileOpenRequest = nil
@@ -433,7 +434,7 @@ struct MainWindowView: View {
             },
             onRequestCreatePullRequest: { branch in
                 runRepositoryOperation("Preparing pull request for \(branch)...") {
-                    await openPullRequest(branch: branch)
+                    await prepareCreatePullRequest(branch: branch)
                 }
             },
             onRequestCreateBranchFromBranch: { branch in
@@ -880,6 +881,31 @@ struct MainWindowView: View {
                 openRemoteURL(remote: remote)
             }
         )
+    }
+
+    private var createPullRequestSheetPresented: Binding<Bool> {
+        Binding(
+            get: { pullRequestController.createDraftSeed != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pullRequestController.dismissCreatePullRequest()
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var createPullRequestSheet: some View {
+        if let seed = pullRequestController.createDraftSeed {
+            CreatePullRequestSheet(
+                seed: seed,
+                isSubmitting: pullRequestController.isPerformingAction,
+                onCancel: { pullRequestController.dismissCreatePullRequest() },
+                onCreate: { draft in
+                    Task { await pullRequestController.createPullRequest(draft) }
+                }
+            )
+        }
     }
 
     private func performInitialLoad() async {
@@ -1365,6 +1391,127 @@ struct MainWindowView: View {
         await MainActor.run {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    private func prepareCreatePullRequest(branch: String) async {
+        do {
+            let remote = try await prepareRemoteBranchForPullRequest(branch: branch)
+            await pullRequestController.loadPullRequests(repositoryURL: repositoryURL, remoteName: remote)
+            if let errorMessage = pullRequestController.errorMessage {
+                await MainActor.run {
+                    syncState.showError(errorMessage)
+                }
+                return
+            }
+            await pullRequestController.presentCreatePullRequest(sourceBranch: branch)
+            if pullRequestController.createDraftSeed == nil,
+               let detailErrorMessage = pullRequestController.detailErrorMessage {
+                await MainActor.run {
+                    syncState.showError(detailErrorMessage)
+                    pullRequestController.detailErrorMessage = nil
+                }
+            }
+        } catch {
+            await MainActor.run {
+                syncState.showError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func prepareRemoteBranchForPullRequest(branch: String) async throws -> String {
+        let localBranch = branch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !localBranch.isEmpty else {
+            throw GitError.commandFailed("Branch name is required.")
+        }
+
+        if let upstream = await GitStatusService.shared.upstreamBranch(for: localBranch, in: repositoryURL) {
+            let remoteBranch = try parseRemoteBranch(upstream)
+            if let status = await GitStatusService.shared.branchSyncStatus(for: localBranch, in: repositoryURL) {
+                if status.behind > 0 {
+                    throw GitError.commandFailed("Branch '\(localBranch)' is behind '\(upstream)'. Pull or rebase it before creating a pull request.")
+                }
+                if status.ahead > 0 {
+                    try await pushBranchForPullRequest(
+                        localBranch: localBranch,
+                        remote: remoteBranch.remote,
+                        remoteBranch: remoteBranch.branch,
+                        setUpstream: false
+                    )
+                }
+            }
+            return remoteBranch.remote
+        }
+
+        let remote = try await defaultPullRequestRemote()
+        try await pushBranchForPullRequest(
+            localBranch: localBranch,
+            remote: remote,
+            remoteBranch: localBranch,
+            setUpstream: true
+        )
+        return remote
+    }
+
+    private func defaultPullRequestRemote() async throws -> String {
+        let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
+        guard !remotes.isEmpty else {
+            throw GitError.commandFailed("No remotes configured. Add a remote before creating a pull request.")
+        }
+        if let preferred = repoSettings.defaultRemoteName,
+           remotes.contains(preferred) {
+            return preferred
+        }
+        return remotes.first(where: { $0 == "origin" }) ?? remotes[0]
+    }
+
+    private func parseRemoteBranch(_ upstream: String) throws -> (remote: String, branch: String) {
+        let parts = upstream.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else {
+            throw GitError.commandFailed("Could not parse upstream '\(upstream)'.")
+        }
+        return (parts[0], parts[1])
+    }
+
+    private func pushBranchForPullRequest(
+        localBranch: String,
+        remote: String,
+        remoteBranch: String,
+        setUpstream: Bool
+    ) async throws {
+        await MainActor.run {
+            syncState.isPushing = true
+            syncState.activeSyncBranch = localBranch
+        }
+        defer {
+            Task { @MainActor in
+                syncState.isPushing = false
+                syncState.activeSyncBranch = nil
+            }
+        }
+
+        let options = GitStatusService.PushOptions(
+            remote: remote,
+            branches: [localBranch],
+            branchMappings: [localBranch: remoteBranch]
+        )
+        _ = try await GitStatusService.shared.push(
+            options: options,
+            in: repositoryURL,
+            credentialResolver: providerAccountController.credentialResolver()
+        )
+        if setUpstream {
+            try await GitStatusService.shared.setUpstream(
+                upstream: "\(remote)/\(remoteBranch)",
+                branch: localBranch,
+                in: repositoryURL
+            )
+        }
+        await syncState.refresh(repositoryURL: repositoryURL)
+        NotificationCenter.default.post(
+            name: .repositoryDidChange,
+            object: nil,
+            userInfo: ["repositoryURL": repositoryURL]
+        )
     }
 
     private func openPullRequest(remote: String, branch: String) async {

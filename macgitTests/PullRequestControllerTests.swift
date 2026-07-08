@@ -287,6 +287,40 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(controller.createDraftSeed?.suggestedTitle, "Pr Actions")
     }
 
+    func testPresentCreatePullRequestUsesRequestedSourceBranch() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let service = FakePullRequestProvider(result: .success([makeSummary()]))
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let repositoryURL = URL(fileURLWithPath: "/tmp/macgit-pr-context-menu")
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service],
+            remoteNameProvider: { _ in "origin" },
+            remoteURLProvider: { _, _ in "https://github.com/octocat/Hello-World.git" },
+            currentBranchProvider: { _ in "main" },
+            localBranchesProvider: { _ in ["main", "feature/context-menu-pr"] }
+        )
+
+        await controller.loadPullRequests(repositoryURL: repositoryURL)
+        await controller.presentCreatePullRequest(sourceBranch: "feature/context-menu-pr")
+
+        XCTAssertEqual(controller.createDraftSeed?.sourceBranch, "feature/context-menu-pr")
+        XCTAssertEqual(controller.createDraftSeed?.sourceBranches, ["feature/context-menu-pr", "main"])
+        XCTAssertEqual(controller.createDraftSeed?.targetBranch, "main")
+        XCTAssertEqual(controller.createDraftSeed?.suggestedTitle, "Context Menu Pr")
+    }
+
     func testCreatePullRequestRequiresValidDraft() async throws {
         let account = makeAccount()
         let token = makeToken()
