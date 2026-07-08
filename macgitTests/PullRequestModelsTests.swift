@@ -55,45 +55,6 @@ final class PullRequestModelsTests: XCTestCase {
         }
     }
 
-    func testDraftRequiresTitle() throws {
-        let repository = GitRepositoryIdentity(
-            provider: .github,
-            hostURL: try XCTUnwrap(URL(string: "https://github.com")),
-            owner: "octocat",
-            name: "Hello-World"
-        )
-
-        XCTAssertThrowsError(try PullRequestDraft(
-            repository: repository,
-            sourceBranch: "feature",
-            targetBranch: "main",
-            title: "  ",
-            body: ""
-        )) { error in
-            XCTAssertEqual(error as? PullRequestDraftValidationError, .emptyTitle)
-        }
-    }
-
-    func testDraftAcceptsDifferentBranches() throws {
-        let repository = GitRepositoryIdentity(
-            provider: .github,
-            hostURL: try XCTUnwrap(URL(string: "https://github.com")),
-            owner: "octocat",
-            name: "Hello-World"
-        )
-
-        let draft = try PullRequestDraft(
-            repository: repository,
-            sourceBranch: " feature/new-ui ",
-            targetBranch: " main ",
-            title: "Add provider-backed pull requests",
-            body: "Implements pull request actions."
-        )
-
-        XCTAssertEqual(draft.sourceBranch, "feature/new-ui")
-        XCTAssertEqual(draft.targetBranch, "main")
-    }
-
     func testRepositoryIdentityBuildsBrowserURLForGitHub() throws {
         let repository = GitRepositoryIdentity(
             provider: .github,

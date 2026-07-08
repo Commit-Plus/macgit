@@ -320,13 +320,22 @@ final class AccountSessionController: ObservableObject {
             }
             .store(in: &cancellables)
 
-        appState.settingsSnapshotPublisher
-            .dropFirst()
-            .sink { [weak self] snapshot in
-                guard let self else { return }
-                settingsSyncService.localSettingsDidChange(snapshot)
-            }
-            .store(in: &cancellables)
+        Publishers.CombineLatest3(
+            appState.$showToolbarButtonText,
+            appState.$showSubmodules,
+            appState.$showSubtrees
+        )
+        .dropFirst()
+        .sink { showToolbarButtonText, showSubmodules, showSubtrees in
+            settingsSyncService.localSettingsDidChange(
+                AppSettingsSnapshot(
+                    showToolbarButtonText: showToolbarButtonText,
+                    showSubmodules: showSubmodules,
+                    showSubtrees: showSubtrees
+                )
+            )
+        }
+        .store(in: &cancellables)
 
         appState.$syncEnabled
             .dropFirst()

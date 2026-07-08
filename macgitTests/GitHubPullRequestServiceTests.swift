@@ -188,18 +188,6 @@ final class GitHubPullRequestServiceTests: XCTestCase {
             .json(statusCode: 200, body: """
             [
               {
-                "id": 101,
-                "body": "Looks good to me.",
-                "created_at": "2026-07-06T11:00:00Z",
-                "updated_at": "2026-07-06T11:00:00Z",
-                "html_url": "https://github.com/octocat/Hello-World/pull/12#issuecomment-101",
-                "user": { "login": "reviewer", "avatar_url": null }
-              }
-            ]
-            """),
-            .json(statusCode: 200, body: """
-            [
-              {
                 "id": 4646369306,
                 "body": "Please update this section.",
                 "submitted_at": "2026-07-06T11:30:00Z",
@@ -216,6 +204,18 @@ final class GitHubPullRequestServiceTests: XCTestCase {
                 "created_at": "2026-07-06T11:45:00Z",
                 "updated_at": "2026-07-06T11:45:00Z",
                 "html_url": "https://github.com/octocat/Hello-World/pull/12#discussion_r202",
+                "user": { "login": "reviewer", "avatar_url": null }
+              }
+            ]
+            """),
+            .json(statusCode: 200, body: """
+            [
+              {
+                "id": 101,
+                "body": "Looks good to me.",
+                "created_at": "2026-07-06T11:00:00Z",
+                "updated_at": "2026-07-06T11:00:00Z",
+                "html_url": "https://github.com/octocat/Hello-World/pull/12#issuecomment-101",
                 "user": { "login": "reviewer", "avatar_url": null }
               }
             ]
@@ -300,100 +300,6 @@ final class GitHubPullRequestServiceTests: XCTestCase {
         )
     }
 
-    func testCreatePullRequestPostsExpectedBody() async throws {
-        let client = StubPullRequestHTTPClient(responses: [
-            .json(statusCode: 201, body: """
-            {
-              "number": 22,
-              "title": "Add provider-backed pull request actions",
-              "state": "open",
-              "draft": false,
-              "html_url": "https://github.com/octocat/Hello-World/pull/22",
-              "created_at": "2026-07-08T00:10:11Z",
-              "updated_at": "2026-07-08T00:10:11Z",
-              "merged_at": null,
-              "user": { "login": "octocat", "avatar_url": null },
-              "head": { "label": "octocat:feature/pr-actions", "ref": "feature/pr-actions", "sha": "abc123" },
-              "base": { "label": "octocat:main", "ref": "main", "sha": "def456" }
-            }
-            """)
-        ])
-        let service = GitHubPullRequestService(httpClient: client)
-
-        let summary = try await service.createPullRequest(
-            makeDraft(),
-            token: makeToken()
-        )
-
-        let request = try XCTUnwrap(client.requests.first)
-        XCTAssertEqual(request.httpMethod, "POST")
-        XCTAssertEqual(
-            request.url?.absoluteString,
-            "https://api.github.com/repos/octocat/Hello-World/pulls"
-        )
-        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
-
-        let body = try XCTUnwrap(request.httpBody)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
-        XCTAssertEqual(json["title"], "Add provider-backed pull request actions")
-        XCTAssertEqual(json["body"], "Implements create, comment, and checkout actions.")
-        XCTAssertEqual(json["head"], "feature/pr-actions")
-        XCTAssertEqual(json["base"], "main")
-        XCTAssertEqual(summary.number, 22)
-        XCTAssertEqual(summary.title, "Add provider-backed pull request actions")
-    }
-
-    func testCreatePullRequestPermissionDeniedMapsToUserFacingError() async throws {
-        let client = StubPullRequestHTTPClient(responses: [
-            .json(statusCode: 403, body: #"{"message":"Resource not accessible by integration"}"#)
-        ])
-        let service = GitHubPullRequestService(httpClient: client)
-
-        do {
-            _ = try await service.createPullRequest(makeDraft(), token: makeToken())
-            XCTFail("Expected createPullRequest to throw")
-        } catch {
-            XCTAssertEqual(
-                error as? PullRequestProviderError,
-                .providerMessage("The connected account does not have permission to modify pull requests.")
-            )
-        }
-    }
-
-    func testCreateCommentPostsExpectedBody() async throws {
-        let client = StubPullRequestHTTPClient(responses: [
-            .json(statusCode: 201, body: """
-            {
-              "id": 101,
-              "body": "Looks good to me.",
-              "created_at": "2026-07-08T01:00:00Z",
-              "updated_at": "2026-07-08T01:00:00Z",
-              "html_url": "https://github.com/octocat/Hello-World/pull/22#issuecomment-101",
-              "user": { "login": "reviewer", "avatar_url": null }
-            }
-            """)
-        ])
-        let service = GitHubPullRequestService(httpClient: client)
-
-        try await service.createComment(
-            body: "Looks good to me.",
-            on: makeSummary(number: 22),
-            repository: makeRepository(),
-            token: makeToken()
-        )
-
-        let request = try XCTUnwrap(client.requests.first)
-        XCTAssertEqual(request.httpMethod, "POST")
-        XCTAssertEqual(
-            request.url?.absoluteString,
-            "https://api.github.com/repos/octocat/Hello-World/issues/22/comments"
-        )
-
-        let body = try XCTUnwrap(request.httpBody)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
-        XCTAssertEqual(json, ["body": "Looks good to me."])
-    }
-
     private func assertStatus(
         _ statusCode: Int,
         mapsTo expectedError: PullRequestProviderError,
@@ -419,30 +325,6 @@ final class GitHubPullRequestServiceTests: XCTestCase {
             hostURL: URL(string: "https://github.com")!,
             owner: "octocat",
             name: "Hello-World"
-        )
-    }
-
-    private func makeDraft() throws -> PullRequestDraft {
-        try PullRequestDraft(
-            repository: makeRepository(),
-            sourceBranch: "feature/pr-actions",
-            targetBranch: "main",
-            title: "Add provider-backed pull request actions",
-            body: "Implements create, comment, and checkout actions."
-        )
-    }
-
-    private func makeSummary(number: Int) -> PullRequestSummary {
-        PullRequestSummary(
-            number: number,
-            title: "Add provider-backed pull request actions",
-            state: .open,
-            author: PullRequestAuthor(username: "octocat", avatarURL: nil),
-            source: PullRequestBranchRef(label: "octocat:feature/pr-actions", ref: "feature/pr-actions", sha: "abc123"),
-            target: PullRequestBranchRef(label: "octocat:main", ref: "main", sha: "def456"),
-            webURL: URL(string: "https://github.com/octocat/Hello-World/pull/\(number)")!,
-            createdAt: Date(timeIntervalSince1970: 1_783_468_211),
-            updatedAt: Date(timeIntervalSince1970: 1_783_468_211)
         )
     }
 

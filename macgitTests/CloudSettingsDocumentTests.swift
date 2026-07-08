@@ -24,13 +24,7 @@ final class CloudSettingsDocumentTests: XCTestCase {
     private let snapshot = AppSettingsSnapshot(
         showToolbarButtonText: false,
         showSubmodules: true,
-        showSubtrees: false,
-        showHeaderBranchButton: true,
-        showHeaderMergeButton: false,
-        showHeaderStashButton: true,
-        showHeaderRemoteButton: false,
-        showHeaderFinderButton: true,
-        showHeaderTerminalButton: false
+        showSubtrees: false
     )
 
     func testEncodingUsesExactDocumentSchema() throws {
@@ -40,42 +34,13 @@ final class CloudSettingsDocumentTests: XCTestCase {
 
         XCTAssertEqual(
             Set(document.keys),
-            [
-                "schemaVersion",
-                "showToolbarButtonText",
-                "showSubmodules",
-                "showSubtrees",
-                "showHeaderBranchButton",
-                "showHeaderMergeButton",
-                "showHeaderStashButton",
-                "showHeaderRemoteButton",
-                "showHeaderFinderButton",
-                "showHeaderTerminalButton",
-                "updatedAt"
-            ]
+            ["schemaVersion", "showToolbarButtonText", "showSubmodules", "showSubtrees", "updatedAt"]
         )
         XCTAssertEqual(document["schemaVersion"] as? Int, 1)
         XCTAssertEqual(document["showToolbarButtonText"] as? Bool, false)
         XCTAssertEqual(document["showSubmodules"] as? Bool, true)
         XCTAssertEqual(document["showSubtrees"] as? Bool, false)
-        XCTAssertEqual(document["showHeaderBranchButton"] as? Bool, true)
-        XCTAssertEqual(document["showHeaderMergeButton"] as? Bool, false)
-        XCTAssertEqual(document["showHeaderStashButton"] as? Bool, true)
-        XCTAssertEqual(document["showHeaderRemoteButton"] as? Bool, false)
-        XCTAssertEqual(document["showHeaderFinderButton"] as? Bool, true)
-        XCTAssertEqual(document["showHeaderTerminalButton"] as? Bool, false)
         XCTAssertEqual(document["updatedAt"] as? Timestamp, timestamp)
-    }
-
-    func testDecodingDefaultsMissingHeaderButtonsToTrue() throws {
-        var document = validDocument()
-        document.removeValue(forKey: "showHeaderBranchButton")
-        document.removeValue(forKey: "showHeaderRemoteButton")
-
-        let decoded = try CloudSettingsDocument.decode(document)
-
-        XCTAssertTrue(decoded.showHeaderBranchButton)
-        XCTAssertTrue(decoded.showHeaderRemoteButton)
     }
 
     func testDecodingValidDocumentReturnsCompleteSnapshot() throws {

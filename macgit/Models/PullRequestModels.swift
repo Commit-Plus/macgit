@@ -133,13 +133,10 @@ struct PullRequestDetail: Identifiable, Equatable, Codable {
 }
 
 enum PullRequestDraftValidationError: LocalizedError, Equatable {
-    case emptyTitle
     case sameSourceAndTargetBranch
 
     var errorDescription: String? {
         switch self {
-        case .emptyTitle:
-            "Pull request title is required."
         case .sameSourceAndTargetBranch:
             "Source and target branches must be different."
         }
@@ -162,31 +159,16 @@ struct PullRequestDraft: Equatable {
     ) throws {
         let normalizedSource = sourceBranch.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedTarget = targetBranch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedSource != normalizedTarget else {
+            throw PullRequestDraftValidationError.sameSourceAndTargetBranch
+        }
+
         self.repository = repository
         self.sourceBranch = normalizedSource
         self.targetBranch = normalizedTarget
         self.title = title
         self.body = body
-        try validate()
     }
-
-    func validate() throws {
-        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            throw PullRequestDraftValidationError.emptyTitle
-        }
-        if sourceBranch == targetBranch {
-            throw PullRequestDraftValidationError.sameSourceAndTargetBranch
-        }
-    }
-}
-
-struct PullRequestDraftSeed: Equatable {
-    var repository: GitRepositoryIdentity
-    var sourceBranches: [String]
-    var targetBranches: [String]
-    var sourceBranch: String
-    var targetBranch: String
-    var suggestedTitle: String
 }
 
 extension GitRepositoryIdentity {

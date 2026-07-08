@@ -109,65 +109,6 @@ struct GitHubPullRequestService: PullRequestProviding {
         }
     }
 
-    func createPullRequest(
-        _ draft: PullRequestDraft,
-        token: GitProviderToken
-    ) async throws -> PullRequestSummary {
-        guard draft.repository.provider == .github else {
-            throw PullRequestProviderError.unsupportedProvider
-        }
-
-        let url = apiBaseURL
-            .appendingPathComponent("repos")
-            .appendingPathComponent(draft.repository.owner)
-            .appendingPathComponent(draft.repository.name)
-            .appendingPathComponent("pulls")
-        let payload = GitHubCreatePullRequestPayload(
-            title: draft.title,
-            body: draft.body.isEmpty ? nil : draft.body,
-            head: draft.sourceBranch,
-            base: draft.targetBranch
-        )
-
-        do {
-            let (data, response) = try await httpClient.data(
-                for: try makeJSONRequest(url: url, token: token, method: "POST", body: payload)
-            )
-            try validateWrite(response: response, data: data)
-            let created = try decoder.decode(GitHubPullRequestResponse.self, from: data)
-            return created.summary
-        } catch let error as PullRequestProviderError {
-            throw error
-        } catch {
-            throw PullRequestProviderError.providerMessage("GitHub returned an invalid pull request response.")
-        }
-    }
-
-    func createComment(
-        body: String,
-        on pullRequest: PullRequestSummary,
-        repository: GitRepositoryIdentity,
-        token: GitProviderToken
-    ) async throws {
-        guard repository.provider == .github else {
-            throw PullRequestProviderError.unsupportedProvider
-        }
-
-        let url = apiBaseURL
-            .appendingPathComponent("repos")
-            .appendingPathComponent(repository.owner)
-            .appendingPathComponent(repository.name)
-            .appendingPathComponent("issues")
-            .appendingPathComponent(String(pullRequest.number))
-            .appendingPathComponent("comments")
-        let payload = GitHubIssueCommentCreatePayload(body: body)
-
-        let (data, response) = try await httpClient.data(
-            for: try makeJSONRequest(url: url, token: token, method: "POST", body: payload)
-        )
-        try validateWrite(response: response, data: data)
-    }
-
     private func issueComments(
         repository: GitRepositoryIdentity,
         token: GitProviderToken,
@@ -337,19 +278,6 @@ struct GitHubPullRequestService: PullRequestProviding {
         return request
     }
 
-    private func makeJSONRequest<Body: Encodable>(
-        url: URL,
-        token: GitProviderToken,
-        method: String,
-        body: Body
-    ) throws -> URLRequest {
-        var request = makeRequest(url: url, token: token)
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(body)
-        return request
-    }
-
     private func validate(response: HTTPURLResponse, data: Data) throws {
         switch response.statusCode {
         case 200..<300:
@@ -366,30 +294,6 @@ struct GitHubPullRequestService: PullRequestProviding {
             throw PullRequestProviderError.providerMessage(message)
         }
     }
-
-    private func validateWrite(response: HTTPURLResponse, data: Data) throws {
-        switch response.statusCode {
-        case 200..<300:
-            return
-        case 403:
-            throw PullRequestProviderError.providerMessage(
-                "The connected account does not have permission to modify pull requests."
-            )
-        default:
-            try validate(response: response, data: data)
-        }
-    }
-}
-
-private struct GitHubCreatePullRequestPayload: Encodable {
-    var title: String
-    var body: String?
-    var head: String
-    var base: String
-}
-
-private struct GitHubIssueCommentCreatePayload: Encodable {
-    var body: String
 }
 
 private struct GitHubPullRequestResponse: Decodable {

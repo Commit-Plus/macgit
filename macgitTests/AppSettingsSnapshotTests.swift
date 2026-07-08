@@ -16,7 +16,6 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-import Combine
 import XCTest
 @testable import macgit
 
@@ -25,13 +24,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
         let value = AppSettingsSnapshot(
             showToolbarButtonText: false,
             showSubmodules: true,
-            showSubtrees: true,
-            showHeaderBranchButton: false,
-            showHeaderMergeButton: true,
-            showHeaderStashButton: false,
-            showHeaderRemoteButton: true,
-            showHeaderFinderButton: false,
-            showHeaderTerminalButton: true
+            showSubtrees: true
         )
 
         let data = try JSONEncoder().encode(value)
@@ -41,18 +34,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertEqual(decoded.schemaVersion, 1)
         XCTAssertEqual(
             Set(try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any]).keys),
-            [
-                "schemaVersion",
-                "showToolbarButtonText",
-                "showSubmodules",
-                "showSubtrees",
-                "showHeaderBranchButton",
-                "showHeaderMergeButton",
-                "showHeaderStashButton",
-                "showHeaderRemoteButton",
-                "showHeaderFinderButton",
-                "showHeaderTerminalButton"
-            ]
+            ["schemaVersion", "showToolbarButtonText", "showSubmodules", "showSubtrees"]
         )
     }
 
@@ -68,13 +50,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
             AppSettingsSnapshot(
                 showToolbarButtonText: false,
                 showSubmodules: true,
-                showSubtrees: true,
-                showHeaderBranchButton: true,
-                showHeaderMergeButton: true,
-                showHeaderStashButton: true,
-                showHeaderRemoteButton: true,
-                showHeaderFinderButton: true,
-                showHeaderTerminalButton: true
+                showSubtrees: true
             )
         )
 
@@ -83,13 +59,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
             AppSettingsSnapshot(
                 showToolbarButtonText: false,
                 showSubmodules: true,
-                showSubtrees: true,
-                showHeaderBranchButton: true,
-                showHeaderMergeButton: true,
-                showHeaderStashButton: true,
-                showHeaderRemoteButton: true,
-                showHeaderFinderButton: true,
-                showHeaderTerminalButton: true
+                showSubtrees: true
             )
         )
         XCTAssertTrue(state.hasOpenRepository)
@@ -141,98 +111,5 @@ final class AppSettingsSnapshotTests: XCTestCase {
 
         state.preferredSearchFileApplicationBundleIdentifier = nil
         XCTAssertNil(defaults.string(forKey: "preferredSearchFileApplication"))
-    }
-
-    func testHeaderButtonVisibilityDefaultsToTrueAndPersists() {
-        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let state = AppState(userDefaults: defaults)
-        XCTAssertTrue(state.showHeaderBranchButton)
-        XCTAssertTrue(state.showHeaderMergeButton)
-        XCTAssertTrue(state.showHeaderStashButton)
-        XCTAssertTrue(state.showHeaderRemoteButton)
-        XCTAssertTrue(state.showHeaderFinderButton)
-        XCTAssertTrue(state.showHeaderTerminalButton)
-
-        state.showHeaderBranchButton = false
-        state.showHeaderMergeButton = false
-        state.showHeaderStashButton = false
-        state.showHeaderRemoteButton = false
-        state.showHeaderFinderButton = false
-        state.showHeaderTerminalButton = false
-
-        let reloaded = AppState(userDefaults: defaults)
-        XCTAssertFalse(reloaded.showHeaderBranchButton)
-        XCTAssertFalse(reloaded.showHeaderMergeButton)
-        XCTAssertFalse(reloaded.showHeaderStashButton)
-        XCTAssertFalse(reloaded.showHeaderRemoteButton)
-        XCTAssertFalse(reloaded.showHeaderFinderButton)
-        XCTAssertFalse(reloaded.showHeaderTerminalButton)
-    }
-
-    func testSettingsSnapshotPublisherDoesNotEmitOnDeviceLocalSettings() {
-        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let state = AppState(userDefaults: defaults)
-        var emissions: [AppSettingsSnapshot] = []
-        var cancellables = Set<AnyCancellable>()
-        state.settingsSnapshotPublisher
-            .sink { emissions.append($0) }
-            .store(in: &cancellables)
-
-        // The publisher emits the current snapshot on subscription; device-local settings should not add more.
-        state.syncEnabled = true
-        state.searchFilter = .commit
-
-        XCTAssertEqual(emissions.count, 1)
-    }
-
-    func testSettingsSnapshotPublisherEmitsUpdatedSnapshot() {
-        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let state = AppState(userDefaults: defaults)
-        var emissions: [AppSettingsSnapshot] = []
-        var cancellables = Set<AnyCancellable>()
-        state.settingsSnapshotPublisher
-            .sink { emissions.append($0) }
-            .store(in: &cancellables)
-
-        state.showHeaderBranchButton = false
-
-        XCTAssertEqual(emissions.count, 2)
-        XCTAssertEqual(emissions.last?.showHeaderBranchButton, false)
-        XCTAssertEqual(emissions.last?.showHeaderMergeButton, true)
-    }
-
-    func testApplyEmitsSingleSnapshot() {
-        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let state = AppState(userDefaults: defaults)
-        var emissions: [AppSettingsSnapshot] = []
-        var cancellables = Set<AnyCancellable>()
-        state.settingsSnapshotPublisher
-            .sink { emissions.append($0) }
-            .store(in: &cancellables)
-
-        let expected = AppSettingsSnapshot(
-            showToolbarButtonText: false,
-            showSubmodules: true,
-            showSubtrees: true,
-            showHeaderBranchButton: false,
-            showHeaderMergeButton: false,
-            showHeaderStashButton: false,
-            showHeaderRemoteButton: false,
-            showHeaderFinderButton: false,
-            showHeaderTerminalButton: false
-        )
-        state.apply(expected)
-
-        XCTAssertEqual(emissions.count, 2)
-        XCTAssertEqual(emissions.last, expected)
     }
 }
