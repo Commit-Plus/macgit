@@ -43,6 +43,12 @@ function validSettings() {
     showToolbarButtonText: true,
     showSubmodules: false,
     showSubtrees: true,
+    showHeaderBranchButton: true,
+    showHeaderMergeButton: false,
+    showHeaderStashButton: true,
+    showHeaderRemoteButton: false,
+    showHeaderFinderButton: true,
+    showHeaderTerminalButton: false,
     updatedAt: serverTimestamp(),
   };
 }
@@ -77,6 +83,14 @@ describe("Firestore ownership rules", () => {
 
   test("settings reject missing and unknown fields", async () => {
     const userA = environment.authenticatedContext("user-a");
+    const optionalFields = new Set([
+      "showHeaderBranchButton",
+      "showHeaderMergeButton",
+      "showHeaderStashButton",
+      "showHeaderRemoteButton",
+      "showHeaderFinderButton",
+      "showHeaderTerminalButton",
+    ]);
 
     await assertFails(setDoc(settings("user-a", userA), {
       ...validSettings(),
@@ -84,6 +98,7 @@ describe("Firestore ownership rules", () => {
     }));
 
     for (const key of Object.keys(validSettings())) {
+      if (optionalFields.has(key)) continue;
       const missingField = validSettings();
       delete missingField[key];
       await assertFails(setDoc(settings("user-a", userA), missingField));
@@ -106,6 +121,47 @@ describe("Firestore ownership rules", () => {
         [key]: value,
       }));
     }
+  });
+
+  test("settings accept optional header button fields", async () => {
+    const userA = environment.authenticatedContext("user-a");
+
+    await assertSucceeds(setDoc(settings("user-a", userA), validSettings()));
+  });
+
+  test("settings reject wrong type for optional header button fields", async () => {
+    const userA = environment.authenticatedContext("user-a");
+
+    for (const key of [
+      "showHeaderBranchButton",
+      "showHeaderMergeButton",
+      "showHeaderStashButton",
+      "showHeaderRemoteButton",
+      "showHeaderFinderButton",
+      "showHeaderTerminalButton",
+    ]) {
+      await assertFails(setDoc(settings("user-a", userA), {
+        ...validSettings(),
+        [key]: "true",
+      }));
+    }
+  });
+
+  test("settings accept legacy documents without header button fields", async () => {
+    const userA = environment.authenticatedContext("user-a");
+    const legacy = validSettings();
+    for (const key of [
+      "showHeaderBranchButton",
+      "showHeaderMergeButton",
+      "showHeaderStashButton",
+      "showHeaderRemoteButton",
+      "showHeaderFinderButton",
+      "showHeaderTerminalButton",
+    ]) {
+      delete legacy[key];
+    }
+
+    await assertSucceeds(setDoc(settings("user-a", userA), legacy));
   });
 
   test("a user can read only their own entitlement", async () => {

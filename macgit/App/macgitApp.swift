@@ -206,6 +206,14 @@ struct macgitApp: App {
                 Toggle(isOn: $appState.showSubtrees) {
                     Label("Show Subtrees", systemImage: "tree")
                 }
+                Menu("Show Header Buttons") {
+                    Toggle("Branch", isOn: $appState.showHeaderBranchButton)
+                    Toggle("Merge", isOn: $appState.showHeaderMergeButton)
+                    Toggle("Stash", isOn: $appState.showHeaderStashButton)
+                    Toggle("Remote", isOn: $appState.showHeaderRemoteButton)
+                    Toggle("Finder", isOn: $appState.showHeaderFinderButton)
+                    Toggle("Terminal", isOn: $appState.showHeaderTerminalButton)
+                }
             }
         }
     }
