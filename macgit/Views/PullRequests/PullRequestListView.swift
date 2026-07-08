@@ -22,6 +22,7 @@ struct PullRequestListView: View {
     @ObservedObject var controller: PullRequestController
     let repositoryURL: URL
     var onConnectAccount: () -> Void = {}
+    @State private var pendingCommentPullRequest: PullRequestSummary?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,9 +47,17 @@ struct PullRequestListView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(controller.visibleItems) { item in
-                    PullRequestRow(summary: item) {
-                        controller.openInBrowser(item)
-                    }
+                    PullRequestRow(
+                        summary: item,
+                        isBusy: controller.isPerformingAction,
+                        onOpen: { controller.openInBrowser(item) },
+                        onCheckout: {
+                            Task { await controller.checkout(item) }
+                        },
+                        onComment: {
+                            pendingCommentPullRequest = item
+                        }
+                    )
                     .onTapGesture(count: 2) {
                         Task { await controller.loadPullRequestDetail(item) }
                     }
@@ -73,6 +82,33 @@ struct PullRequestListView: View {
                 )
             }
         }
+        .sheet(isPresented: createSheetPresented) {
+            if let seed = controller.createDraftSeed {
+                CreatePullRequestSheet(
+                    seed: seed,
+                    isSubmitting: controller.isPerformingAction,
+                    onCancel: { controller.dismissCreatePullRequest() },
+                    onCreate: { draft in
+                        Task { await controller.createPullRequest(draft) }
+                    }
+                )
+            }
+        }
+        .sheet(item: $pendingCommentPullRequest) { pullRequest in
+            PullRequestCommentSheet(
+                pullRequest: pullRequest,
+                isSubmitting: controller.isPerformingAction,
+                onCancel: { pendingCommentPullRequest = nil },
+                onSubmit: { body in
+                    Task {
+                        await controller.comment(on: pullRequest, body: body)
+                        if controller.detailErrorMessage == nil {
+                            pendingCommentPullRequest = nil
+                        }
+                    }
+                }
+            )
+        }
         .alert("Pull Request", isPresented: detailErrorPresented) {
             Button("OK", role: .cancel) {
                 controller.detailErrorMessage = nil
@@ -83,6 +119,17 @@ struct PullRequestListView: View {
         .task(id: repositoryURL) {
             await controller.loadPullRequests(repositoryURL: repositoryURL)
         }
+    }
+
+    private var createSheetPresented: Binding<Bool> {
+        Binding(
+            get: { controller.createDraftSeed != nil },
+            set: { isPresented in
+                if !isPresented {
+                    controller.dismissCreatePullRequest()
+                }
+            }
+        )
     }
 
     private var detailSheetPresented: Binding<Bool> {
@@ -121,6 +168,10 @@ struct PullRequestListView: View {
             .frame(width: 110)
             Toggle("Created by me", isOn: $controller.createdByMeOnly)
                 .disabled(controller.selectedProviderAccountUsername == nil)
+            Button("Create Pull Request") {
+                Task { await controller.presentCreatePullRequest() }
+            }
+            .disabled(controller.isLoading || controller.errorMessage != nil)
             Button("Refresh pull requests", systemImage: "arrow.clockwise") {
                 Task { await controller.loadPullRequests(repositoryURL: repositoryURL) }
             }
@@ -153,7 +204,10 @@ struct PullRequestListView: View {
 
 private struct PullRequestRow: View {
     let summary: PullRequestSummary
+    let isBusy: Bool
     let onOpen: () -> Void
+    let onCheckout: () -> Void
+    let onComment: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -202,10 +256,21 @@ private struct PullRequestRow: View {
 
             Spacer(minLength: 8)
 
+            Menu {
+                Button("Checkout Pull Request", action: onCheckout)
+                Button("Add Comment", action: onComment)
+                Button("Open in Browser", action: onOpen)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .menuStyle(.borderlessButton)
+            .disabled(isBusy)
+
             Button("Open in browser", systemImage: "safari", action: onOpen)
-            .buttonStyle(.borderless)
-            .labelStyle(.iconOnly)
-            .help("Open in browser")
+                .buttonStyle(.borderless)
+                .labelStyle(.iconOnly)
+                .help("Open in browser")
         }
         .padding(.vertical, 8)
     }

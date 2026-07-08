@@ -217,6 +217,200 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(openedURL?.absoluteString, "https://github.com/octocat/Hello-World/pull/12/files")
     }
 
+    func testPresentCreatePullRequestUsesCurrentBranchAndSuggestedTitle() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let service = FakePullRequestProvider(result: .success([makeSummary()]))
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let repositoryURL = URL(fileURLWithPath: "/tmp/macgit-pr-actions")
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service],
+            remoteNameProvider: { _ in "origin" },
+            remoteURLProvider: { _, _ in "https://github.com/octocat/Hello-World.git" },
+            currentBranchProvider: { _ in "feature/pr-actions" },
+            localBranchesProvider: { _ in ["main", "feature/pr-actions"] }
+        )
+
+        await controller.loadPullRequests(repositoryURL: repositoryURL)
+        await controller.presentCreatePullRequest()
+
+        XCTAssertEqual(controller.createDraftSeed?.sourceBranch, "feature/pr-actions")
+        XCTAssertEqual(controller.createDraftSeed?.targetBranch, "main")
+        XCTAssertEqual(controller.createDraftSeed?.suggestedTitle, "Pr Actions")
+    }
+
+    func testCreatePullRequestRequiresValidDraft() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let service = FakePullRequestProvider(result: .success([makeSummary()]))
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "https://github.com/octocat/Hello-World.git")
+        let invalidDraft = try PullRequestDraft(
+            repository: GitRepositoryIdentity(
+                provider: .github,
+                hostURL: URL(string: "https://github.com")!,
+                owner: "octocat",
+                name: "Hello-World"
+            ),
+            sourceBranch: "feature",
+            targetBranch: "main",
+            title: "Valid title",
+            body: ""
+        )
+        var mutatedDraft = invalidDraft
+        mutatedDraft.title = " "
+
+        await controller.createPullRequest(mutatedDraft)
+
+        XCTAssertEqual(controller.detailErrorMessage, "Pull request title is required.")
+        XCTAssertNil(service.createdDraft)
+    }
+
+    func testCreatePullRequestRefreshesListAfterSuccess() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let createdSummary = makeSummary(number: 30)
+        let service = FakePullRequestProvider(
+            result: .success([createdSummary]),
+            createResult: .success(createdSummary)
+        )
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let repositoryURL = URL(fileURLWithPath: "/tmp/macgit-pr-create")
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service],
+            remoteNameProvider: { _ in "origin" },
+            remoteURLProvider: { _, _ in "https://github.com/octocat/Hello-World.git" },
+            currentBranchProvider: { _ in "feature/pr-actions" },
+            localBranchesProvider: { _ in ["main", "feature/pr-actions"] }
+        )
+
+        await controller.loadPullRequests(repositoryURL: repositoryURL)
+        let draft = try PullRequestDraft(
+            repository: GitRepositoryIdentity(
+                provider: .github,
+                hostURL: URL(string: "https://github.com")!,
+                owner: "octocat",
+                name: "Hello-World"
+            ),
+            sourceBranch: "feature/pr-actions",
+            targetBranch: "main",
+            title: "Add provider-backed pull request actions",
+            body: ""
+        )
+
+        await controller.createPullRequest(draft)
+
+        XCTAssertEqual(service.createdDraft, draft)
+        XCTAssertEqual(controller.items, [createdSummary])
+    }
+
+    func testCommentRequiresNonEmptyBody() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let service = FakePullRequestProvider(result: .success([makeSummary()]))
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "https://github.com/octocat/Hello-World.git")
+        await controller.comment(on: makeSummary(), body: "   ")
+
+        XCTAssertEqual(controller.detailErrorMessage, "Pull request comment is required.")
+        XCTAssertNil(service.createdCommentBody)
+    }
+
+    func testCheckoutPRFetchesProviderRefWhenNeeded() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let service = FakePullRequestProvider(result: .success([makeSummary(number: 18)]))
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+
+        var fetchedReference: (remote: String, reference: String, localBranch: String)?
+        var checkedOutBranch: String?
+        let repositoryURL = URL(fileURLWithPath: "/tmp/macgit-pr-checkout")
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service],
+            remoteNameProvider: { _ in "origin" },
+            remoteURLProvider: { _, _ in "https://github.com/octocat/Hello-World.git" },
+            currentBranchProvider: { _ in "main" },
+            localBranchesProvider: { _ in ["main"] },
+            fetchPullRequestRef: { remote, reference, localBranch, _, _ in
+                fetchedReference = (remote, reference, localBranch)
+            },
+            checkoutBranch: { branch, _ in
+                checkedOutBranch = branch
+            }
+        )
+
+        await controller.loadPullRequests(repositoryURL: repositoryURL)
+        await controller.checkout(makeSummary(number: 18))
+
+        XCTAssertEqual(fetchedReference?.remote, "origin")
+        XCTAssertEqual(fetchedReference?.reference, "pull/18/head")
+        XCTAssertEqual(fetchedReference?.localBranch, "pr/18")
+        XCTAssertEqual(checkedOutBranch, "pr/18")
+    }
+
     private func makeAccount() -> GitProviderAccount {
         GitProviderAccount(
             id: "macgit-user-1:github:github.com:583231",
@@ -307,16 +501,24 @@ private final class FakePullRequestTokenVault: GitProviderTokenVault {
 private final class FakePullRequestProvider: PullRequestProviding {
     private let result: Result<[PullRequestSummary], PullRequestProviderError>
     private let detailResult: Result<PullRequestDetail, PullRequestProviderError>
+    private let createResult: Result<PullRequestSummary, PullRequestProviderError>
+    private let commentResult: Result<Void, PullRequestProviderError>
     private(set) var receivedRepository: GitRepositoryIdentity?
     private(set) var receivedToken: GitProviderToken?
     private(set) var receivedDetailNumber: Int?
+    private(set) var createdDraft: PullRequestDraft?
+    private(set) var createdCommentBody: String?
 
     init(
         result: Result<[PullRequestSummary], PullRequestProviderError> = .success([]),
-        detailResult: Result<PullRequestDetail, PullRequestProviderError> = .failure(.providerMessage("No detail"))
+        detailResult: Result<PullRequestDetail, PullRequestProviderError> = .failure(.providerMessage("No detail")),
+        createResult: Result<PullRequestSummary, PullRequestProviderError> = .failure(.providerMessage("No create")),
+        commentResult: Result<Void, PullRequestProviderError> = .success(())
     ) {
         self.result = result
         self.detailResult = detailResult
+        self.createResult = createResult
+        self.commentResult = commentResult
     }
 
     func listPullRequests(
@@ -337,5 +539,27 @@ private final class FakePullRequestProvider: PullRequestProviding {
         receivedToken = token
         receivedDetailNumber = number
         return try detailResult.get()
+    }
+
+    func createPullRequest(
+        _ draft: PullRequestDraft,
+        token: GitProviderToken
+    ) async throws -> PullRequestSummary {
+        createdDraft = draft
+        receivedToken = token
+        return try createResult.get()
+    }
+
+    func createComment(
+        body: String,
+        on pullRequest: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws {
+        createdCommentBody = body
+        receivedRepository = repository
+        receivedToken = token
+        _ = pullRequest
+        _ = try commentResult.get()
     }
 }

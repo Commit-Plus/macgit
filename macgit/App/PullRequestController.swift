@@ -30,32 +30,71 @@ final class PullRequestController: ObservableObject {
     @Published private(set) var selectedProviderAccountID: String?
     @Published private(set) var selectedDetail: PullRequestDetail?
     @Published private(set) var isLoadingDetail = false
+    @Published private(set) var createDraftSeed: PullRequestDraftSeed?
+    @Published private(set) var isPerformingAction = false
 
     private let providerAccountController: GitProviderAccountController
     private let tokenVault: GitProviderTokenVault
     private let services: [GitProviderKind: any PullRequestProviding]
-    private let remoteURLProvider: (URL) async -> String?
+    private let remoteNameProvider: (URL) async -> String?
+    private let remoteURLProvider: (URL, String) async -> String?
+    private let currentBranchProvider: (URL) async -> String?
+    private let localBranchesProvider: (URL) async -> [String]
+    private let fetchPullRequestRef: (String, String, String, URL, GitProviderCredentialResolver?) async throws -> Void
+    private let checkoutBranch: (String, URL) async throws -> Void
     private let openURL: (URL) -> Bool
     private var activeRepository: GitRepositoryIdentity?
+    private var activeRepositoryURL: URL?
+    private var activeRemoteName: String?
+    private var activeRemoteURLString: String?
     private var activeToken: GitProviderToken?
 
     init(
         providerAccountController: GitProviderAccountController,
         tokenVault: GitProviderTokenVault,
         services: [GitProviderKind: any PullRequestProviding],
-        remoteURLProvider: @escaping (URL) async -> String? = { repositoryURL in
+        remoteNameProvider: @escaping (URL) async -> String? = { repositoryURL in
             let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
-            guard let remote = remotes.first(where: { $0 == "origin" }) ?? remotes.first else {
-                return nil
-            }
-            return await GitStatusService.shared.remoteURL(remote: remote, in: repositoryURL)
+            return remotes.first(where: { $0 == "origin" }) ?? remotes.first
+        },
+        remoteURLProvider: @escaping (URL, String) async -> String? = { repositoryURL, remote in
+            let remoteURL = await GitStatusService.shared.remoteURL(remote: remote, in: repositoryURL)
+            return remoteURL.isEmpty ? nil : remoteURL
+        },
+        currentBranchProvider: @escaping (URL) async -> String? = { repositoryURL in
+            await GitStatusService.shared.currentBranch(in: repositoryURL)
+        },
+        localBranchesProvider: @escaping (URL) async -> [String] = { repositoryURL in
+            await GitStatusService.shared.localBranches(in: repositoryURL)
+        },
+        fetchPullRequestRef: @escaping (String, String, String, URL, GitProviderCredentialResolver?) async throws -> Void = { remote, reference, localBranch, repositoryURL, credentialResolver in
+            try await GitStatusService.shared.fetchPullRequestRef(
+                remote: remote,
+                reference: reference,
+                localBranch: localBranch,
+                in: repositoryURL,
+                credentialResolver: credentialResolver
+            )
+        },
+        checkoutBranch: @escaping (String, URL) async throws -> Void = { branch, repositoryURL in
+            try await GitStatusService.shared.checkoutBranch(
+                branch,
+                inWorktree: repositoryURL,
+                force: false,
+                repositoryURL: repositoryURL
+            )
         },
         openURL: @escaping (URL) -> Bool = { _ in false }
     ) {
         self.providerAccountController = providerAccountController
         self.tokenVault = tokenVault
         self.services = services
+        self.remoteNameProvider = remoteNameProvider
         self.remoteURLProvider = remoteURLProvider
+        self.currentBranchProvider = currentBranchProvider
+        self.localBranchesProvider = localBranchesProvider
+        self.fetchPullRequestRef = fetchPullRequestRef
+        self.checkoutBranch = checkoutBranch
         self.openURL = openURL
     }
 
@@ -72,11 +111,16 @@ final class PullRequestController: ObservableObject {
     }
 
     func loadPullRequests(repositoryURL: URL) async {
-        guard let remoteURLString = await remoteURLProvider(repositoryURL) else {
+        activeRepositoryURL = repositoryURL
+        guard let remoteName = await remoteNameProvider(repositoryURL),
+              let remoteURLString = await remoteURLProvider(repositoryURL, remoteName) else {
             items = []
+            activeRemoteName = nil
+            activeRemoteURLString = nil
             errorMessage = "No remotes configured."
             return
         }
+        activeRemoteName = remoteName
         await loadPullRequests(remoteURLString: remoteURLString)
     }
 
@@ -100,6 +144,7 @@ final class PullRequestController: ObservableObject {
             owner: remoteIdentity.ownerPath,
             name: remoteIdentity.repositoryName
         )
+        activeRemoteURLString = remoteURLString
 
         guard let account = matchingAccount(for: repository) else {
             items = []
@@ -184,6 +229,139 @@ final class PullRequestController: ObservableObject {
         _ = openURL(detail.changesURL)
     }
 
+    func presentCreatePullRequest() async {
+        guard let repository = activeRepository,
+              let repositoryURL = activeRepositoryURL else {
+            detailErrorMessage = "Pull request creation is unavailable."
+            return
+        }
+
+        let localBranches = await localBranchesProvider(repositoryURL).filter { !$0.isEmpty }
+        let currentBranch = await currentBranchProvider(repositoryURL)
+        let sourceBranch = currentBranch ?? localBranches.first
+        guard let sourceBranch else {
+            detailErrorMessage = "No local branches are available for a pull request."
+            return
+        }
+
+        let knownTargetBranches = Set(items.map(\.target.ref).filter { !$0.isEmpty })
+        let defaultTargetBranch = knownTargetBranches.first(where: { $0 != sourceBranch })
+            ?? localBranches.first(where: { $0 != sourceBranch && $0 == "main" })
+            ?? localBranches.first(where: { $0 != sourceBranch })
+            ?? "main"
+        let targetBranches = Array(knownTargetBranches.union(localBranches).union([defaultTargetBranch])).sorted()
+
+        createDraftSeed = PullRequestDraftSeed(
+            repository: repository,
+            sourceBranches: localBranches.isEmpty ? [sourceBranch] : localBranches,
+            targetBranches: targetBranches,
+            sourceBranch: sourceBranch,
+            targetBranch: defaultTargetBranch,
+            suggestedTitle: suggestedTitle(for: sourceBranch)
+        )
+    }
+
+    func dismissCreatePullRequest() {
+        createDraftSeed = nil
+    }
+
+    func createPullRequest(_ draft: PullRequestDraft) async {
+        do {
+            try draft.validate()
+        } catch {
+            detailErrorMessage = error.localizedDescription
+            return
+        }
+        guard let repository = activeRepository,
+              let token = activeToken,
+              let service = services[repository.provider] else {
+            detailErrorMessage = "Pull request creation is unavailable."
+            return
+        }
+
+        isPerformingAction = true
+        defer { isPerformingAction = false }
+
+        do {
+            _ = try await service.createPullRequest(draft, token: token)
+            createDraftSeed = nil
+            if let activeRemoteURLString {
+                await loadPullRequests(remoteURLString: activeRemoteURLString)
+            }
+        } catch {
+            detailErrorMessage = error.localizedDescription
+        }
+    }
+
+    func comment(on pullRequest: PullRequestSummary, body: String) async {
+        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedBody.isEmpty else {
+            detailErrorMessage = "Pull request comment is required."
+            return
+        }
+        guard let repository = activeRepository,
+              let token = activeToken,
+              let service = services[repository.provider] else {
+            detailErrorMessage = "Pull request comments are unavailable."
+            return
+        }
+
+        isPerformingAction = true
+        defer { isPerformingAction = false }
+
+        do {
+            try await service.createComment(
+                body: trimmedBody,
+                on: pullRequest,
+                repository: repository,
+                token: token
+            )
+            if selectedDetail?.summary.number == pullRequest.number {
+                await loadPullRequestDetail(pullRequest)
+            }
+        } catch {
+            detailErrorMessage = error.localizedDescription
+        }
+    }
+
+    func checkout(_ pullRequest: PullRequestSummary) async {
+        guard let repositoryURL = activeRepositoryURL else {
+            detailErrorMessage = "Pull request checkout is unavailable."
+            return
+        }
+
+        isPerformingAction = true
+        defer { isPerformingAction = false }
+
+        do {
+            let localBranches = await localBranchesProvider(repositoryURL)
+            if localBranches.contains(pullRequest.source.ref) {
+                try await checkoutBranch(pullRequest.source.ref, repositoryURL)
+                return
+            }
+
+            let branchName = "pr/\(pullRequest.number)"
+            if activeRepository?.provider == .github {
+                guard let activeRemoteName else {
+                    throw PullRequestProviderError.providerMessage("No remotes configured.")
+                }
+                try await fetchPullRequestRef(
+                    activeRemoteName,
+                    "pull/\(pullRequest.number)/head",
+                    branchName,
+                    repositoryURL,
+                    providerAccountController.credentialResolver()
+                )
+                try await checkoutBranch(branchName, repositoryURL)
+                return
+            }
+
+            try await checkoutBranch(pullRequest.source.ref, repositoryURL)
+        } catch {
+            detailErrorMessage = error.localizedDescription
+        }
+    }
+
     private func matchingAccount(for repository: GitRepositoryIdentity) -> GitProviderAccount? {
         let repositoryHost = normalizedHost(repository.hostURL)
         let accounts = providerAccountController.accounts.filter { account in
@@ -194,5 +372,18 @@ final class PullRequestController: ObservableObject {
 
     private func normalizedHost(_ url: URL) -> String {
         (url.host(percentEncoded: false) ?? url.absoluteString).lowercased()
+    }
+
+    private func suggestedTitle(for branch: String) -> String {
+        let branchSuffix = branch.split(separator: "/").last.map(String.init) ?? branch
+        let words = branchSuffix
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .split(separator: " ")
+            .map { segment -> String in
+                let lower = segment.lowercased()
+                return lower.prefix(1).uppercased() + lower.dropFirst()
+            }
+        return words.joined(separator: " ")
     }
 }

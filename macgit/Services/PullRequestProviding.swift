@@ -29,6 +29,18 @@ protocol PullRequestProviding {
         token: GitProviderToken,
         number: Int
     ) async throws -> PullRequestDetail
+
+    func createPullRequest(
+        _ draft: PullRequestDraft,
+        token: GitProviderToken
+    ) async throws -> PullRequestSummary
+
+    func createComment(
+        body: String,
+        on pullRequest: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws
 }
 
 enum PullRequestProviderError: LocalizedError, Equatable {
