@@ -119,6 +119,14 @@ final class PullRequestController: ObservableObject {
         accountConnectionHost?.kind
     }
 
+    var needsAccountConnectionAction: Bool {
+        errorMessage == "Connect Account..." || errorMessage == "Reconnect..."
+    }
+
+    var accountConnectionActionTitle: String {
+        errorMessage == "Reconnect..." ? "Reconnect" : "Connect Account"
+    }
+
     func loadPullRequests(repositoryURL: URL, page: Int = 1) async {
         activeRepositoryURL = repositoryURL
         guard let remoteName = await remoteNameProvider(repositoryURL),

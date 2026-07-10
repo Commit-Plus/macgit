@@ -58,6 +58,8 @@ struct AccountMenuContent: View {
                     .disabled(!controller.cloudFeaturesAvailable)
             case .manageAccount:
                 Button("Manage Account...", action: controller.presentManageAccount)
+            case .connections:
+                Button("Connections...", action: controller.presentConnections)
             case .syncLocked:
                 Button("Sync Settings · Sign In Required") {}
                     .disabled(true)

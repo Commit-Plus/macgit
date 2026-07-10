@@ -20,6 +20,7 @@ enum AccountMenuAction: Hashable {
     case signIn
     case createAccount
     case manageAccount
+    case connections
     case syncLocked
     case syncStatus
     case upgrade
@@ -33,12 +34,12 @@ enum AccountMenuPolicy {
         entitlement: AccountEntitlement
     ) -> [AccountMenuAction] {
         guard account != nil else {
-            return [.signIn, .createAccount, .syncLocked, .upgrade]
+            return [.signIn, .createAccount, .connections, .syncLocked, .upgrade]
         }
 
         return entitlement.plan == .pro
-            ? [.manageAccount, .syncStatus, .manageSubscriptionComingLater, .signOut]
-            : [.manageAccount, .syncStatus, .upgrade, .signOut]
+            ? [.manageAccount, .connections, .syncStatus, .manageSubscriptionComingLater, .signOut]
+            : [.manageAccount, .connections, .syncStatus, .upgrade, .signOut]
     }
 }
 

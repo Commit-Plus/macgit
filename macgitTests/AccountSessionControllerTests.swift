@@ -77,6 +77,17 @@ final class AccountSessionControllerTests: XCTestCase {
         XCTAssertEqual(auth.signOutCallCount, 1)
     }
 
+    func testPresentConnectionsShowsConnectionsSheet() {
+        let controller = AccountSessionController(
+            auth: FakeAccountAuth(current: nil),
+            bootstrapStatus: .configured
+        )
+
+        controller.presentConnections()
+
+        XCTAssertEqual(controller.presentedSheet, .connections)
+    }
+
     func testSuccessfulAccountDeletionReturnsToGuest() async {
         let account = AccountSnapshot(
             uid: "u1",

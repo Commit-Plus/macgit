@@ -30,7 +30,98 @@ final class GitProviderAccountsSectionTests: XCTestCase {
     func testSignedInUserSeesAddGitHubAndAddGitLabActions() {
         XCTAssertEqual(
             GitProviderAccountsPresentationPolicy.actions(isSignedIn: true, account: nil),
-            [.addGitHub, .addGitLabDotCom, .addSelfHostedGitLab]
+            [.add]
+        )
+    }
+
+    func testAddAccountHostOptionsExposeUnsupportedBitbucketAsDisabled() {
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.hostOptions,
+            [
+                GitProviderAddAccountOption(id: .github, title: "GitHub", isEnabled: true),
+                GitProviderAddAccountOption(id: .gitlab, title: "GitLab", isEnabled: true),
+                GitProviderAddAccountOption(id: .bitbucket, title: "Bitbucket", isEnabled: false)
+            ]
+        )
+    }
+
+    func testAddAccountAuthOptionsDisablePersonalAccessTokenUntilSupported() {
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.authTypeOptions,
+            [
+                GitProviderAddAccountOption(id: .oauth, title: "OAuth", isEnabled: true),
+                GitProviderAddAccountOption(id: .personalAccessToken, title: "Personal Access Token", isEnabled: false)
+            ]
+        )
+    }
+
+    func testAddAccountProtocolOptionsDisableSSHUntilSupported() {
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.protocolOptions,
+            [
+                GitProviderAddAccountOption(id: .https, title: "HTTPS", isEnabled: true),
+                GitProviderAddAccountOption(id: .ssh, title: "SSH", isEnabled: false)
+            ]
+        )
+    }
+
+    func testConnectButtonIsOnlyEnabledForSupportedOAuthHTTPSHosts() {
+        XCTAssertTrue(
+            GitProviderAddAccountPresentationPolicy.canConnect(
+                host: .github,
+                authType: .oauth,
+                protocol: .https
+            )
+        )
+        XCTAssertTrue(
+            GitProviderAddAccountPresentationPolicy.canConnect(
+                host: .gitlab,
+                authType: .oauth,
+                protocol: .https
+            )
+        )
+        XCTAssertFalse(
+            GitProviderAddAccountPresentationPolicy.canConnect(
+                host: .bitbucket,
+                authType: .oauth,
+                protocol: .https
+            )
+        )
+        XCTAssertFalse(
+            GitProviderAddAccountPresentationPolicy.canConnect(
+                host: .github,
+                authType: .personalAccessToken,
+                protocol: .https
+            )
+        )
+        XCTAssertFalse(
+            GitProviderAddAccountPresentationPolicy.canConnect(
+                host: .github,
+                authType: .oauth,
+                protocol: .ssh
+            )
+        )
+    }
+
+    func testAddAccountUsernamePlaceholderIsEmptyUntilConnectionCompletes() {
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.usernameDisplayText(for: ""),
+            "_"
+        )
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.usernameDisplayText(for: "Tranthanh98"),
+            "Tranthanh98"
+        )
+    }
+
+    func testAddAccountConnectButtonTitleReflectsConnectionState() {
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.connectButtonTitle(connectedUsername: ""),
+            "Connect Account"
+        )
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.connectButtonTitle(connectedUsername: "Tranthanh98"),
+            "Reconnect"
         )
     }
 
@@ -52,27 +143,38 @@ final class GitProviderAccountsSectionTests: XCTestCase {
                 isSignedIn: true,
                 account: makeAccount(provider: .gitlab, tokenStatus: .valid)
             ),
-            [.disconnect]
+            [.edit, .delete]
         )
     }
 
-    func testUnavailableOnDeviceShowsReconnectAction() {
+    func testUnavailableOnDeviceShowsEditAndDeleteActions() {
         XCTAssertEqual(
             GitProviderAccountsPresentationPolicy.actions(
                 isSignedIn: true,
                 account: makeAccount(provider: .github, tokenStatus: .unavailableOnThisDevice)
             ),
-            [.reconnect, .disconnect]
+            [.edit, .delete]
         )
     }
 
-    func testValidAccountShowsDisconnectAction() {
+    func testValidAccountShowsEditAndDeleteActions() {
         XCTAssertEqual(
             GitProviderAccountsPresentationPolicy.actions(
                 isSignedIn: true,
                 account: makeAccount(provider: .github, tokenStatus: .valid)
             ),
-            [.disconnect]
+            [.edit, .delete]
+        )
+    }
+
+    func testEditAccountPrefillHostComesFromProvider() {
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.host(for: makeAccount(provider: .github, tokenStatus: .valid)),
+            .github
+        )
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.host(for: makeAccount(provider: .gitlab, tokenStatus: .valid)),
+            .gitlab
         )
     }
 

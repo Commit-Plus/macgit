@@ -34,7 +34,8 @@ struct ContentView: View {
             if let url = repositoryURL {
                 MainWindowView(
                     repositoryURL: url,
-                    providerAccountController: providerAccountController
+                    providerAccountController: providerAccountController,
+                    onOpenConnections: accountController.presentConnections
                 )
             } else {
                 RepoPickerView(
@@ -68,7 +69,11 @@ struct ContentView: View {
                 AuthenticationSheet(controller: accountController, mode: mode)
             case .manageAccount:
                 ManageAccountSheet(
-                    controller: accountController,
+                    controller: accountController
+                )
+            case .connections:
+                ConnectionsSheet(
+                    accountController: accountController,
                     providerAccountController: providerAccountController
                 )
             case .settingsConflict:

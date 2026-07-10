@@ -42,6 +42,8 @@ final class PullRequestControllerTests: XCTestCase {
 
         XCTAssertTrue(controller.items.isEmpty)
         XCTAssertEqual(controller.errorMessage, "Connect Account...")
+        XCTAssertTrue(controller.needsAccountConnectionAction)
+        XCTAssertEqual(controller.accountConnectionActionTitle, "Connect Account")
     }
 
     func testLoadPullRequestsExposesGitLabProviderForConnectionPrompt() async throws {
@@ -66,6 +68,33 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertTrue(controller.items.isEmpty)
         XCTAssertEqual(controller.errorMessage, "Connect Account...")
         XCTAssertEqual(controller.accountConnectionProvider, .gitlab)
+        XCTAssertTrue(controller.needsAccountConnectionAction)
+        XCTAssertEqual(controller.accountConnectionActionTitle, "Connect Account")
+    }
+
+    func testLoadPullRequestsRequiresReconnectWhenTokenIsMissing() async throws {
+        let account = makeAccount()
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault()
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(),
+            services: [.github: FakePullRequestProvider()]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "https://github.com/octocat/Hello-World.git")
+
+        XCTAssertEqual(controller.errorMessage, "Reconnect...")
+        XCTAssertTrue(controller.needsAccountConnectionAction)
+        XCTAssertEqual(controller.accountConnectionActionTitle, "Reconnect")
     }
 
     func testLoadPullRequestsPublishesResults() async throws {

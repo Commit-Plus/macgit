@@ -20,8 +20,9 @@ import SwiftUI
 
 struct GitProviderAccountRow: View {
     let account: GitProviderAccount
-    let reconnect: () -> Void
-    let disconnect: () -> Void
+    let edit: () -> Void
+    let delete: () -> Void
+    @State private var confirmsDelete = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -39,9 +40,20 @@ struct GitProviderAccountRow: View {
 
                     Spacer()
 
-                    Text(statusText)
-                        .font(.callout)
-                        .foregroundStyle(statusColor)
+                    HStack(spacing: 8) {
+                        Button("Edit", systemImage: "pencil", action: edit)
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(.borderless)
+                            .help("Edit account")
+
+                        Button("Delete", systemImage: "trash", role: .destructive) {
+                            confirmsDelete = true
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.red)
+                        .help("Delete account")
+                    }
                 }
 
                 Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 8) {
@@ -60,15 +72,6 @@ struct GitProviderAccountRow: View {
                     }
                 }
 
-                HStack(spacing: 8) {
-                    Spacer()
-                    Button("Reconnect...", action: reconnect)
-                        .buttonStyle(.bordered)
-                    Button("Disconnect...", role: .destructive, action: disconnect)
-                        .foregroundStyle(.red)
-                        .buttonStyle(.bordered)
-                        .tint(.red)
-                }
             }
         }
         .padding(12)
@@ -83,6 +86,12 @@ struct GitProviderAccountRow: View {
             }
         }
         .accessibilityElement(children: .contain)
+        .alert("Delete Git Provider Account?", isPresented: $confirmsDelete) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive, action: delete)
+        } message: {
+            Text("This disconnects \(providerName) account \(account.username) from Commit+. Local repositories and Git data will not be changed.")
+        }
     }
 
     private var providerAssetName: String {
@@ -99,20 +108,4 @@ struct GitProviderAccountRow: View {
         }
     }
 
-    private var statusColor: Color {
-        switch account.tokenStatus {
-        case .valid: .green
-        case .expired, .revoked, .reauthorizationRequired, .unavailableOnThisDevice: .orange
-        }
-    }
-
-    private var statusText: String {
-        switch account.tokenStatus {
-        case .valid: "Connected"
-        case .expired: "Expired"
-        case .revoked: "Revoked"
-        case .reauthorizationRequired: "Reconnect required"
-        case .unavailableOnThisDevice: "Unavailable on this Mac"
-        }
-    }
 }

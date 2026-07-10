@@ -139,6 +139,10 @@ final class AccountSessionController: ObservableObject {
         presentedSheet = .manageAccount
     }
 
+    func presentConnections() {
+        presentedSheet = .connections
+    }
+
     func signIn(email: String, password: String) async {
         await authenticate { [auth] in
             try await auth.signIn(email: email, password: password)

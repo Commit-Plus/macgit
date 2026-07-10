@@ -28,8 +28,13 @@ struct GitProviderDeviceAuthorizationView: View {
         VStack(alignment: .center, spacing: 16) {
             Text("Connect \(authorization.provider.displayName) Account")
                 .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .center)
 
-            VStack(alignment: .center, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "doc.on.doc")
+                    .hidden()
+                    .frame(width: 24, height: 24)
+
                 Text(authorization.userCode)
                     .font(.system(.largeTitle, design: .monospaced).bold())
                     .textSelection(.enabled)
@@ -40,12 +45,16 @@ struct GitProviderDeviceAuthorizationView: View {
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
                 .help("Copy code")
+                .frame(width: 24, height: 24)
             }
+            .frame(maxWidth: .infinity, alignment: .center)
 
             HStack(spacing: 10) {
                 Button("Open \(authorization.provider.displayName) Device Page", action: openVerification)
                 Button("Cancel", role: .cancel, action: cancel)
             }
+            .frame(maxWidth: .infinity, alignment: .center)
         }
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }

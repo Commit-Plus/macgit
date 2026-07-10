@@ -19,11 +19,37 @@
 import Foundation
 
 enum GitProviderAccountPresentationAction: Equatable {
-    case addGitHub
-    case addGitLabDotCom
-    case addSelfHostedGitLab
-    case reconnect
-    case disconnect
+    case add
+    case edit
+    case delete
+}
+
+enum GitProviderAddAccountHost: String, CaseIterable, Identifiable {
+    case github
+    case gitlab
+    case bitbucket
+
+    var id: Self { self }
+}
+
+enum GitProviderAddAccountAuthType: String, CaseIterable, Identifiable {
+    case oauth
+    case personalAccessToken
+
+    var id: Self { self }
+}
+
+enum GitProviderAddAccountProtocol: String, CaseIterable, Identifiable {
+    case https
+    case ssh
+
+    var id: Self { self }
+}
+
+struct GitProviderAddAccountOption<ID: Equatable>: Equatable {
+    var id: ID
+    var title: String
+    var isEnabled: Bool
 }
 
 enum GitProviderAccountsPresentationPolicy {
@@ -32,12 +58,9 @@ enum GitProviderAccountsPresentationPolicy {
         account: GitProviderAccount?
     ) -> [GitProviderAccountPresentationAction] {
         guard isSignedIn else { return [] }
-        guard let account else { return [.addGitHub, .addGitLabDotCom, .addSelfHostedGitLab] }
+        guard let account else { return [.add] }
 
-        if account.tokenStatus == .valid {
-            return [.disconnect]
-        }
-        return [.reconnect, .disconnect]
+        return [.edit, .delete]
     }
 
     static func normalizedSelfHostedGitLabHost(from value: String) -> GitProviderHost? {
@@ -56,5 +79,53 @@ enum GitProviderAccountsPresentationPolicy {
         }
 
         return GitProviderHost(kind: .gitlab, baseURL: url).normalized
+    }
+}
+
+enum GitProviderAddAccountPresentationPolicy {
+    static let hostOptions: [GitProviderAddAccountOption<GitProviderAddAccountHost>] = [
+        GitProviderAddAccountOption(id: .github, title: "GitHub", isEnabled: true),
+        GitProviderAddAccountOption(id: .gitlab, title: "GitLab", isEnabled: true),
+        GitProviderAddAccountOption(id: .bitbucket, title: "Bitbucket", isEnabled: false)
+    ]
+
+    static let authTypeOptions: [GitProviderAddAccountOption<GitProviderAddAccountAuthType>] = [
+        GitProviderAddAccountOption(id: .oauth, title: "OAuth", isEnabled: true),
+        GitProviderAddAccountOption(id: .personalAccessToken, title: "Personal Access Token", isEnabled: false)
+    ]
+
+    static let protocolOptions: [GitProviderAddAccountOption<GitProviderAddAccountProtocol>] = [
+        GitProviderAddAccountOption(id: .https, title: "HTTPS", isEnabled: true),
+        GitProviderAddAccountOption(id: .ssh, title: "SSH", isEnabled: false)
+    ]
+
+    static func canConnect(
+        host: GitProviderAddAccountHost,
+        authType: GitProviderAddAccountAuthType,
+        protocol selectedProtocol: GitProviderAddAccountProtocol
+    ) -> Bool {
+        host != .bitbucket && authType == .oauth && selectedProtocol == .https
+    }
+
+    static func usernameDisplayText(for connectedUsername: String) -> String {
+        connectedUsername.isEmpty ? "_" : connectedUsername
+    }
+
+    static func connectButtonTitle(connectedUsername: String) -> String {
+        connectedUsername.isEmpty ? "Connect Account" : "Reconnect"
+    }
+
+    static func host(for account: GitProviderAccount) -> GitProviderAddAccountHost {
+        switch account.provider {
+        case .github: .github
+        case .gitlab: .gitlab
+        }
+    }
+
+    static func optionTitle<ID: Equatable>(
+        for id: ID,
+        in options: [GitProviderAddAccountOption<ID>]
+    ) -> String {
+        options.first { $0.id == id }?.title ?? ""
     }
 }

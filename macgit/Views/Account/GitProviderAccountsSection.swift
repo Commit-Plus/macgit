@@ -23,7 +23,8 @@ struct GitProviderAccountsSection: View {
     @ObservedObject var controller: GitProviderAccountController
     let isSignedIn: Bool
     @State private var connectionTask: Task<Void, Never>?
-    @State private var selfHostedGitLabHost = ""
+    @State private var showingAddAccountSheet = false
+    @State private var editingAccount: GitProviderAccount?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -41,37 +42,18 @@ struct GitProviderAccountsSection: View {
                         ForEach(controller.accounts) { account in
                             GitProviderAccountRow(
                                 account: account,
-                                reconnect: { startConnection { await controller.reconnect(account) } },
-                                disconnect: { Task { await controller.disconnect(account) } }
+                                edit: { editingAccount = account },
+                                delete: { Task { await controller.disconnect(account) } }
                             )
                         }
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Button("Add GitHub Account...", systemImage: "plus") {
-                        startConnection { await controller.connectGitHub() }
+                    Button("Add", systemImage: "plus") {
+                        showingAddAccountSheet = true
                     }
                     .disabled(controller.isLoading)
-
-                    Button("Add GitLab.com Account...", systemImage: "plus") {
-                        startConnection { await controller.connectGitLabDotCom() }
-                    }
-                    .disabled(controller.isLoading)
-
-                    HStack(spacing: 8) {
-                        TextField("Self-hosted GitLab host", text: $selfHostedGitLabHost)
-                            .textFieldStyle(.roundedBorder)
-
-                        Button("Add Self-Hosted GitLab Account...", systemImage: "plus") {
-                            guard let host = GitProviderAccountsPresentationPolicy
-                                .normalizedSelfHostedGitLabHost(from: selfHostedGitLabHost) else {
-                                return
-                            }
-                            startConnection { await controller.connectSelfHostedGitLab(hostURL: host.baseURL) }
-                        }
-                        .disabled(controller.isLoading || normalizedSelfHostedGitLabHost == nil)
-                    }
                 }
 
                 if let authorization = controller.pendingDeviceAuthorization {
@@ -104,6 +86,12 @@ struct GitProviderAccountsSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onDisappear(perform: cancelConnection)
+        .sheet(isPresented: $showingAddAccountSheet) {
+            GitProviderAddAccountSheet(controller: controller)
+        }
+        .sheet(item: $editingAccount) { account in
+            GitProviderAddAccountSheet(controller: controller, editingAccount: account)
+        }
     }
 
     private func startConnection(_ operation: @escaping @MainActor () async -> Void) {
@@ -117,10 +105,6 @@ struct GitProviderAccountsSection: View {
     private func cancelConnection() {
         connectionTask?.cancel()
         connectionTask = nil
-    }
-
-    private var normalizedSelfHostedGitLabHost: GitProviderHost? {
-        GitProviderAccountsPresentationPolicy.normalizedSelfHostedGitLabHost(from: selfHostedGitLabHost)
     }
 
     private func copyToPasteboard(_ value: String) {

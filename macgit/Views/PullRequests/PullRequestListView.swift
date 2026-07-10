@@ -22,7 +22,7 @@ struct PullRequestListView: View {
     @ObservedObject var controller: PullRequestController
     let repositoryURL: URL
     var accountConnectionErrorMessage: String? = nil
-    var onConnectAccount: () -> Void = {}
+    var onReconnectAccount: () -> Void = {}
     @State private var pendingCommentPullRequest: PullRequestSummary?
 
     var body: some View {
@@ -36,8 +36,14 @@ struct PullRequestListView: View {
                 VStack(spacing: 12) {
                     Text(errorMessage)
                         .font(.headline)
-                    if errorMessage == "Connect Account..." || errorMessage == "Reconnect..." {
-                        Button(errorMessage, action: onConnectAccount)
+                    if controller.needsAccountConnectionAction {
+                        HStack(spacing: 10) {
+                            Button(controller.accountConnectionActionTitle, action: onReconnectAccount)
+                            Button("Reload", systemImage: "arrow.clockwise") {
+                                Task { await controller.loadPullRequests(repositoryURL: repositoryURL) }
+                            }
+                            .disabled(controller.isLoading)
+                        }
                         if let accountConnectionErrorMessage {
                             Text(accountConnectionErrorMessage)
                                 .font(.callout)
