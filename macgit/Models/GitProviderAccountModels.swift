@@ -66,6 +66,13 @@ enum GitProviderTokenStatus: String, Codable, Equatable {
     case unavailableOnThisDevice
 }
 
+enum GitProviderTransportProtocol: String, Codable, Equatable, CaseIterable, Identifiable {
+    case https
+    case ssh
+
+    var id: String { rawValue }
+}
+
 struct GitProviderAccount: Identifiable, Equatable, Codable {
     var id: String
     var macgitUID: String
@@ -78,8 +85,79 @@ struct GitProviderAccount: Identifiable, Equatable, Codable {
     var scopes: [String]
     var permissions: [String: String]
     var tokenStatus: GitProviderTokenStatus
+    var transportProtocol: GitProviderTransportProtocol
     var connectedAt: Date
     var lastValidatedAt: Date?
+
+    init(
+        id: String,
+        macgitUID: String,
+        provider: GitProviderKind,
+        hostURL: URL,
+        providerUserID: String,
+        username: String,
+        displayName: String?,
+        avatarURL: URL?,
+        scopes: [String],
+        permissions: [String: String],
+        tokenStatus: GitProviderTokenStatus,
+        transportProtocol: GitProviderTransportProtocol = .https,
+        connectedAt: Date,
+        lastValidatedAt: Date?
+    ) {
+        self.id = id
+        self.macgitUID = macgitUID
+        self.provider = provider
+        self.hostURL = hostURL
+        self.providerUserID = providerUserID
+        self.username = username
+        self.displayName = displayName
+        self.avatarURL = avatarURL
+        self.scopes = scopes
+        self.permissions = permissions
+        self.tokenStatus = tokenStatus
+        self.transportProtocol = transportProtocol
+        self.connectedAt = connectedAt
+        self.lastValidatedAt = lastValidatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case macgitUID
+        case provider
+        case hostURL
+        case providerUserID
+        case username
+        case displayName
+        case avatarURL
+        case scopes
+        case permissions
+        case tokenStatus
+        case transportProtocol
+        case connectedAt
+        case lastValidatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        macgitUID = try container.decode(String.self, forKey: .macgitUID)
+        provider = try container.decode(GitProviderKind.self, forKey: .provider)
+        hostURL = try container.decode(URL.self, forKey: .hostURL)
+        providerUserID = try container.decode(String.self, forKey: .providerUserID)
+        username = try container.decode(String.self, forKey: .username)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+        avatarURL = try container.decodeIfPresent(URL.self, forKey: .avatarURL)
+        scopes = try container.decode([String].self, forKey: .scopes)
+        permissions = try container.decode([String: String].self, forKey: .permissions)
+        tokenStatus = try container.decode(GitProviderTokenStatus.self, forKey: .tokenStatus)
+        transportProtocol = try container.decodeIfPresent(
+            GitProviderTransportProtocol.self,
+            forKey: .transportProtocol
+        ) ?? .https
+        connectedAt = try container.decode(Date.self, forKey: .connectedAt)
+        lastValidatedAt = try container.decodeIfPresent(Date.self, forKey: .lastValidatedAt)
+    }
 }
 
 struct GitProviderToken: Equatable, Codable {

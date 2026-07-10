@@ -48,7 +48,7 @@
 - Produces: `GitProviderAccount.transportProtocol`
 - Consumes: existing provider account Codable and Firestore document helpers
 
-- [ ] **Step 1: Write failing model tests**
+- [x] **Step 1: Write failing model tests**
 
 Add tests:
 
@@ -59,7 +59,7 @@ func testProviderAccountRoundTripsSSHTransportProtocol() throws
 
 The old-payload test should encode JSON without `transportProtocol`, decode `GitProviderAccount`, and assert `.https`.
 
-- [ ] **Step 2: Run model tests and verify RED**
+- [x] **Step 2: Run model tests and verify RED**
 
 Run:
 
@@ -69,15 +69,15 @@ rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=m
 
 Expected: fail because `transportProtocol` does not exist.
 
-- [ ] **Step 3: Implement transport model**
+- [x] **Step 3: Implement transport model**
 
 Add `GitProviderTransportProtocol` and custom `Codable` for `GitProviderAccount` so missing `transportProtocol` decodes as `.https`.
 
-- [ ] **Step 4: Encode/decode Firestore transport**
+- [x] **Step 4: Encode/decode Firestore transport**
 
 In `GitProviderAccountDocument.encode`, write `transportProtocol`. In decode, default missing or unknown values to `.https`.
 
-- [ ] **Step 5: Run model tests and verify GREEN**
+- [x] **Step 5: Run model tests and verify GREEN**
 
 Run the same focused model test command.
 
