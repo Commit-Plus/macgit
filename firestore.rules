@@ -59,6 +59,7 @@ service cloud.firestore {
           'scopes',
           'permissions',
           'tokenStatus',
+          'transportProtocol',
           'connectedAt',
           'lastValidatedAt'
         ])
@@ -82,6 +83,7 @@ service cloud.firestore {
         && (!('avatarURL' in request.resource.data) || request.resource.data.avatarURL is string)
         && request.resource.data.scopes is list
         && request.resource.data.permissions is map
+        && (!('transportProtocol' in request.resource.data) || request.resource.data.transportProtocol in ['https', 'ssh'])
         && request.resource.data.tokenStatus in [
           'valid',
           'expired',

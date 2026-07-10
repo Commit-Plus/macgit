@@ -65,6 +65,7 @@ function validGitProviderAccount() {
     scopes: ["repo", "read:user"],
     permissions: {},
     tokenStatus: "valid",
+    transportProtocol: "https",
     connectedAt: serverTimestamp(),
     lastValidatedAt: serverTimestamp(),
   };
@@ -205,6 +206,37 @@ describe("Firestore ownership rules", () => {
       ...validGitProviderAccount(),
       provider: "bitbucket",
     }));
+  });
+
+  test("Git provider metadata accepts HTTPS and SSH transport protocols", async () => {
+    const userA = environment.authenticatedContext("user-a");
+
+    await assertSucceeds(setDoc(
+      gitProviderAccount("user-a", "connection-https", userA),
+      {
+        ...validGitProviderAccount(),
+        transportProtocol: "https",
+      },
+    ));
+    await assertSucceeds(setDoc(
+      gitProviderAccount("user-a", "connection-ssh", userA),
+      {
+        ...validGitProviderAccount(),
+        transportProtocol: "ssh",
+      },
+    ));
+  });
+
+  test("Git provider metadata rejects unsupported transport protocols", async () => {
+    const userA = environment.authenticatedContext("user-a");
+
+    await assertFails(setDoc(
+      gitProviderAccount("user-a", "connection-1", userA),
+      {
+        ...validGitProviderAccount(),
+        transportProtocol: "token",
+      },
+    ));
   });
 
   test("clients cannot create update or delete entitlements", async () => {
