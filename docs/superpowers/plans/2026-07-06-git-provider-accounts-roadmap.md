@@ -13,6 +13,7 @@
 ## Design Source
 
 - [2026-07-06-git-provider-accounts-design.md](../specs/2026-07-06-git-provider-accounts-design.md)
+- [2026-07-10-git-provider-ssh-auth-design.md](../specs/2026-07-10-git-provider-ssh-auth-design.md)
 
 ## Plan Index
 
@@ -22,6 +23,7 @@
 - Phase 3: [completed] [2026-07-06-git-provider-accounts-phase-3-pull-request-read.md](2026-07-06-git-provider-accounts-phase-3-pull-request-read.md) (branch: `codex/git-provider-accounts-phase-3`)
 - Phase 4: [completed] [2026-07-06-git-provider-accounts-phase-4-pull-request-actions.md](2026-07-06-git-provider-accounts-phase-4-pull-request-actions.md) (branch: `codex/git-provider-accounts-phase-4`)
 - Phase 5: [completed] [2026-07-06-git-provider-accounts-phase-5-gitlab-and-hardening.md](2026-07-06-git-provider-accounts-phase-5-gitlab-and-hardening.md) (branch: `codex/git-provider-accounts-phase-5`)
+- SSH Auth: [in progress] [2026-07-10-git-provider-accounts-ssh-auth.md](2026-07-10-git-provider-accounts-ssh-auth.md) (branch: `codex/git-provider-accounts-ssh-auth`)
 
 ## Recommended Order
 
@@ -31,6 +33,7 @@
 4. Phase 3 next. It adds read-only pull request visibility so auth, remote parsing, and API clients can stabilize before write actions.
 5. Phase 4 next. It adds create/comment/checkout PR actions with targeted permission and branch-state checks.
 6. Phase 5 last. It adds GitLab support and decides which flows need Firebase Functions or Cloud Run based on real provider requirements.
+7. SSH Auth follow-up. It enables SSH as a local provider-account transport after HTTPS private repository credentials are stable.
 
 ## Shared Rules
 
@@ -38,6 +41,7 @@
 - Keep Firebase Auth as the macgit identity; never reuse Firebase provider linkage for GitHub or GitLab accounts.
 - Never store provider tokens, refresh tokens, client secrets, GitHub App private keys, or installation tokens in Firestore.
 - Store production provider tokens only in macOS Keychain through `GitProviderTokenVault`.
+- Store SSH key references only on the local Mac; never write key paths, private key contents, or passphrases to Firestore.
 - Do not put provider tokens into remote URLs, command-line arguments, crash logs, debug logs, or UI copy.
 - Use external browser OAuth and verify callback `state`.
 - Use PKCE for native OAuth flows whenever the selected provider supports it.
