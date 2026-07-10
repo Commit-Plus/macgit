@@ -37,6 +37,12 @@ struct PullRequestListView: View {
                     Text(errorMessage)
                         .font(.headline)
                     if controller.needsAccountConnectionAction {
+                        Text("Pull requests require an OAuth account over HTTPS. SSH keys are only used for Git fetch and push.")
+                            .font(.callout)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.tertiary)
+                            .frame(maxWidth: 440)
+
                         HStack(spacing: 10) {
                             Button(controller.accountConnectionActionTitle, action: onReconnectAccount)
                             Button("Reload", systemImage: "arrow.clockwise") {

@@ -14,6 +14,28 @@ Run tests after non-trivial changes. Tests live in `macgitTests/` (XCTest, real 
 
 > **Agent note:** Do not launch the app. Verification is complete when `xcodebuild build` succeeds and targeted tests pass. If the full test suite crashes during bootstrapping ("Early unexpected exit" / `abort() called`), do not re-run it; a successful build is sufficient.
 
+### Building from `main` vs. Feature Branches / Worktrees
+
+Xcode places DerivedData under `~/Library/Developer/Xcode/DerivedData/macgit-<hash>/`. The hash is derived from the path to `macgit.xcodeproj`, so each worktree or clone directory gets its own DerivedData folder. Opening `.../macgit-*/Build/Products/Debug/Commit+.app` after building from multiple locations can launch multiple app instances.
+
+To avoid this, pin the `main` build to a fixed DerivedData path:
+
+```bash
+xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -derivedDataPath ~/Library/Developer/Xcode/DerivedData/macgit-main build
+```
+
+For feature branches or worktrees, use the default build command above (each will get its own `macgit-<hash>` folder). After the work is merged and you no longer need the worktree build, remove it:
+
+```bash
+find ~/Library/Developer/Xcode/DerivedData -maxdepth 1 -type d -name 'macgit-*' ! -name 'macgit-main' -exec rm -rf {} +
+```
+
+To start completely fresh, remove all macgit DerivedData and rebuild from `main`:
+
+```bash
+rm -rf ~/Library/Developer/Xcode/DerivedData/macgit-*
+```
+
 ## License Header
 
 Every `.swift` file must start with the AGPL v3 header. The pre-commit hook blocks commits missing these markers: `Copyright (C)`, `GNU Affero General Public License`, `trantienthanh2412@gmail.com`.

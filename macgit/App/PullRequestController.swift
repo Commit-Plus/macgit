@@ -186,7 +186,8 @@ final class PullRequestController: ObservableObject {
         )
         activeRemoteURLString = remoteURLString
 
-        guard let account = matchingAccount(for: repository) else {
+        let matchingAccounts = matchingAccounts(for: repository)
+        guard !matchingAccounts.isEmpty else {
             items = []
             resetPagination()
             selectedProviderAccountID = nil
@@ -196,27 +197,19 @@ final class PullRequestController: ObservableObject {
             errorMessage = "Connect Account..."
             return
         }
-        selectedProviderAccountID = account.id
 
-        let token: GitProviderToken
-        do {
-            guard let storedToken = try tokenVault.readToken(for: account) else {
-                items = []
-                resetPagination()
-                activeRepository = nil
-                activeToken = nil
-                accountConnectionHost = GitProviderHost(kind: account.provider, baseURL: account.hostURL).normalized
-                errorMessage = "Reconnect..."
-                return
-            }
-            token = storedToken
-        } catch {
+        guard let apiCredential = apiCredential(for: matchingAccounts) else {
             items = []
             resetPagination()
-            accountConnectionHost = GitProviderHost(kind: account.provider, baseURL: account.hostURL).normalized
-            errorMessage = "Reconnect..."
+            selectedProviderAccountID = nil
+            activeRepository = nil
+            activeToken = nil
+            accountConnectionHost = GitProviderHost(kind: repository.provider, baseURL: repository.hostURL).normalized
+            errorMessage = matchingAccounts.contains(where: supportsProviderAPI) ? "Reconnect..." : "Connect Account..."
             return
         }
+        selectedProviderAccountID = apiCredential.account.id
+        let token = apiCredential.token
 
         guard let service = services[repository.provider] else {
             items = []
@@ -439,12 +432,42 @@ final class PullRequestController: ObservableObject {
         }
     }
 
-    private func matchingAccount(for repository: GitRepositoryIdentity) -> GitProviderAccount? {
+    private func matchingAccounts(for repository: GitRepositoryIdentity) -> [GitProviderAccount] {
         let repositoryHost = normalizedHost(repository.hostURL)
-        let accounts = providerAccountController.accounts.filter { account in
+        return providerAccountController.accounts.filter { account in
             account.provider == repository.provider && normalizedHost(account.hostURL) == repositoryHost
         }
-        return accounts.first(where: { $0.id == selectedProviderAccountID }) ?? accounts.first
+    }
+
+    private func apiCredential(for accounts: [GitProviderAccount]) -> (
+        account: GitProviderAccount,
+        token: GitProviderToken
+    )? {
+        let prioritizedAccounts = prioritizedAccounts(accounts)
+        for account in prioritizedAccounts {
+            guard supportsProviderAPI(account) else { continue }
+            do {
+                guard let token = try tokenVault.readToken(for: account), !token.accessToken.isEmpty else {
+                    continue
+                }
+                return (account, token)
+            } catch {
+                continue
+            }
+        }
+        return nil
+    }
+
+    private func prioritizedAccounts(_ accounts: [GitProviderAccount]) -> [GitProviderAccount] {
+        guard let selectedProviderAccountID,
+              let selected = accounts.first(where: { $0.id == selectedProviderAccountID }) else {
+            return accounts
+        }
+        return [selected] + accounts.filter { $0.id != selected.id }
+    }
+
+    private func supportsProviderAPI(_ account: GitProviderAccount) -> Bool {
+        account.transportProtocol == .https || !account.scopes.isEmpty
     }
 
     private func resetPagination() {

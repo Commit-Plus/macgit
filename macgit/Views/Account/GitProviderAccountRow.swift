@@ -70,6 +70,13 @@ struct GitProviderAccountRow: View {
                             .foregroundStyle(.secondary)
                         Text(account.hostURL.host() ?? account.hostURL.absoluteString)
                     }
+
+                    GridRow {
+                        Text("Protocol")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+                        Text(protocolDescription)
+                    }
                 }
 
             }
@@ -105,6 +112,15 @@ struct GitProviderAccountRow: View {
         switch account.provider {
         case .github: "GitHub"
         case .gitlab: "GitLab"
+        }
+    }
+
+    private var protocolDescription: String {
+        switch account.transportProtocol {
+        case .https:
+            "HTTPS (OAuth)"
+        case .ssh:
+            "SSH"
         }
     }
 

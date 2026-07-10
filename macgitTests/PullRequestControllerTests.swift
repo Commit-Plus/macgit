@@ -97,6 +97,69 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(controller.accountConnectionActionTitle, "Reconnect")
     }
 
+    func testLoadPullRequestsPromptsConnectWhenOnlySSHAccountExists() async throws {
+        let account = makeAccount(
+            id: "macgit-user-1:github:github.com:octocat",
+            scopes: [],
+            transportProtocol: .ssh
+        )
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault()
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(),
+            services: [.github: FakePullRequestProvider()]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "git@github.com:octocat/Hello-World.git")
+
+        XCTAssertTrue(controller.items.isEmpty)
+        XCTAssertEqual(controller.errorMessage, "Connect Account...")
+        XCTAssertTrue(controller.needsAccountConnectionAction)
+        XCTAssertEqual(controller.accountConnectionActionTitle, "Connect Account")
+    }
+
+    func testLoadPullRequestsUsesOAuthAccountWhenSSHAccountAlsoExists() async throws {
+        let sshAccount = makeAccount(
+            id: "macgit-user-1:github:github.com:octocat",
+            scopes: [],
+            transportProtocol: .ssh
+        )
+        let oauthAccount = makeAccount(id: "macgit-user-1:github:github.com:583231")
+        let token = makeToken()
+        let service = FakePullRequestProvider(result: .success([makeSummary()]))
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [sshAccount, oauthAccount]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [oauthAccount.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [oauthAccount.id: token]),
+            services: [.github: service]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "git@github.com:octocat/Hello-World.git")
+
+        XCTAssertEqual(controller.items, [makeSummary()])
+        XCTAssertNil(controller.errorMessage)
+        XCTAssertEqual(controller.selectedProviderAccountID, oauthAccount.id)
+        XCTAssertEqual(service.receivedToken, token)
+    }
+
     func testLoadPullRequestsPublishesResults() async throws {
         let account = makeAccount()
         let token = makeToken()
@@ -535,9 +598,13 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(checkedOutBranch, "pr/18")
     }
 
-    private func makeAccount() -> GitProviderAccount {
+    private func makeAccount(
+        id: String = "macgit-user-1:github:github.com:583231",
+        scopes: [String] = ["repo", "read:user"],
+        transportProtocol: GitProviderTransportProtocol = .https
+    ) -> GitProviderAccount {
         GitProviderAccount(
-            id: "macgit-user-1:github:github.com:583231",
+            id: id,
             macgitUID: "macgit-user-1",
             provider: .github,
             hostURL: URL(string: "https://github.com")!,
@@ -545,9 +612,10 @@ final class PullRequestControllerTests: XCTestCase {
             username: "octocat",
             displayName: "The Octocat",
             avatarURL: nil,
-            scopes: ["repo", "read:user"],
+            scopes: scopes,
             permissions: [:],
             tokenStatus: .valid,
+            transportProtocol: transportProtocol,
             connectedAt: Date(timeIntervalSince1970: 1_700_000_000),
             lastValidatedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
