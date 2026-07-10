@@ -203,6 +203,17 @@ struct macgitApp: App {
                 AccountMenuContent(controller: accountController)
             }
 
+            CommandGroup(before: .sidebar) {
+                Menu("Show Header Buttons") {
+                    Toggle("Branch", isOn: $appState.showHeaderBranchButton)
+                    Toggle("Merge", isOn: $appState.showHeaderMergeButton)
+                    Toggle("Stash", isOn: $appState.showHeaderStashButton)
+                    Toggle("Remote", isOn: $appState.showHeaderRemoteButton)
+                    Toggle("Finder", isOn: $appState.showHeaderFinderButton)
+                    Toggle("Terminal", isOn: $appState.showHeaderTerminalButton)
+                }
+            }
+
             CommandGroup(before: .toolbar) {
                 Toggle(isOn: $appState.showToolbarButtonText) {
                     Label("Show Button Text", systemImage: "character.textbox")
@@ -213,14 +224,6 @@ struct macgitApp: App {
                 }
                 Toggle(isOn: $appState.showSubtrees) {
                     Label("Show Subtrees", systemImage: "tree")
-                }
-                Menu("Show Header Buttons") {
-                    Toggle("Branch", isOn: $appState.showHeaderBranchButton)
-                    Toggle("Merge", isOn: $appState.showHeaderMergeButton)
-                    Toggle("Stash", isOn: $appState.showHeaderStashButton)
-                    Toggle("Remote", isOn: $appState.showHeaderRemoteButton)
-                    Toggle("Finder", isOn: $appState.showHeaderFinderButton)
-                    Toggle("Terminal", isOn: $appState.showHeaderTerminalButton)
                 }
             }
         }
