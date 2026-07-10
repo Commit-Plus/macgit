@@ -260,7 +260,7 @@ Expected: pass.
 - Consumes: `GitSSHCredentialInjecting`
 - Produces: remote fetch/pull/push SSH environment injection for SSH remotes
 
-- [ ] **Step 1: Re-run focused credential tests before wiring**
+- [x] **Step 1: Re-run focused credential tests before wiring**
 
 Run:
 
@@ -270,11 +270,11 @@ rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=m
 
 Expected: pass before remote wiring starts.
 
-- [ ] **Step 2: Wire remote SSH injection**
+- [x] **Step 2: Wire remote SSH injection**
 
 Update the private credential-injection helper to check the remote URL. HTTPS remotes use `TemporaryGitCredentialInjector`; SSH remotes use `TemporaryGitSSHCredentialInjector`; unsupported remotes return nil and keep existing behavior.
 
-- [ ] **Step 3: Run focused credential tests**
+- [x] **Step 3: Run focused credential tests**
 
 Run:
 
