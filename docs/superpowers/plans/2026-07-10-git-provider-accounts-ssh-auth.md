@@ -96,7 +96,7 @@ Expected: pass.
 - Produces: `UserDefaultsGitProviderSSHKeyStore`
 - Produces: `GitProviderSSHKeyStoreKey.key(for:)`
 
-- [ ] **Step 1: Write failing key-store tests**
+- [x] **Step 1: Write failing key-store tests**
 
 Create tests:
 
@@ -106,7 +106,7 @@ func testUserDefaultsStoreSavesReadsAndDeletesKey()
 func testDeletingMissingKeyIsIdempotent()
 ```
 
-- [ ] **Step 2: Run key-store tests and verify RED**
+- [x] **Step 2: Run key-store tests and verify RED**
 
 Run:
 
@@ -116,7 +116,7 @@ rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=m
 
 Expected: fail because the test file or production types do not exist.
 
-- [ ] **Step 3: Implement local key store**
+- [x] **Step 3: Implement local key store**
 
 Create the AGPL-headed Swift file with:
 
@@ -134,7 +134,7 @@ protocol GitProviderSSHKeyStore {
 
 Store encoded values under a namespaced UserDefaults key derived from `GitProviderTokenVaultKey.key(for:)`.
 
-- [ ] **Step 4: Run key-store tests and verify GREEN**
+- [x] **Step 4: Run key-store tests and verify GREEN**
 
 Run the same focused key-store test command.
 
