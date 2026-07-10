@@ -41,13 +41,47 @@ final class GitProviderCredentialResolverTests: XCTestCase {
         XCTAssertNil(try resolver.credential(for: "https://example.com/octocat/Hello-World.git"))
     }
 
-    func testSSHRemoteKeepsExistingBehavior() throws {
+    func testReturnsSSHCredentialForMatchingSSHRemote() throws {
+        let account = makeProviderAccount(transportProtocol: .ssh)
         let resolver = GitProviderCredentialResolver(
-            accounts: [makeProviderAccount()],
-            tokenVault: FakeCredentialTokenVault()
+            accounts: [account],
+            tokenVault: FakeCredentialTokenVault(),
+            sshKeyStore: FakeCredentialSSHKeyStore(keysByAccountID: [
+                account.id: GitProviderSSHKey(path: "/Users/test/.ssh/id_ed25519")
+            ])
         )
 
-        XCTAssertNil(try resolver.credential(for: "git@github.com:octocat/Hello-World.git"))
+        let credential = try resolver.sshCredential(for: "git@github.com:octocat/Hello-World.git")
+
+        XCTAssertEqual(credential, GitSSHCredential(username: "git", keyPath: "/Users/test/.ssh/id_ed25519"))
+    }
+
+    func testSSHRemoteWithoutConfiguredKeyThrows() {
+        let account = makeProviderAccount(transportProtocol: .ssh)
+        let resolver = GitProviderCredentialResolver(
+            accounts: [account],
+            tokenVault: FakeCredentialTokenVault(),
+            sshKeyStore: FakeCredentialSSHKeyStore()
+        )
+
+        XCTAssertThrowsError(try resolver.sshCredential(for: "git@github.com:octocat/Hello-World.git")) { error in
+            XCTAssertEqual(error as? GitProviderCredentialError, .sshKeyUnavailable(username: "octocat"))
+        }
+    }
+
+    func testHTTPSRemoteStillReturnsTokenCredential() throws {
+        let account = makeProviderAccount(transportProtocol: .ssh)
+        let resolver = GitProviderCredentialResolver(
+            accounts: [account],
+            tokenVault: FakeCredentialTokenVault(tokensByAccountID: [account.id: makeToken("secret")]),
+            sshKeyStore: FakeCredentialSSHKeyStore(keysByAccountID: [
+                account.id: GitProviderSSHKey(path: "/Users/test/.ssh/id_ed25519")
+            ])
+        )
+
+        let credential = try resolver.credential(for: "https://github.com/octocat/Hello-World.git")
+
+        XCTAssertEqual(credential, GitCredential(username: "octocat", token: "secret"))
     }
 
     func testNoProviderAccountKeepsExistingBehavior() throws {
@@ -86,7 +120,8 @@ final class GitProviderCredentialResolverTests: XCTestCase {
 
     private func makeProviderAccount(
         id: String = "connection-1",
-        username: String = "octocat"
+        username: String = "octocat",
+        transportProtocol: GitProviderTransportProtocol = .https
     ) -> GitProviderAccount {
         GitProviderAccount(
             id: id,
@@ -100,6 +135,7 @@ final class GitProviderCredentialResolverTests: XCTestCase {
             scopes: [],
             permissions: [:],
             tokenStatus: .valid,
+            transportProtocol: transportProtocol,
             connectedAt: Date(timeIntervalSince1970: 1_700_000_000),
             lastValidatedAt: nil
         )
@@ -127,5 +163,25 @@ private final class FakeCredentialTokenVault: GitProviderTokenVault {
 
     func deleteToken(for account: GitProviderAccount) throws {
         tokensByAccountID[account.id] = nil
+    }
+}
+
+private final class FakeCredentialSSHKeyStore: GitProviderSSHKeyStore {
+    private var keysByAccountID: [String: GitProviderSSHKey]
+
+    init(keysByAccountID: [String: GitProviderSSHKey] = [:]) {
+        self.keysByAccountID = keysByAccountID
+    }
+
+    func key(for account: GitProviderAccount) throws -> GitProviderSSHKey? {
+        keysByAccountID[account.id]
+    }
+
+    func saveKey(_ key: GitProviderSSHKey, for account: GitProviderAccount) throws {
+        keysByAccountID[account.id] = key
+    }
+
+    func deleteKey(for account: GitProviderAccount) throws {
+        keysByAccountID[account.id] = nil
     }
 }

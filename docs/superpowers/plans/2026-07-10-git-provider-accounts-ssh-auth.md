@@ -155,7 +155,7 @@ Expected: pass.
 - Produces: `TemporaryGitSSHCredentialInjector`
 - Produces: `GitProviderCredentialResolver.sshCredential(for:preferredAccountID:)`
 
-- [ ] **Step 1: Write failing resolver and injector tests**
+- [x] **Step 1: Write failing resolver and injector tests**
 
 Replace `testSSHRemoteKeepsExistingBehavior` with SSH support tests:
 
@@ -173,7 +173,7 @@ func testSSHInjectionQuotesKeyPathWithSpaces()
 func testSSHInjectionThrowsWhenKeyFileDoesNotExist()
 ```
 
-- [ ] **Step 2: Run resolver/injector tests and verify RED**
+- [x] **Step 2: Run resolver/injector tests and verify RED**
 
 Run:
 
@@ -183,15 +183,15 @@ rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=m
 
 Expected: fail because SSH credential APIs do not exist and SSH still returns nil.
 
-- [ ] **Step 3: Implement SSH resolver**
+- [x] **Step 3: Implement SSH resolver**
 
 Add SSH-specific resolver method. Keep `credential(for:)` HTTPS-only so existing HTTPS call sites remain readable. Add typed errors for missing configured key and missing key file.
 
-- [ ] **Step 4: Implement SSH injector**
+- [x] **Step 4: Implement SSH injector**
 
 Create `GIT_SSH_COMMAND` using `/usr/bin/ssh`, `-i`, quoted key path, and `-o IdentitiesOnly=yes`. Set `GIT_TERMINAL_PROMPT=0`.
 
-- [ ] **Step 5: Run resolver/injector tests and verify GREEN**
+- [x] **Step 5: Run resolver/injector tests and verify GREEN**
 
 Run the same focused resolver/injector test command.
 

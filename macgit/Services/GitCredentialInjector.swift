@@ -23,6 +23,11 @@ struct GitCredential: Equatable {
     var token: String
 }
 
+struct GitSSHCredential: Equatable {
+    var username: String
+    var keyPath: String
+}
+
 struct GitCredentialInjection {
     var environment: [String: String]
     var cleanup: () -> Void
@@ -30,6 +35,10 @@ struct GitCredentialInjection {
 
 protocol GitCredentialInjecting {
     func injection(for credential: GitCredential) throws -> GitCredentialInjection
+}
+
+protocol GitSSHCredentialInjecting {
+    func injection(for credential: GitSSHCredential) throws -> GitCredentialInjection
 }
 
 struct TemporaryGitCredentialInjector: GitCredentialInjecting {
@@ -92,5 +101,29 @@ struct TemporaryGitCredentialInjector: GitCredentialInjecting {
             ;;
         esac
         """
+    }
+}
+
+struct TemporaryGitSSHCredentialInjector: GitSSHCredentialInjecting {
+    private let fileManager: FileManager
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+    }
+
+    func injection(for credential: GitSSHCredential) throws -> GitCredentialInjection {
+        guard fileManager.fileExists(atPath: credential.keyPath) else {
+            throw GitProviderCredentialError.sshKeyMissing(path: credential.keyPath)
+        }
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["GIT_TERMINAL_PROMPT"] = "0"
+        environment["GIT_SSH_COMMAND"] = "/usr/bin/ssh -i \(shellQuoted(credential.keyPath)) -o IdentitiesOnly=yes"
+
+        return GitCredentialInjection(environment: environment, cleanup: {})
+    }
+
+    private func shellQuoted(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 }
