@@ -44,6 +44,30 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(controller.errorMessage, "Connect Account...")
     }
 
+    func testLoadPullRequestsExposesGitLabProviderForConnectionPrompt() async throws {
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: []),
+            tokenVault: FakePullRequestTokenVault()
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(),
+            services: [.gitlab: FakePullRequestProvider()]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "https://gitlab.com/team/project.git")
+
+        XCTAssertTrue(controller.items.isEmpty)
+        XCTAssertEqual(controller.errorMessage, "Connect Account...")
+        XCTAssertEqual(controller.accountConnectionProvider, .gitlab)
+    }
+
     func testLoadPullRequestsPublishesResults() async throws {
         let account = makeAccount()
         let token = makeToken()

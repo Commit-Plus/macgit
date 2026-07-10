@@ -20,29 +20,41 @@ import XCTest
 @testable import macgit
 
 final class GitLabProviderAuthServiceTests: XCTestCase {
-    func testAuthorizationURLIncludesPKCEChallenge() throws {
-        let service = makeService(httpClient: StubGitLabAuthHTTPClient())
-        let session = makeSession()
+    func testDeviceAuthorizationRequestsUserCodeWithClientIDScopesAndHost() async throws {
+        let client = StubGitLabAuthHTTPClient(responses: [
+            .json(
+                statusCode: 200,
+                body: #"""
+                {
+                  "device_code": "gitlab-device-code",
+                  "user_code": "A1B2-C3D4",
+                  "verification_uri": "https://gitlab.example.com/oauth/device",
+                  "verification_uri_complete": "https://gitlab.example.com/oauth/device?user_code=A1B2-C3D4",
+                  "expires_in": 300,
+                  "interval": 5
+                }
+                """#
+            )
+        ])
+        let service = makeService(httpClient: client)
 
-        let url = try service.authorizationURL(for: session)
-        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
-        let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
-            item.value.map { (item.name, $0) }
-        })
+        let authorization = try await service.requestDeviceAuthorization(host: makeHost())
 
-        XCTAssertEqual(url.scheme, "https")
-        XCTAssertEqual(url.host, "gitlab.example.com")
-        XCTAssertEqual(url.path, "/oauth/authorize")
-        XCTAssertEqual(queryItems["client_id"], "gitlab-client-id")
-        XCTAssertEqual(queryItems["redirect_uri"], "macgit://git-provider/oauth/callback")
-        XCTAssertEqual(queryItems["response_type"], "code")
-        XCTAssertEqual(queryItems["state"], "expected-state")
-        XCTAssertEqual(queryItems["scope"], "api read_user")
-        XCTAssertEqual(queryItems["code_challenge"], GitProviderPKCE.challenge(for: "fixed-code-verifier"))
-        XCTAssertEqual(queryItems["code_challenge_method"], "S256")
+        let request = try XCTUnwrap(client.requests.first)
+        let body = try XCTUnwrap(request.httpBody.flatMap { String(data: $0, encoding: .utf8) })
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.absoluteString, "https://gitlab.example.com/oauth/authorize_device")
+        XCTAssertTrue(body.contains("client_id=gitlab-client-id"))
+        XCTAssertTrue(body.contains("scope=api%20read_user"))
+        XCTAssertEqual(authorization.provider, .gitlab)
+        XCTAssertEqual(authorization.deviceCode, "gitlab-device-code")
+        XCTAssertEqual(authorization.userCode, "A1B2-C3D4")
+        XCTAssertEqual(authorization.verificationURI.absoluteString, "https://gitlab.example.com/oauth/device?user_code=A1B2-C3D4")
+        XCTAssertEqual(authorization.expiresIn, 300)
+        XCTAssertEqual(authorization.interval, 5)
     }
 
-    func testTokenExchangeUsesConfiguredHost() async throws {
+    func testPollDeviceAuthorizationUsesConfiguredHostAndDeviceCode() async throws {
         let client = StubGitLabAuthHTTPClient(responses: [
             .json(
                 statusCode: 200,
@@ -51,9 +63,16 @@ final class GitLabProviderAuthServiceTests: XCTestCase {
         ])
         let service = makeService(httpClient: client)
 
-        let token = try await service.exchangeCallback(
-            GitProviderOAuthCallback(code: "oauth-code", state: "expected-state"),
-            session: makeSession()
+        let token = try await service.pollDeviceAuthorization(
+            GitProviderDeviceAuthorization(
+                provider: .gitlab,
+                deviceCode: "gitlab-device-code",
+                userCode: "A1B2-C3D4",
+                verificationURI: URL(string: "https://gitlab.example.com/oauth/device")!,
+                expiresIn: 300,
+                interval: 5
+            ),
+            host: makeHost()
         )
 
         let request = try XCTUnwrap(client.requests.first)
@@ -61,15 +80,37 @@ final class GitLabProviderAuthServiceTests: XCTestCase {
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(request.url?.absoluteString, "https://gitlab.example.com/oauth/token")
         XCTAssertTrue(body.contains("client_id=gitlab-client-id"))
-        XCTAssertTrue(body.contains("grant_type=authorization_code"))
-        XCTAssertTrue(body.contains("code=oauth-code"))
-        XCTAssertTrue(body.contains("redirect_uri=macgit://git-provider/oauth/callback"))
-        XCTAssertTrue(body.contains("code_verifier=fixed-code-verifier"))
+        XCTAssertTrue(body.contains("grant_type=urn:ietf:params:oauth:grant-type:device_code"))
+        XCTAssertTrue(body.contains("device_code=gitlab-device-code"))
         XCTAssertFalse(body.contains("client_secret"))
         XCTAssertEqual(token.accessToken, "secret-token")
         XCTAssertEqual(token.refreshToken, "refresh-token")
         XCTAssertEqual(token.expiresAt, Date(timeIntervalSince1970: 1_700_007_200))
         XCTAssertEqual(token.tokenType, "Bearer")
+    }
+
+    func testPollDeviceAuthorizationMapsPendingResponseBeforeHTTPFailure() async throws {
+        let client = StubGitLabAuthHTTPClient(responses: [
+            .json(statusCode: 400, body: #"{"error":"authorization_pending","error_description":"Pending"}"#)
+        ])
+        let service = makeService(httpClient: client)
+
+        do {
+            _ = try await service.pollDeviceAuthorization(
+                GitProviderDeviceAuthorization(
+                    provider: .gitlab,
+                    deviceCode: "gitlab-device-code",
+                    userCode: "A1B2-C3D4",
+                    verificationURI: URL(string: "https://gitlab.example.com/oauth/device")!,
+                    expiresIn: 300,
+                    interval: 5
+                ),
+                host: makeHost()
+            )
+            XCTFail("Expected pending authorization to throw")
+        } catch {
+            XCTAssertEqual(error as? GitProviderAuthError, .authorizationPending)
+        }
     }
 
     func testProfileResponseCreatesGitLabProviderAccount() async throws {
@@ -152,16 +193,10 @@ final class GitLabProviderAuthServiceTests: XCTestCase {
         )
     }
 
-    private func makeSession() -> GitProviderOAuthSession {
-        GitProviderOAuthSession(
-            provider: .gitlab,
-            host: GitProviderHost(
-                kind: .gitlab,
-                baseURL: URL(string: "https://gitlab.example.com")!
-            ),
-            state: "expected-state",
-            codeVerifier: "fixed-code-verifier",
-            redirectURI: URL(string: "macgit://git-provider/oauth/callback")!
+    private func makeHost() -> GitProviderHost {
+        GitProviderHost(
+            kind: .gitlab,
+            baseURL: URL(string: "https://gitlab.example.com")!
         )
     }
 

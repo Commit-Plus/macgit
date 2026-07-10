@@ -555,8 +555,9 @@ struct MainWindowView: View {
                 PullRequestListView(
                     controller: pullRequestController,
                     repositoryURL: repositoryURL,
+                    accountConnectionErrorMessage: providerAccountController.errorMessage,
                     onConnectAccount: {
-                        Task { await providerAccountController.connectGitHub() }
+                        Task { await connectPullRequestProviderAccount() }
                     }
                 )
             case .stash(let ref):
@@ -892,6 +893,28 @@ struct MainWindowView: View {
                 }
             }
         )
+    }
+
+    private func connectPullRequestProviderAccount() async {
+        await MainActor.run {
+            providerAccountController.errorMessage = nil
+        }
+
+        guard let host = pullRequestController.accountConnectionHost else {
+            await providerAccountController.connectGitHub()
+            return
+        }
+
+        switch host.kind {
+        case .github:
+            await providerAccountController.connectGitHub()
+        case .gitlab:
+            if host.normalized.baseURL.host(percentEncoded: false)?.lowercased() == "gitlab.com" {
+                await providerAccountController.connectGitLabDotCom()
+            } else {
+                await providerAccountController.connectSelfHostedGitLab(hostURL: host.normalized.baseURL)
+            }
+        }
     }
 
     @ViewBuilder

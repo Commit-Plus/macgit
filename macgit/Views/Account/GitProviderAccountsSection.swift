@@ -137,7 +137,7 @@ private struct GitProviderDeviceAuthorizationView: View {
 
     var body: some View {
         VStack(alignment: .center, spacing: 10) {
-            Text("Enter this code on GitHub to finish connecting:")
+            Text("Enter this code on \(authorization.provider.displayName) to finish connecting:")
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 8) {
@@ -151,12 +151,12 @@ private struct GitProviderDeviceAuthorizationView: View {
                     Image(systemName: "doc.on.doc")
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Copy GitHub device code")
+                .accessibilityLabel("Copy \(authorization.provider.displayName) device code")
                 .help("Copy code")
             }
 
             HStack(spacing: 10) {
-                Button("Open GitHub Device Page", action: openVerification)
+                Button("Open \(authorization.provider.displayName) Device Page", action: openVerification)
                 Button("Cancel", role: .cancel, action: cancel)
             }
         }

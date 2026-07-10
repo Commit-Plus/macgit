@@ -72,11 +72,11 @@ final class GitProviderAccountController: ObservableObject {
     }
 
     func connectGitLabDotCom() async {
-        await startGitLabOAuth(host: .gitlabDotCom)
+        await startGitLabDeviceAuthorization(host: .gitlabDotCom)
     }
 
     func connectSelfHostedGitLab(hostURL: URL) async {
-        await startGitLabOAuth(host: GitProviderHost(kind: .gitlab, baseURL: hostURL).normalized)
+        await startGitLabDeviceAuthorization(host: GitProviderHost(kind: .gitlab, baseURL: hostURL).normalized)
     }
 
     func reconnect(_ account: GitProviderAccount) async {
@@ -84,7 +84,7 @@ final class GitProviderAccountController: ObservableObject {
         case .github:
             await startGitHubDeviceAuthorization()
         case .gitlab:
-            await startGitLabOAuth(host: GitProviderHost(kind: .gitlab, baseURL: account.hostURL))
+            await startGitLabDeviceAuthorization(host: GitProviderHost(kind: .gitlab, baseURL: account.hostURL))
         }
     }
 
@@ -244,10 +244,83 @@ final class GitProviderAccountController: ObservableObject {
         throw GitProviderAuthError.deviceCodeExpired
     }
 
+    private func startGitLabDeviceAuthorization(host: GitProviderHost) async {
+        guard macgitUID != nil,
+              let gitLabAuthService else {
+            errorMessage = gitLabInvalidConfigurationMessage
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+        pendingDeviceAuthorization = nil
+        defer {
+            isLoading = false
+            pendingDeviceAuthorization = nil
+        }
+
+        let normalizedHost = host.normalized
+        do {
+            let authorization = try await gitLabAuthService.requestDeviceAuthorization(host: normalizedHost)
+            pendingDeviceAuthorization = authorization
+            guard openURL(authorization.verificationURI) else {
+                errorMessage = "Commit+ could not open the GitLab device authorization page."
+                return
+            }
+
+            let token = try await waitForGitLabDeviceAuthorization(
+                authorization,
+                host: normalizedHost,
+                authService: gitLabAuthService
+            )
+            guard let macgitUID else { return }
+            let account = try await gitLabAuthService.fetchAccount(
+                token: token,
+                macgitUID: macgitUID,
+                host: normalizedHost
+            )
+            try await saveAuthorizedAccount(account, token: token)
+        } catch is CancellationError {
+            errorMessage = nil
+        } catch GitProviderAuthError.invalidConfiguration {
+            errorMessage = gitLabInvalidConfigurationMessage
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func waitForGitLabDeviceAuthorization(
+        _ authorization: GitProviderDeviceAuthorization,
+        host: GitProviderHost,
+        authService: any GitLabProviderOAuthAuthenticating
+    ) async throws -> GitProviderToken {
+        let startedAt = Date()
+        var interval = authorization.interval
+
+        while Date().timeIntervalSince(startedAt) < TimeInterval(authorization.expiresIn) {
+            if interval > 0 {
+                try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
+            } else {
+                await Task.yield()
+            }
+
+            do {
+                return try await authService.pollDeviceAuthorization(authorization, host: host)
+            } catch GitProviderAuthError.authorizationPending {
+                continue
+            } catch GitProviderAuthError.slowDown(let nextInterval) {
+                interval = nextInterval
+                continue
+            }
+        }
+
+        throw GitProviderAuthError.deviceCodeExpired
+    }
+
     private func startGitLabOAuth(host: GitProviderHost) async {
         guard macgitUID != nil,
               let gitLabAuthService else {
-            errorMessage = GitProviderAuthError.invalidConfiguration.localizedDescription
+            errorMessage = gitLabInvalidConfigurationMessage
             return
         }
 
@@ -271,10 +344,17 @@ final class GitProviderAccountController: ObservableObject {
                 return
             }
             pendingOAuthSession = session
+        } catch GitProviderAuthError.invalidConfiguration {
+            errorMessage = gitLabInvalidConfigurationMessage
+            pendingOAuthSession = nil
         } catch {
             errorMessage = error.localizedDescription
             pendingOAuthSession = nil
         }
+    }
+
+    private var gitLabInvalidConfigurationMessage: String {
+        "GitLab account connection is not configured."
     }
 
     private func saveAuthorizedAccount(_ account: GitProviderAccount, token: GitProviderToken) async throws {

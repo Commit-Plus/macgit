@@ -21,6 +21,7 @@ import SwiftUI
 struct PullRequestListView: View {
     @ObservedObject var controller: PullRequestController
     let repositoryURL: URL
+    var accountConnectionErrorMessage: String? = nil
     var onConnectAccount: () -> Void = {}
     @State private var pendingCommentPullRequest: PullRequestSummary?
 
@@ -37,6 +38,11 @@ struct PullRequestListView: View {
                         .font(.headline)
                     if errorMessage == "Connect Account..." || errorMessage == "Reconnect..." {
                         Button(errorMessage, action: onConnectAccount)
+                        if let accountConnectionErrorMessage {
+                            Text(accountConnectionErrorMessage)
+                                .font(.callout)
+                                .multilineTextAlignment(.center)
+                        }
                     }
                 }
                 .foregroundStyle(.secondary)

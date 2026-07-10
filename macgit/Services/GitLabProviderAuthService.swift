@@ -35,6 +35,11 @@ struct GitLabProviderAuthConfiguration: Equatable {
 }
 
 protocol GitLabProviderOAuthAuthenticating {
+    func requestDeviceAuthorization(host: GitProviderHost) async throws -> GitProviderDeviceAuthorization
+    func pollDeviceAuthorization(
+        _ authorization: GitProviderDeviceAuthorization,
+        host: GitProviderHost
+    ) async throws -> GitProviderToken
     func authorizationURL(for session: GitProviderOAuthSession) throws -> URL
     func exchangeCallback(
         _ callback: GitProviderOAuthCallback,
@@ -60,6 +65,80 @@ struct GitLabProviderAuthService: GitLabProviderOAuthAuthenticating {
         self.configuration = configuration
         self.httpClient = httpClient
         self.now = now
+    }
+
+    func requestDeviceAuthorization(host: GitProviderHost) async throws -> GitProviderDeviceAuthorization {
+        guard !configuration.clientID.isEmpty else {
+            throw GitProviderAuthError.invalidConfiguration
+        }
+
+        var request = URLRequest(
+            url: host.normalized.baseURL
+                .appendingPathComponent("oauth")
+                .appendingPathComponent("authorize_device")
+        )
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = formEncoded([
+            URLQueryItem(name: "client_id", value: configuration.clientID),
+            URLQueryItem(name: "scope", value: configuration.scopes.joined(separator: " "))
+        ])
+
+        let (data, response) = try await httpClient.data(for: request)
+        try validate(response: response, data: data)
+        let payload = try decode(DeviceAuthorizationResponse.self, from: data)
+        let verificationURIString = payload.verificationURIComplete ?? payload.verificationURI
+        guard let verificationURI = URL(string: verificationURIString) else {
+            throw GitProviderAuthError.invalidResponse
+        }
+
+        return GitProviderDeviceAuthorization(
+            provider: .gitlab,
+            deviceCode: payload.deviceCode,
+            userCode: payload.userCode,
+            verificationURI: verificationURI,
+            expiresIn: payload.expiresIn,
+            interval: payload.interval
+        )
+    }
+
+    func pollDeviceAuthorization(
+        _ authorization: GitProviderDeviceAuthorization,
+        host: GitProviderHost
+    ) async throws -> GitProviderToken {
+        guard !configuration.clientID.isEmpty else {
+            throw GitProviderAuthError.invalidConfiguration
+        }
+
+        var request = URLRequest(
+            url: host.normalized.baseURL
+                .appendingPathComponent("oauth")
+                .appendingPathComponent("token")
+        )
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = formEncoded([
+            URLQueryItem(name: "client_id", value: configuration.clientID),
+            URLQueryItem(name: "device_code", value: authorization.deviceCode),
+            URLQueryItem(name: "grant_type", value: "urn:ietf:params:oauth:grant-type:device_code")
+        ])
+
+        let (data, response) = try await httpClient.data(for: request)
+        if let payload = try? JSONDecoder().decode(ErrorResponse.self, from: data),
+           let error = payload.error {
+            throw mapDevicePollError(error, interval: authorization.interval, message: payload.errorDescription)
+        }
+        try validate(response: response, data: data)
+
+        let payload = try decode(TokenResponse.self, from: data)
+        return GitProviderToken(
+            accessToken: payload.accessToken,
+            refreshToken: payload.refreshToken,
+            expiresAt: payload.expiresIn.map { now().addingTimeInterval(TimeInterval($0)) },
+            tokenType: payload.tokenType
+        )
     }
 
     func authorizationURL(for session: GitProviderOAuthSession) throws -> URL {
@@ -191,9 +270,42 @@ struct GitLabProviderAuthService: GitLabProviderOAuthAuthenticating {
             throw GitProviderAuthError.invalidResponse
         }
     }
+
+    private func mapDevicePollError(_ error: String, interval: Int, message: String?) -> GitProviderAuthError {
+        switch error {
+        case "authorization_pending":
+            return .authorizationPending
+        case "slow_down":
+            return .slowDown(interval + 5)
+        case "expired_token":
+            return .deviceCodeExpired
+        case "access_denied":
+            return .accessDenied
+        default:
+            return .providerMessage(message ?? "GitLab device authorization failed.")
+        }
+    }
 }
 
 private extension GitLabProviderAuthService {
+    struct DeviceAuthorizationResponse: Decodable {
+        var deviceCode: String
+        var userCode: String
+        var verificationURI: String
+        var verificationURIComplete: String?
+        var expiresIn: Int
+        var interval: Int
+
+        enum CodingKeys: String, CodingKey {
+            case deviceCode = "device_code"
+            case userCode = "user_code"
+            case verificationURI = "verification_uri"
+            case verificationURIComplete = "verification_uri_complete"
+            case expiresIn = "expires_in"
+            case interval
+        }
+    }
+
     struct TokenResponse: Decodable {
         var accessToken: String
         var refreshToken: String?
@@ -223,10 +335,12 @@ private extension GitLabProviderAuthService {
     }
 
     struct ErrorResponse: Decodable {
+        var error: String?
         var message: String?
         var errorDescription: String?
 
         enum CodingKeys: String, CodingKey {
+            case error
             case message
             case errorDescription = "error_description"
         }

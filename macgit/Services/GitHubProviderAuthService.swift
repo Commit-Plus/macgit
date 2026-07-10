@@ -62,6 +62,7 @@ struct GitHubProviderAuthConfiguration: Equatable {
 }
 
 struct GitProviderDeviceAuthorization: Equatable {
+    var provider: GitProviderKind = .github
     var deviceCode: String
     var userCode: String
     var verificationURI: URL

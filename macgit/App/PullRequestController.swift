@@ -35,6 +35,7 @@ final class PullRequestController: ObservableObject {
     @Published private(set) var isLoadingDetail = false
     @Published private(set) var createDraftSeed: PullRequestDraftSeed?
     @Published private(set) var isPerformingAction = false
+    @Published private(set) var accountConnectionHost: GitProviderHost?
 
     private let providerAccountController: GitProviderAccountController
     private let tokenVault: GitProviderTokenVault
@@ -114,6 +115,10 @@ final class PullRequestController: ObservableObject {
         return providerAccountController.accounts.first { $0.id == selectedProviderAccountID }?.username
     }
 
+    var accountConnectionProvider: GitProviderKind? {
+        accountConnectionHost?.kind
+    }
+
     func loadPullRequests(repositoryURL: URL, page: Int = 1) async {
         activeRepositoryURL = repositoryURL
         guard let remoteName = await remoteNameProvider(repositoryURL),
@@ -122,6 +127,7 @@ final class PullRequestController: ObservableObject {
             resetPagination()
             activeRemoteName = nil
             activeRemoteURLString = nil
+            accountConnectionHost = nil
             errorMessage = "No remotes configured."
             return
         }
@@ -136,6 +142,7 @@ final class PullRequestController: ObservableObject {
             resetPagination()
             activeRemoteName = nil
             activeRemoteURLString = nil
+            accountConnectionHost = nil
             errorMessage = "No remotes configured."
             return
         }
@@ -146,6 +153,7 @@ final class PullRequestController: ObservableObject {
     func loadPullRequests(remoteURLString: String, page: Int = 1) async {
         isLoading = true
         errorMessage = nil
+        accountConnectionHost = nil
         defer { isLoading = false }
 
         guard let remoteIdentity = GitRemoteIdentityResolver.identity(
@@ -157,6 +165,7 @@ final class PullRequestController: ObservableObject {
             selectedProviderAccountID = nil
             activeRepository = nil
             activeToken = nil
+            accountConnectionHost = nil
             errorMessage = PullRequestProviderError.unsupportedProvider.localizedDescription
             return
         }
@@ -175,6 +184,7 @@ final class PullRequestController: ObservableObject {
             selectedProviderAccountID = nil
             activeRepository = nil
             activeToken = nil
+            accountConnectionHost = GitProviderHost(kind: repository.provider, baseURL: repository.hostURL).normalized
             errorMessage = "Connect Account..."
             return
         }
@@ -187,6 +197,7 @@ final class PullRequestController: ObservableObject {
                 resetPagination()
                 activeRepository = nil
                 activeToken = nil
+                accountConnectionHost = GitProviderHost(kind: account.provider, baseURL: account.hostURL).normalized
                 errorMessage = "Reconnect..."
                 return
             }
@@ -194,6 +205,7 @@ final class PullRequestController: ObservableObject {
         } catch {
             items = []
             resetPagination()
+            accountConnectionHost = GitProviderHost(kind: account.provider, baseURL: account.hostURL).normalized
             errorMessage = "Reconnect..."
             return
         }
@@ -203,6 +215,7 @@ final class PullRequestController: ObservableObject {
             resetPagination()
             activeRepository = nil
             activeToken = nil
+            accountConnectionHost = nil
             errorMessage = PullRequestProviderError.unsupportedProvider.localizedDescription
             return
         }
@@ -221,14 +234,17 @@ final class PullRequestController: ObservableObject {
             hasNextPage = pageResult.hasNextPage
             activeRepository = repository
             activeToken = token
+            accountConnectionHost = nil
             errorMessage = nil
         } catch let error as PullRequestProviderError {
             items = []
             resetPagination()
+            accountConnectionHost = nil
             errorMessage = error.localizedDescription
         } catch {
             items = []
             resetPagination()
+            accountConnectionHost = nil
             errorMessage = error.localizedDescription
         }
     }

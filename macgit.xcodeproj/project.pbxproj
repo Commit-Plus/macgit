@@ -403,17 +403,11 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
 				FIREBASE_REVERSED_CLIENT_ID = com.googleusercontent.apps.214252692507-g6hlj4tlu981ju0dakktfvcoblsd7dmt;
 				GITHUB_OAUTH_CLIENT_ID = Ov23lictC3FXsN0kjsbs;
-				INFOPLIST_KEY_CFBundleURLTypes = "({CFBundleTypeRole=Editor;CFBundleURLName=GoogleSignIn;CFBundleURLSchemes=(\"$(FIREBASE_REVERSED_CLIENT_ID)\");})";
-				INFOPLIST_KEY_GitHubOAuthClientID = "$(GITHUB_OAUTH_CLIENT_ID)";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright (C) 2026 Thanh Tran. Licensed under the GNU Affero General Public License v3.";
-				INFOPLIST_KEY_SUAllowsAutomaticUpdates = NO;
-				INFOPLIST_KEY_SUAutomaticallyUpdate = NO;
-				INFOPLIST_KEY_SUEnableAutomaticChecks = YES;
-				INFOPLIST_KEY_SUFeedURL = "https://tranthanh98.github.io/macgit/appcast.xml";
-				INFOPLIST_KEY_SUPublicEDKey = "$(SPARKLE_PUBLIC_ED_KEY)";
+				GITLAB_OAUTH_CLIENT_ID = 50647b51c50900d0c81007919a499c2329d8546e2597450b6dfab90258564f66;
+				INFOPLIST_FILE = macgit/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -447,17 +441,11 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
 				FIREBASE_REVERSED_CLIENT_ID = com.googleusercontent.apps.214252692507-g6hlj4tlu981ju0dakktfvcoblsd7dmt;
 				GITHUB_OAUTH_CLIENT_ID = Ov23lictC3FXsN0kjsbs;
-				INFOPLIST_KEY_CFBundleURLTypes = "({CFBundleTypeRole=Editor;CFBundleURLName=GoogleSignIn;CFBundleURLSchemes=(\"$(FIREBASE_REVERSED_CLIENT_ID)\");})";
-				INFOPLIST_KEY_GitHubOAuthClientID = "$(GITHUB_OAUTH_CLIENT_ID)";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright (C) 2026 Thanh Tran. Licensed under the GNU Affero General Public License v3.";
-				INFOPLIST_KEY_SUAllowsAutomaticUpdates = NO;
-				INFOPLIST_KEY_SUAutomaticallyUpdate = NO;
-				INFOPLIST_KEY_SUEnableAutomaticChecks = YES;
-				INFOPLIST_KEY_SUFeedURL = "https://tranthanh98.github.io/macgit/appcast.xml";
-				INFOPLIST_KEY_SUPublicEDKey = "$(SPARKLE_PUBLIC_ED_KEY)";
+				GITLAB_OAUTH_CLIENT_ID = 50647b51c50900d0c81007919a499c2329d8546e2597450b6dfab90258564f66;
+				INFOPLIST_FILE = macgit/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

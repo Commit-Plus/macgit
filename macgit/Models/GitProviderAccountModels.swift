@@ -23,6 +23,13 @@ enum GitProviderKind: String, Codable, CaseIterable, Identifiable {
     case gitlab
 
     var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .github: "GitHub"
+        case .gitlab: "GitLab"
+        }
+    }
 }
 
 struct GitProviderHost: Hashable, Codable {
