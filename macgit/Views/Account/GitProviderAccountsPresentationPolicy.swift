@@ -96,7 +96,7 @@ enum GitProviderAddAccountPresentationPolicy {
 
     static let protocolOptions: [GitProviderAddAccountOption<GitProviderAddAccountProtocol>] = [
         GitProviderAddAccountOption(id: .https, title: "HTTPS", isEnabled: true),
-        GitProviderAddAccountOption(id: .ssh, title: "SSH", isEnabled: false)
+        GitProviderAddAccountOption(id: .ssh, title: "SSH", isEnabled: true)
     ]
 
     static func canConnect(
@@ -104,7 +104,21 @@ enum GitProviderAddAccountPresentationPolicy {
         authType: GitProviderAddAccountAuthType,
         protocol selectedProtocol: GitProviderAddAccountProtocol
     ) -> Bool {
-        host != .bitbucket && authType == .oauth && selectedProtocol == .https
+        host != .bitbucket && authType == .oauth
+    }
+
+    static func canSave(
+        connectedUsername: String,
+        protocol selectedProtocol: GitProviderAddAccountProtocol,
+        sshKeyPath: String?
+    ) -> Bool {
+        guard !connectedUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        guard selectedProtocol == .ssh else {
+            return true
+        }
+        return !(sshKeyPath ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     static func usernameDisplayText(for connectedUsername: String) -> String {

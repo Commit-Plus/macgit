@@ -211,7 +211,7 @@ Expected: pass.
 - Produces: `GitProviderAccountController.saveConnectionSettings(account:transportProtocol:sshKey:)`
 - Produces: UI policy helpers for save enablement and SSH key visibility
 
-- [ ] **Step 1: Write failing policy/controller tests**
+- [x] **Step 1: Write failing policy/controller tests**
 
 Update/add tests:
 
@@ -223,7 +223,7 @@ func testControllerSavesSSHTransportAndKeyReference()
 func testDisconnectDeletesSSHKeyReferenceBeforeMetadata()
 ```
 
-- [ ] **Step 2: Run policy/controller tests and verify RED**
+- [x] **Step 2: Run policy/controller tests and verify RED**
 
 Run:
 
@@ -233,15 +233,15 @@ rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=m
 
 Expected: fail because SSH is disabled and controller has no SSH key store.
 
-- [ ] **Step 3: Implement policy and controller settings save**
+- [x] **Step 3: Implement policy and controller settings save**
 
 Enable SSH in protocol options. Add save validation helpers. Inject `GitProviderSSHKeyStore` into the controller, defaulting to a UserDefaults-backed store. Add controller method to save the selected transport and key reference for an already connected account.
 
-- [ ] **Step 4: Implement sheet key picker**
+- [x] **Step 4: Implement sheet key picker**
 
 Add SSH key state, show `LabeledContent("SSH Key")` only for SSH, open `NSOpenPanel` from a Choose button, and call controller settings save from Save.
 
-- [ ] **Step 5: Run policy/controller tests and verify GREEN**
+- [x] **Step 5: Run policy/controller tests and verify GREEN**
 
 Run the same focused policy/controller test command.
 

@@ -28,6 +28,7 @@ final class GitProviderAccountController: ObservableObject {
 
     private let store: GitProviderAccountStore
     private let tokenVault: GitProviderTokenVault
+    private let sshKeyStore: GitProviderSSHKeyStore
     private let authService: GitProviderAuthenticating?
     private let configuration: GitHubProviderAuthConfiguration?
     private let gitLabAuthService: (any GitLabProviderOAuthAuthenticating)?
@@ -39,6 +40,7 @@ final class GitProviderAccountController: ObservableObject {
     init(
         store: GitProviderAccountStore,
         tokenVault: GitProviderTokenVault,
+        sshKeyStore: GitProviderSSHKeyStore = UserDefaultsGitProviderSSHKeyStore(),
         authService: GitProviderAuthenticating? = nil,
         configuration: GitHubProviderAuthConfiguration? = nil,
         gitLabAuthService: (any GitLabProviderOAuthAuthenticating)? = nil,
@@ -47,6 +49,7 @@ final class GitProviderAccountController: ObservableObject {
     ) {
         self.store = store
         self.tokenVault = tokenVault
+        self.sshKeyStore = sshKeyStore
         self.authService = authService
         self.configuration = configuration
         self.gitLabAuthService = gitLabAuthService
@@ -119,6 +122,7 @@ final class GitProviderAccountController: ObservableObject {
         errorMessage = nil
         do {
             try tokenVault.deleteToken(for: account)
+            try sshKeyStore.deleteKey(for: account)
             try await store.delete(accountID: account.id, macgitUID: account.macgitUID)
             accounts.removeAll { $0.id == account.id }
         } catch {
@@ -174,7 +178,36 @@ final class GitProviderAccountController: ObservableObject {
     }
 
     func credentialResolver() -> GitProviderCredentialResolver {
-        GitProviderCredentialResolver(accounts: accounts, tokenVault: tokenVault)
+        GitProviderCredentialResolver(accounts: accounts, tokenVault: tokenVault, sshKeyStore: sshKeyStore)
+    }
+
+    func sshKey(for account: GitProviderAccount) throws -> GitProviderSSHKey? {
+        try sshKeyStore.key(for: account)
+    }
+
+    func saveConnectionSettings(
+        account: GitProviderAccount,
+        transportProtocol: GitProviderTransportProtocol,
+        sshKey: GitProviderSSHKey?
+    ) async {
+        guard macgitUID == account.macgitUID else { return }
+
+        errorMessage = nil
+        var updatedAccount = account
+        updatedAccount.transportProtocol = transportProtocol
+
+        do {
+            if transportProtocol == .ssh, let sshKey {
+                try sshKeyStore.saveKey(sshKey, for: updatedAccount)
+            } else {
+                try sshKeyStore.deleteKey(for: updatedAccount)
+            }
+            try await store.save(updatedAccount)
+            accounts.removeAll { $0.id == updatedAccount.id }
+            accounts.append(updatedAccount)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func startGitHubDeviceAuthorization() async {
