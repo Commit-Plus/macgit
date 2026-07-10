@@ -23,7 +23,7 @@
 - Phase 3: [completed] [2026-07-06-git-provider-accounts-phase-3-pull-request-read.md](2026-07-06-git-provider-accounts-phase-3-pull-request-read.md) (branch: `codex/git-provider-accounts-phase-3`)
 - Phase 4: [completed] [2026-07-06-git-provider-accounts-phase-4-pull-request-actions.md](2026-07-06-git-provider-accounts-phase-4-pull-request-actions.md) (branch: `codex/git-provider-accounts-phase-4`)
 - Phase 5: [completed] [2026-07-06-git-provider-accounts-phase-5-gitlab-and-hardening.md](2026-07-06-git-provider-accounts-phase-5-gitlab-and-hardening.md) (branch: `codex/git-provider-accounts-phase-5`)
-- SSH Auth: [in progress] [2026-07-10-git-provider-accounts-ssh-auth.md](2026-07-10-git-provider-accounts-ssh-auth.md) (branch: `codex/git-provider-accounts-ssh-auth`)
+- SSH Auth: [completed] [2026-07-10-git-provider-accounts-ssh-auth.md](2026-07-10-git-provider-accounts-ssh-auth.md) (branch: `codex/git-provider-accounts-ssh-auth`)
 
 ## Recommended Order
 

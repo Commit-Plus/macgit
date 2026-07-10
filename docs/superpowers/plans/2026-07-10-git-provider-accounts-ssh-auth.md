@@ -290,11 +290,11 @@ Expected: pass.
 - Modify: `docs/superpowers/plans/2026-07-06-git-provider-accounts-roadmap.md`
 - Modify: `docs/superpowers/plans/2026-07-10-git-provider-accounts-ssh-auth.md`
 
-- [ ] **Step 1: Mark plan tasks complete as they pass**
+- [x] **Step 1: Mark plan tasks complete as they pass**
 
 Check off completed steps in this plan.
 
-- [ ] **Step 2: Run full test suite**
+- [x] **Step 2: Run full test suite**
 
 Run:
 
@@ -304,7 +304,7 @@ rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=m
 
 Expected: pass. If the known test-host `Early unexpected exit` issue appears, do not loop blindly; run the macOS build and report the test-host failure.
 
-- [ ] **Step 3: Run build**
+- [x] **Step 3: Run build**
 
 Run:
 
@@ -314,6 +314,6 @@ rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=m
 
 Expected: pass.
 
-- [ ] **Step 4: Update roadmap**
+- [x] **Step 4: Update roadmap**
 
 Mark SSH Auth `[completed]` with the branch or commit after verification succeeds.
