@@ -91,6 +91,21 @@ final class AppUpdateControllerTests: XCTestCase {
 
         XCTAssertEqual(updater.userInitiatedCheckCallCount, 1)
     }
+
+    func testSparkleConfigurationRequiresFeedURLAndPublicKey() {
+        XCTAssertTrue(SparkleAppUpdater.isConfigurationUsable(
+            feedURL: "https://example.com/appcast.xml",
+            publicKey: "sparkle-public-key"
+        ))
+        XCTAssertFalse(SparkleAppUpdater.isConfigurationUsable(
+            feedURL: "https://example.com/appcast.xml",
+            publicKey: ""
+        ))
+        XCTAssertFalse(SparkleAppUpdater.isConfigurationUsable(
+            feedURL: "",
+            publicKey: "sparkle-public-key"
+        ))
+    }
 }
 
 @MainActor

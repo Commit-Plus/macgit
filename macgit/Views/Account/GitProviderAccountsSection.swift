@@ -128,39 +128,3 @@ struct GitProviderAccountsSection: View {
         NSPasteboard.general.setString(value, forType: .string)
     }
 }
-
-private struct GitProviderDeviceAuthorizationView: View {
-    let authorization: GitProviderDeviceAuthorization
-    let openVerification: () -> Void
-    let copyToPasteboard: (String) -> Void
-    let cancel: () -> Void
-
-    var body: some View {
-        VStack(alignment: .center, spacing: 10) {
-            Text("Enter this code on \(authorization.provider.displayName) to finish connecting:")
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 8) {
-                Text(authorization.userCode)
-                    .font(.system(.title, design: .monospaced).weight(.semibold))
-                    .textSelection(.enabled)
-
-                Button {
-                    copyToPasteboard(authorization.userCode)
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Copy \(authorization.provider.displayName) device code")
-                .help("Copy code")
-            }
-
-            HStack(spacing: 10) {
-                Button("Open \(authorization.provider.displayName) Device Page", action: openVerification)
-                Button("Cancel", role: .cancel, action: cancel)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.top, 2)
-    }
-}

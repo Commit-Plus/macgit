@@ -113,6 +113,26 @@ final class GitLabProviderAuthServiceTests: XCTestCase {
         }
     }
 
+    func testDeviceAuthorizationSurfacesInvalidClientMessage() async throws {
+        let client = StubGitLabAuthHTTPClient(responses: [
+            .json(
+                statusCode: 401,
+                body: #"{"error":"invalid_client","error_description":"Client authentication failed due to unknown client, no client authentication included, or unsupported authentication method."}"#
+            )
+        ])
+        let service = makeService(httpClient: client)
+
+        do {
+            _ = try await service.requestDeviceAuthorization(host: makeHost())
+            XCTFail("Expected invalid client response to throw")
+        } catch {
+            XCTAssertEqual(
+                error as? GitProviderAuthError,
+                .providerMessage("Client authentication failed due to unknown client, no client authentication included, or unsupported authentication method.")
+            )
+        }
+    }
+
     func testProfileResponseCreatesGitLabProviderAccount() async throws {
         let client = StubGitLabAuthHTTPClient(responses: [
             .json(

@@ -118,6 +118,62 @@ final class GitLabPullRequestServiceTests: XCTestCase {
         XCTAssertEqual(summary.title, "Add GitLab action")
     }
 
+    func testPullRequestDetailDecodesFractionalSecondDates() async throws {
+        let client = StubGitLabPullRequestHTTPClient(responses: [
+            .json(statusCode: 200, body: """
+            {
+              "iid": 7,
+              "title": "Add GitLab merge requests",
+              "description": "Preserve GitLab detail markdown.",
+              "state": "opened",
+              "draft": false,
+              "web_url": "https://gitlab.com/group/subgroup/project/-/merge_requests/7",
+              "created_at": "2026-07-01T09:10:11.163Z",
+              "updated_at": "2026-07-06T10:11:12.134Z",
+              "merged_at": null,
+              "source_branch": "feature/gitlab-mrs",
+              "target_branch": "main",
+              "sha": "abc123",
+              "author": { "username": "tanuki", "avatar_url": null },
+              "assignees": [
+                { "username": "reviewer", "avatar_url": null }
+              ]
+            }
+            """),
+            .json(statusCode: 200, body: """
+            [
+              {
+                "id": 99,
+                "body": "Looks good.",
+                "system": false,
+                "created_at": "2026-07-06T11:12:13.456Z",
+                "updated_at": "2026-07-06T11:12:14.789Z",
+                "author": { "username": "reviewer", "avatar_url": null }
+              }
+            ]
+            """)
+        ])
+        let service = GitLabPullRequestService(httpClient: client)
+
+        let detail = try await service.pullRequestDetail(
+            repository: makeRepository(),
+            token: makeToken(),
+            number: 7
+        )
+
+        XCTAssertEqual(detail.summary.number, 7)
+        XCTAssertEqual(detail.body, "Preserve GitLab detail markdown.")
+        XCTAssertEqual(detail.assignees.map(\.username), ["reviewer"])
+        XCTAssertEqual(detail.comments.count, 1)
+        XCTAssertEqual(detail.comments.first?.body, "Looks good.")
+        XCTAssertEqual(detail.comments.first?.webURL.absoluteString, "https://gitlab.com/group/subgroup/project/-/merge_requests/7#note_99")
+        XCTAssertEqual(detail.changesURL.absoluteString, "https://gitlab.com/group/subgroup/project/-/merge_requests/7/diffs")
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, [
+            "https://gitlab.com/api/v4/projects/group%2Fsubgroup%2Fproject/merge_requests/7",
+            "https://gitlab.com/api/v4/projects/group%2Fsubgroup%2Fproject/merge_requests/7/notes"
+        ])
+    }
+
     func testRepositoryPathIsURLEncodedForSubgroups() async throws {
         let client = StubGitLabPullRequestHTTPClient(responses: [
             .json(statusCode: 200, body: "[]")

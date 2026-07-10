@@ -108,6 +108,7 @@ struct MainWindowView: View {
     @State private var pendingBranchDropConfirmation: PendingBranchDropConfirmation?
     @State private var pendingPushBranchDropConfirmation: PendingPushBranchDropConfirmation?
     @State private var isPerformingBranchDropOperation = false
+    @State private var pullRequestAccountConnectionTask: Task<Void, Never>?
     @StateObject private var operationProgress = RepositoryOperationProgress()
 
     init(repositoryURL: URL, providerAccountController: GitProviderAccountController) {
@@ -179,6 +180,7 @@ struct MainWindowView: View {
             .sheet(isPresented: $showingStashSheet) { stashSheet }
             .sheet(isPresented: $showingRepositorySettings) { repositorySettingsSheet }
             .sheet(isPresented: createPullRequestSheetPresented) { createPullRequestSheet }
+            .sheet(isPresented: pullRequestDeviceAuthorizationPresented) { pullRequestDeviceAuthorizationSheet }
             .sheet(item: $pendingSearchFileOpenRequest) { request in
                 SearchFileOpenSheet(request: request) { application, rememberChoice in
                     pendingSearchFileOpenRequest = nil
@@ -342,6 +344,7 @@ struct MainWindowView: View {
             }
         }
         .onDisappear {
+            cancelPullRequestAccountConnection()
             syncState.stopBackgroundSync()
         }
     }
@@ -557,7 +560,7 @@ struct MainWindowView: View {
                     repositoryURL: repositoryURL,
                     accountConnectionErrorMessage: providerAccountController.errorMessage,
                     onConnectAccount: {
-                        Task { await connectPullRequestProviderAccount() }
+                        startPullRequestAccountConnection()
                     }
                 )
             case .stash(let ref):
@@ -895,6 +898,34 @@ struct MainWindowView: View {
         )
     }
 
+    private var pullRequestDeviceAuthorizationPresented: Binding<Bool> {
+        Binding(
+            get: {
+                pullRequestAccountConnectionTask != nil
+                    && providerAccountController.pendingDeviceAuthorization != nil
+            },
+            set: { isPresented in
+                if !isPresented {
+                    cancelPullRequestAccountConnection()
+                }
+            }
+        )
+    }
+
+    private func startPullRequestAccountConnection() {
+        pullRequestAccountConnectionTask?.cancel()
+        pullRequestAccountConnectionTask = Task { @MainActor in
+            await connectPullRequestProviderAccount()
+            await refreshPullRequestsAfterAccountConnection()
+            pullRequestAccountConnectionTask = nil
+        }
+    }
+
+    private func cancelPullRequestAccountConnection() {
+        pullRequestAccountConnectionTask?.cancel()
+        pullRequestAccountConnectionTask = nil
+    }
+
     private func connectPullRequestProviderAccount() async {
         await MainActor.run {
             providerAccountController.errorMessage = nil
@@ -915,6 +946,34 @@ struct MainWindowView: View {
                 await providerAccountController.connectSelfHostedGitLab(hostURL: host.normalized.baseURL)
             }
         }
+    }
+
+    private func refreshPullRequestsAfterAccountConnection() async {
+        guard !Task.isCancelled,
+              providerAccountController.errorMessage == nil else {
+            return
+        }
+        await pullRequestController.loadPullRequests(repositoryURL: repositoryURL)
+    }
+
+    @ViewBuilder
+    private var pullRequestDeviceAuthorizationSheet: some View {
+        if let authorization = providerAccountController.pendingDeviceAuthorization {
+            GitProviderDeviceAuthorizationView(
+                authorization: authorization,
+                openVerification: providerAccountController.openPendingDeviceVerification,
+                copyToPasteboard: copyToPasteboard,
+                cancel: cancelPullRequestAccountConnection
+            )
+            .padding(24)
+            .frame(minWidth: 360, maxWidth: 460)
+            .interactiveDismissDisabled()
+        }
+    }
+
+    private func copyToPasteboard(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
 
     @ViewBuilder

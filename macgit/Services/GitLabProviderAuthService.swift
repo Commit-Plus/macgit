@@ -222,7 +222,7 @@ struct GitLabProviderAuthService: GitLabProviderOAuthAuthenticating {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let (data, response) = try await httpClient.data(for: request)
-        try validate(response: response, data: data)
+        try validate(response: response, data: data, unauthorizedMeansReauthorization: true)
         let profile = try decode(UserResponse.self, from: data)
         let timestamp = now()
         let hostIdentifier = normalizedHost.baseURL.host(percentEncoded: false)?.lowercased()
@@ -251,8 +251,12 @@ struct GitLabProviderAuthService: GitLabProviderOAuthAuthenticating {
         return components.percentEncodedQuery?.data(using: .utf8)
     }
 
-    private func validate(response: HTTPURLResponse, data: Data) throws {
-        if response.statusCode == 401 {
+    private func validate(
+        response: HTTPURLResponse,
+        data: Data,
+        unauthorizedMeansReauthorization: Bool = false
+    ) throws {
+        if response.statusCode == 401, unauthorizedMeansReauthorization {
             throw GitProviderAuthError.reauthorizationRequired
         }
         guard (200..<300).contains(response.statusCode) else {

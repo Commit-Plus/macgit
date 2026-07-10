@@ -20,32 +20,55 @@ import Sparkle
 
 @MainActor
 final class SparkleAppUpdater: NSObject, AppUpdaterProtocol {
-    private var updaterController: SPUStandardUpdaterController!
+    private var updaterController: SPUStandardUpdaterController?
     private var eventHandler: ((AppUpdaterEvent) -> Void)?
+    private let isEnabled: Bool
 
-    override init() {
-        super.init()
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: false,
-            updaterDelegate: self,
-            userDriverDelegate: nil
+    override convenience init() {
+        self.init(bundle: .main)
+    }
+
+    init(bundle: Bundle) {
+        isEnabled = Self.isConfigurationUsable(
+            feedURL: bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String,
+            publicKey: bundle.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
         )
+        super.init()
+        if isEnabled {
+            updaterController = SPUStandardUpdaterController(
+                startingUpdater: false,
+                updaterDelegate: self,
+                userDriverDelegate: nil
+            )
+        }
+    }
+
+    static func isConfigurationUsable(feedURL: String?, publicKey: String?) -> Bool {
+        guard let feedURL = feedURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let publicKey = publicKey?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return false
+        }
+        return !feedURL.isEmpty && !publicKey.isEmpty
     }
 
     func start() {
+        guard isEnabled, let updaterController else {
+            eventHandler?(.noUpdateFound)
+            return
+        }
         updaterController.startUpdater()
     }
 
     func checkForUpdatesInBackground() {
-        updaterController.updater.checkForUpdatesInBackground()
+        updaterController?.updater.checkForUpdatesInBackground()
     }
 
     func showUpdateWindow() {
-        updaterController.checkForUpdates(nil)
+        updaterController?.checkForUpdates(nil)
     }
 
     func checkForUpdates() {
-        updaterController.checkForUpdates(nil)
+        updaterController?.checkForUpdates(nil)
     }
 
     func setEventHandler(_ handler: @escaping (AppUpdaterEvent) -> Void) {

@@ -26,7 +26,7 @@ struct GitLabPullRequestService: PullRequestProviding {
     init(httpClient: GitProviderHTTPClient = URLSessionGitProviderHTTPClient()) {
         self.httpClient = httpClient
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom(Self.decodeGitLabDate)
         self.decoder = decoder
         self.encoder = JSONEncoder()
     }
@@ -91,7 +91,12 @@ struct GitLabPullRequestService: PullRequestProviding {
                 summary: response.mergeRequest.summary,
                 body: response.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
                 assignees: response.assignees.map(\.author),
-                comments: try await mergeRequestNotes(repository: repository, token: token, number: number),
+                comments: try await mergeRequestNotes(
+                    repository: repository,
+                    token: token,
+                    number: number,
+                    mergeRequestWebURL: response.mergeRequest.webURL
+                ),
                 changesURL: response.mergeRequest.webURL.appendingPathComponent("diffs")
             )
         } catch let error as PullRequestProviderError {
@@ -156,7 +161,8 @@ struct GitLabPullRequestService: PullRequestProviding {
     private func mergeRequestNotes(
         repository: GitRepositoryIdentity,
         token: GitProviderToken,
-        number: Int
+        number: Int,
+        mergeRequestWebURL: URL
     ) async throws -> [PullRequestComment] {
         let notesURL = try projectURL(
             repository: repository,
@@ -166,7 +172,7 @@ struct GitLabPullRequestService: PullRequestProviding {
         try validate(response: response, data: data)
         return try decoder.decode([GitLabMergeRequestNoteResponse].self, from: data)
             .filter { !$0.system }
-            .map(\.comment)
+            .map { $0.comment(mergeRequestWebURL: mergeRequestWebURL) }
     }
 
     private func projectURL(
@@ -245,6 +251,28 @@ struct GitLabPullRequestService: PullRequestProviding {
             return false
         }
         return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private static func decodeGitLabDate(from decoder: Decoder) throws -> Date {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractionalFormatter.date(from: value) {
+            return date
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        if let date = formatter.date(from: value) {
+            return date
+        }
+
+        throw DecodingError.dataCorruptedError(
+            in: container,
+            debugDescription: "Invalid GitLab date: \(value)"
+        )
     }
 }
 
@@ -374,20 +402,26 @@ private struct GitLabMergeRequestNoteResponse: Decodable {
     var id: Int
     var body: String
     var system: Bool
-    var webURL: URL
+    var webURL: URL?
     var createdAt: Date
     var updatedAt: Date
     var author: GitLabMergeRequestResponse.User
 
-    var comment: PullRequestComment {
+    func comment(mergeRequestWebURL: URL) -> PullRequestComment {
         PullRequestComment(
             id: id,
             author: author.author,
             body: body,
-            webURL: webURL,
+            webURL: webURL ?? fallbackWebURL(mergeRequestWebURL: mergeRequestWebURL),
             createdAt: createdAt,
             updatedAt: updatedAt
         )
+    }
+
+    private func fallbackWebURL(mergeRequestWebURL: URL) -> URL {
+        var components = URLComponents(url: mergeRequestWebURL, resolvingAgainstBaseURL: false)
+        components?.fragment = "note_\(id)"
+        return components?.url ?? mergeRequestWebURL
     }
 
     enum CodingKeys: String, CodingKey {
