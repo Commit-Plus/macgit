@@ -72,8 +72,10 @@ struct GitProviderAddAccountSheet: View {
                         .foregroundStyle(connectedUsername.isEmpty ? .secondary : .primary)
                 }
 
-                Button(connectButtonTitle, action: connectAccount)
-                    .disabled(!canConnect || controller.isLoading || (selectedProtocol == .ssh && sshKeyPath.isEmpty))
+                if selectedProtocol == .https {
+                    Button(connectButtonTitle, action: connectAccount)
+                        .disabled(!canConnect || controller.isLoading)
+                }
 
                 Picker("Protocol", selection: $selectedProtocol) {
                     ForEach(GitProviderAddAccountPresentationPolicy.protocolOptions, id: \.id) { option in
@@ -94,6 +96,9 @@ struct GitProviderAddAccountSheet: View {
                             Button("Choose...", action: chooseSSHKey)
                         }
                     }
+
+                    Button(connectButtonTitle, action: connectAccount)
+                        .disabled(!canConnect || controller.isLoading || sshKeyPath.isEmpty)
                 }
             }
             .formStyle(.grouped)
