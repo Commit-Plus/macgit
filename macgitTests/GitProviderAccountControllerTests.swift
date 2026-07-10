@@ -74,14 +74,40 @@ final class GitProviderAccountControllerTests: XCTestCase {
             events: events
         )
         let vault = FakeGitProviderTokenVault(events: events)
-        let controller = GitProviderAccountController(store: store, tokenVault: vault)
+        let sshKeyStore = FakeGitProviderSSHKeyStore(events: events)
+        let controller = GitProviderAccountController(store: store, tokenVault: vault, sshKeyStore: sshKeyStore)
         await controller.updateMacgitAccount(makeMacgitAccount(uid: "macgit-user-1"))
         events.values.removeAll()
 
         await controller.disconnect(account)
 
-        XCTAssertEqual(events.values, ["delete-token", "delete-metadata"])
+        XCTAssertEqual(events.values, ["delete-token", "delete-ssh-key", "delete-metadata"])
         XCTAssertEqual(controller.accounts, [])
+    }
+
+    func testControllerSavesSSHTransportAndKeyReference() async throws {
+        let account = makeProviderAccount(macgitUID: "macgit-user-1")
+        let store = FakeGitProviderAccountStore(accountsByUID: ["macgit-user-1": [account]])
+        let vault = FakeGitProviderTokenVault(tokensByAccountID: [
+            account.id: GitProviderToken(
+                accessToken: "token",
+                refreshToken: nil,
+                expiresAt: nil,
+                tokenType: "bearer"
+            )
+        ])
+        let sshKeyStore = FakeGitProviderSSHKeyStore()
+        let controller = GitProviderAccountController(store: store, tokenVault: vault, sshKeyStore: sshKeyStore)
+        await controller.updateMacgitAccount(makeMacgitAccount(uid: "macgit-user-1"))
+
+        await controller.saveConnectionSettings(
+            account: account,
+            transportProtocol: .ssh,
+            sshKey: GitProviderSSHKey(path: "/Users/test/.ssh/id_ed25519")
+        )
+
+        XCTAssertEqual(controller.accounts.first?.transportProtocol, .ssh)
+        XCTAssertEqual(try sshKeyStore.key(for: account), GitProviderSSHKey(path: "/Users/test/.ssh/id_ed25519"))
     }
 
     func testConnectGitHubRequestsDeviceCodeAndOpensVerificationURL() async throws {
@@ -391,6 +417,33 @@ private final class FakeGitProviderTokenVault: GitProviderTokenVault {
     func deleteToken(for account: GitProviderAccount) throws {
         events?.values.append("delete-token")
         tokensByAccountID.removeValue(forKey: account.id)
+    }
+}
+
+@MainActor
+private final class FakeGitProviderSSHKeyStore: GitProviderSSHKeyStore {
+    private var keysByAccountID: [String: GitProviderSSHKey]
+    private let events: EventRecorder?
+
+    init(
+        keysByAccountID: [String: GitProviderSSHKey] = [:],
+        events: EventRecorder? = nil
+    ) {
+        self.keysByAccountID = keysByAccountID
+        self.events = events
+    }
+
+    func key(for account: GitProviderAccount) throws -> GitProviderSSHKey? {
+        keysByAccountID[account.id]
+    }
+
+    func saveKey(_ key: GitProviderSSHKey, for account: GitProviderAccount) throws {
+        keysByAccountID[account.id] = key
+    }
+
+    func deleteKey(for account: GitProviderAccount) throws {
+        events?.values.append("delete-ssh-key")
+        keysByAccountID.removeValue(forKey: account.id)
     }
 }
 

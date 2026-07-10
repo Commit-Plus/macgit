@@ -28,6 +28,7 @@ struct GitProviderAddAccountSheet: View {
     @State private var selectedAuthType: GitProviderAddAccountAuthType = .oauth
     @State private var selectedProtocol: GitProviderAddAccountProtocol = .https
     @State private var connectedUsername = ""
+    @State private var sshKeyPath = ""
     @State private var connectionTask: Task<Void, Never>?
 
     init(controller: GitProviderAccountController, editingAccount: GitProviderAccount? = nil) {
@@ -35,7 +36,7 @@ struct GitProviderAddAccountSheet: View {
         self.editingAccount = editingAccount
         _selectedHost = State(initialValue: editingAccount.map(GitProviderAddAccountPresentationPolicy.host(for:)) ?? .github)
         _selectedAuthType = State(initialValue: .oauth)
-        _selectedProtocol = State(initialValue: .https)
+        _selectedProtocol = State(initialValue: editingAccount?.transportProtocol == .ssh ? .ssh : .https)
         _connectedUsername = State(initialValue: editingAccount?.username ?? "")
     }
 
@@ -81,6 +82,19 @@ struct GitProviderAddAccountSheet: View {
                             .disabled(!option.isEnabled)
                     }
                 }
+
+                if selectedProtocol == .ssh {
+                    LabeledContent("SSH Key") {
+                        HStack {
+                            Text(sshKeyPath.isEmpty ? "_" : abbreviatedPath(sshKeyPath))
+                                .foregroundStyle(sshKeyPath.isEmpty ? .secondary : .primary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+
+                            Button("Choose...", action: chooseSSHKey)
+                        }
+                    }
+                }
             }
             .formStyle(.grouped)
 
@@ -118,11 +132,12 @@ struct GitProviderAddAccountSheet: View {
                 Button("Cancel", action: cancel)
                 Button("Save", action: save)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(connectedUsername.isEmpty)
+                    .disabled(!canSave)
             }
         }
         .padding()
         .frame(minWidth: 540, minHeight: 360)
+        .onAppear(perform: loadExistingSSHKey)
         .onDisappear(perform: cancelConnection)
     }
 
@@ -136,6 +151,14 @@ struct GitProviderAddAccountSheet: View {
 
     private var connectButtonTitle: String {
         GitProviderAddAccountPresentationPolicy.connectButtonTitle(connectedUsername: connectedUsername)
+    }
+
+    private var canSave: Bool {
+        GitProviderAddAccountPresentationPolicy.canSave(
+            connectedUsername: connectedUsername,
+            protocol: selectedProtocol,
+            sshKeyPath: sshKeyPath
+        )
     }
 
     private var title: String {
@@ -186,7 +209,17 @@ struct GitProviderAddAccountSheet: View {
     }
 
     private func save() {
-        dismiss()
+        guard canSave, let account = matchingAccount() ?? editingAccount else { return }
+        let transportProtocol: GitProviderTransportProtocol = selectedProtocol == .ssh ? .ssh : .https
+        let sshKey = selectedProtocol == .ssh ? GitProviderSSHKey(path: sshKeyPath) : nil
+        Task { @MainActor in
+            await controller.saveConnectionSettings(
+                account: account,
+                transportProtocol: transportProtocol,
+                sshKey: sshKey
+            )
+            dismiss()
+        }
     }
 
     private func cancelConnection() {
@@ -197,5 +230,32 @@ struct GitProviderAddAccountSheet: View {
     private func copyToPasteboard(_ value: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
+    }
+
+    private func loadExistingSSHKey() {
+        guard let editingAccount,
+              let key = try? controller.sshKey(for: editingAccount) else {
+            return
+        }
+        sshKeyPath = key.path
+    }
+
+    private func chooseSSHKey() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.resolvesAliases = true
+        if panel.runModal() == .OK, let url = panel.url {
+            sshKeyPath = url.path
+        }
+    }
+
+    private func abbreviatedPath(_ path: String) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        guard path == home || path.hasPrefix(home + "/") else {
+            return path
+        }
+        return "~" + path.dropFirst(home.count)
     }
 }

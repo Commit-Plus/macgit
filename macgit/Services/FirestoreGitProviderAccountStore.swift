@@ -38,6 +38,7 @@ enum GitProviderAccountDocument {
             "scopes": account.scopes,
             "permissions": account.permissions,
             "tokenStatus": account.tokenStatus.rawValue,
+            "transportProtocol": account.transportProtocol.rawValue,
             "connectedAt": Timestamp(date: account.connectedAt)
         ]
         if let displayName = account.displayName {
@@ -83,6 +84,9 @@ enum GitProviderAccountDocument {
             avatarURL = nil
         }
 
+        let transportProtocol = (data["transportProtocol"] as? String)
+            .flatMap(GitProviderTransportProtocol.init(rawValue:)) ?? .https
+
         return GitProviderAccount(
             id: id,
             macgitUID: macgitUID,
@@ -95,6 +99,7 @@ enum GitProviderAccountDocument {
             scopes: scopes,
             permissions: permissions,
             tokenStatus: tokenStatus,
+            transportProtocol: transportProtocol,
             connectedAt: connectedAt,
             lastValidatedAt: (data["lastValidatedAt"] as? Timestamp)?.dateValue()
         )

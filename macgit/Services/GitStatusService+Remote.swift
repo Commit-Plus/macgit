@@ -27,13 +27,15 @@ extension GitStatusService {
         options: PushOptions,
         in repositoryURL: URL,
         credentialResolver: GitProviderCredentialResolver? = nil,
-        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector()
+        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector(),
+        sshCredentialInjector: GitSSHCredentialInjecting = TemporaryGitSSHCredentialInjector()
     ) async throws -> String {
         let injection = try await credentialInjection(
             for: options.remote,
             in: repositoryURL,
             credentialResolver: credentialResolver,
-            credentialInjector: credentialInjector
+            credentialInjector: credentialInjector,
+            sshCredentialInjector: sshCredentialInjector
         )
         defer { injection?.cleanup() }
 
@@ -65,7 +67,8 @@ extension GitStatusService {
         options: PullOptions,
         in repositoryURL: URL,
         credentialResolver: GitProviderCredentialResolver? = nil,
-        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector()
+        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector(),
+        sshCredentialInjector: GitSSHCredentialInjecting = TemporaryGitSSHCredentialInjector()
     ) async throws -> String {
         var arguments = ["pull", remote, branch]
         if !options.commitMerged { arguments.append("--no-commit") }
@@ -80,7 +83,8 @@ extension GitStatusService {
             for: remote,
             in: repositoryURL,
             credentialResolver: credentialResolver,
-            credentialInjector: credentialInjector
+            credentialInjector: credentialInjector,
+            sshCredentialInjector: sshCredentialInjector
         )
         defer { injection?.cleanup() }
         return try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
@@ -111,7 +115,8 @@ extension GitStatusService {
         options: FetchOptions,
         in repositoryURL: URL,
         credentialResolver: GitProviderCredentialResolver? = nil,
-        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector()
+        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector(),
+        sshCredentialInjector: GitSSHCredentialInjecting = TemporaryGitSSHCredentialInjector()
     ) async throws {
         var arguments = ["fetch"]
         if options.fetchAllRemotes {
@@ -127,7 +132,8 @@ extension GitStatusService {
             options: options,
             in: repositoryURL,
             credentialResolver: credentialResolver,
-            credentialInjector: credentialInjector
+            credentialInjector: credentialInjector,
+            sshCredentialInjector: sshCredentialInjector
         )
         defer { injection?.cleanup() }
         _ = try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
@@ -138,13 +144,15 @@ extension GitStatusService {
         branch: String,
         in repositoryURL: URL,
         credentialResolver: GitProviderCredentialResolver? = nil,
-        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector()
+        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector(),
+        sshCredentialInjector: GitSSHCredentialInjecting = TemporaryGitSSHCredentialInjector()
     ) async throws {
         let injection = try await credentialInjection(
             for: remote,
             in: repositoryURL,
             credentialResolver: credentialResolver,
-            credentialInjector: credentialInjector
+            credentialInjector: credentialInjector,
+            sshCredentialInjector: sshCredentialInjector
         )
         defer { injection?.cleanup() }
         _ = try await runRemoteGit(arguments: ["fetch", remote, branch], in: repositoryURL, injection: injection)
@@ -156,7 +164,8 @@ extension GitStatusService {
         localBranch: String,
         in repositoryURL: URL,
         credentialResolver: GitProviderCredentialResolver? = nil,
-        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector()
+        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector(),
+        sshCredentialInjector: GitSSHCredentialInjecting = TemporaryGitSSHCredentialInjector()
     ) async throws {
         let trimmedRemote = remote.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -169,7 +178,8 @@ extension GitStatusService {
             for: trimmedRemote,
             in: repositoryURL,
             credentialResolver: credentialResolver,
-            credentialInjector: credentialInjector
+            credentialInjector: credentialInjector,
+            sshCredentialInjector: sshCredentialInjector
         )
         defer { injection?.cleanup() }
 
@@ -260,27 +270,38 @@ extension GitStatusService {
         for remote: String,
         in repositoryURL: URL,
         credentialResolver: GitProviderCredentialResolver?,
-        credentialInjector: GitCredentialInjecting
+        credentialInjector: GitCredentialInjecting,
+        sshCredentialInjector: GitSSHCredentialInjecting
     ) async throws -> GitCredentialInjection? {
         guard let credentialResolver else { return nil }
         let remoteURLString = await remoteURL(remote: remote, in: repositoryURL)
-        guard let credential = try credentialResolver.credential(for: remoteURLString) else { return nil }
-        return try credentialInjector.injection(for: credential)
+        guard let credential = try remoteCredential(
+            for: remoteURLString,
+            credentialResolver: credentialResolver
+        ) else {
+            return nil
+        }
+        return try injection(
+            for: credential,
+            credentialInjector: credentialInjector,
+            sshCredentialInjector: sshCredentialInjector
+        )
     }
 
     private func credentialInjectionForFetch(
         options: FetchOptions,
         in repositoryURL: URL,
         credentialResolver: GitProviderCredentialResolver?,
-        credentialInjector: GitCredentialInjecting
+        credentialInjector: GitCredentialInjecting,
+        sshCredentialInjector: GitSSHCredentialInjecting
     ) async throws -> GitCredentialInjection? {
         guard let credentialResolver else { return nil }
         let remoteNames = await remotes(in: repositoryURL)
-        let credentials = try await remoteNames.asyncCompactMap { remote -> GitCredential? in
+        let credentials = try await remoteNames.asyncCompactMap { remote -> RemoteGitCredential? in
             let remoteURLString = await remoteURL(remote: remote, in: repositoryURL)
-            return try credentialResolver.credential(for: remoteURLString)
+            return try remoteCredential(for: remoteURLString, credentialResolver: credentialResolver)
         }
-        let uniqueCredentials = credentials.reduce(into: [GitCredential]()) { result, credential in
+        let uniqueCredentials = credentials.reduce(into: [RemoteGitCredential]()) { result, credential in
             if !result.contains(credential) {
                 result.append(credential)
             }
@@ -289,8 +310,43 @@ extension GitStatusService {
         guard uniqueCredentials.count == 1 else {
             throw GitProviderCredentialError.multipleMatchingAccounts(host: "configured remotes")
         }
-        return try credentialInjector.injection(for: credential)
+        return try injection(
+            for: credential,
+            credentialInjector: credentialInjector,
+            sshCredentialInjector: sshCredentialInjector
+        )
     }
+
+    private func remoteCredential(
+        for remoteURLString: String,
+        credentialResolver: GitProviderCredentialResolver
+    ) throws -> RemoteGitCredential? {
+        if let credential = try credentialResolver.credential(for: remoteURLString) {
+            return .https(credential)
+        }
+        if let credential = try credentialResolver.sshCredential(for: remoteURLString) {
+            return .ssh(credential)
+        }
+        return nil
+    }
+
+    private func injection(
+        for credential: RemoteGitCredential,
+        credentialInjector: GitCredentialInjecting,
+        sshCredentialInjector: GitSSHCredentialInjecting
+    ) throws -> GitCredentialInjection {
+        switch credential {
+        case .https(let credential):
+            return try credentialInjector.injection(for: credential)
+        case .ssh(let credential):
+            return try sshCredentialInjector.injection(for: credential)
+        }
+    }
+}
+
+private enum RemoteGitCredential: Equatable {
+    case https(GitCredential)
+    case ssh(GitSSHCredential)
 }
 
 private extension Sequence {

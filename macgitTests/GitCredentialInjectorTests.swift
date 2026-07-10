@@ -63,6 +63,43 @@ final class GitCredentialInjectorTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: tokenFile))
     }
 
+    func testSSHInjectionSetsGitSSHCommand() throws {
+        let keyURL = try makeTemporaryKeyFile(name: "id_ed25519")
+
+        let injection = try TemporaryGitSSHCredentialInjector().injection(
+            for: GitSSHCredential(username: "git", keyPath: keyURL.path)
+        )
+
+        XCTAssertEqual(injection.environment["GIT_TERMINAL_PROMPT"], "0")
+        XCTAssertEqual(
+            injection.environment["GIT_SSH_COMMAND"],
+            "/usr/bin/ssh -i '\(keyURL.path)' -o IdentitiesOnly=yes"
+        )
+    }
+
+    func testSSHInjectionQuotesKeyPathWithSpaces() throws {
+        let keyURL = try makeTemporaryKeyFile(name: "id ed25519")
+
+        let injection = try TemporaryGitSSHCredentialInjector().injection(
+            for: GitSSHCredential(username: "git", keyPath: keyURL.path)
+        )
+
+        XCTAssertEqual(
+            injection.environment["GIT_SSH_COMMAND"],
+            "/usr/bin/ssh -i '\(keyURL.path)' -o IdentitiesOnly=yes"
+        )
+    }
+
+    func testSSHInjectionThrowsWhenKeyFileDoesNotExist() {
+        XCTAssertThrowsError(
+            try TemporaryGitSSHCredentialInjector().injection(
+                for: GitSSHCredential(username: "git", keyPath: "/missing/id_ed25519")
+            )
+        ) { error in
+            XCTAssertEqual(error as? GitProviderCredentialError, .sshKeyMissing(path: "/missing/id_ed25519"))
+        }
+    }
+
     private func makeInjection(
         username: String = "octocat",
         token: String = "secret-token"
@@ -83,5 +120,14 @@ final class GitCredentialInjectorTests: XCTestCase {
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func makeTemporaryKeyFile(name: String) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macgit-ssh-key-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let keyURL = directory.appendingPathComponent(name, isDirectory: false)
+        try "test-key".write(to: keyURL, atomically: true, encoding: .utf8)
+        return keyURL
     }
 }

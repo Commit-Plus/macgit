@@ -58,6 +58,55 @@ final class GitProviderAccountModelsTests: XCTestCase {
         XCTAssertEqual(decoded.tokenStatus, account.tokenStatus)
     }
 
+    func testProviderAccountDefaultsTransportProtocolToHTTPSWhenDecodingOldPayload() throws {
+        let payload = """
+        {
+          "id": "connection-1",
+          "macgitUID": "macgit-user-1",
+          "provider": "github",
+          "hostURL": "https://github.com",
+          "providerUserID": "provider-user-42",
+          "username": "octocat",
+          "displayName": "The Octocat",
+          "avatarURL": null,
+          "scopes": ["repo", "read:user"],
+          "permissions": {"contents": "read"},
+          "tokenStatus": "valid",
+          "connectedAt": 1700000000,
+          "lastValidatedAt": null
+        }
+        """
+
+        let data = try XCTUnwrap(payload.data(using: .utf8))
+        let decoded = try JSONDecoder().decode(GitProviderAccount.self, from: data)
+
+        XCTAssertEqual(decoded.transportProtocol, .https)
+    }
+
+    func testProviderAccountRoundTripsSSHTransportProtocol() throws {
+        let account = GitProviderAccount(
+            id: "connection-1",
+            macgitUID: "macgit-user-1",
+            provider: .github,
+            hostURL: try XCTUnwrap(URL(string: "https://github.com")),
+            providerUserID: "provider-user-42",
+            username: "octocat",
+            displayName: "The Octocat",
+            avatarURL: nil,
+            scopes: ["repo", "read:user"],
+            permissions: ["contents": "read"],
+            tokenStatus: .valid,
+            transportProtocol: .ssh,
+            connectedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            lastValidatedAt: nil
+        )
+
+        let data = try JSONEncoder().encode(account)
+        let decoded = try JSONDecoder().decode(GitProviderAccount.self, from: data)
+
+        XCTAssertEqual(decoded.transportProtocol, .ssh)
+    }
+
     func testUnavailableTokenStatusIsDistinctFromRevoked() {
         XCTAssertNotEqual(GitProviderTokenStatus.unavailableOnThisDevice, .revoked)
     }

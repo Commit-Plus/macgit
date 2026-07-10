@@ -22,6 +22,8 @@ enum GitProviderCredentialError: LocalizedError, Equatable {
     case noConnectedAccount(host: String)
     case multipleMatchingAccounts(host: String)
     case tokenUnavailable(username: String)
+    case sshKeyUnavailable(username: String)
+    case sshKeyMissing(path: String)
     case unsupportedRemote
 
     var errorDescription: String? {
@@ -32,6 +34,10 @@ enum GitProviderCredentialError: LocalizedError, Equatable {
             return "Multiple connected provider accounts match \(host). Choose a preferred account before using private repository credentials."
         case .tokenUnavailable(let username):
             return "The local provider token for \(username) is unavailable. Reconnect the account and try again."
+        case .sshKeyUnavailable(let username):
+            return "The SSH key for \(username) is unavailable. Choose a key and try again."
+        case .sshKeyMissing:
+            return "The selected SSH key file could not be found."
         case .unsupportedRemote:
             return "This remote is not supported for provider credentials."
         }
@@ -41,6 +47,17 @@ enum GitProviderCredentialError: LocalizedError, Equatable {
 struct GitProviderCredentialResolver {
     var accounts: [GitProviderAccount]
     var tokenVault: GitProviderTokenVault
+    var sshKeyStore: GitProviderSSHKeyStore?
+
+    init(
+        accounts: [GitProviderAccount],
+        tokenVault: GitProviderTokenVault,
+        sshKeyStore: GitProviderSSHKeyStore? = nil
+    ) {
+        self.accounts = accounts
+        self.tokenVault = tokenVault
+        self.sshKeyStore = sshKeyStore
+    }
 
     func credential(for remoteURLString: String, preferredAccountID: String? = nil) throws -> GitCredential? {
         guard isHTTPSRemote(remoteURLString) else { return nil }
@@ -75,12 +92,74 @@ struct GitProviderCredentialResolver {
         return GitCredential(username: account.username, token: token.accessToken)
     }
 
+    func sshCredential(for remoteURLString: String, preferredAccountID: String? = nil) throws -> GitSSHCredential? {
+        guard isSSHRemote(remoteURLString) else { return nil }
+        guard let identity = GitRemoteIdentityResolver.identity(
+            from: remoteURLString,
+            knownGitLabHosts: connectedGitLabHosts
+        ) else {
+            return nil
+        }
+
+        let matchingAccounts = accounts.filter { account in
+            account.provider == identity.provider
+                && account.transportProtocol == .ssh
+                && normalizedHost(account.hostURL) == normalizedHost(identity.hostURL)
+        }
+        guard !matchingAccounts.isEmpty else { return nil }
+
+        let account: GitProviderAccount
+        if let preferredAccountID {
+            guard let preferred = matchingAccounts.first(where: { $0.id == preferredAccountID }) else {
+                throw GitProviderCredentialError.noConnectedAccount(host: normalizedHost(identity.hostURL))
+            }
+            account = preferred
+        } else {
+            guard matchingAccounts.count == 1, let onlyAccount = matchingAccounts.first else {
+                throw GitProviderCredentialError.multipleMatchingAccounts(host: normalizedHost(identity.hostURL))
+            }
+            account = onlyAccount
+        }
+
+        guard let key = try sshKeyStore?.key(for: account), !key.path.isEmpty else {
+            throw GitProviderCredentialError.sshKeyUnavailable(username: account.username)
+        }
+
+        return GitSSHCredential(username: sshUsername(from: remoteURLString), keyPath: key.path)
+    }
+
     private func isHTTPSRemote(_ remoteURLString: String) -> Bool {
         guard let url = URL(string: remoteURLString.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = url.scheme?.lowercased() else {
             return false
         }
         return scheme == "https"
+    }
+
+    private func isSSHRemote(_ remoteURLString: String) -> Bool {
+        let trimmed = remoteURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.contains("@"), trimmed.contains(":") {
+            return true
+        }
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased() else {
+            return false
+        }
+        return scheme == "ssh"
+    }
+
+    private func sshUsername(from remoteURLString: String) -> String {
+        let trimmed = remoteURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: trimmed), url.scheme?.lowercased() == "ssh", let user = url.user, !user.isEmpty {
+            return user
+        }
+        if let atIndex = trimmed.firstIndex(of: "@") {
+            let username = String(trimmed[..<atIndex])
+            if !username.isEmpty {
+                return username
+            }
+        }
+        return "git"
     }
 
     private var connectedGitLabHosts: Set<String> {

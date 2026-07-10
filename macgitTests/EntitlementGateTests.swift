@@ -54,7 +54,7 @@ final class EntitlementGateTests: XCTestCase {
         XCTAssertTrue(controller.entitlement.hasProAccess)
         XCTAssertEqual(
             AccountMenuPolicy.actions(account: controller.account, entitlement: controller.entitlement),
-            [.manageAccount, .syncStatus, .manageSubscriptionComingLater, .signOut]
+            [.manageAccount, .connections, .syncStatus, .manageSubscriptionComingLater, .signOut]
         )
     }
 

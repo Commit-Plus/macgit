@@ -55,17 +55,17 @@ final class GitProviderAccountsSectionTests: XCTestCase {
         )
     }
 
-    func testAddAccountProtocolOptionsDisableSSHUntilSupported() {
+    func testAddAccountProtocolOptionsEnableSSH() {
         XCTAssertEqual(
             GitProviderAddAccountPresentationPolicy.protocolOptions,
             [
                 GitProviderAddAccountOption(id: .https, title: "HTTPS", isEnabled: true),
-                GitProviderAddAccountOption(id: .ssh, title: "SSH", isEnabled: false)
+                GitProviderAddAccountOption(id: .ssh, title: "SSH", isEnabled: true)
             ]
         )
     }
 
-    func testConnectButtonIsOnlyEnabledForSupportedOAuthHTTPSHosts() {
+    func testConnectButtonIsEnabledForSupportedOAuthHTTPSAndSSHHosts() {
         XCTAssertTrue(
             GitProviderAddAccountPresentationPolicy.canConnect(
                 host: .github,
@@ -94,11 +94,42 @@ final class GitProviderAccountsSectionTests: XCTestCase {
                 protocol: .https
             )
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             GitProviderAddAccountPresentationPolicy.canConnect(
                 host: .github,
                 authType: .oauth,
                 protocol: .ssh
+            )
+        )
+    }
+
+    func testSaveRequiresSSHKeyWhenProtocolIsSSH() {
+        XCTAssertTrue(
+            GitProviderAddAccountPresentationPolicy.canSave(
+                connectedUsername: "octocat",
+                protocol: .https,
+                sshKeyPath: nil
+            )
+        )
+        XCTAssertFalse(
+            GitProviderAddAccountPresentationPolicy.canSave(
+                connectedUsername: "octocat",
+                protocol: .ssh,
+                sshKeyPath: nil
+            )
+        )
+        XCTAssertTrue(
+            GitProviderAddAccountPresentationPolicy.canSave(
+                connectedUsername: "octocat",
+                protocol: .ssh,
+                sshKeyPath: "/Users/test/.ssh/id_ed25519"
+            )
+        )
+        XCTAssertFalse(
+            GitProviderAddAccountPresentationPolicy.canSave(
+                connectedUsername: "",
+                protocol: .ssh,
+                sshKeyPath: "/Users/test/.ssh/id_ed25519"
             )
         )
     }
