@@ -66,6 +66,23 @@ final class GitProviderAccountControllerTests: XCTestCase {
         XCTAssertEqual(controller.accounts.first?.tokenStatus, .unavailableOnThisDevice)
     }
 
+    func testSSHAccountWithoutLocalTokenStaysAvailableWhenKeyExists() async {
+        let account = makeProviderAccount(macgitUID: "macgit-user-1", tokenStatus: .valid, transportProtocol: .ssh)
+        let store = FakeGitProviderAccountStore(accountsByUID: ["macgit-user-1": [account]])
+        let sshKeyStore = FakeGitProviderSSHKeyStore(keysByAccountID: [
+            account.id: GitProviderSSHKey(path: "/Users/test/.ssh/id_ed25519")
+        ])
+        let controller = GitProviderAccountController(
+            store: store,
+            tokenVault: FakeGitProviderTokenVault(),
+            sshKeyStore: sshKeyStore
+        )
+
+        await controller.updateMacgitAccount(makeMacgitAccount(uid: "macgit-user-1"))
+
+        XCTAssertEqual(controller.accounts.first?.tokenStatus, .valid)
+    }
+
     func testDisconnectDeletesLocalTokenBeforeMetadata() async {
         let events = EventRecorder()
         let account = makeProviderAccount(macgitUID: "macgit-user-1")
@@ -260,6 +277,36 @@ final class GitProviderAccountControllerTests: XCTestCase {
         XCTAssertEqual(controller.accounts, [providerAccount])
     }
 
+    func testConnectSSHCreatesProviderAccountAndStoresKey() async throws {
+        let events = EventRecorder()
+        let store = FakeGitProviderAccountStore(events: events)
+        let sshKeyStore = FakeGitProviderSSHKeyStore()
+        let sshAuthService = FakeGitProviderSSHAuthService(username: "octocat")
+        let controller = GitProviderAccountController(
+            store: store,
+            tokenVault: FakeGitProviderTokenVault(),
+            sshKeyStore: sshKeyStore,
+            sshAuthService: sshAuthService
+        )
+        await controller.updateMacgitAccount(makeMacgitAccount(uid: "macgit-user-1"))
+
+        await controller.connectSSH(
+            host: .githubDotCom,
+            key: GitProviderSSHKey(path: "/Users/test/.ssh/id_ed25519")
+        )
+
+        let account = try XCTUnwrap(controller.accounts.first)
+        XCTAssertEqual(account.username, "octocat")
+        XCTAssertEqual(account.providerUserID, "octocat")
+        XCTAssertEqual(account.transportProtocol, .ssh)
+        XCTAssertEqual(account.hostURL, GitProviderHost.githubDotCom.baseURL)
+        XCTAssertEqual(try sshKeyStore.key(for: account), GitProviderSSHKey(path: "/Users/test/.ssh/id_ed25519"))
+        XCTAssertEqual(events.values, ["save-metadata"])
+        XCTAssertEqual(sshAuthService.requests, [
+            GitProviderSSHAuthRequest(host: .githubDotCom, keyPath: "/Users/test/.ssh/id_ed25519")
+        ])
+    }
+
     private func makeMacgitAccount(uid: String) -> AccountSnapshot {
         AccountSnapshot(uid: uid, email: nil, displayName: nil, providerIDs: ["password"])
     }
@@ -267,7 +314,8 @@ final class GitProviderAccountControllerTests: XCTestCase {
     private func makeProviderAccount(
         macgitUID: String,
         provider: GitProviderKind = .github,
-        tokenStatus: GitProviderTokenStatus = .valid
+        tokenStatus: GitProviderTokenStatus = .valid,
+        transportProtocol: GitProviderTransportProtocol = .https
     ) -> GitProviderAccount {
         GitProviderAccount(
             id: "connection-1",
@@ -283,6 +331,7 @@ final class GitProviderAccountControllerTests: XCTestCase {
             scopes: [],
             permissions: [:],
             tokenStatus: tokenStatus,
+            transportProtocol: transportProtocol,
             connectedAt: Date(timeIntervalSince1970: 1_700_000_000),
             lastValidatedAt: nil
         )
@@ -444,6 +493,21 @@ private final class FakeGitProviderSSHKeyStore: GitProviderSSHKeyStore {
     func deleteKey(for account: GitProviderAccount) throws {
         events?.values.append("delete-ssh-key")
         keysByAccountID.removeValue(forKey: account.id)
+    }
+}
+
+@MainActor
+private final class FakeGitProviderSSHAuthService: GitProviderSSHAuthenticating {
+    private let username: String
+    private(set) var requests: [GitProviderSSHAuthRequest] = []
+
+    init(username: String) {
+        self.username = username
+    }
+
+    func authenticate(host: GitProviderHost, keyPath: String) async throws -> GitProviderSSHAuthentication {
+        requests.append(GitProviderSSHAuthRequest(host: host, keyPath: keyPath))
+        return GitProviderSSHAuthentication(username: username)
     }
 }
 

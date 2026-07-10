@@ -29,6 +29,7 @@ final class GitProviderAccountController: ObservableObject {
     private let store: GitProviderAccountStore
     private let tokenVault: GitProviderTokenVault
     private let sshKeyStore: GitProviderSSHKeyStore
+    private let sshAuthService: GitProviderSSHAuthenticating
     private let authService: GitProviderAuthenticating?
     private let configuration: GitHubProviderAuthConfiguration?
     private let gitLabAuthService: (any GitLabProviderOAuthAuthenticating)?
@@ -41,6 +42,7 @@ final class GitProviderAccountController: ObservableObject {
         store: GitProviderAccountStore,
         tokenVault: GitProviderTokenVault,
         sshKeyStore: GitProviderSSHKeyStore = UserDefaultsGitProviderSSHKeyStore(),
+        sshAuthService: GitProviderSSHAuthenticating = GitProviderSSHAuthService(),
         authService: GitProviderAuthenticating? = nil,
         configuration: GitHubProviderAuthConfiguration? = nil,
         gitLabAuthService: (any GitLabProviderOAuthAuthenticating)? = nil,
@@ -50,6 +52,7 @@ final class GitProviderAccountController: ObservableObject {
         self.store = store
         self.tokenVault = tokenVault
         self.sshKeyStore = sshKeyStore
+        self.sshAuthService = sshAuthService
         self.authService = authService
         self.configuration = configuration
         self.gitLabAuthService = gitLabAuthService
@@ -104,6 +107,14 @@ final class GitProviderAccountController: ObservableObject {
         do {
             let storedAccounts = try await store.accounts(forMacgitUID: macgitUID)
             accounts = try storedAccounts.map { account in
+                if account.transportProtocol == .ssh {
+                    guard try sshKeyStore.key(for: account) != nil else {
+                        var unavailableAccount = account
+                        unavailableAccount.tokenStatus = .unavailableOnThisDevice
+                        return unavailableAccount
+                    }
+                    return account
+                }
                 guard try tokenVault.readToken(for: account) != nil else {
                     var unavailableAccount = account
                     unavailableAccount.tokenStatus = .unavailableOnThisDevice
@@ -205,6 +216,56 @@ final class GitProviderAccountController: ObservableObject {
             try await store.save(updatedAccount)
             accounts.removeAll { $0.id == updatedAccount.id }
             accounts.append(updatedAccount)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func connectSSH(host: GitProviderHost, key: GitProviderSSHKey) async {
+        guard let macgitUID else {
+            errorMessage = GitProviderAuthError.invalidConfiguration.localizedDescription
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        let normalizedHost = host.normalized
+        do {
+            let authentication = try await sshAuthService.authenticate(host: normalizedHost, keyPath: key.path)
+            let account = GitProviderAccount(
+                id: sshAccountID(
+                    macgitUID: macgitUID,
+                    provider: normalizedHost.kind,
+                    hostURL: normalizedHost.baseURL,
+                    username: authentication.username
+                ),
+                macgitUID: macgitUID,
+                provider: normalizedHost.kind,
+                hostURL: normalizedHost.baseURL,
+                providerUserID: authentication.username,
+                username: authentication.username,
+                displayName: nil,
+                avatarURL: nil,
+                scopes: [],
+                permissions: [:],
+                tokenStatus: .valid,
+                transportProtocol: .ssh,
+                connectedAt: Date(),
+                lastValidatedAt: Date()
+            )
+
+            try sshKeyStore.saveKey(key, for: account)
+            do {
+                try await store.save(account)
+            } catch {
+                try? sshKeyStore.deleteKey(for: account)
+                throw error
+            }
+
+            accounts.removeAll { $0.id == account.id }
+            accounts.append(account)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -388,6 +449,16 @@ final class GitProviderAccountController: ObservableObject {
 
     private var gitLabInvalidConfigurationMessage: String {
         "GitLab account connection is not configured."
+    }
+
+    private func sshAccountID(
+        macgitUID: String,
+        provider: GitProviderKind,
+        hostURL: URL,
+        username: String
+    ) -> String {
+        let hostIdentifier = (hostURL.host(percentEncoded: false) ?? hostURL.absoluteString).lowercased()
+        return "\(macgitUID):\(provider.rawValue):\(hostIdentifier):\(username)"
     }
 
     private func saveAuthorizedAccount(_ account: GitProviderAccount, token: GitProviderToken) async throws {

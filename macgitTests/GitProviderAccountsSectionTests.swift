@@ -156,6 +156,23 @@ final class GitProviderAccountsSectionTests: XCTestCase {
         )
     }
 
+    func testSSHConnectButtonTitleReflectsKeyTestAction() {
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.connectButtonTitle(
+                connectedUsername: "",
+                protocol: .ssh
+            ),
+            "Test SSH Key"
+        )
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.connectButtonTitle(
+                connectedUsername: "Tranthanh98",
+                protocol: .ssh
+            ),
+            "Test Again"
+        )
+    }
+
     func testSelfHostedGitLabRequiresHostURL() throws {
         XCTAssertNil(GitProviderAccountsPresentationPolicy.normalizedSelfHostedGitLabHost(from: ""))
         XCTAssertNil(GitProviderAccountsPresentationPolicy.normalizedSelfHostedGitLabHost(from: "not a host"))

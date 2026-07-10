@@ -129,6 +129,16 @@ enum GitProviderAddAccountPresentationPolicy {
         connectedUsername.isEmpty ? "Connect Account" : "Reconnect"
     }
 
+    static func connectButtonTitle(
+        connectedUsername: String,
+        protocol selectedProtocol: GitProviderAddAccountProtocol
+    ) -> String {
+        guard selectedProtocol == .ssh else {
+            return connectButtonTitle(connectedUsername: connectedUsername)
+        }
+        return connectedUsername.isEmpty ? "Test SSH Key" : "Test Again"
+    }
+
     static func host(for account: GitProviderAccount) -> GitProviderAddAccountHost {
         switch account.provider {
         case .github: .github

@@ -73,7 +73,7 @@ struct GitProviderAddAccountSheet: View {
                 }
 
                 Button(connectButtonTitle, action: connectAccount)
-                    .disabled(!canConnect || controller.isLoading)
+                    .disabled(!canConnect || controller.isLoading || (selectedProtocol == .ssh && sshKeyPath.isEmpty))
 
                 Picker("Protocol", selection: $selectedProtocol) {
                     ForEach(GitProviderAddAccountPresentationPolicy.protocolOptions, id: \.id) { option in
@@ -150,7 +150,10 @@ struct GitProviderAddAccountSheet: View {
     }
 
     private var connectButtonTitle: String {
-        GitProviderAddAccountPresentationPolicy.connectButtonTitle(connectedUsername: connectedUsername)
+        GitProviderAddAccountPresentationPolicy.connectButtonTitle(
+            connectedUsername: connectedUsername,
+            protocol: selectedProtocol
+        )
     }
 
     private var canSave: Bool {
@@ -174,9 +177,17 @@ struct GitProviderAddAccountSheet: View {
             } else {
                 switch selectedHost {
                 case .github:
-                    await controller.connectGitHub()
+                    if selectedProtocol == .ssh {
+                        await controller.connectSSH(host: .githubDotCom, key: GitProviderSSHKey(path: sshKeyPath))
+                    } else {
+                        await controller.connectGitHub()
+                    }
                 case .gitlab:
-                    await controller.connectGitLabDotCom()
+                    if selectedProtocol == .ssh {
+                        await controller.connectSSH(host: .gitlabDotCom, key: GitProviderSSHKey(path: sshKeyPath))
+                    } else {
+                        await controller.connectGitLabDotCom()
+                    }
                 case .bitbucket:
                     break
                 }
