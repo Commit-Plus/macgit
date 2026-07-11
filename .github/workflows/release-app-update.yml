@@ -48,7 +48,7 @@ jobs:
           APPSTORE_CONNECT_API_KEY_BASE64: ${{ secrets.APPSTORE_CONNECT_API_KEY_BASE64 }}
 
       - name: Run tests
-        run: xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' test
+        run: xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' test CODE_SIGNING_ALLOWED=NO
 
       - name: Build release archive
         run: scripts/release/build-release-archive.sh "$TAG_VERSION" "$BUILD_VERSION"
