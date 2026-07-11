@@ -111,6 +111,45 @@ extension GitStatusService {
         )
     }
 
+    func fetchAndFastForwardBranchFromUpstream(
+        branch: String,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver? = nil
+    ) async throws -> String {
+        guard let upstreamRef = await upstreamBranch(for: branch, in: repositoryURL) else {
+            throw GitError.commandFailed("Branch '\(branch)' does not have an upstream branch.")
+        }
+        guard let remoteBranch = remoteBranchRef(from: upstreamRef) else {
+            throw GitError.commandFailed("Could not parse upstream branch '\(upstreamRef)'.")
+        }
+
+        try await fetchBranch(
+            remote: remoteBranch.remote,
+            branch: remoteBranch.branch,
+            in: repositoryURL,
+            credentialResolver: credentialResolver
+        )
+
+        guard let localTip = await tipHash(for: branch, in: repositoryURL),
+              let upstreamTip = await tipHash(for: upstreamRef, in: repositoryURL) else {
+            throw GitError.commandFailed("Could not resolve branch '\(branch)' or upstream '\(upstreamRef)'.")
+        }
+
+        guard localTip != upstreamTip else {
+            return "Already up to date."
+        }
+
+        guard await isAncestor(localTip, of: upstreamTip, in: repositoryURL) else {
+            throw GitError.commandFailed("Branch '\(branch)' has diverged from '\(upstreamRef)'. Pull or rebase it manually.")
+        }
+
+        if await currentBranch(in: repositoryURL) == branch {
+            return try await runGit(arguments: ["merge", "--ff-only", upstreamRef], in: repositoryURL)
+        }
+
+        return try await runGit(arguments: ["branch", "--force", branch, upstreamRef], in: repositoryURL)
+    }
+
     func fetch(
         options: FetchOptions,
         in repositoryURL: URL,
@@ -155,7 +194,18 @@ extension GitStatusService {
             sshCredentialInjector: sshCredentialInjector
         )
         defer { injection?.cleanup() }
-        _ = try await runRemoteGit(arguments: ["fetch", remote, branch], in: repositoryURL, injection: injection)
+        let remoteTrackingRef = "refs/remotes/\(remote)/\(branch)"
+        let branchRefSpec = "+refs/heads/\(branch):\(remoteTrackingRef)"
+        _ = try await runRemoteGit(arguments: ["fetch", remote, branchRefSpec], in: repositoryURL, injection: injection)
+    }
+
+    private func isAncestor(_ ancestor: String, of descendant: String, in repositoryURL: URL) async -> Bool {
+        do {
+            _ = try await runGit(arguments: ["merge-base", "--is-ancestor", ancestor, descendant], in: repositoryURL)
+            return true
+        } catch {
+            return false
+        }
     }
 
     func fetchPullRequestRef(

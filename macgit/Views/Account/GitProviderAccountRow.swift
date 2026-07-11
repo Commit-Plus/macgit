@@ -86,7 +86,7 @@ struct GitProviderAccountRow: View {
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(nsColor: .textBackgroundColor).opacity(0.72))
+                    .fill(Color(nsColor: .controlBackgroundColor))
                     .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 2)
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)

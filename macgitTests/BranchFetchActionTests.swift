@@ -92,6 +92,38 @@ final class BranchFetchActionTests: XCTestCase {
         XCTAssertNotEqual(remoteTrackingAfter, remoteTrackingBefore)
     }
 
+    func testFetchAndFastForwardBranchUpdatesSelectedNonCurrentBranch() async throws {
+        let repoURL = try makeRepoWithMainBehindWhileFeatureIsCurrent()
+
+        let currentBefore = try runGitAndCapture(["branch", "--show-current"], in: repoURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let mainBefore = try runGitAndCapture(["rev-parse", "main"], in: repoURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let remoteMainBefore = try runGitAndCapture(["rev-parse", "origin/main"], in: repoURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        XCTAssertEqual(currentBefore, "feature")
+        XCTAssertEqual(mainBefore, remoteMainBefore)
+
+        try await GitStatusService.shared.fetchAndFastForwardBranchFromUpstream(
+            branch: "main",
+            in: repoURL
+        )
+
+        let currentAfter = try runGitAndCapture(["branch", "--show-current"], in: repoURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let mainAfter = try runGitAndCapture(["rev-parse", "main"], in: repoURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let remoteMainAfter = try runGitAndCapture(["rev-parse", "origin/main"], in: repoURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let workingCopy = try String(contentsOf: repoURL.appendingPathComponent("tracked.txt"), encoding: .utf8)
+
+        XCTAssertEqual(currentAfter, "feature")
+        XCTAssertNotEqual(mainAfter, mainBefore)
+        XCTAssertEqual(mainAfter, remoteMainAfter)
+        XCTAssertEqual(workingCopy, "feature\n")
+    }
+
     func testFetchBranchThrowsWhenRemoteDoesNotHaveTheBranch() async throws {
         let repoURL = try makeRepoWithFeatureBranchBehindUpstream(commitCount: 1)
 
@@ -182,6 +214,40 @@ final class BranchFetchActionTests: XCTestCase {
         try "remote\n".write(to: remoteFile, atomically: true, encoding: .utf8)
         try runGit(["add", "remote.txt"], in: updaterURL)
         try runGit(["commit", "-m", "remote"], in: updaterURL)
+        try runGit(["push"], in: updaterURL)
+
+        return localURL
+    }
+
+    private func makeRepoWithMainBehindWhileFeatureIsCurrent() throws -> URL {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macgit-branch-main-behind-\(UUID().uuidString)", isDirectory: true)
+        let originURL = rootURL.appendingPathComponent("origin.git", isDirectory: true)
+        let localURL = rootURL.appendingPathComponent("local", isDirectory: true)
+        let updaterURL = rootURL.appendingPathComponent("updater", isDirectory: true)
+
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        try runGit(["init", "--bare", "--initial-branch=main", originURL.path], in: rootURL)
+        try runGit(["clone", originURL.path, localURL.path], in: rootURL)
+        try configureGit(in: localURL)
+
+        let trackedFile = localURL.appendingPathComponent("tracked.txt")
+        try "main-0\n".write(to: trackedFile, atomically: true, encoding: .utf8)
+        try runGit(["add", "tracked.txt"], in: localURL)
+        try runGit(["commit", "-m", "main 0"], in: localURL)
+        try runGit(["push", "-u", "origin", "main"], in: localURL)
+
+        try runGit(["checkout", "-b", "feature"], in: localURL)
+        try "feature\n".write(to: trackedFile, atomically: true, encoding: .utf8)
+        try runGit(["add", "tracked.txt"], in: localURL)
+        try runGit(["commit", "-m", "feature"], in: localURL)
+
+        try runGit(["clone", originURL.path, updaterURL.path], in: rootURL)
+        try configureGit(in: updaterURL)
+        try "main-1\n".write(to: trackedFile.replacingPathComponent(in: updaterURL), atomically: true, encoding: .utf8)
+        try runGit(["add", "tracked.txt"], in: updaterURL)
+        try runGit(["commit", "-m", "main 1"], in: updaterURL)
         try runGit(["push"], in: updaterURL)
 
         return localURL

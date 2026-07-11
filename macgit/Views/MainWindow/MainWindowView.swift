@@ -396,7 +396,7 @@ struct MainWindowView: View {
             },
             onRequestFetchBranch: { branch in
                 runRepositoryOperation("Fetching \(branch)...") {
-                    await syncState.performFetchBranch(
+                    await syncState.performFetchAndFastForwardBranch(
                         branch: branch,
                         repositoryURL: repositoryURL,
                         credentialResolver: providerAccountController.credentialResolver()

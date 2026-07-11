@@ -172,6 +172,8 @@ struct RepositorySettingsSheetView: View {
 
                 Spacer()
             }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             // Default pull branch
             HStack(alignment: .top, spacing: 12) {

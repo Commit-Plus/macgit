@@ -398,7 +398,9 @@ class SyncState: ObservableObject {
             let after = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
-            if after.behind <= before.behind {
+            if after.behind > 0 {
+                showInfo("Fetch completed. Current branch is still \(after.behind) commit\(after.behind == 1 ? "" : "s") behind its upstream. Pull to update the local branch.")
+            } else if after.behind <= before.behind {
                 showInfo("No new changes on remote.")
             }
         } catch {
@@ -422,7 +424,7 @@ class SyncState: ObservableObject {
             showError("Could not parse upstream '\(upstream)'.")
             return
         }
-        let before = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
+        let before = await GitStatusService.shared.branchSyncStatus(for: branch, in: repositoryURL)
         do {
             try await GitStatusService.shared.fetchBranch(
                 remote: parts[0],
@@ -430,14 +432,55 @@ class SyncState: ObservableObject {
                 in: repositoryURL,
                 credentialResolver: credentialResolver
             )
-            let after = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
+            let after = await GitStatusService.shared.branchSyncStatus(for: branch, in: repositoryURL)
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
-            if after.behind <= before.behind {
+            if let after, after.behind > 0 {
+                showInfo("Fetch completed. \(branch) is still \(after.behind) commit\(after.behind == 1 ? "" : "s") behind \(upstream). Pull to update the local branch.")
+            } else if (after?.behind ?? 0) <= (before?.behind ?? 0) {
                 showInfo("No new changes on remote.")
             }
         } catch {
             showError(error.localizedDescription)
+        }
+    }
+
+    func performFetchAndFastForwardBranch(
+        branch: String,
+        repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver? = nil
+    ) async {
+        await MainActor.run {
+            isFetching = true
+            activeSyncBranch = branch
+        }
+        defer {
+            Task { @MainActor in
+                isFetching = false
+                activeSyncBranch = nil
+            }
+        }
+        do {
+            let output = try await GitStatusService.shared.fetchAndFastForwardBranchFromUpstream(
+                branch: branch,
+                in: repositoryURL,
+                credentialResolver: credentialResolver
+            )
+            await refresh(repositoryURL: repositoryURL)
+            notifyRepositoryChanged(repositoryURL)
+            let trimmed = output.lowercased()
+            if trimmed.contains("already up to date") || trimmed.contains("already up-to-date") {
+                showInfo("Already up to date.")
+            } else {
+                showInfo("Fetched and updated \(branch).")
+            }
+        } catch {
+            let message = error.localizedDescription
+            if message.uppercased().contains("CONFLICT") {
+                showConflict("Merge conflicts occurred while updating \(branch). Please resolve them in the File status view.")
+            } else {
+                showError(message)
+            }
         }
     }
 
