@@ -25,7 +25,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		6A843CA52FC5342F0031F230 /* macgit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = macgit.app; path = "Commit+.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6A843CA52FC5342F0031F230 /* Commit+.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Commit+.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6A843CB82FC5342F0031F230 /* macgitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = macgitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -77,7 +77,7 @@
 		6A843CA62FC5342F0031F230 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				6A843CA52FC5342F0031F230 /* macgit.app */,
+				6A843CA52FC5342F0031F230 /* Commit+.app */,
 				6A843CB82FC5342F0031F230 /* macgitTests.xctest */,
 			);
 			name = Products;
@@ -110,7 +110,7 @@
 				8A19F0F027AA100100A1B2C3 /* Sparkle */,
 			);
 			productName = macgit;
-			productReference = 6A843CA52FC5342F0031F230 /* macgit.app */;
+			productReference = 6A843CA52FC5342F0031F230 /* Commit+.app */;
 			productType = "com.apple.product-type.application";
 		};
 		6A843CBC2FC5342F0031F230 /* macgitTests */ = {
@@ -163,15 +163,15 @@
 			);
 			mainGroup = 6A843C9C2FC5342F0031F230;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
-			productRefGroup = 6A843CA62FC5342F0031F230 /* Products */;
-			projectDirPath = "";
-			projectRoot = "";
 			packageReferences = (
 				8AFB000127B0000100A1B2C3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				8AFB000227B0000100A1B2C3 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				8A19F0EF27AA100100A1B2C3 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6A843CA62FC5342F0031F230 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
 			targets = (
 				6A843CA42FC5342F0031F230 /* macgit */,
 				6A843CBC2FC5342F0031F230 /* macgitTests */,
@@ -213,61 +213,6 @@
 			targetProxy = 6ADE73B32FDC12DF00A4E999 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		8AFB000127B0000100A1B2C3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 12.15.0;
-			};
-		};
-		8AFB000227B0000100A1B2C3 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 9.2.0;
-			};
-		};
-		8A19F0EF27AA100100A1B2C3 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sparkle-project/Sparkle";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.8.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		8AFB000327B0000100A1B2C3 /* FirebaseAuth */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8AFB000127B0000100A1B2C3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseAuth;
-		};
-		8AFB000427B0000100A1B2C3 /* FirebaseFirestore */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8AFB000127B0000100A1B2C3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseFirestore;
-		};
-		8AFB000A27B0000100A1B2C3 /* FirebaseFunctions */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8AFB000127B0000100A1B2C3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseFunctions;
-		};
-		8AFB000527B0000100A1B2C3 /* GoogleSignIn */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8AFB000227B0000100A1B2C3 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
-			productName = GoogleSignIn;
-		};
-		8A19F0F027AA100100A1B2C3 /* Sparkle */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8A19F0EF27AA100100A1B2C3 /* XCRemoteSwiftPackageReference "Sparkle" */;
-			productName = Sparkle;
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		6A843CB32FC534310031F230 /* Debug */ = {
@@ -395,16 +340,23 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = macgit/macgit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = HNJ5KZ2LMD;
+				DEVELOPMENT_TEAM = RK79HKY5GW;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				FIREBASE_REVERSED_CLIENT_ID = "com.googleusercontent.apps.214252692507-g6hlj4tlu981ju0dakktfvcoblsd7dmt";
 				GENERATE_INFOPLIST_FILE = NO;
-				FIREBASE_REVERSED_CLIENT_ID = com.googleusercontent.apps.214252692507-g6hlj4tlu981ju0dakktfvcoblsd7dmt;
 				GITHUB_OAUTH_CLIENT_ID = Ov23lictC3FXsN0kjsbs;
 				GITLAB_OAUTH_CLIENT_ID = 50647b51c50900d0c81007919a499c2329d8546e2597450b6dfab90258564f66;
 				INFOPLIST_FILE = macgit/Info.plist;
@@ -412,12 +364,23 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				OTHER_LDFLAGS = "$(inherited) -framework AVFoundation -ObjC";
 				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.thanhtran.macgit;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					AVFoundation,
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.thanhtran.commitplus;
 				PRODUCT_MODULE_NAME = macgit;
 				PRODUCT_NAME = "Commit+";
 				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				SPARKLE_PUBLIC_ED_KEY = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -433,16 +396,24 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = macgit/macgit.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = HNJ5KZ2LMD;
+				DEVELOPMENT_TEAM = RK79HKY5GW;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				FIREBASE_REVERSED_CLIENT_ID = "com.googleusercontent.apps.214252692507-g6hlj4tlu981ju0dakktfvcoblsd7dmt";
 				GENERATE_INFOPLIST_FILE = NO;
-				FIREBASE_REVERSED_CLIENT_ID = com.googleusercontent.apps.214252692507-g6hlj4tlu981ju0dakktfvcoblsd7dmt;
 				GITHUB_OAUTH_CLIENT_ID = Ov23lictC3FXsN0kjsbs;
 				GITLAB_OAUTH_CLIENT_ID = 50647b51c50900d0c81007919a499c2329d8546e2597450b6dfab90258564f66;
 				INFOPLIST_FILE = macgit/Info.plist;
@@ -450,12 +421,24 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				OTHER_LDFLAGS = "$(inherited) -framework AVFoundation -ObjC";
 				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.thanhtran.macgit;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					AVFoundation,
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.thanhtran.commitplus;
 				PRODUCT_MODULE_NAME = macgit;
 				PRODUCT_NAME = "Commit+";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				SPARKLE_PUBLIC_ED_KEY = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -482,7 +465,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.thanhtran.macgitTests;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.thanhtran.commitplusTests;
 				PRODUCT_NAME = macgitTests;
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Commit+.app/Contents/MacOS/Commit+";
@@ -505,7 +488,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.thanhtran.macgitTests;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.thanhtran.commitplusTests;
 				PRODUCT_NAME = macgitTests;
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Commit+.app/Contents/MacOS/Commit+";
@@ -543,6 +526,61 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		8A19F0EF27AA100100A1B2C3 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.8.0;
+			};
+		};
+		8AFB000127B0000100A1B2C3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.15.0;
+			};
+		};
+		8AFB000227B0000100A1B2C3 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		8A19F0F027AA100100A1B2C3 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8A19F0EF27AA100100A1B2C3 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+		8AFB000327B0000100A1B2C3 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AFB000127B0000100A1B2C3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		8AFB000427B0000100A1B2C3 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AFB000127B0000100A1B2C3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		8AFB000527B0000100A1B2C3 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AFB000227B0000100A1B2C3 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		8AFB000A27B0000100A1B2C3 /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AFB000127B0000100A1B2C3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 6A843C9D2FC5342F0031F230 /* Project object */;
 }

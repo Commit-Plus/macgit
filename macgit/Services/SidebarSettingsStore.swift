@@ -55,7 +55,7 @@ struct SidebarSectionState: Codable {
 
 final class SidebarSettingsStore {
     static let shared = SidebarSettingsStore()
-    private let key = "com.thanhtran.macgit.sidebarSettings"
+    private let key = "dev.thanhtran.commitplus.sidebarSettings"
 
     private var settings: [String: SidebarSectionState] = [:]
 
