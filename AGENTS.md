@@ -1,6 +1,7 @@
 # macgit AGENTS.md
 
 ## Project: macgit (Commit+)
+
 A macOS Git client built with Swift and SwiftUI. Git is driven via `Process()` subprocess. See `README.md` for details.
 
 ## Build & Test
@@ -17,24 +18,6 @@ Run tests after non-trivial changes. Tests live in `macgitTests/` (XCTest, real 
 ### Building from `main` vs. Feature Branches / Worktrees
 
 Xcode places DerivedData under `~/Library/Developer/Xcode/DerivedData/macgit-<hash>/`. The hash is derived from the path to `macgit.xcodeproj`, so each worktree or clone directory gets its own DerivedData folder. Opening `.../macgit-*/Build/Products/Debug/Commit+.app` after building from multiple locations can launch multiple app instances.
-
-To avoid this, pin the `main` build to a fixed DerivedData path:
-
-```bash
-xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -derivedDataPath ~/Library/Developer/Xcode/DerivedData/macgit-main build
-```
-
-For feature branches or worktrees, use the default build command above (each will get its own `macgit-<hash>` folder). After the work is merged and you no longer need the worktree build, remove it:
-
-```bash
-find ~/Library/Developer/Xcode/DerivedData -maxdepth 1 -type d -name 'macgit-*' ! -name 'macgit-main' -exec rm -rf {} +
-```
-
-To start completely fresh, remove all macgit DerivedData and rebuild from `main`:
-
-```bash
-rm -rf ~/Library/Developer/Xcode/DerivedData/macgit-*
-```
 
 ## License Header
 
@@ -88,23 +71,24 @@ Git operations are centralized in `macgit/Services/GitStatusService*.swift`.
 
 **Roadmap:** `docs/superpowers/plans/2026-06-19-git-undo-roadmap.md`
 
-| Phase | Scope | Status |
-|-------|-------|--------|
-| 0 + 1A | Undo/redo infra + file-level stage/unstage | Merged to `main` |
-| 1B | Hunk/line stage undo | Merged to `main` |
-| 2 | Commit undo | Merged to `main` |
-| 3A | Stash save/drop undo | Merged to `main` |
-| 3B | Stash apply/pop undo | Merged to `main` |
-| 4 | Local branch actions undo | Merged to `main` |
-| 5 | Discard/remove undo | Merged to `main` at `0115a7f` |
-| 6 | History actions (cherry-pick/revert/reset/merge/rebase) | Merged to `main` at `177ffb9` |
-| 7 | Remote actions (pull rollback, published branch removal) | Merged to `main` at `c896c28` |
+| Phase  | Scope                                                    | Status                        |
+| ------ | -------------------------------------------------------- | ----------------------------- |
+| 0 + 1A | Undo/redo infra + file-level stage/unstage               | Merged to `main`              |
+| 1B     | Hunk/line stage undo                                     | Merged to `main`              |
+| 2      | Commit undo                                              | Merged to `main`              |
+| 3A     | Stash save/drop undo                                     | Merged to `main`              |
+| 3B     | Stash apply/pop undo                                     | Merged to `main`              |
+| 4      | Local branch actions undo                                | Merged to `main`              |
+| 5      | Discard/remove undo                                      | Merged to `main` at `0115a7f` |
+| 6      | History actions (cherry-pick/revert/reset/merge/rebase)  | Merged to `main` at `177ffb9` |
+| 7      | Remote actions (pull rollback, published branch removal) | Merged to `main` at `c896c28` |
 
 Shared rules: undo entries register only after the original action succeeds; every undo/redo refreshes `SyncState` and posts `.repositoryDidChange`; destructive inverses verify expected state before running; undo stacks are not persisted across launches.
 
 ## Recent Changes
 
 ### Menu Bar Actions Enable/Disable Logic (2026-06-16)
+
 The `@FocusedValue`/`@FocusedBinding` approach does not work reliably with `NavigationSplitView` on macOS, so menu actions are driven by notifications:
 
 - `ToolbarAction.swift` defines `ToolbarAction` and `Notification.Name.toolbarAction`.
