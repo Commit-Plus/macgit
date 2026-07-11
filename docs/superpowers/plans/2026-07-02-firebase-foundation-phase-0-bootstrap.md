@@ -228,7 +228,7 @@ git commit -m "feat: bootstrap Firebase without blocking guest mode"
 
 - [x] **Step 1: Write setup instructions with these exact operations**
 
-Document creating the Firebase project, registering macOS bundle ID `dev.thanhtran.commitplus`, enabling Email/Password and Google providers, downloading `GoogleService-Info.plist` to `macgit/GoogleService-Info.plist`, adding the `REVERSED_CLIENT_ID` URL scheme, creating a Firestore database, and installing Firebase CLI for emulator work.
+Document creating the Firebase project, registering macOS bundle ID `dev.thanhtran.macgit`, enabling Email/Password and Google providers, downloading `GoogleService-Info.plist` to `macgit/GoogleService-Info.plist`, adding the `REVERSED_CLIENT_ID` URL scheme, creating a Firestore database, and installing Firebase CLI for emulator work.
 
 - [x] **Step 2: Keep local production config out of Git**
 

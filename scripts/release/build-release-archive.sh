@@ -7,6 +7,7 @@ BUILD_VERSION="${2:?usage: build-release-archive.sh <tag-version> <build-version
 : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
 : "${GITHUB_ENV:?GITHUB_ENV is required}"
 : "${KEYCHAIN_PATH:?KEYCHAIN_PATH is required}"
+: "${PROVISIONING_PROFILE_UUID:?PROVISIONING_PROFILE_UUID is required}"
 : "${SPARKLE_PUBLIC_ED_KEY:?SPARKLE_PUBLIC_ED_KEY is required}"
 
 ARCHIVE_PATH="$RUNNER_TEMP/Commit+.xcarchive"
@@ -25,6 +26,11 @@ xcodebuild archive \
   MARKETING_VERSION="$TAG_VERSION" \
   CURRENT_PROJECT_VERSION="$BUILD_VERSION" \
   SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
+  DEVELOPMENT_TEAM="HNJ5KZ2LMD" \
+  PRODUCT_BUNDLE_IDENTIFIER="dev.thanhtran.macgit" \
+  CODE_SIGN_STYLE="Manual" \
+  CODE_SIGN_IDENTITY="Developer ID Application" \
+  PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_UUID" \
   OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 
 cp -R "$ARCHIVE_PATH/Products/Applications/Commit+.app" "$APP_PATH"

@@ -41,7 +41,7 @@ struct RecentRepository: Codable, Identifiable {
 
 final class RecentRepositoriesStore: ObservableObject {
     static let shared = RecentRepositoriesStore()
-    private let key = "dev.thanhtran.commitplus.recentRepositories"
+    private let key = "dev.thanhtran.macgit.recentRepositories"
 
     @Published var repositories: [RecentRepository] = []
 

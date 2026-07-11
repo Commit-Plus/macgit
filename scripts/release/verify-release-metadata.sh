@@ -17,7 +17,7 @@ PUBLIC_KEY=$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$INFO_PLIST")
 ARCHS=$(lipo -archs "$EXECUTABLE_PATH")
 SIGNING_DETAILS=$(codesign -dv --verbose=4 "$APP_PATH" 2>&1)
 
-test "$BUNDLE_ID" = "dev.thanhtran.commitplus"
+test "$BUNDLE_ID" = "dev.thanhtran.macgit"
 test "$MARKETING_VERSION" = "$EXPECTED_VERSION"
 test "$BUILD_VERSION" = "$EXPECTED_BUILD"
 test "$FEED_URL" = "$EXPECTED_FEED_URL"

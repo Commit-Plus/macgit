@@ -20,7 +20,7 @@ import Foundation
 import UniformTypeIdentifiers
 
 extension UTType {
-    nonisolated static let macgitGitDragPayload = UTType(exportedAs: "dev.thanhtran.commitplus.git-drag-payload")
+    nonisolated static let macgitGitDragPayload = UTType(exportedAs: "dev.thanhtran.macgit.git-drag-payload")
 }
 
 nonisolated struct GitDraggedCommit: Codable, Hashable, Sendable {
