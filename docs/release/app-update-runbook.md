@@ -9,6 +9,7 @@ This runbook is the operator checklist for publishing a production Commit+ app u
 3. Confirm `CURRENT_PROJECT_VERSION` will increase relative to the previous public release.
 4. Confirm the GitHub Actions secrets and variables in [app-update-secrets.md](app-update-secrets.md) are present and current.
 5. Confirm GitHub Pages is still configured to deploy from GitHub Actions.
+6. Confirm the pre-push hook is installed (`git config core.hooksPath .githooks`).
 
 ## What The Release Workflow Guarantees
 
@@ -28,13 +29,32 @@ The `Release App Update` workflow in [.github/workflows/release-app-update.yml](
 
 The appcast is intentionally last. If an earlier step fails, clients should never discover a partially published release.
 
-## Production Release Checklist
+## Preparing a Release
 
-1. Push the stable tag that should ship, for example:
+Use the release preparation script to bump `MARKETING_VERSION`, commit, push to `main`, and create the release tag in one step:
 
 ```bash
-git tag v1.2.3
-git push origin v1.2.3
+./scripts/release/prepare-release.sh 1.2.3
+```
+
+This guarantees the tag version matches the app's marketing version. Do not create tags manually unless you have already updated `MARKETING_VERSION` in `macgit.xcodeproj/project.pbxproj`.
+
+### Installing the Pre-Push Hook
+
+The repository includes a pre-push hook that blocks mismatched tags. Install it once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+If you push a tag like `v1.2.3` while `MARKETING_VERSION` is not `1.2.3`, the push is rejected with a clear error.
+
+## Production Release Checklist
+
+1. Run the preparation script for the target version:
+
+```bash
+./scripts/release/prepare-release.sh 1.2.3
 ```
 
 2. Wait for `Release App Update` to finish successfully in GitHub Actions.
@@ -49,7 +69,7 @@ spctl --assess --type execute --verbose /path/to/Commit+.app
 5. Confirm the published appcast is reachable:
 
 ```bash
-curl --fail --silent --show-error --location https://tranthanh98.github.io/macgit/appcast.xml --output /dev/null
+curl --fail --silent --show-error --location https://commit-plus.github.io/macgit/appcast.xml --output /dev/null
 ```
 
 6. Inspect the appcast entry and confirm it references the just-published GitHub Release asset.
