@@ -54,6 +54,8 @@ jobs:
         run: scripts/release/build-release-archive.sh "$TAG_VERSION" "$BUILD_VERSION"
         env:
           SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+          APPSTORE_CONNECT_KEY_ID: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
+          APPSTORE_CONNECT_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
 
       - name: Notarize and staple
         run: scripts/release/notarize-and-staple.sh "$ZIP_PATH" "$APP_PATH"

@@ -8,6 +8,9 @@ BUILD_VERSION="${2:?usage: build-release-archive.sh <tag-version> <build-version
 : "${GITHUB_ENV:?GITHUB_ENV is required}"
 : "${KEYCHAIN_PATH:?KEYCHAIN_PATH is required}"
 : "${SPARKLE_PUBLIC_ED_KEY:?SPARKLE_PUBLIC_ED_KEY is required}"
+: "${APPSTORE_CONNECT_API_KEY_PATH:?APPSTORE_CONNECT_API_KEY_PATH is required}"
+: "${APPSTORE_CONNECT_KEY_ID:?APPSTORE_CONNECT_KEY_ID is required}"
+: "${APPSTORE_CONNECT_ISSUER_ID:?APPSTORE_CONNECT_ISSUER_ID is required}"
 
 ARCHIVE_PATH="$RUNNER_TEMP/Commit+.xcarchive"
 APP_PATH="$RUNNER_TEMP/Commit+.app"
@@ -22,10 +25,13 @@ xcodebuild archive \
   -configuration Release \
   -destination 'generic/platform=macOS' \
   -archivePath "$ARCHIVE_PATH" \
+  -allowProvisioningUpdates \
+  -authenticationKeyPath "$APPSTORE_CONNECT_API_KEY_PATH" \
+  -authenticationKeyID "$APPSTORE_CONNECT_KEY_ID" \
+  -authenticationKeyIssuerID "$APPSTORE_CONNECT_ISSUER_ID" \
   MARKETING_VERSION="$TAG_VERSION" \
   CURRENT_PROJECT_VERSION="$BUILD_VERSION" \
   SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
-  CODE_SIGN_IDENTITY="Developer ID Application" \
   OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 
 cp -R "$ARCHIVE_PATH/Products/Applications/Commit+.app" "$APP_PATH"
