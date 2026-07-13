@@ -3,7 +3,6 @@
 .tmp
 .superpowers/
 .env.local
-macgit/GoogleService-Info.plist
 .firebase/
 firebase-debug.log
 firestore-debug.log

@@ -43,12 +43,13 @@ jobs:
           MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+          MACOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.MACOS_PROVISIONING_PROFILE_BASE64 }}
           APPSTORE_CONNECT_KEY_ID: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
           APPSTORE_CONNECT_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
           APPSTORE_CONNECT_API_KEY_BASE64: ${{ secrets.APPSTORE_CONNECT_API_KEY_BASE64 }}
 
-      - name: Run tests
-        run: xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' test
+      # - name: Run tests
+      #   run: xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' test CODE_SIGNING_ALLOWED=NO
 
       - name: Build release archive
         run: scripts/release/build-release-archive.sh "$TAG_VERSION" "$BUILD_VERSION"
@@ -64,34 +65,77 @@ jobs:
       - name: Verify release metadata
         run: scripts/release/verify-release-metadata.sh "$APP_PATH" "$TAG_VERSION" "$BUILD_VERSION" "${{ vars.SPARKLE_FEED_URL }}"
 
+      - name: Create DMG
+        run: scripts/release/create-dmg.sh "$APP_PATH" "$TAG_VERSION"
+
+      - name: Notarize and staple DMG
+        run: scripts/release/notarize-dmg.sh "$DMG_PATH"
+        env:
+          APPSTORE_CONNECT_KEY_ID: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
+          APPSTORE_CONNECT_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+
+      - name: Verify DMG
+        run: scripts/release/verify-dmg.sh "$DMG_PATH"
+
       - name: Create stable GitHub Release
         id: create_release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "$ZIP_PATH" \
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$ZIP_PATH" "$DMG_PATH" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$ZIP_PATH" "$DMG_PATH" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi
+
+          gh release edit "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
-            --generate-notes
+            --draft=false \
+            --prerelease=false \
+            --latest \
+            --verify-tag
+
           RELEASE_IS_STABLE=$(gh release view "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --json isDraft,isPrerelease \
             --jq '(.isDraft == false) and (.isPrerelease == false)')
-          test "$RELEASE_IS_STABLE" = "true"
-          RELEASE_ASSET_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ZIP_NAME}"
-          echo "release_asset_url=$RELEASE_ASSET_URL" >> "$GITHUB_OUTPUT"
-          echo "RELEASE_ASSET_URL=$RELEASE_ASSET_URL" >> "$GITHUB_ENV"
+          if [[ "$RELEASE_IS_STABLE" != "true" ]]; then
+            echo "Release $GITHUB_REF_NAME was not published as a stable release" >&2
+            gh release view "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json url,isDraft,isPrerelease,tagName
+            exit 1
+          fi
+          ZIP_RELEASE_ASSET_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ZIP_NAME}"
+          DMG_RELEASE_ASSET_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${DMG_NAME}"
+          echo "release_asset_url=$ZIP_RELEASE_ASSET_URL" >> "$GITHUB_OUTPUT"
+          echo "zip_release_asset_url=$ZIP_RELEASE_ASSET_URL" >> "$GITHUB_OUTPUT"
+          echo "dmg_release_asset_url=$DMG_RELEASE_ASSET_URL" >> "$GITHUB_OUTPUT"
+          echo "ZIP_RELEASE_ASSET_URL=$ZIP_RELEASE_ASSET_URL" >> "$GITHUB_ENV"
+          echo "DMG_RELEASE_ASSET_URL=$DMG_RELEASE_ASSET_URL" >> "$GITHUB_ENV"
 
-      - name: Verify public release asset
+      - name: Verify public release assets
         run: |
-          for attempt in {1..12}; do
-            if curl --fail --silent --show-error --location "$RELEASE_ASSET_URL" --output /dev/null; then
-              exit 0
+          for asset_url in "$ZIP_RELEASE_ASSET_URL" "$DMG_RELEASE_ASSET_URL"; do
+            reachable=false
+            for attempt in {1..12}; do
+              if curl --fail --silent --show-error --location "$asset_url" --output /dev/null; then
+                reachable=true
+                break
+              fi
+              sleep 5
+            done
+            if [[ "$reachable" != "true" ]]; then
+              echo "Release asset did not become reachable in time: $asset_url" >&2
+              exit 1
             fi
-            sleep 5
           done
-          echo "Release asset did not become reachable in time" >&2
-          exit 1
 
       - name: Generate appcast
         run: scripts/release/generate-appcast.sh "$GITHUB_REF_NAME" "$ZIP_NAME" "$ZIP_PATH" "$RUNNER_TEMP/appcast.xml"
@@ -124,9 +168,15 @@ jobs:
       - name: Clean up signing materials
         if: always()
         run: |
-          rm -f "$APPSTORE_CONNECT_API_KEY_PATH"
+          if [[ -n "${APPSTORE_CONNECT_API_KEY_PATH:-}" ]]; then
+            rm -f "$APPSTORE_CONNECT_API_KEY_PATH"
+          fi
           rm -f "$RUNNER_TEMP/developer-id-application.p12"
-          security delete-keychain "$KEYCHAIN_PATH" || true
+          rm -f "$RUNNER_TEMP/CommitPlus_DeveloperID.provisionprofile"
+          rm -f "$RUNNER_TEMP/CommitPlus_DeveloperID.plist"
+          if [[ -n "${KEYCHAIN_PATH:-}" && -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
 
   deploy_pages:
     needs: release

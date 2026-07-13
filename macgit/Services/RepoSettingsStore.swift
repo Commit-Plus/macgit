@@ -29,7 +29,7 @@ final class RepoSettingsStore {
     private let key: String
     private var settings: [String: RepoSettings]
 
-    init(userDefaults: UserDefaults = .standard, key: String = "com.thanhtran.macgit.repoSettings") {
+    init(userDefaults: UserDefaults = .standard, key: String = "dev.thanhtran.macgit.repoSettings") {
         self.userDefaults = userDefaults
         self.key = key
         if let data = userDefaults.data(forKey: key),

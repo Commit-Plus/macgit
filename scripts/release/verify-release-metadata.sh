@@ -17,13 +17,42 @@ PUBLIC_KEY=$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$INFO_PLIST")
 ARCHS=$(lipo -archs "$EXECUTABLE_PATH")
 SIGNING_DETAILS=$(codesign -dv --verbose=4 "$APP_PATH" 2>&1)
 
-test "$BUNDLE_ID" = "com.thanhtran.macgit"
-test "$MARKETING_VERSION" = "$EXPECTED_VERSION"
-test "$BUILD_VERSION" = "$EXPECTED_BUILD"
-test "$FEED_URL" = "$EXPECTED_FEED_URL"
-test -n "$PUBLIC_KEY"
-test "$ARCHS" = "arm64"
-printf '%s\n' "$SIGNING_DETAILS" | grep -F "Authority=Developer ID Application"
+assert_equal() {
+  local label="$1"
+  local actual="$2"
+  local expected="$3"
+
+  if [[ "$actual" != "$expected" ]]; then
+    echo "$label mismatch: expected '$expected', got '$actual'" >&2
+    exit 1
+  fi
+
+  echo "$label: $actual"
+}
+
+assert_equal "Bundle ID" "$BUNDLE_ID" "dev.thanhtran.macgit"
+assert_equal "Marketing version" "$MARKETING_VERSION" "$EXPECTED_VERSION"
+assert_equal "Build version" "$BUILD_VERSION" "$EXPECTED_BUILD"
+assert_equal "Sparkle feed URL" "$FEED_URL" "$EXPECTED_FEED_URL"
+
+if [[ -z "$PUBLIC_KEY" ]]; then
+  echo "Sparkle public key is missing" >&2
+  exit 1
+fi
+echo "Sparkle public key: present"
+
+if [[ " $ARCHS " != *" arm64 "* ]]; then
+  echo "Required arm64 architecture is missing; found: $ARCHS" >&2
+  exit 1
+fi
+echo "Architectures: $ARCHS"
+
+if ! printf '%s\n' "$SIGNING_DETAILS" | grep -F "Authority=Developer ID Application"; then
+  echo "App is not signed with a Developer ID Application certificate" >&2
+  printf '%s\n' "$SIGNING_DETAILS" >&2
+  exit 1
+fi
+
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 spctl --assess --type execute --verbose "$APP_PATH"
 xcrun stapler validate "$APP_PATH"

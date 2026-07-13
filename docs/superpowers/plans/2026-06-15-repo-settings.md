@@ -161,7 +161,7 @@ final class RepoSettingsStore {
 
     init(
         userDefaults: UserDefaults = .standard,
-        key: String = "com.thanhtran.macgit.repoSettings"
+        key: String = "dev.thanhtran.macgit.repoSettings"
     ) {
         self.userDefaults = userDefaults
         self.key = key

@@ -5,7 +5,7 @@ Commit+ keeps Firebase configuration local. The app remains usable in guest mode
 ## Firebase project
 
 1. Create or select the Firebase project used by Commit+.
-2. Register an Apple app with bundle ID `com.thanhtran.macgit`.
+2. Register an Apple app with bundle ID `dev.thanhtran.macgit`.
 3. In Firebase Authentication, enable:
    - Email/Password.
    - Google.
@@ -17,7 +17,7 @@ Commit+ keeps Firebase configuration local. The app remains usable in guest mode
 Google Sign-In on macOS uses an OAuth client whose application type is **iOS**.
 
 1. Open Google Cloud Console for the same project.
-2. Create or verify an iOS OAuth client with bundle ID `com.thanhtran.macgit`.
+2. Create or verify an iOS OAuth client with bundle ID `dev.thanhtran.macgit`.
 3. Return to Firebase Authentication, verify Google remains enabled, and download a fresh `GoogleService-Info.plist`.
 4. Confirm the downloaded file contains `CLIENT_ID` and `REVERSED_CLIENT_ID`.
 
@@ -116,4 +116,4 @@ for key in BUNDLE_ID PROJECT_ID GOOGLE_APP_ID CLIENT_ID REVERSED_CLIENT_ID IS_SI
 done
 ```
 
-The `BUNDLE_ID` value must equal `com.thanhtran.macgit` and `IS_SIGNIN_ENABLED` must be `true`.
+The `BUNDLE_ID` value must equal `dev.thanhtran.macgit` and `IS_SIGNIN_ENABLED` must be `true`.
