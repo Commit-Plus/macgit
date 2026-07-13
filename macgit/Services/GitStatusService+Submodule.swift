@@ -30,8 +30,7 @@ extension GitStatusService {
                 "-z",
                 "--file",
                 ".gitmodules",
-                "--get-regexp",
-                "^submodule\\..*\\.(path|url|branch)$"
+                "--list"
             ],
             in: repositoryURL
         )

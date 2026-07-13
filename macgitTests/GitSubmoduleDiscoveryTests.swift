@@ -29,6 +29,21 @@ final class GitSubmoduleDiscoveryTests: XCTestCase {
         XCTAssertEqual(entries, [])
     }
 
+    func testRepositoryWithEmptyGitmodulesReturnsNoEntries() async throws {
+        let root = try makeTemporaryDirectory()
+        let repository = root.appendingPathComponent("parent", isDirectory: true)
+        try createRepository(at: repository)
+        try "".write(
+            to: repository.appendingPathComponent(".gitmodules"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let entries = try await GitStatusService.shared.submodules(in: repository)
+
+        XCTAssertEqual(entries, [])
+    }
+
     func testDiscoversInitializedCleanSubmodule() async throws {
         let setup = try makeParentWithSubmodule()
 
