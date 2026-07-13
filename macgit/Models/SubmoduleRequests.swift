@@ -1,0 +1,135 @@
+//
+//  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
+//  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
+//
+//  This program is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Affero General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  This program is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU Affero General Public License for more details.
+//
+//  You should have received a copy of the GNU Affero General Public License
+//  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+import Foundation
+
+struct SubmoduleAddRequest: Equatable, Sendable {
+    let repository: String
+    let path: String
+    let branch: String?
+    let initializeAfterAdd: Bool
+    let shallow: Bool
+}
+
+enum SubmoduleUpdateMode: Equatable, Sendable {
+    case recordedCommit
+    case remoteCheckout
+}
+
+enum SubmoduleRequestValidationError: LocalizedError, Equatable {
+    case emptyRepository
+    case emptyPath
+    case absolutePath
+    case pathOutsideRepository
+    case duplicatePath(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyRepository:
+            "Enter a submodule repository URL."
+        case .emptyPath:
+            "Choose a path inside this repository."
+        case .absolutePath:
+            "The submodule path must be relative to this repository."
+        case .pathOutsideRepository:
+            "The submodule path must stay inside this repository."
+        case let .duplicatePath(path):
+            "A submodule is already configured at \(path)."
+        }
+    }
+}
+
+enum SubmoduleRequestValidator {
+    static func validate(
+        addRequest request: SubmoduleAddRequest,
+        in repositoryURL: URL
+    ) throws -> SubmoduleAddRequest {
+        let repository = request.repository.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !repository.isEmpty else {
+            throw SubmoduleRequestValidationError.emptyRepository
+        }
+
+        let rawPath = request.path
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\", with: "/")
+        guard !rawPath.isEmpty else {
+            throw SubmoduleRequestValidationError.emptyPath
+        }
+        guard !NSString(string: rawPath).isAbsolutePath else {
+            throw SubmoduleRequestValidationError.absolutePath
+        }
+
+        let lexicalRepositoryURL = repositoryURL.standardizedFileURL
+        let lexicalCandidateURL = lexicalRepositoryURL
+            .appendingPathComponent(rawPath)
+            .standardizedFileURL
+        guard lexicalCandidateURL != lexicalRepositoryURL,
+              lexicalCandidateURL.pathComponents.starts(with: lexicalRepositoryURL.pathComponents) else {
+            throw SubmoduleRequestValidationError.pathOutsideRepository
+        }
+
+        let relativeComponents = lexicalCandidateURL.pathComponents
+            .dropFirst(lexicalRepositoryURL.pathComponents.count)
+        let path = relativeComponents.joined(separator: "/")
+        let standardizedRepositoryURL = lexicalRepositoryURL.resolvingSymlinksInPath()
+        let candidateURL = relativeComponents.reduce(standardizedRepositoryURL) { currentURL, component in
+            currentURL
+                .appendingPathComponent(component)
+                .resolvingSymlinksInPath()
+        }
+        guard candidateURL != standardizedRepositoryURL,
+              candidateURL.pathComponents.starts(with: standardizedRepositoryURL.pathComponents) else {
+            throw SubmoduleRequestValidationError.pathOutsideRepository
+        }
+
+        if configuredSubmodulePaths(in: repositoryURL).contains(path) {
+            throw SubmoduleRequestValidationError.duplicatePath(path)
+        }
+
+        let branch = request.branch?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return SubmoduleAddRequest(
+            repository: repository,
+            path: path.replacingOccurrences(of: "\\", with: "/"),
+            branch: branch?.isEmpty == true ? nil : branch,
+            initializeAfterAdd: request.initializeAfterAdd,
+            shallow: request.shallow
+        )
+    }
+
+    private static func configuredSubmodulePaths(in repositoryURL: URL) -> Set<String> {
+        let gitmodulesURL = repositoryURL.appendingPathComponent(".gitmodules")
+        guard let contents = try? String(contentsOf: gitmodulesURL, encoding: .utf8) else {
+            return []
+        }
+
+        return Set(contents.split(whereSeparator: \.isNewline).compactMap { rawLine in
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard let separator = line.firstIndex(of: "=") else { return nil }
+            let key = line[..<separator].trimmingCharacters(in: .whitespaces)
+            guard key == "path" else { return nil }
+
+            let value = line[line.index(after: separator)...]
+                .trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+                .replacingOccurrences(of: "\\", with: "/")
+            guard !value.isEmpty else { return nil }
+            return NSString(string: value).standardizingPath
+        })
+    }
+}
