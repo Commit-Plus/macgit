@@ -17,15 +17,16 @@ The `Release App Update` workflow in [.github/workflows/release-app-update.yml](
 
 1. Validates the pushed tag format and version alignment.
 2. Resolves the pinned Sparkle checkout.
-3. Runs the full `xcodebuild ... test` suite.
-4. Archives a Release `Commit+.app` for macOS.
-5. Imports signing assets into a temporary keychain.
-6. Notarizes the ZIP, staples the app, and rebuilds the ZIP after stapling.
-7. Verifies bundle metadata, Sparkle feed configuration, code signing, hardened runtime, Gatekeeper acceptance, and `arm64` architecture.
-8. Creates a stable GitHub Release and uploads the signed ZIP.
-9. Waits until the public release asset is reachable.
-10. Generates a signed Sparkle `appcast.xml`.
-11. Publishes the appcast to GitHub Pages.
+3. Imports signing assets into a temporary keychain.
+4. Archives and Developer ID exports a Release `Commit+.app` for macOS.
+5. Notarizes the ZIP, staples the app, and rebuilds the ZIP after stapling.
+6. Verifies bundle metadata, Sparkle feed configuration, code signing, hardened runtime, Gatekeeper acceptance, and `arm64` architecture.
+7. Creates a compressed DMG containing `Commit+.app` and an `Applications` symlink.
+8. Notarizes, staples, mounts, and verifies the DMG.
+9. Creates a stable GitHub Release and uploads both the ZIP and DMG, replacing both assets safely on retries.
+10. Waits until both public release assets are reachable.
+11. Generates a signed Sparkle `appcast.xml` from the ZIP only.
+12. Publishes the appcast to GitHub Pages.
 
 The appcast is intentionally last. If an earlier step fails, clients should never discover a partially published release.
 
@@ -59,22 +60,30 @@ If you push a tag like `v1.2.3` while `MARKETING_VERSION` is not `1.2.3`, the pu
 
 2. Wait for `Release App Update` to finish successfully in GitHub Actions.
 3. Open the GitHub Release for that tag.
-Expected result: it is not a draft or prerelease, and it contains the signed Apple Silicon ZIP.
-4. Download the released ZIP and verify Gatekeeper locally:
+Expected result: it is not a draft or prerelease, and it contains both the signed ZIP and notarized DMG.
+4. Download the released DMG, open it, drag `Commit+.app` to `/Applications`, and verify Gatekeeper locally:
 
 ```bash
 spctl --assess --type execute --verbose /path/to/Commit+.app
 ```
 
-5. Confirm the published appcast is reachable:
+5. Verify the downloaded DMG ticket and Gatekeeper assessment:
+
+```bash
+xcrun stapler validate /path/to/Commit+-1.2.3-arm64.dmg
+spctl --assess --type open --context context:primary-signature --verbose /path/to/Commit+-1.2.3-arm64.dmg
+```
+
+6. Confirm the published appcast is reachable:
 
 ```bash
 curl --fail --silent --show-error --location https://commit-plus.github.io/macgit/appcast.xml --output /dev/null
 ```
 
-6. Inspect the appcast entry and confirm it references the just-published GitHub Release asset.
-7. Run the controlled-feed checklist in [app-update-e2e.md](app-update-e2e.md) against the release before relying on the production feed rollout.
-8. Record the qualified version, build number, release URL, and qualification date in the release notes or team log.
+7. Inspect the appcast entry and confirm it references the just-published ZIP asset, not the DMG.
+8. Use the DMG asset for landing-page and manual-download links; reserve the ZIP for Sparkle updates.
+9. Run the controlled-feed checklist in [app-update-e2e.md](app-update-e2e.md) against the release before relying on the production feed rollout.
+10. Record the qualified version, build number, release URL, and qualification date in the release notes or team log.
 
 ## Rollback Guidance
 
@@ -92,4 +101,4 @@ If a bad release has already reached the public appcast:
 - `SPARKLE_FEED_URL` in GitHub Actions must stay aligned with `SUFeedURL` in the app bundle metadata.
 - The repository stores only the Sparkle public key. Keep the private Ed25519 key in GitHub Actions secrets only.
 - The production feed should contain only stable releases that completed the full workflow and qualification steps.
-- Treat any mismatch between the release ZIP, appcast enclosure metadata, and signed app bundle as a release blocker.
+- Treat any mismatch between the release ZIP, DMG, appcast enclosure metadata, and signed app bundle as a release blocker.
