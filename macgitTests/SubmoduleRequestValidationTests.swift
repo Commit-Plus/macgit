@@ -92,6 +92,58 @@ final class SubmoduleRequestValidationTests: XCTestCase {
         )
     }
 
+    func testRejectsDuplicateConfiguredPathWithCaseInsensitiveKey() throws {
+        let repository = try makeRepositoryDirectory()
+        let gitmodules = """
+        [submodule "SharedKit"]
+            PATH = Packages/SharedKit
+            url = https://example.com/shared-kit.git
+        """
+        try gitmodules.write(
+            to: repository.appendingPathComponent(".gitmodules"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        XCTAssertThrowsError(
+            try SubmoduleRequestValidator.validate(
+                addRequest: request(path: "Packages/SharedKit"),
+                in: repository
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? SubmoduleRequestValidationError,
+                .duplicatePath("Packages/SharedKit")
+            )
+        }
+    }
+
+    func testRejectsDuplicateConfiguredPathWithQuotedEscapedValue() throws {
+        let repository = try makeRepositoryDirectory()
+        let gitmodules = """
+        [submodule "SharedKit"]
+            path = "Packages/Shared\\\"Kit"
+            url = https://example.com/shared-kit.git
+        """
+        try gitmodules.write(
+            to: repository.appendingPathComponent(".gitmodules"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        XCTAssertThrowsError(
+            try SubmoduleRequestValidator.validate(
+                addRequest: request(path: "Packages/Shared\"Kit"),
+                in: repository
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? SubmoduleRequestValidationError,
+                .duplicatePath("Packages/Shared\"Kit")
+            )
+        }
+    }
+
     func testTrimsConfiguredBranch() throws {
         let repository = try makeRepositoryDirectory()
 

@@ -114,22 +114,37 @@ enum SubmoduleRequestValidator {
 
     private static func configuredSubmodulePaths(in repositoryURL: URL) -> Set<String> {
         let gitmodulesURL = repositoryURL.appendingPathComponent(".gitmodules")
-        guard let contents = try? String(contentsOf: gitmodulesURL, encoding: .utf8) else {
+        guard FileManager.default.fileExists(atPath: gitmodulesURL.path) else {
             return []
         }
 
-        return Set(contents.split(whereSeparator: \.isNewline).compactMap { rawLine in
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
-            guard let separator = line.firstIndex(of: "=") else { return nil }
-            let key = line[..<separator].trimmingCharacters(in: .whitespaces)
-            guard key == "path" else { return nil }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = [
+            "config",
+            "--null",
+            "--file", gitmodulesURL.path,
+            "--get-regexp", #"^submodule\..*\.path$"#
+        ]
 
-            let value = line[line.index(after: separator)...]
-                .trimmingCharacters(in: .whitespaces)
-                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-                .replacingOccurrences(of: "\\", with: "/")
-            guard !value.isEmpty else { return nil }
-            return NSString(string: value).standardizingPath
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+
+        guard (try? process.run()) != nil else { return [] }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return [] }
+
+        return Set(data.split(separator: 0).compactMap { record in
+            guard let separator = record.firstIndex(of: 0x0A) else { return nil }
+            let valueData = record[record.index(after: separator)...]
+            guard let value = String(data: valueData, encoding: .utf8), !value.isEmpty else {
+                return nil
+            }
+
+            let normalizedValue = value.replacingOccurrences(of: "\\", with: "/")
+            return NSString(string: normalizedValue).standardizingPath
         })
     }
 }
