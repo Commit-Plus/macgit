@@ -36,8 +36,14 @@ echo "$APPSTORE_CONNECT_API_KEY_BASE64" | decode_base64 > "$API_KEY_PATH"
 security cms -D -i "$PROVISIONING_PROFILE_PATH" > "$PROVISIONING_PROFILE_PLIST_PATH"
 PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PROVISIONING_PROFILE_PLIST_PATH")
 PROFILE_TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$PROVISIONING_PROFILE_PLIST_PATH")
-PROFILE_APP_IDENTIFIER=$(plutil -extract 'Entitlements.application-identifier' raw "$PROVISIONING_PROFILE_PLIST_PATH" 2>/dev/null || \
-  plutil -extract 'Entitlements.com.apple.application-identifier' raw "$PROVISIONING_PROFILE_PLIST_PATH")
+if PROFILE_APP_IDENTIFIER=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$PROVISIONING_PROFILE_PLIST_PATH" 2>/dev/null); then
+  :
+elif PROFILE_APP_IDENTIFIER=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$PROVISIONING_PROFILE_PLIST_PATH" 2>/dev/null); then
+  :
+else
+  echo "Provisioning profile does not contain an application identifier entitlement" >&2
+  exit 1
+fi
 
 test "$PROFILE_TEAM_ID" = "$EXPECTED_TEAM_ID"
 test "$PROFILE_APP_IDENTIFIER" = "$EXPECTED_TEAM_ID.$EXPECTED_BUNDLE_ID"

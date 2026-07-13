@@ -125,9 +125,15 @@ jobs:
       - name: Clean up signing materials
         if: always()
         run: |
-          rm -f "$APPSTORE_CONNECT_API_KEY_PATH"
+          if [[ -n "${APPSTORE_CONNECT_API_KEY_PATH:-}" ]]; then
+            rm -f "$APPSTORE_CONNECT_API_KEY_PATH"
+          fi
           rm -f "$RUNNER_TEMP/developer-id-application.p12"
-          security delete-keychain "$KEYCHAIN_PATH" || true
+          rm -f "$RUNNER_TEMP/CommitPlus_DeveloperID.provisionprofile"
+          rm -f "$RUNNER_TEMP/CommitPlus_DeveloperID.plist"
+          if [[ -n "${KEYCHAIN_PATH:-}" && -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
 
   deploy_pages:
     needs: release
