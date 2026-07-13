@@ -194,6 +194,7 @@ actor GitStatusService {
         var remote: String = "origin"
         var branches: [String] = []
         var branchMappings: [String: String] = [:] // local branch -> remote branch name
+        var tags: [String] = []
         var pushTags: Bool = false
     }
 
