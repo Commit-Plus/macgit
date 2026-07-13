@@ -557,6 +557,15 @@ struct MainWindowView: View {
             onRequestOpenWorktreeInTerminal: { path in
                 openWorktreeInTerminal(at: path)
             },
+            onRequestOpenSubmodule: { path in
+                openWorktreeInNewWindow(at: path)
+            },
+            onRequestShowSubmoduleInFinder: { path in
+                NSWorkspace.shared.activateFileViewerSelecting([path])
+            },
+            onRequestOpenSubmoduleInTerminal: { path in
+                openWorktreeInTerminal(at: path)
+            },
             onRequestSearch: {
                 showingSearchModal = true
             },
@@ -635,6 +644,8 @@ struct MainWindowView: View {
                 )
             case .stash(let ref):
                 StashView(repositoryURL: repositoryURL, stashRef: ref)
+            case .submodule:
+                EmptyStateView(message: "Double-click to open this submodule")
             case .item(.search):
                 SearchView(repositoryURL: repositoryURL)
             case .none:

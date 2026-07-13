@@ -1,0 +1,123 @@
+//
+//  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
+//  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
+//
+//  This program is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Affero General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  This program is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU Affero General Public License for more details.
+//
+//  You should have received a copy of the GNU Affero General Public License
+//  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+import SwiftUI
+
+struct SidebarSubmoduleRow: View {
+    let entry: GitSubmoduleEntry
+    let onOpen: () -> Void
+    let onShowInFinder: () -> Void
+    let onOpenInTerminal: () -> Void
+
+    private var actions: Set<SubmoduleSidebarAction> {
+        SubmoduleSidebarPolicy.actions(for: entry)
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: entry.state.systemImage)
+                .foregroundStyle(entry.state.tint)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(entry.name)
+                    .lineLimit(1)
+                Text(entry.path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 6)
+
+            if let branch = entry.branch {
+                Text(branch)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Text(entry.state.title)
+                .font(.caption)
+                .foregroundStyle(entry.state.tint)
+                .lineLimit(1)
+        }
+        .contentShape(.rect)
+        .onTapGesture(count: 2, perform: openIfAvailable)
+        .contextMenu {
+            if actions.contains(.openInCommitPlus) {
+                Button("Open in Commit+", systemImage: "macwindow", action: onOpen)
+            }
+            if actions.contains(.showInFinder) {
+                Button("Show in Finder", systemImage: "folder", action: onShowInFinder)
+            }
+            if actions.contains(.openInTerminal) {
+                Button("Open in Terminal", systemImage: "terminal", action: onOpenInTerminal)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAction(named: "Open in Commit+", openIfAvailable)
+    }
+
+    private var accessibilityLabel: String {
+        if let branch = entry.branch {
+            return "\(entry.name), \(entry.path), branch \(branch), \(entry.state.title)"
+        }
+        return "\(entry.name), \(entry.path), \(entry.state.title)"
+    }
+
+    private func openIfAvailable() {
+        guard actions.contains(.openInCommitPlus) else { return }
+        onOpen()
+    }
+}
+
+private extension GitSubmoduleState {
+    var title: String {
+        switch self {
+        case .clean: "Clean"
+        case .modified: "Modified"
+        case .newCommits: "New commits"
+        case .uninitialized: "Not initialized"
+        case .missing: "Missing"
+        case .conflict: "Conflict"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .clean: "checkmark.circle.fill"
+        case .modified: "pencil.circle.fill"
+        case .newCommits: "arrow.triangle.2.circlepath.circle.fill"
+        case .uninitialized: "circle.dashed"
+        case .missing: "exclamationmark.triangle.fill"
+        case .conflict: "exclamationmark.octagon.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .clean: .green
+        case .modified: .orange
+        case .newCommits: .blue
+        case .uninitialized: .secondary
+        case .missing, .conflict: .red
+        }
+    }
+}

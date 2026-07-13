@@ -1,7 +1,7 @@
 # Submodule and Subtree Sidebar Management Design
 
 **Date:** 2026-07-13
-**Status:** Draft for written review; implementation direction approved
+**Status:** Approved; Phase 1 implementation started
 **Source:** User-approved SourceTree-inspired proposal
 
 ## Purpose
@@ -124,7 +124,7 @@ Add mode runs `git subtree add` and records the registry only after Git succeeds
 
 `GitStatusService+Submodule.swift`:
 
-- Discovers configuration with `git config -z --file .gitmodules --get-regexp`.
+- Discovers configuration with `git config -z --file .gitmodules --list`; the parser ignores unrelated keys, and an empty file returns an empty list without treating Git's no-match exit status as an error.
 - Reads recorded gitlinks with `git ls-files --stage`.
 - Reads checkout state with `git submodule status --recursive` and targeted repository checks.
 - Owns add, initialize, recorded update, remote update, sync, set URL/branch, deinitialize, and remove operations.

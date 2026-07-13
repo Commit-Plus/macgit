@@ -34,6 +34,7 @@ enum SidebarSelection: Hashable {
     case remoteBranch(String)
     case stash(String)
     case head(String)
+    case submodule(String)
 }
 
 enum SidebarItem: String, CaseIterable, Identifiable {
@@ -165,6 +166,9 @@ struct SidebarView: View {
     let onRequestDeleteStash: (String) -> Void
     let onRequestOpenWorktree: (URL) -> Void
     let onRequestOpenWorktreeInTerminal: (URL) -> Void
+    let onRequestOpenSubmodule: (URL) -> Void
+    let onRequestShowSubmoduleInFinder: (URL) -> Void
+    let onRequestOpenSubmoduleInTerminal: (URL) -> Void
     let onRequestSearch: () -> Void
     let onRequestDragDrop: (GitDragDropRequest) -> Void
     let onRunRepositoryOperation: RepositoryOperationRunner
@@ -187,6 +191,9 @@ struct SidebarView: View {
     @State private var expandedRemoteFolders: Set<String> = []
     @State private var stashEntries: [StashEntry] = []
     @State private var isLoadingStashes = false
+    @State private var submoduleEntries: [GitSubmoduleEntry] = []
+    @State private var hasLoadedSubmodules = false
+    @State private var isLoadingSubmodules = false
     @State private var worktreeEntries: [WorktreeEntry] = []
     @State private var hasLoadedWorktrees = false
     @State private var isLoadingWorktrees = false
@@ -266,6 +273,9 @@ struct SidebarView: View {
         onRequestDeleteStash: @escaping (String) -> Void = { _ in },
         onRequestOpenWorktree: @escaping (URL) -> Void = { _ in },
         onRequestOpenWorktreeInTerminal: @escaping (URL) -> Void = { _ in },
+        onRequestOpenSubmodule: @escaping (URL) -> Void = { _ in },
+        onRequestShowSubmoduleInFinder: @escaping (URL) -> Void = { _ in },
+        onRequestOpenSubmoduleInTerminal: @escaping (URL) -> Void = { _ in },
         onRequestSearch: @escaping () -> Void = {},
         onRequestDragDrop: @escaping (GitDragDropRequest) -> Void = { _ in },
         onRunRepositoryOperation: @escaping RepositoryOperationRunner = { _, operation in
@@ -299,6 +309,9 @@ struct SidebarView: View {
         self.onRequestDeleteStash = onRequestDeleteStash
         self.onRequestOpenWorktree = onRequestOpenWorktree
         self.onRequestOpenWorktreeInTerminal = onRequestOpenWorktreeInTerminal
+        self.onRequestOpenSubmodule = onRequestOpenSubmodule
+        self.onRequestShowSubmoduleInFinder = onRequestShowSubmoduleInFinder
+        self.onRequestOpenSubmoduleInTerminal = onRequestOpenSubmoduleInTerminal
         self.onRequestSearch = onRequestSearch
         self.onRequestDragDrop = onRequestDragDrop
         self.onRunRepositoryOperation = onRunRepositoryOperation
@@ -439,12 +452,36 @@ struct SidebarView: View {
                 }
 
                 if appState.showSubmodules {
-                    Section(SidebarSection.submodules.rawValue) {
-                        Text("Coming soon")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    Section {
+                        sectionHeader(.submodules, isExpanded: sectionStates.submodulesExpanded)
+
+                        if sectionStates.submodulesExpanded {
+                            if isLoadingSubmodules && submoduleEntries.isEmpty {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.leading, 4)
+                            } else if submoduleEntries.isEmpty {
+                                Text("No submodules")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(submoduleEntries) { entry in
+                                    let path = repositoryURL.appendingPathComponent(
+                                        entry.path,
+                                        isDirectory: true
+                                    )
+                                    SidebarSubmoduleRow(
+                                        entry: entry,
+                                        onOpen: { onRequestOpenSubmodule(path) },
+                                        onShowInFinder: { onRequestShowSubmoduleInFinder(path) },
+                                        onOpenInTerminal: { onRequestOpenSubmoduleInTerminal(path) }
+                                    )
+                                    .tag(SidebarSelection.submodule(entry.path))
+                                }
+                            }
+                        }
                     }
-                    .disabled(true)
                 }
 
                 if appState.showSubtrees {
@@ -473,6 +510,12 @@ struct SidebarView: View {
                         await loadRemotes()
                         await loadStashes()
                     }
+                }
+            }
+            .onChange(of: appState.showSubmodules) { _, isVisible in
+                guard isVisible, sectionStates.submodulesExpanded else { return }
+                Task {
+                    await loadSubmodules(force: false)
                 }
             }
             .alert("Error", isPresented: $showingError) {
@@ -830,6 +873,13 @@ struct SidebarView: View {
                 .fixedSize()
                 .help("Worktree Actions")
             }
+            if section == .submodules {
+                Button("Add Submodule", systemImage: "plus", action: {})
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.plain)
+                    .disabled(true)
+                    .help("Available in Phase 2")
+            }
             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -1052,6 +1102,10 @@ struct SidebarView: View {
         worktreeEntries = []
         hasLoadedWorktrees = false
         isLoadingWorktrees = false
+
+        submoduleEntries = []
+        hasLoadedSubmodules = false
+        isLoadingSubmodules = false
     }
 
     private func loadVisibleSections(force: Bool) async {
@@ -1060,6 +1114,9 @@ struct SidebarView: View {
         }
         if sectionStates.worktreesExpanded {
             await loadWorktrees(force: force)
+        }
+        if appState.showSubmodules && sectionStates.submodulesExpanded {
+            await loadSubmodules(force: force)
         }
     }
 
@@ -1072,6 +1129,10 @@ struct SidebarView: View {
         case .worktrees:
             if sectionStates.worktreesExpanded {
                 await loadWorktrees(force: false)
+            }
+        case .submodules:
+            if appState.showSubmodules && sectionStates.submodulesExpanded {
+                await loadSubmodules(force: false)
             }
         default:
             break
@@ -2544,6 +2605,32 @@ struct SidebarView: View {
         await MainActor.run {
             worktreeEntries = entries
             hasLoadedWorktrees = true
+        }
+    }
+
+    private func loadSubmodules(force: Bool = false) async {
+        if !force && hasLoadedSubmodules {
+            return
+        }
+
+        isLoadingSubmodules = true
+        defer { isLoadingSubmodules = false }
+
+        do {
+            let entries = try await GitStatusService.shared.submodules(in: repositoryURL)
+            await MainActor.run {
+                submoduleEntries = entries
+                hasLoadedSubmodules = true
+                if case .submodule(let path) = selection,
+                   !entries.contains(where: { $0.path == path }) {
+                    selection = nil
+                }
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
         }
     }
 

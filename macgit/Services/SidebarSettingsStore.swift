@@ -28,19 +28,22 @@ struct SidebarSectionState: Codable {
     var remotesExpanded: Bool = true
     var stashesExpanded: Bool = true
     var worktreesExpanded: Bool = false
+    var submodulesExpanded: Bool = true
 
     init(
         branchesExpanded: Bool = false,
         tagsExpanded: Bool = true,
         remotesExpanded: Bool = true,
         stashesExpanded: Bool = true,
-        worktreesExpanded: Bool = false
+        worktreesExpanded: Bool = false,
+        submodulesExpanded: Bool = true
     ) {
         self.branchesExpanded = branchesExpanded
         self.tagsExpanded = tagsExpanded
         self.remotesExpanded = remotesExpanded
         self.stashesExpanded = stashesExpanded
         self.worktreesExpanded = worktreesExpanded
+        self.submodulesExpanded = submodulesExpanded
     }
 
     init(from decoder: Decoder) throws {
@@ -50,6 +53,7 @@ struct SidebarSectionState: Codable {
         remotesExpanded = try container.decodeIfPresent(Bool.self, forKey: .remotesExpanded) ?? true
         stashesExpanded = try container.decodeIfPresent(Bool.self, forKey: .stashesExpanded) ?? true
         worktreesExpanded = try container.decodeIfPresent(Bool.self, forKey: .worktreesExpanded) ?? false
+        submodulesExpanded = try container.decodeIfPresent(Bool.self, forKey: .submodulesExpanded) ?? true
     }
 }
 
@@ -85,6 +89,8 @@ final class SidebarSettingsStore {
             state.stashesExpanded.toggle()
         case .worktrees:
             state.worktreesExpanded.toggle()
+        case .submodules:
+            state.submodulesExpanded.toggle()
         default:
             break
         }
