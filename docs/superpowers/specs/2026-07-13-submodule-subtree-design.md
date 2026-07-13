@@ -1,7 +1,7 @@
 # Submodule and Subtree Sidebar Management Design
 
 **Date:** 2026-07-13
-**Status:** Approved; Phase 1 implementation started
+**Status:** Approved; Phase 1 completed and merged to `main` at `37aaad7`
 **Source:** User-approved SourceTree-inspired proposal
 
 ## Purpose

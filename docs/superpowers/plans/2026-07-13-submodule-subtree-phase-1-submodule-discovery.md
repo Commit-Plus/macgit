@@ -28,7 +28,7 @@ None. This is the first phase.
 - Task 2 completed at `721c4c6`, with empty-`.gitmodules` hardening added in the final review: seven real-repository discovery tests pass after their expected red states.
 - Task 3 completed at `42b4bd1`: sidebar policy/settings tests passed and the macOS build exited successfully.
 - Task 4 verification on the phase branch: the combined focused Phase 1 suite passed and the macOS build succeeded. The one permitted full-suite attempt ended during test-host bootstrap with `Early unexpected exit` / `abort() called`; per `AGENTS.md`, it was not rerun.
-- Pending: merge the phase branch to `main`, verify the merged checkout, then mark Phase 1 `[completed]` in the roadmap.
+- Merged to `main` at `37aaad7`. Per the user's merge-only request, no test or build was rerun on the merged checkout.
 
 ## File Structure
 
@@ -212,4 +212,4 @@ rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platf
 rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build
 ```
 
-- [ ] After merge and verification on `main`, mark Phase 1 `[completed]` in the roadmap with the landed commit. Do not mark it completed while it exists only on the phase branch.
+- [x] Merged to `main` at `37aaad7` and marked Phase 1 `[completed]` in the roadmap. No post-merge test or build was rerun per the user's explicit request.
