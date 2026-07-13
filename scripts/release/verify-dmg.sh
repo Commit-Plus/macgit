@@ -52,6 +52,7 @@ test "$(readlink "$MOUNT_POINT/Applications")" = "/Applications"
 
 codesign --verify --deep --strict --verbose=2 "$MOUNT_POINT/Commit+.app"
 spctl --assess --type execute --verbose "$MOUNT_POINT/Commit+.app"
+codesign --verify --verbose=2 "$DMG_PATH"
 xcrun stapler validate "$DMG_PATH"
 spctl --assess --type open --context context:primary-signature --verbose "$DMG_PATH"
 hdiutil verify "$DMG_PATH"

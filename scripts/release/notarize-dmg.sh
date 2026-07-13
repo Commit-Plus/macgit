@@ -19,11 +19,30 @@ set -euo pipefail
 
 DMG_PATH="${1:?usage: notarize-dmg.sh <dmg-path>}"
 
+: "${KEYCHAIN_PATH:?KEYCHAIN_PATH is required}"
 : "${APPSTORE_CONNECT_API_KEY_PATH:?APPSTORE_CONNECT_API_KEY_PATH is required}"
 : "${APPSTORE_CONNECT_KEY_ID:?APPSTORE_CONNECT_KEY_ID is required}"
 : "${APPSTORE_CONNECT_ISSUER_ID:?APPSTORE_CONNECT_ISSUER_ID is required}"
 
 test -f "$DMG_PATH"
+test -f "$KEYCHAIN_PATH"
+
+SIGNING_IDENTITY=$(
+  security find-identity -v -p codesigning "$KEYCHAIN_PATH" |
+    awk '/"Developer ID Application:/ && !identity { identity=$2 } END { print identity }'
+)
+
+if [[ -z "$SIGNING_IDENTITY" ]]; then
+  echo "No Developer ID Application signing identity found in $KEYCHAIN_PATH" >&2
+  exit 1
+fi
+
+codesign --force \
+  --sign "$SIGNING_IDENTITY" \
+  --keychain "$KEYCHAIN_PATH" \
+  --timestamp \
+  "$DMG_PATH"
+codesign --verify --verbose=2 "$DMG_PATH"
 
 SUBMISSION_RESULT_PATH="${RUNNER_TEMP:-/tmp}/dmg-notary-submission.json"
 NOTARY_LOG_PATH="${RUNNER_TEMP:-/tmp}/dmg-notary-log.json"
