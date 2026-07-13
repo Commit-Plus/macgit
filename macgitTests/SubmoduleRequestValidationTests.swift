@@ -144,6 +144,25 @@ final class SubmoduleRequestValidationTests: XCTestCase {
         }
     }
 
+    func testGitStatusServiceReadsConfiguredPathsUsingGitConfigSemantics() throws {
+        let repository = try makeRepositoryDirectory()
+        let gitmodules = """
+        [submodule "SharedKit"]
+            PATH = "Packages/Shared\\\"Kit"
+            url = https://example.com/shared-kit.git
+        """
+        try gitmodules.write(
+            to: repository.appendingPathComponent(".gitmodules"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        XCTAssertEqual(
+            GitStatusService.shared.configuredSubmodulePaths(in: repository),
+            ["Packages/Shared\"Kit"]
+        )
+    }
+
     func testTrimsConfiguredBranch() throws {
         let repository = try makeRepositoryDirectory()
 

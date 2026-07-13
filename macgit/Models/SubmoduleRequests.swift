@@ -96,7 +96,7 @@ enum SubmoduleRequestValidator {
             throw SubmoduleRequestValidationError.pathOutsideRepository
         }
 
-        if configuredSubmodulePaths(in: repositoryURL).contains(path) {
+        if GitStatusService.shared.configuredSubmodulePaths(in: repositoryURL).contains(path) {
             throw SubmoduleRequestValidationError.duplicatePath(path)
         }
 
@@ -112,39 +112,4 @@ enum SubmoduleRequestValidator {
         )
     }
 
-    private static func configuredSubmodulePaths(in repositoryURL: URL) -> Set<String> {
-        let gitmodulesURL = repositoryURL.appendingPathComponent(".gitmodules")
-        guard FileManager.default.fileExists(atPath: gitmodulesURL.path) else {
-            return []
-        }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = [
-            "config",
-            "--null",
-            "--file", gitmodulesURL.path,
-            "--get-regexp", #"^submodule\..*\.path$"#
-        ]
-
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-
-        guard (try? process.run()) != nil else { return [] }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return [] }
-
-        return Set(data.split(separator: 0).compactMap { record in
-            guard let separator = record.firstIndex(of: 0x0A) else { return nil }
-            let valueData = record[record.index(after: separator)...]
-            guard let value = String(data: valueData, encoding: .utf8), !value.isEmpty else {
-                return nil
-            }
-
-            let normalizedValue = value.replacingOccurrences(of: "\\", with: "/")
-            return NSString(string: normalizedValue).standardizingPath
-        })
-    }
 }
