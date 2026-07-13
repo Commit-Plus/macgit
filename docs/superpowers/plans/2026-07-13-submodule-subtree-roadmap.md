@@ -25,7 +25,7 @@
 
 ## Plan Index
 
-- Phase 1: [pending] [2026-07-13-submodule-subtree-phase-1-submodule-discovery.md](2026-07-13-submodule-subtree-phase-1-submodule-discovery.md) (branch: `codex/submodule-subtree-phase-1-submodule-discovery`)
+- Phase 1: [in progress] [2026-07-13-submodule-subtree-phase-1-submodule-discovery.md](2026-07-13-submodule-subtree-phase-1-submodule-discovery.md) (branch: `codex/submodule-subtree-phase-1-submodule-discovery`)
 - Phase 2: [pending] [2026-07-13-submodule-subtree-phase-2-submodule-safe-actions.md](2026-07-13-submodule-subtree-phase-2-submodule-safe-actions.md) (branch: `codex/submodule-subtree-phase-2-submodule-safe-actions`)
 - Phase 3: [pending] [2026-07-13-submodule-subtree-phase-3-submodule-lifecycle.md](2026-07-13-submodule-subtree-phase-3-submodule-lifecycle.md) (branch: `codex/submodule-subtree-phase-3-submodule-lifecycle`)
 - Phase 4: [pending] [2026-07-13-submodule-subtree-phase-4-subtree-registry.md](2026-07-13-submodule-subtree-phase-4-subtree-registry.md) (branch: `codex/submodule-subtree-phase-4-subtree-registry`)

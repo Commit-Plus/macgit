@@ -22,12 +22,22 @@
 
 None. This is the first phase.
 
+## Implementation Status
+
+- Task 1 completed at `7cb36bf`: parser tests passed after the expected missing-type red state.
+- Task 2 completed at `721c4c6`: six real-repository discovery tests passed after the expected missing-service red state.
+- Task 3 completed at `42b4bd1`: sidebar policy/settings tests passed and the macOS build exited successfully.
+- Task 4 verification on the phase branch: the combined focused Phase 1 suite passed and the macOS build succeeded. The one permitted full-suite attempt ended during test-host bootstrap with `Early unexpected exit` / `abort() called`; per `AGENTS.md`, it was not rerun.
+- Pending: merge the phase branch to `main`, verify the merged checkout, then mark Phase 1 `[completed]` in the roadmap.
+
 ## File Structure
 
 - Create `macgit/Models/GitSubmoduleEntry.swift`: model and state enum.
 - Create `macgit/Services/GitSubmoduleParser.swift`: deterministic parser for command outputs.
 - Create `macgit/Services/GitStatusService+Submodule.swift`: discovery commands and status aggregation.
-- Create `macgit/Views/MainWindow/SidebarSubmoduleViews.swift`: row and pure action policy.
+- Create `macgit/Models/SubmoduleSidebarAction.swift`: read-only sidebar action identifiers.
+- Create `macgit/Services/SubmoduleSidebarPolicy.swift`: pure action availability policy.
+- Create `macgit/Views/MainWindow/SidebarSubmoduleRow.swift`: accessible submodule row and context menu.
 - Modify `macgit/Services/SidebarSettingsStore.swift`: persisted expansion state.
 - Modify `macgit/Views/MainWindow/SidebarView.swift`: state, lazy load, section, selection, refresh.
 - Modify `macgit/Views/MainWindow/MainWindowView.swift`: open/Finder/Terminal callbacks.
