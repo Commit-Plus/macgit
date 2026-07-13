@@ -80,11 +80,26 @@ jobs:
               --title "$GITHUB_REF_NAME" \
               --generate-notes
           fi
+
+          gh release edit "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --draft=false \
+            --prerelease=false \
+            --latest \
+            --verify-tag
+
           RELEASE_IS_STABLE=$(gh release view "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --json isDraft,isPrerelease \
             --jq '(.isDraft == false) and (.isPrerelease == false)')
-          test "$RELEASE_IS_STABLE" = "true"
+          if [[ "$RELEASE_IS_STABLE" != "true" ]]; then
+            echo "Release $GITHUB_REF_NAME was not published as a stable release" >&2
+            gh release view "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json url,isDraft,isPrerelease,tagName
+            exit 1
+          fi
           RELEASE_ASSET_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ZIP_NAME}"
           echo "release_asset_url=$RELEASE_ASSET_URL" >> "$GITHUB_OUTPUT"
           echo "RELEASE_ASSET_URL=$RELEASE_ASSET_URL" >> "$GITHUB_ENV"
