@@ -90,6 +90,8 @@ struct MainWindowView: View {
     @State private var branchToRename: String = ""
     @State private var showingDetachedHeadConfirmation = false
     @State private var tagToCheckout: String = ""
+    @State private var displayedTagDetails: GitTagDetails?
+    @State private var tagPendingDeletion: String?
     @State private var pendingStashRef: String?
     @State private var pendingStashAction: StashAction?
     @State private var pendingStashPaths: [String] = []
@@ -181,6 +183,13 @@ struct MainWindowView: View {
             .sheet(isPresented: $showingFetchSheet) { fetchSheet }
             .sheet(isPresented: $showingBranchSheet, onDismiss: { branchSheetStartPoint = nil }) { branchSheet }
             .sheet(isPresented: $showingTagSheet, onDismiss: resetTagSheet) { tagSheet }
+            .sheet(isPresented: tagDetailsSheetPresented) {
+                if let details = displayedTagDetails {
+                    TagDetailsSheet(details: details) {
+                        displayedTagDetails = nil
+                    }
+                }
+            }
             .sheet(isPresented: $showingMergeSheet) { mergeSheet }
             .sheet(isPresented: $showingStashSheet) { stashSheet }
             .sheet(isPresented: $showingRepositorySettings) { repositorySettingsSheet }
@@ -243,6 +252,18 @@ struct MainWindowView: View {
                 }
             } message: {
                 Text("Are you sure you want to checkout '\(tagToCheckout)'?\n\nDoing so will make your working copy a 'detached HEAD', which means you won't be on a branch anymore. If you want to commit after this you'll probably want to either checkout a branch again, or create a new branch. Is this ok?")
+            }
+            .alert("Delete Tag", isPresented: tagDeletionConfirmationPresented) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) {
+                    guard let tag = tagPendingDeletion else { return }
+                    tagPendingDeletion = nil
+                    runRepositoryOperation("Deleting \(tag)...") {
+                        await deleteTag(tag)
+                    }
+                }
+            } message: {
+                Text("Delete local tag '\(tagPendingDeletion ?? "")'?")
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 guard repoSettings.refreshOnAppActive else { return }
@@ -451,6 +472,32 @@ struct MainWindowView: View {
                     await presentTagSheetFromBranchTip(branch)
                 }
             },
+            onRequestTagDetails: { tag in
+                runRepositoryOperation("Loading details for \(tag)...") {
+                    await presentTagDetails(tag)
+                }
+            },
+            onRequestDiffTagAgainstCurrent: { tag in
+                selectedItem = .tag(tag)
+                selectedBranchName = tag
+            },
+            onRequestPushTagToRemote: { tag, remote in
+                runRepositoryOperation("Pushing \(tag) to \(remote)...") {
+                    let options = GitStatusService.PushOptions(
+                        remote: remote,
+                        tags: [tag]
+                    )
+                    await syncState.performPush(
+                        options: options,
+                        repositoryURL: repositoryURL,
+                        undoManager: undoManager,
+                        credentialResolver: providerAccountController.credentialResolver()
+                    )
+                }
+            },
+            onRequestDeleteTag: { tag in
+                tagPendingDeletion = tag
+            },
             onRequestRebaseOnto: { branch in
                 runRepositoryOperation("Rebasing onto \(branch)...") {
                     await syncState.performRebaseOnto(
@@ -526,6 +573,28 @@ struct MainWindowView: View {
         let behind = syncState.pullBadgeCount
         guard ahead > 0 || behind > 0 else { return nil }
         return BranchSyncStatus(ahead: ahead, behind: behind)
+    }
+
+    private var tagDetailsSheetPresented: Binding<Bool> {
+        Binding(
+            get: { displayedTagDetails != nil },
+            set: { isPresented in
+                if !isPresented {
+                    displayedTagDetails = nil
+                }
+            }
+        )
+    }
+
+    private var tagDeletionConfirmationPresented: Binding<Bool> {
+        Binding(
+            get: { tagPendingDeletion != nil },
+            set: { isPresented in
+                if !isPresented {
+                    tagPendingDeletion = nil
+                }
+            }
+        )
     }
 
     @ViewBuilder
@@ -1893,6 +1962,43 @@ struct MainWindowView: View {
             )
             await MainActor.run {
                 showingTagSheet = false
+            }
+            await syncState.refresh(repositoryURL: repositoryURL)
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+        } catch {
+            await MainActor.run {
+                syncState.showError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func presentTagDetails(_ tag: String) async {
+        do {
+            let details = try await GitStatusService.shared.tagDetails(
+                name: tag,
+                in: repositoryURL
+            )
+            await MainActor.run {
+                displayedTagDetails = details
+            }
+        } catch {
+            await MainActor.run {
+                syncState.showError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func deleteTag(_ tag: String) async {
+        do {
+            try await GitStatusService.shared.deleteTag(name: tag, in: repositoryURL)
+            await MainActor.run {
+                if selectedItem == .tag(tag) {
+                    selectedItem = .item(.history)
+                }
             }
             await syncState.refresh(repositoryURL: repositoryURL)
             NotificationCenter.default.post(

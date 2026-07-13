@@ -152,6 +152,10 @@ struct SidebarView: View {
     let onRequestCreatePullRequest: (String) -> Void
     let onRequestCreateBranchFromBranch: (String) -> Void
     let onRequestCreateTagFromBranch: (String) -> Void
+    let onRequestTagDetails: (String) -> Void
+    let onRequestDiffTagAgainstCurrent: (String) -> Void
+    let onRequestPushTagToRemote: (String, String) -> Void
+    let onRequestDeleteTag: (String) -> Void
     let onRequestRebaseOnto: (String) -> Void
     let onRequestMergeBranchIntoCurrent: (String) -> Void
     let onRequestPushBranchToRemote: (String, String) -> Void
@@ -249,6 +253,10 @@ struct SidebarView: View {
         onRequestCreatePullRequest: @escaping (String) -> Void = { _ in },
         onRequestCreateBranchFromBranch: @escaping (String) -> Void = { _ in },
         onRequestCreateTagFromBranch: @escaping (String) -> Void = { _ in },
+        onRequestTagDetails: @escaping (String) -> Void = { _ in },
+        onRequestDiffTagAgainstCurrent: @escaping (String) -> Void = { _ in },
+        onRequestPushTagToRemote: @escaping (String, String) -> Void = { _, _ in },
+        onRequestDeleteTag: @escaping (String) -> Void = { _ in },
         onRequestRebaseOnto: @escaping (String) -> Void = { _ in },
         onRequestMergeBranchIntoCurrent: @escaping (String) -> Void = { _ in },
         onRequestPushBranchToRemote: @escaping (String, String) -> Void = { _, _ in },
@@ -278,6 +286,10 @@ struct SidebarView: View {
         self.onRequestCreatePullRequest = onRequestCreatePullRequest
         self.onRequestCreateBranchFromBranch = onRequestCreateBranchFromBranch
         self.onRequestCreateTagFromBranch = onRequestCreateTagFromBranch
+        self.onRequestTagDetails = onRequestTagDetails
+        self.onRequestDiffTagAgainstCurrent = onRequestDiffTagAgainstCurrent
+        self.onRequestPushTagToRemote = onRequestPushTagToRemote
+        self.onRequestDeleteTag = onRequestDeleteTag
         self.onRequestRebaseOnto = onRequestRebaseOnto
         self.onRequestMergeBranchIntoCurrent = onRequestMergeBranchIntoCurrent
         self.onRequestPushBranchToRemote = onRequestPushBranchToRemote
@@ -1390,11 +1402,50 @@ struct SidebarView: View {
                     onRequestCheckout(row.fullPath, true)
                 }
                 .contextMenu {
-                    Button("Copy Tag Name to Clipboard") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(row.fullPath, forType: .string)
+                    tagContextMenu(for: row.fullPath)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func tagContextMenu(for tag: String) -> some View {
+        Button("Copy Tag Name to Clipboard") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(tag, forType: .string)
+        }
+
+        Divider()
+
+        Button("Checkout \(tag)") {
+            onRequestCheckout(tag, true)
+        }
+        Button("Details...") {
+            onRequestTagDetails(tag)
+        }
+
+        Divider()
+
+        Button("Diff Against Current") {
+            onRequestDiffTagAgainstCurrent(tag)
+        }
+
+        Divider()
+
+        Menu("Push to") {
+            if remoteNames.isEmpty {
+                Text("No remotes configured")
+            } else {
+                ForEach(remoteNames.sorted(), id: \.self) { remote in
+                    Button(remote) {
+                        onRequestPushTagToRemote(tag, remote)
                     }
                 }
+            }
+        }
+        .disabled(remoteNames.isEmpty)
+
+        Button("Delete \(tag)", role: .destructive) {
+            onRequestDeleteTag(tag)
         }
     }
 
