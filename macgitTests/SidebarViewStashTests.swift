@@ -52,4 +52,21 @@ final class SidebarViewStashTests: XCTestCase {
 
         XCTAssertFalse(decoded.worktreesExpanded)
     }
+
+    func testSidebarSectionStateDecodesMissingSubmodulesExpandedAsTrue() throws {
+        let data = #"{"branchesExpanded":true,"tagsExpanded":false}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(SidebarSectionState.self, from: data)
+
+        XCTAssertTrue(decoded.submodulesExpanded)
+    }
+
+    func testSidebarSettingsStorePersistsSubmodulesSectionToggle() {
+        let repositoryPath = "/tmp/sidebar-submodule-\(UUID().uuidString)"
+
+        XCTAssertTrue(SidebarSettingsStore.shared.state(for: repositoryPath).submodulesExpanded)
+
+        SidebarSettingsStore.shared.toggleSection(.submodules, for: repositoryPath)
+
+        XCTAssertFalse(SidebarSettingsStore.shared.state(for: repositoryPath).submodulesExpanded)
+    }
 }
