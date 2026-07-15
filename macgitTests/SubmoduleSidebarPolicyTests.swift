@@ -19,11 +19,14 @@ import XCTest
 @testable import macgit
 
 final class SubmoduleSidebarPolicyTests: XCTestCase {
-    func testInitializedExistingStatesExposeReadOnlyActions() {
+    func testInitializedStatesExposeOpenAndUpdateActions() {
         let expected: Set<SubmoduleSidebarAction> = [
             .openInCommitPlus,
             .showInFinder,
-            .openInTerminal
+            .openInTerminal,
+            .updateToRecordedCommit,
+            .updateFromRemote,
+            .synchronizeURL
         ]
 
         for state in [
@@ -40,14 +43,22 @@ final class SubmoduleSidebarPolicyTests: XCTestCase {
         }
     }
 
-    func testUninitializedAndMissingStatesExposeNoReadOnlyActions() {
+    func testUninitializedStateExposesInitializeAndSyncOnly() {
+        let expected: Set<SubmoduleSidebarAction> = [
+            .initialize,
+            .synchronizeURL
+        ]
+
         XCTAssertEqual(
             SubmoduleSidebarPolicy.actions(for: entry(state: .uninitialized)),
-            []
+            expected
         )
+    }
+
+    func testMissingStateExposesSyncOnly() {
         XCTAssertEqual(
             SubmoduleSidebarPolicy.actions(for: entry(state: .missing)),
-            []
+            [.synchronizeURL]
         )
     }
 

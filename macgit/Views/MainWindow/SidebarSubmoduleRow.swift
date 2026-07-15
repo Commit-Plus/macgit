@@ -22,6 +22,10 @@ struct SidebarSubmoduleRow: View {
     let onOpen: () -> Void
     let onShowInFinder: () -> Void
     let onOpenInTerminal: () -> Void
+    let onInitialize: () -> Void
+    let onUpdateToRecordedCommit: () -> Void
+    let onUpdateFromRemote: () -> Void
+    let onSynchronizeURL: () -> Void
 
     private var actions: Set<SubmoduleSidebarAction> {
         SubmoduleSidebarPolicy.actions(for: entry)
@@ -68,6 +72,18 @@ struct SidebarSubmoduleRow: View {
             }
             if actions.contains(.openInTerminal) {
                 Button("Open in Terminal", systemImage: "terminal", action: onOpenInTerminal)
+            }
+            if actions.contains(.initialize) {
+                Button("Initialize", systemImage: "arrow.down.square", action: onInitialize)
+            }
+            if actions.contains(.updateToRecordedCommit) {
+                Button("Update to Recorded Commit", systemImage: "arrow.triangle.2.circlepath", action: onUpdateToRecordedCommit)
+            }
+            if actions.contains(.updateFromRemote) {
+                Button("Update from Remote...", systemImage: "arrow.triangle.2.circlepath.circle", action: onUpdateFromRemote)
+            }
+            if actions.contains(.synchronizeURL) {
+                Button("Synchronize URL", systemImage: "arrow.triangle.merge", action: onSynchronizeURL)
             }
         }
         .accessibilityElement(children: .combine)

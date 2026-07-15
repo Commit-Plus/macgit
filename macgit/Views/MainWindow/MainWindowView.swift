@@ -77,6 +77,7 @@ struct MainWindowView: View {
     @State private var showingPullSheet = false
     @State private var showingPushSheet = false
     @State private var showingFetchSheet = false
+    @State private var showingAddSubmoduleSheet = false
     @State private var showingBranchSheet = false
     @State private var branchSheetStartPoint: GitBranchStartPoint?
     @State private var showingTagSheet = false
@@ -181,6 +182,7 @@ struct MainWindowView: View {
             .sheet(isPresented: $showingPullSheet) { pullSheet }
             .sheet(isPresented: $showingPushSheet) { pushSheet }
             .sheet(isPresented: $showingFetchSheet) { fetchSheet }
+            .sheet(isPresented: $showingAddSubmoduleSheet) { addSubmoduleSheet }
             .sheet(isPresented: $showingBranchSheet, onDismiss: { branchSheetStartPoint = nil }) { branchSheet }
             .sheet(isPresented: $showingTagSheet, onDismiss: resetTagSheet) { tagSheet }
             .sheet(isPresented: tagDetailsSheetPresented) {
@@ -566,6 +568,25 @@ struct MainWindowView: View {
             onRequestOpenSubmoduleInTerminal: { path in
                 openWorktreeInTerminal(at: path)
             },
+            onRequestAddSubmodule: {
+                showingAddSubmoduleSheet = true
+            },
+            onRequestInitializeSubmodule: { path in
+                runRepositoryOperation("Initializing \(path)...") {
+                    await initializeSubmodule(at: path)
+                }
+            },
+            onRequestUpdateSubmodule: { path, mode in
+                let action = mode == .recordedCommit ? "Updating \(path) to recorded commit..." : "Updating \(path) from remote..."
+                runRepositoryOperation(action) {
+                    await updateSubmodule(at: path, mode: mode)
+                }
+            },
+            onRequestSynchronizeSubmoduleURL: { path in
+                runRepositoryOperation("Synchronizing \(path)...") {
+                    await synchronizeSubmoduleURL(at: path)
+                }
+            },
             onRequestSearch: {
                 showingSearchModal = true
             },
@@ -759,6 +780,25 @@ struct MainWindowView: View {
                 )
             }
         }
+    }
+
+    @ViewBuilder
+    private var addSubmoduleSheet: some View {
+        AddSubmoduleSheet(
+            repositoryURL: repositoryURL,
+            onAdd: { request in
+                try await GitStatusService.shared.addSubmodule(
+                    request,
+                    in: repositoryURL,
+                    credentialResolver: providerAccountController.credentialResolver()
+                )
+            },
+            onCompleted: { request in
+                appState.showSubmodules = true
+                selectedItem = .submodule(request.path)
+            },
+            onRunRepositoryOperation: runRepositoryOperation
+        )
     }
 
     @ViewBuilder
@@ -1742,6 +1782,8 @@ struct MainWindowView: View {
             if !syncing { showingPushSheet = true }
         case .fetch:
             if !syncing { showingFetchSheet = true }
+        case .addSubmodule:
+            showingAddSubmoduleSheet = true
         case .branch:
             presentBranchSheet(startPoint: nil)
         case .merge:
@@ -1905,6 +1947,48 @@ struct MainWindowView: View {
     private func presentBranchSheet(startPoint: GitBranchStartPoint?) {
         branchSheetStartPoint = startPoint
         showingBranchSheet = true
+    }
+
+    private func initializeSubmodule(at path: String) async {
+        do {
+            try await GitStatusService.shared.initializeSubmodule(
+                path: path,
+                in: repositoryURL,
+                credentialResolver: providerAccountController.credentialResolver()
+            )
+        } catch {
+            await MainActor.run {
+                syncState.showError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func updateSubmodule(at path: String, mode: SubmoduleUpdateMode) async {
+        do {
+            try await GitStatusService.shared.updateSubmodule(
+                path: path,
+                mode: mode,
+                in: repositoryURL,
+                credentialResolver: providerAccountController.credentialResolver()
+            )
+        } catch {
+            await MainActor.run {
+                syncState.showError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func synchronizeSubmoduleURL(at path: String) async {
+        do {
+            try await GitStatusService.shared.synchronizeSubmoduleURL(
+                path: path,
+                in: repositoryURL
+            )
+        } catch {
+            await MainActor.run {
+                syncState.showError(error.localizedDescription)
+            }
+        }
     }
 
     private func presentPushBranchDropConfirmation(_ branch: String) async {

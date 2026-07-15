@@ -170,6 +170,11 @@ struct macgitApp: App {
                 .disabled(!appState.hasOpenRepository)
                 .keyboardShortcut("f", modifiers: [.command, .option])
 
+                Button("Add Submodule...") {
+                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.addSubmodule])
+                }
+                .disabled(!appState.hasOpenRepository)
+
                 Divider()
 
                 Button("Branch...") {

@@ -169,6 +169,10 @@ struct SidebarView: View {
     let onRequestOpenSubmodule: (URL) -> Void
     let onRequestShowSubmoduleInFinder: (URL) -> Void
     let onRequestOpenSubmoduleInTerminal: (URL) -> Void
+    let onRequestAddSubmodule: () -> Void
+    let onRequestInitializeSubmodule: (String) -> Void
+    let onRequestUpdateSubmodule: (String, SubmoduleUpdateMode) -> Void
+    let onRequestSynchronizeSubmoduleURL: (String) -> Void
     let onRequestSearch: () -> Void
     let onRequestDragDrop: (GitDragDropRequest) -> Void
     let onRunRepositoryOperation: RepositoryOperationRunner
@@ -276,6 +280,10 @@ struct SidebarView: View {
         onRequestOpenSubmodule: @escaping (URL) -> Void = { _ in },
         onRequestShowSubmoduleInFinder: @escaping (URL) -> Void = { _ in },
         onRequestOpenSubmoduleInTerminal: @escaping (URL) -> Void = { _ in },
+        onRequestAddSubmodule: @escaping () -> Void = {},
+        onRequestInitializeSubmodule: @escaping (String) -> Void = { _ in },
+        onRequestUpdateSubmodule: @escaping (String, SubmoduleUpdateMode) -> Void = { _, _ in },
+        onRequestSynchronizeSubmoduleURL: @escaping (String) -> Void = { _ in },
         onRequestSearch: @escaping () -> Void = {},
         onRequestDragDrop: @escaping (GitDragDropRequest) -> Void = { _ in },
         onRunRepositoryOperation: @escaping RepositoryOperationRunner = { _, operation in
@@ -312,6 +320,10 @@ struct SidebarView: View {
         self.onRequestOpenSubmodule = onRequestOpenSubmodule
         self.onRequestShowSubmoduleInFinder = onRequestShowSubmoduleInFinder
         self.onRequestOpenSubmoduleInTerminal = onRequestOpenSubmoduleInTerminal
+        self.onRequestAddSubmodule = onRequestAddSubmodule
+        self.onRequestInitializeSubmodule = onRequestInitializeSubmodule
+        self.onRequestUpdateSubmodule = onRequestUpdateSubmodule
+        self.onRequestSynchronizeSubmoduleURL = onRequestSynchronizeSubmoduleURL
         self.onRequestSearch = onRequestSearch
         self.onRequestDragDrop = onRequestDragDrop
         self.onRunRepositoryOperation = onRunRepositoryOperation
@@ -475,7 +487,11 @@ struct SidebarView: View {
                                         entry: entry,
                                         onOpen: { onRequestOpenSubmodule(path) },
                                         onShowInFinder: { onRequestShowSubmoduleInFinder(path) },
-                                        onOpenInTerminal: { onRequestOpenSubmoduleInTerminal(path) }
+                                        onOpenInTerminal: { onRequestOpenSubmoduleInTerminal(path) },
+                                        onInitialize: { onRequestInitializeSubmodule(entry.path) },
+                                        onUpdateToRecordedCommit: { onRequestUpdateSubmodule(entry.path, .recordedCommit) },
+                                        onUpdateFromRemote: { onRequestUpdateSubmodule(entry.path, .remoteCheckout) },
+                                        onSynchronizeURL: { onRequestSynchronizeSubmoduleURL(entry.path) }
                                     )
                                     .tag(SidebarSelection.submodule(entry.path))
                                 }
@@ -494,6 +510,9 @@ struct SidebarView: View {
                 }
             }
             .listStyle(.sidebar)
+            .contextMenu {
+                Button("Add Submodule...", systemImage: "plus", action: onRequestAddSubmodule)
+            }
             .task(id: repositoryURL) {
                 loadSectionStates()
                 resetLazySectionData()
@@ -874,11 +893,10 @@ struct SidebarView: View {
                 .help("Worktree Actions")
             }
             if section == .submodules {
-                Button("Add Submodule", systemImage: "plus", action: {})
+                Button("Add Submodule", systemImage: "plus", action: onRequestAddSubmodule)
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
-                    .disabled(true)
-                    .help("Available in Phase 2")
+                    .help("Add Submodule")
             }
             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                 .font(.system(size: 10, weight: .medium))

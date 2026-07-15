@@ -21,4 +21,8 @@ enum SubmoduleSidebarAction: Hashable, Sendable {
     case openInCommitPlus
     case showInFinder
     case openInTerminal
+    case initialize
+    case updateToRecordedCommit
+    case updateFromRemote
+    case synchronizeURL
 }

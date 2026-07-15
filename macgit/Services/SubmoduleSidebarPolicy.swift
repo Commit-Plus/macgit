@@ -19,7 +19,26 @@ import Foundation
 
 enum SubmoduleSidebarPolicy {
     static func actions(for entry: GitSubmoduleEntry) -> Set<SubmoduleSidebarAction> {
-        guard entry.isInitialized else { return [] }
-        return [.openInCommitPlus, .showInFinder, .openInTerminal]
+        var actions: Set<SubmoduleSidebarAction> = []
+
+        if entry.isInitialized {
+            actions.formUnion([
+                .openInCommitPlus,
+                .showInFinder,
+                .openInTerminal,
+                .updateToRecordedCommit,
+                .updateFromRemote
+            ])
+        }
+
+        if entry.state == .uninitialized {
+            actions.insert(.initialize)
+        }
+
+        if !entry.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            actions.insert(.synchronizeURL)
+        }
+
+        return actions
     }
 }

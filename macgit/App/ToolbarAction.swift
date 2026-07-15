@@ -23,7 +23,7 @@
 import SwiftUI
 
 enum ToolbarAction: Hashable {
-    case commit, pull, push, fetch, branch, merge, stash, search
+    case commit, pull, push, fetch, addSubmodule, branch, merge, stash, search
 }
 
 struct ToolbarActionState: Equatable {
