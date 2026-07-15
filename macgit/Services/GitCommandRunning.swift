@@ -24,6 +24,7 @@ import Foundation
 
 protocol GitCommandRunning {
     func runGit(arguments: [String], in directory: URL) async throws -> String
+    func runGit(arguments: [String], in directory: URL, environment: [String: String]) async throws -> String
 }
 
 extension GitCommandRunning {

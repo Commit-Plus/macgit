@@ -140,7 +140,11 @@ nonisolated private final class GitProcessExecution: @unchecked Sendable {
 actor GitStatusService {
     static let shared = GitStatusService()
 
-    private init() {}
+    private let runner: (any GitCommandRunning)?
+
+    init(runner: (any GitCommandRunning)? = nil) {
+        self.runner = runner
+    }
 
     func gitExecutable() -> String {
         // Prefer system git, fallback to /usr/bin/git
@@ -164,11 +168,17 @@ actor GitStatusService {
     }
 
     func runGit(arguments: [String], in directory: URL) async throws -> String {
+        if let runner {
+            return try await runner.runGit(arguments: arguments, in: directory)
+        }
         let data = try await runGitRaw(arguments: arguments, in: directory)
         return String(data: data, encoding: .utf8) ?? ""
     }
 
     func runGit(arguments: [String], in directory: URL, environment: [String: String]) async throws -> String {
+        if let runner {
+            return try await runner.runGit(arguments: arguments, in: directory, environment: environment)
+        }
         let data = try await runGitRaw(arguments: arguments, in: directory, environment: environment)
         return String(data: data, encoding: .utf8) ?? ""
     }

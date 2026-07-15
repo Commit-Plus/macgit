@@ -18,6 +18,90 @@
 import Foundation
 
 extension GitStatusService {
+    func addSubmodule(
+        _ request: SubmoduleAddRequest,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver?
+    ) async throws {
+        let request = try SubmoduleRequestValidator.validate(addRequest: request, in: repositoryURL)
+        let injection = try await credentialInjection(
+            for: request.repository,
+            in: repositoryURL,
+            credentialResolver: credentialResolver,
+            credentialInjector: TemporaryGitCredentialInjector(),
+            sshCredentialInjector: TemporaryGitSSHCredentialInjector()
+        )
+        defer { injection?.cleanup() }
+
+        var arguments = ["submodule", "add"]
+        if let branch = request.branch {
+            arguments += ["--branch", branch]
+        }
+        if request.shallow {
+            arguments += ["--depth", "1"]
+        }
+        arguments += ["--", request.repository, request.path]
+        _ = try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
+
+        if !request.initializeAfterAdd {
+            _ = try await runGit(
+                arguments: ["submodule", "deinit", "-f", "--", request.path],
+                in: repositoryURL
+            )
+        }
+        notifySubmoduleMutationSucceeded(in: repositoryURL)
+    }
+
+    func initializeSubmodule(
+        path: String,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver?
+    ) async throws {
+        let injection = try await submoduleCredentialInjection(
+            path: path,
+            in: repositoryURL,
+            credentialResolver: credentialResolver
+        )
+        defer { injection?.cleanup() }
+        _ = try await runRemoteGit(
+            arguments: ["submodule", "update", "--init", "--", path],
+            in: repositoryURL,
+            injection: injection
+        )
+        notifySubmoduleMutationSucceeded(in: repositoryURL)
+    }
+
+    func updateSubmodule(
+        path: String,
+        mode: SubmoduleUpdateMode,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver?
+    ) async throws {
+        let injection = try await submoduleCredentialInjection(
+            path: path,
+            in: repositoryURL,
+            credentialResolver: credentialResolver
+        )
+        defer { injection?.cleanup() }
+        let arguments: [String]
+        switch mode {
+        case .recordedCommit:
+            arguments = ["submodule", "update", "--checkout", "--", path]
+        case .remoteCheckout:
+            arguments = ["submodule", "update", "--remote", "--checkout", "--", path]
+        }
+        _ = try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
+        notifySubmoduleMutationSucceeded(in: repositoryURL)
+    }
+
+    func synchronizeSubmoduleURL(path: String, in repositoryURL: URL) async throws {
+        _ = try await runGit(
+            arguments: ["submodule", "sync", "--", path],
+            in: repositoryURL
+        )
+        notifySubmoduleMutationSucceeded(in: repositoryURL)
+    }
+
     nonisolated func configuredSubmodulePaths(in repositoryURL: URL) -> Set<String> {
         let gitmodulesURL = repositoryURL.appendingPathComponent(".gitmodules")
         guard FileManager.default.fileExists(atPath: gitmodulesURL.path) else {
@@ -139,6 +223,44 @@ extension GitStatusService {
             recordedCommit: entry.recordedCommit,
             checkedOutCommit: checkedOutCommit,
             state: state
+        )
+    }
+
+    private func submoduleCredentialInjection(
+        path: String,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver?
+    ) async throws -> GitCredentialInjection? {
+        guard credentialResolver != nil else { return nil }
+        let pathOutput = try await runGit(
+            arguments: ["config", "--file", ".gitmodules", "--get-regexp", #"^submodule\..*\.path$"#],
+            in: repositoryURL
+        )
+        guard let key = pathOutput.split(separator: "\n").compactMap({ line -> String? in
+            let fields = line.split(maxSplits: 1, whereSeparator: { $0 == " " || $0 == "\t" })
+            guard fields.count == 2, fields[1] == Substring(path) else { return nil }
+            return String(fields[0].dropLast(".path".count))
+        }).first else {
+            return nil
+        }
+        let remoteURL = try await runGit(
+            arguments: ["config", "--file", ".gitmodules", "--get", "\(key).url"],
+            in: repositoryURL
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        return try await credentialInjection(
+            for: remoteURL,
+            in: repositoryURL,
+            credentialResolver: credentialResolver,
+            credentialInjector: TemporaryGitCredentialInjector(),
+            sshCredentialInjector: TemporaryGitSSHCredentialInjector()
+        )
+    }
+
+    private func notifySubmoduleMutationSucceeded(in repositoryURL: URL) {
+        NotificationCenter.default.post(
+            name: .repositoryDidChange,
+            object: nil,
+            userInfo: ["repositoryURL": repositoryURL]
         )
     }
 }
