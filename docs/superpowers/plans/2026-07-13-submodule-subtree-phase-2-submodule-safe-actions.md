@@ -1,5 +1,7 @@
 # Phase 2: Safe Submodule Actions Implementation Plan
 
+**Status:** completed; merged to `main` at `d4a202a`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add, initialize, update, and synchronize submodules without automatic commits or destructive removal.
@@ -107,16 +109,16 @@ git submodule sync -- <path>
 
 ## Task 4: Verification and Roadmap Handoff
 
-- [ ] Run focused tests:
+- [x] Run focused tests:
 
 ```bash
 rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/SubmoduleRequestValidationTests -only-testing:macgitTests/GitSubmoduleSafeActionTests -only-testing:macgitTests/SubmoduleSidebarPolicyTests
 ```
 
-- [ ] Run the complete suite once, then build:
+- [x] Run the complete suite once, then build:
 
 ```bash
 rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS'
 rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build
 ```
-- [ ] Merge to `main`, verify there, and only then mark Phase 2 `[completed]` with the landed commit.
+- [x] Merge to `main`, verify there, and only then mark Phase 2 `[completed]` with the landed commit.
