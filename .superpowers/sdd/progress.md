@@ -34,4 +34,5 @@ Plan: `docs/superpowers/plans/2026-07-13-submodule-subtree-phase-5-subtree-opera
 
 - Full-suite attempt: `rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS'` exited 65 with the documented test-host bootstrap abort: `Early unexpected exit` / `abort() called`. Per repo guidance, it was not rerun.
 - Build verification: `rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build` passed.
+- Post-error-sanitization build verification: `rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build` passed.
 - Updated the phase plan and roadmap to show Phase 5 implementation in progress with manual QA and merge still pending.
