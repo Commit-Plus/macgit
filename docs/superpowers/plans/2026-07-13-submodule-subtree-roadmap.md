@@ -29,7 +29,7 @@
 - Phase 2: [completed] [2026-07-13-submodule-subtree-phase-2-submodule-safe-actions.md](2026-07-13-submodule-subtree-phase-2-submodule-safe-actions.md) (branch: `codex/submodule-subtree-phase-2-submodule-safe-actions`, landed on `main` at `d4a202a`)
 - Phase 3: [completed] [2026-07-13-submodule-subtree-phase-3-submodule-lifecycle.md](2026-07-13-submodule-subtree-phase-3-submodule-lifecycle.md) (branch: `codex/submodule-subtree-phase-3-submodule-lifecycle`, landed on `main` at `87e5ba7`)
 - Phase 4: [completed] [2026-07-13-submodule-subtree-phase-4-subtree-registry.md](2026-07-13-submodule-subtree-phase-4-subtree-registry.md) (branch: `codex/submodule-subtree-phase-4-subtree-registry`, landed on `main` at `d5ee388`)
-- Phase 5: [in progress] [2026-07-13-submodule-subtree-phase-5-subtree-operations.md](2026-07-13-submodule-subtree-phase-5-subtree-operations.md) (branch: `codex/submodule-subtree-phase-5-subtree-operations`)
+- Phase 5: [completed] [2026-07-13-submodule-subtree-phase-5-subtree-operations.md](2026-07-13-submodule-subtree-phase-5-subtree-operations.md) (branch: `codex/submodule-subtree-phase-5-subtree-operations`, landed on `main` at `ce1992a`)
 
 ## Recommended Order
 
@@ -96,6 +96,6 @@
 - [x] Phase 2 merged to `main` at `d4a202a`; focused tests and build verified, and the full test-host bootstrap crash was hit again on the focused test pass so it was not rerun.
 - [x] Phase 3 merged to `main` at `87e5ba7`; focused sidebar policy tests and build verified on `main`. The full-suite attempt hit the documented test-host bootstrap abort and was not rerun.
 - [x] Phase 4 merged to `main` at `d5ee388`; focused registry/link/sidebar policy tests and build verified. The full-suite attempt hit the documented test-host bootstrap abort and was not rerun.
-- [ ] Phase 5 merged to `main`; focused tests, full tests, and build verified.
+- [x] Phase 5 merged to `main` at `ce1992a`; focused subtree and credential tests plus build verified on the phase branch. The full-suite attempt hit the documented test-host bootstrap abort and was not rerun; merge-step build/test reruns were explicitly waived.
 - [ ] Manual QA covers light/dark mode, collapsed/expanded persistence, empty states, all confirmation copy, and cancellation behavior.
 - [ ] Manual QA verifies no operation launches a duplicate app instance and no credential appears in progress/error output.

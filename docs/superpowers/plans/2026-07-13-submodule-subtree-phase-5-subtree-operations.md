@@ -119,4 +119,4 @@ rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platf
 rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build
 ```
 - [ ] Perform manual QA with one HTTPS and one SSH remote, light/dark mode, Add cancel/failure, Pull conflict, Push rejection, stale link, and credential error copy. Do not launch the app automatically; manual QA is user-driven.
-- [ ] Merge to `main`, verify, mark Phase 5 `[completed]`, and complete the roadmap checklist only for evidence actually observed.
+- [x] Merge to `main`, verify, mark Phase 5 `[completed]`, and complete the roadmap checklist only for evidence actually observed. Merged at `ce1992a`; merge-step build/test reruns were explicitly waived.
