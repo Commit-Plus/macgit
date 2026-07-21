@@ -39,6 +39,12 @@ enum SubmoduleSidebarPolicy {
             actions.insert(.synchronizeURL)
         }
 
+        actions.insert(.editSettings)
+        if entry.isInitialized {
+            actions.insert(.deinitialize)
+        }
+        actions.insert(.remove)
+
         return actions
     }
 }

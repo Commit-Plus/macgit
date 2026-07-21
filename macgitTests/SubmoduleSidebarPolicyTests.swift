@@ -26,7 +26,10 @@ final class SubmoduleSidebarPolicyTests: XCTestCase {
             .openInTerminal,
             .updateToRecordedCommit,
             .updateFromRemote,
-            .synchronizeURL
+            .synchronizeURL,
+            .editSettings,
+            .deinitialize,
+            .remove
         ]
 
         for state in [
@@ -46,7 +49,9 @@ final class SubmoduleSidebarPolicyTests: XCTestCase {
     func testUninitializedStateExposesInitializeAndSyncOnly() {
         let expected: Set<SubmoduleSidebarAction> = [
             .initialize,
-            .synchronizeURL
+            .synchronizeURL,
+            .editSettings,
+            .remove
         ]
 
         XCTAssertEqual(
@@ -58,8 +63,15 @@ final class SubmoduleSidebarPolicyTests: XCTestCase {
     func testMissingStateExposesSyncOnly() {
         XCTAssertEqual(
             SubmoduleSidebarPolicy.actions(for: entry(state: .missing)),
-            [.synchronizeURL]
+            [.synchronizeURL, .editSettings, .remove]
         )
+    }
+
+    func testLifecycleActionsStayStateAware() {
+        XCTAssertTrue(SubmoduleSidebarPolicy.actions(for: entry(state: .clean)).contains(.deinitialize))
+        XCTAssertFalse(SubmoduleSidebarPolicy.actions(for: entry(state: .uninitialized)).contains(.deinitialize))
+        XCTAssertFalse(SubmoduleSidebarPolicy.actions(for: entry(state: .missing)).contains(.deinitialize))
+        XCTAssertTrue(SubmoduleSidebarPolicy.actions(for: entry(state: .conflict)).contains(.remove))
     }
 
     private func entry(state: GitSubmoduleState) -> GitSubmoduleEntry {

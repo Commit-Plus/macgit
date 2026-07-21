@@ -5,3 +5,4 @@ Plan: `docs/superpowers/plans/2026-07-13-submodule-subtree-phase-3-submodule-lif
 
 Task 1: complete (commit e911411, local review clean; focused `SubmoduleLifecyclePolicyTests` passed)
 Task 2: complete (service implementation, focused lifecycle test command hit documented test-host bootstrap abort; `build-for-testing` and app build passed)
+Task 3: complete (UI lifecycle actions, edit sheet, distinct confirmations; `SubmoduleSidebarPolicyTests`, `build-for-testing`, and app build passed)

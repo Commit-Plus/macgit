@@ -173,6 +173,9 @@ struct SidebarView: View {
     let onRequestInitializeSubmodule: (String) -> Void
     let onRequestUpdateSubmodule: (String, SubmoduleUpdateMode) -> Void
     let onRequestSynchronizeSubmoduleURL: (String) -> Void
+    let onRequestUpdateSubmoduleSettings: (String, String, String?) async throws -> Void
+    let onRequestDeinitializeSubmodule: (String, Bool) async throws -> Void
+    let onRequestRemoveSubmodule: (String, Bool) async throws -> Void
     let onRequestSearch: () -> Void
     let onRequestDragDrop: (GitDragDropRequest) -> Void
     let onRunRepositoryOperation: RepositoryOperationRunner
@@ -198,6 +201,9 @@ struct SidebarView: View {
     @State private var submoduleEntries: [GitSubmoduleEntry] = []
     @State private var hasLoadedSubmodules = false
     @State private var isLoadingSubmodules = false
+    @State private var submoduleToEdit: GitSubmoduleEntry?
+    @State private var submoduleToDeinitialize: GitSubmoduleEntry?
+    @State private var submoduleToRemove: GitSubmoduleEntry?
     @State private var worktreeEntries: [WorktreeEntry] = []
     @State private var hasLoadedWorktrees = false
     @State private var isLoadingWorktrees = false
@@ -284,6 +290,9 @@ struct SidebarView: View {
         onRequestInitializeSubmodule: @escaping (String) -> Void = { _ in },
         onRequestUpdateSubmodule: @escaping (String, SubmoduleUpdateMode) -> Void = { _, _ in },
         onRequestSynchronizeSubmoduleURL: @escaping (String) -> Void = { _ in },
+        onRequestUpdateSubmoduleSettings: @escaping (String, String, String?) async throws -> Void = { _, _, _ in },
+        onRequestDeinitializeSubmodule: @escaping (String, Bool) async throws -> Void = { _, _ in },
+        onRequestRemoveSubmodule: @escaping (String, Bool) async throws -> Void = { _, _ in },
         onRequestSearch: @escaping () -> Void = {},
         onRequestDragDrop: @escaping (GitDragDropRequest) -> Void = { _ in },
         onRunRepositoryOperation: @escaping RepositoryOperationRunner = { _, operation in
@@ -324,6 +333,9 @@ struct SidebarView: View {
         self.onRequestInitializeSubmodule = onRequestInitializeSubmodule
         self.onRequestUpdateSubmodule = onRequestUpdateSubmodule
         self.onRequestSynchronizeSubmoduleURL = onRequestSynchronizeSubmoduleURL
+        self.onRequestUpdateSubmoduleSettings = onRequestUpdateSubmoduleSettings
+        self.onRequestDeinitializeSubmodule = onRequestDeinitializeSubmodule
+        self.onRequestRemoveSubmodule = onRequestRemoveSubmodule
         self.onRequestSearch = onRequestSearch
         self.onRequestDragDrop = onRequestDragDrop
         self.onRunRepositoryOperation = onRunRepositoryOperation
@@ -491,7 +503,10 @@ struct SidebarView: View {
                                         onInitialize: { onRequestInitializeSubmodule(entry.path) },
                                         onUpdateToRecordedCommit: { onRequestUpdateSubmodule(entry.path, .recordedCommit) },
                                         onUpdateFromRemote: { onRequestUpdateSubmodule(entry.path, .remoteCheckout) },
-                                        onSynchronizeURL: { onRequestSynchronizeSubmoduleURL(entry.path) }
+                                        onSynchronizeURL: { onRequestSynchronizeSubmoduleURL(entry.path) },
+                                        onEditSettings: { submoduleToEdit = entry },
+                                        onDeinitialize: { presentDeinitializeSubmoduleConfirmation(entry) },
+                                        onRemove: { presentRemoveSubmoduleConfirmation(entry) }
                                     )
                                     .tag(SidebarSelection.submodule(entry.path))
                                 }
@@ -637,6 +652,19 @@ struct SidebarView: View {
             .sheet(isPresented: $showingCreateWorktreeSheet) {
                 createWorktreeSheet
             }
+            .modifier(
+                SubmoduleLifecyclePresentationModifier(
+                    submoduleToEdit: $submoduleToEdit,
+                    submoduleToDeinitialize: $submoduleToDeinitialize,
+                    submoduleToRemove: $submoduleToRemove,
+                    onSaveSettings: { entry, url, branch in
+                        try await onRequestUpdateSubmoduleSettings(entry.path, url, branch)
+                    },
+                    onDeinitialize: runSubmoduleDeinitialize,
+                    onRemove: runSubmoduleRemove,
+                    onRunRepositoryOperation: onRunRepositoryOperation
+                )
+            )
         }
     }
 
@@ -793,6 +821,57 @@ struct SidebarView: View {
                     return handleDrop(providers, target: .remotesHeader)
                 }
             }
+    }
+
+    private func presentDeinitializeSubmoduleConfirmation(_ entry: GitSubmoduleEntry) {
+        let decision = SubmoduleLifecyclePolicy.decision(for: .deinitialize(force: false), entry: entry)
+        guard decision.requiresConfirmation else {
+            errorMessage = decision.message ?? "This submodule cannot be deinitialized."
+            showingError = true
+            return
+        }
+        submoduleToDeinitialize = entry
+    }
+
+    private func presentRemoveSubmoduleConfirmation(_ entry: GitSubmoduleEntry) {
+        let decision = SubmoduleLifecyclePolicy.decision(for: .remove(force: false), entry: entry)
+        guard decision.requiresConfirmation else {
+            errorMessage = decision.message ?? "This submodule cannot be removed."
+            showingError = true
+            return
+        }
+        submoduleToRemove = entry
+    }
+
+    private func runSubmoduleDeinitialize(_ entry: GitSubmoduleEntry, force: Bool) {
+        submoduleToDeinitialize = nil
+        onRunRepositoryOperation("Deinitializing \(entry.path)...") {
+            do {
+                try await onRequestDeinitializeSubmodule(entry.path, force)
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    showingError = true
+                }
+            }
+        }
+    }
+
+    private func runSubmoduleRemove(_ entry: GitSubmoduleEntry, force: Bool) {
+        submoduleToRemove = nil
+        onRunRepositoryOperation("Removing submodule \(entry.path)...") {
+            do {
+                try await onRequestRemoveSubmodule(entry.path, force)
+                await MainActor.run {
+                    selection = .item(.fileStatus)
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    showingError = true
+                }
+            }
+        }
     }
 
     private var stashesSectionHeaderRow: some View {

@@ -25,4 +25,7 @@ enum SubmoduleSidebarAction: Hashable, Sendable {
     case updateToRecordedCommit
     case updateFromRemote
     case synchronizeURL
+    case editSettings
+    case deinitialize
+    case remove
 }
