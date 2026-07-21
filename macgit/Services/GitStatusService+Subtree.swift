@@ -32,6 +32,14 @@ extension GitStatusService {
     }
 
     func subtreeOperationDecision(in repositoryURL: URL) async throws -> SubtreeOperationDecision {
+        guard await supportsGitSubtree(in: repositoryURL) else {
+            return SubtreeOperationDecision(
+                isAllowed: false,
+                blockingPaths: [],
+                message: SubtreeOperationPolicy.unavailableMessage
+            )
+        }
+
         let status = try await runGit(
             arguments: ["status", "--porcelain=v1", "-z"],
             in: repositoryURL

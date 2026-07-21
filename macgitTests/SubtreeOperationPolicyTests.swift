@@ -45,6 +45,7 @@ final class SubtreeOperationPolicyTests: XCTestCase {
 
     func testCleanParentAllowsSubtreeOperation() async throws {
         let runner = RecordingSubtreePolicyRunner(outputs: [
+            "subtree -h": "usage: git subtree add --prefix=<prefix> <repository> <ref>",
             "status --porcelain=v1 -z": ""
         ])
         let service = GitStatusService(runner: runner)
@@ -57,6 +58,26 @@ final class SubtreeOperationPolicyTests: XCTestCase {
         )
     }
 
+    func testDecisionBlocksWhenGitSubtreeIsUnavailable() async throws {
+        let runner = RecordingSubtreePolicyRunner(failures: [
+            "subtree -h": GitError.commandFailed("git: 'subtree' is not a git command")
+        ])
+        let service = GitStatusService(runner: runner)
+
+        let decision = try await service.subtreeOperationDecision(in: URL(fileURLWithPath: "/tmp/repo"))
+
+        XCTAssertEqual(
+            decision,
+            SubtreeOperationDecision(
+                isAllowed: false,
+                blockingPaths: [],
+                message: "This Git installation does not include git subtree."
+            )
+        )
+        let calls = await runner.recordedArguments()
+        XCTAssertEqual(calls, [["subtree", "-h"]])
+    }
+
     func testDirtyParentBlocksStagedModifiedUntrackedAndConflictRecords() async throws {
         let status = [
             "M  staged.txt",
@@ -65,6 +86,7 @@ final class SubtreeOperationPolicyTests: XCTestCase {
             "UU conflict.txt"
         ].joined(separator: "\0") + "\0"
         let runner = RecordingSubtreePolicyRunner(outputs: [
+            "subtree -h": "usage: git subtree add --prefix=<prefix> <repository> <ref>",
             "status --porcelain=v1 -z": status
         ])
         let service = GitStatusService(runner: runner)
@@ -83,6 +105,7 @@ final class SubtreeOperationPolicyTests: XCTestCase {
             "A  alpha.txt"
         ].joined(separator: "\0") + "\0"
         let runner = RecordingSubtreePolicyRunner(outputs: [
+            "subtree -h": "usage: git subtree add --prefix=<prefix> <repository> <ref>",
             "status --porcelain=v1 -z": status
         ])
         let service = GitStatusService(runner: runner)
