@@ -47,6 +47,107 @@ extension GitStatusService {
         return SubtreeOperationPolicy.decision(forStatus: status)
     }
 
+    func addSubtree(
+        _ request: SubtreeLinkRequest,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver?,
+        registry: any GitSubtreeRegistryProtocol = GitSubtreeRegistry()
+    ) async throws -> GitSubtreeEntry {
+        try await rejectBlockedSubtreeOperation(in: repositoryURL)
+        let existing = try await registry.entries(in: repositoryURL)
+        let entry = try validatedNewSubtreeEntry(request, existing: existing, in: repositoryURL)
+        let injection = try await credentialInjection(
+            for: entry.repository,
+            in: repositoryURL,
+            credentialResolver: credentialResolver,
+            credentialInjector: TemporaryGitCredentialInjector(),
+            sshCredentialInjector: TemporaryGitSSHCredentialInjector()
+        )
+        defer { injection?.cleanup() }
+
+        var arguments = [
+            "subtree",
+            "add",
+            "--prefix=\(entry.path)",
+            entry.repository,
+            entry.branch
+        ]
+        if entry.squash {
+            arguments.append("--squash")
+        }
+        _ = try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
+        let savedEntry = GitSubtreeEntry(
+            id: entry.id,
+            name: entry.name,
+            path: entry.path,
+            repository: entry.repository,
+            branch: entry.branch,
+            squash: entry.squash,
+            folderExists: true
+        )
+        try await registry.save(savedEntry, in: repositoryURL)
+        notifySubtreeMutationSucceeded(in: repositoryURL)
+        return savedEntry
+    }
+
+    func pullSubtree(
+        _ entry: GitSubtreeEntry,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver?
+    ) async throws {
+        try await rejectBlockedSubtreeOperation(in: repositoryURL)
+        let injection = try await credentialInjection(
+            for: entry.repository,
+            in: repositoryURL,
+            credentialResolver: credentialResolver,
+            credentialInjector: TemporaryGitCredentialInjector(),
+            sshCredentialInjector: TemporaryGitSSHCredentialInjector()
+        )
+        defer { injection?.cleanup() }
+
+        var arguments = [
+            "subtree",
+            "pull",
+            "--prefix=\(entry.path)",
+            entry.repository,
+            entry.branch
+        ]
+        if entry.squash {
+            arguments.append("--squash")
+        }
+        _ = try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
+        notifySubtreeMutationSucceeded(in: repositoryURL)
+    }
+
+    func pushSubtree(
+        _ entry: GitSubtreeEntry,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver?
+    ) async throws {
+        try await rejectBlockedSubtreeOperation(in: repositoryURL)
+        let injection = try await credentialInjection(
+            for: entry.repository,
+            in: repositoryURL,
+            credentialResolver: credentialResolver,
+            credentialInjector: TemporaryGitCredentialInjector(),
+            sshCredentialInjector: TemporaryGitSSHCredentialInjector()
+        )
+        defer { injection?.cleanup() }
+
+        _ = try await runRemoteGit(
+            arguments: [
+                "subtree",
+                "push",
+                "--prefix=\(entry.path)",
+                entry.repository,
+                entry.branch
+            ],
+            in: repositoryURL,
+            injection: injection
+        )
+        notifySubtreeMutationSucceeded(in: repositoryURL)
+    }
+
     func subtrees(
         in repositoryURL: URL,
         registry: any GitSubtreeRegistryProtocol = GitSubtreeRegistry()
@@ -127,6 +228,47 @@ extension GitStatusService {
             squash: request.squash,
             folderExists: true
         )
+    }
+
+    private func validatedNewSubtreeEntry(
+        _ request: SubtreeLinkRequest,
+        existing: [GitSubtreeEntry],
+        in repositoryURL: URL
+    ) throws -> GitSubtreeEntry {
+        let name = request.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            throw GitSubtreeRegistryError.emptyName
+        }
+
+        let repository = request.repository.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !repository.isEmpty else {
+            throw GitSubtreeRegistryError.emptyRepository
+        }
+
+        let branch = request.branch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !branch.isEmpty else {
+            throw GitSubtreeRegistryError.emptyBranch
+        }
+
+        let path = try GitSubtreeRegistry.normalizedRelativePath(request.path, in: repositoryURL)
+        try GitSubtreeRegistry.rejectPathConflict(path, existing: existing)
+
+        return GitSubtreeEntry(
+            id: GitSubtreeRegistry.uniqueID(for: path, existingIDs: Set(existing.map(\.id))),
+            name: name,
+            path: path,
+            repository: repository,
+            branch: branch,
+            squash: request.squash,
+            folderExists: false
+        )
+    }
+
+    private func rejectBlockedSubtreeOperation(in repositoryURL: URL) async throws {
+        let decision = try await subtreeOperationDecision(in: repositoryURL)
+        guard decision.isAllowed else {
+            throw GitError.commandFailed(decision.message ?? SubtreeOperationPolicy.dirtyTreeMessage)
+        }
     }
 
     private func notifySubtreeMutationSucceeded(in repositoryURL: URL) {
