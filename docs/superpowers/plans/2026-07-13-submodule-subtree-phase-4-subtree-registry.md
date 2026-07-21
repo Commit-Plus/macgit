@@ -52,8 +52,8 @@ protocol GitSubtreeRegistryProtocol {
 }
 ```
 
-- [ ] Write failing tests for empty registry, round-trip, deterministic ordering by path, stable ID generation, collision suffix, incomplete entry omission, duplicate/overlapping path rejection, stale folder, edit, and removal.
-- [ ] Store only these keys:
+- [x] Write failing tests for empty registry, round-trip, deterministic ordering by path, stable ID generation, collision suffix, incomplete entry omission, duplicate/overlapping path rejection, stale folder, edit, and removal.
+- [x] Store only these keys:
 
 ```text
 commitplus-subtree.<id>.name
@@ -63,8 +63,8 @@ commitplus-subtree.<id>.branch
 commitplus-subtree.<id>.squash
 ```
 
-- [ ] Use `git config --local --null --get-regexp '^commitplus-subtree\.'` for reads and `git config --local` for writes/removals. Do not parse `.git/config` directly because linked worktrees may use a `.git` file.
-- [ ] Run focused tests, implement, rerun to green, and commit `feat: add local subtree registry`.
+- [x] Use `git config --local --null --get-regexp '^commitplus-subtree\.'` for reads and `git config --local` for writes/removals. Do not parse `.git/config` directly because linked worktrees may use a `.git` file.
+- [x] Run focused tests, implement, rerun to green, and commit `feat: add local subtree registry`.
 
 ## Task 2: Validate and Link Existing Directories
 
@@ -86,36 +86,47 @@ func linkExistingSubtree(
 ) async throws -> GitSubtreeEntry
 ```
 
-- [ ] Write failing validation tests for required fields, absolute/escaping path, symlink escape, missing directory, untracked directory, duplicate/overlap, and valid tracked directory.
-- [ ] Validate tracking with `git ls-files --error-unmatch -- <path>` and require at least one tracked path under the prefix.
-- [ ] Saving a link performs no fetch, merge, commit, or working-tree write.
-- [ ] Post `.repositoryDidChange` only after registry save succeeds.
-- [ ] Run focused tests, implement, rerun to green, and commit `feat: link existing subtree directories`.
+- [x] Write failing validation tests for required fields, absolute/escaping path, symlink escape, missing directory, untracked directory, duplicate/overlap, and valid tracked directory.
+- [x] Validate tracking with `git ls-files --error-unmatch -- <path>` and require at least one tracked path under the prefix.
+- [x] Saving a link performs no fetch, merge, commit, or working-tree write.
+- [x] Post `.repositoryDidChange` only after registry save succeeds.
+- [x] Run focused tests, implement, rerun to green, and commit `feat: link existing subtree directories`.
 
 ## Task 3: Add Read-Only Subtree Sidebar and Link UI
 
-- [ ] Add `SidebarSelection.subtree(String)` using registry ID.
-- [ ] Add `subtreesExpanded: Bool = true` with backward-compatible decoding and toggle handling.
-- [ ] Replace `Coming soon` with a lazy-loaded section, header `+`, loading state, `No subtrees`, row subtitle, `Squashed`, and `Missing folder` badge.
-- [ ] `SubtreeSidebarPolicy` exposes Finder/Terminal only when the folder exists, and always exposes Edit Link/Unlink.
-- [ ] Add Link mode fields from the design. Keep `Add new subtree` visible but disabled with help `Available in Phase 5`, so the next phase removes only the disabled state.
-- [ ] Add `Actions > Add/Link Subtree...`; in Phase 4 it opens Link mode.
-- [ ] Add confirmation copy: `Unlink removes Commit+ metadata only. Files under <path> remain unchanged.`
-- [ ] Successful Link enables `appState.showSubtrees`; successful Unlink keeps files and clears selection if needed.
-- [ ] Run policy/settings/registry tests and build; commit `feat: show linked subtrees in sidebar`.
+- [x] Add `SidebarSelection.subtree(String)` using registry ID.
+- [x] Add `subtreesExpanded: Bool = true` with backward-compatible decoding and toggle handling.
+- [x] Replace `Coming soon` with a lazy-loaded section, header `+`, loading state, `No subtrees`, row subtitle, `Squashed`, and `Missing folder` badge.
+- [x] `SubtreeSidebarPolicy` exposes Finder/Terminal only when the folder exists, and always exposes Edit Link/Unlink.
+- [x] Add Link mode fields from the design. Keep `Add new subtree` visible but disabled with help `Available in Phase 5`, so the next phase removes only the disabled state.
+- [x] Add `Actions > Add/Link Subtree...`; in Phase 4 it opens Link mode.
+- [x] Add confirmation copy: `Unlink removes Commit+ metadata only. Files under <path> remain unchanged.`
+- [x] Successful Link enables `appState.showSubtrees`; successful Unlink keeps files and clears selection if needed.
+- [x] Run policy/settings/registry tests and build; commit `feat: show linked subtrees in sidebar`.
 
 ## Task 4: Verification and Roadmap Handoff
 
-- [ ] Run all Phase 4 focused tests:
+- [x] Run all Phase 4 focused tests:
 
 ```bash
 rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/GitSubtreeRegistryTests -only-testing:macgitTests/SubtreeLinkValidationTests -only-testing:macgitTests/SubtreeSidebarPolicyTests
 ```
 
-- [ ] Run the complete suite once and build:
+- [x] Run the complete suite once and build:
 
 ```bash
 rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS'
 rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build
 ```
-- [ ] Merge to `main`, verify, then mark Phase 4 `[completed]` with the landed commit.
+- [x] Merge to `main`, verify, then mark Phase 4 `[completed]` with the landed commit.
+
+## Completion Notes
+
+- Landed on `main` at `d5ee388`.
+- Focused tests passed:
+  `rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/GitSubtreeRegistryTests -only-testing:macgitTests/SubtreeLinkValidationTests -only-testing:macgitTests/SubtreeSidebarPolicyTests`
+- Full-suite attempt:
+  `rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS'`
+  stopped with the documented test-host bootstrap abort (`Early unexpected exit` / `abort() called`) and was not rerun.
+- Build passed:
+  `rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build`
