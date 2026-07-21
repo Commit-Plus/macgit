@@ -184,10 +184,20 @@ struct AddLinkSubtreeSheet: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    errorMessage = sanitizedErrorMessage(error.localizedDescription)
                     isLoading = false
                 }
             }
         }
+    }
+
+    private func sanitizedErrorMessage(_ message: String) -> String {
+        let lines = message
+            .replacingOccurrences(of: "\r", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let limited = lines.prefix(8).joined(separator: "\n")
+        return limited.isEmpty ? "The subtree operation failed." : limited
     }
 }
