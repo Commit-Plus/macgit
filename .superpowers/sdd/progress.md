@@ -29,3 +29,9 @@ Plan: `docs/superpowers/plans/2026-07-13-submodule-subtree-phase-5-subtree-opera
 - Added a dirty-tree preflight message that lists up to five blocking paths with a remaining-count suffix before running the subtree operation.
 - Extended subtree operation coverage for credential environment injection without token-bearing git arguments.
 - Verification: `rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/GitSubtreeCapabilityTests -only-testing:macgitTests/GitSubtreeOperationTests -only-testing:macgitTests/SubtreeOperationPolicyTests -only-testing:macgitTests/SubtreeSidebarPolicyTests -only-testing:macgitTests/GitCredentialInjectorTests` passed.
+
+## Task 4 - Verification and Remaining Handoff
+
+- Full-suite attempt: `rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS'` exited 65 with the documented test-host bootstrap abort: `Early unexpected exit` / `abort() called`. Per repo guidance, it was not rerun.
+- Build verification: `rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build` passed.
+- Updated the phase plan and roadmap to show Phase 5 implementation in progress with manual QA and merge still pending.

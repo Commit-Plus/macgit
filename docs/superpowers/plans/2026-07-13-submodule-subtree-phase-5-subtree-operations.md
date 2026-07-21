@@ -46,11 +46,11 @@ func supportsGitSubtree(in repositoryURL: URL) async -> Bool
 func subtreeOperationDecision(in repositoryURL: URL) async throws -> SubtreeOperationDecision
 ```
 
-- [ ] Write failing tests for available/unavailable command through a recording runner, clean parent, staged file, modified file, untracked file, merge conflict, and deterministic blocking paths.
-- [ ] Preflight with `git subtree -h`; normalize its help exit behavior because some Git distributions return non-zero after printing usage.
-- [ ] Guard with `git status --porcelain=v1 -z` and block on any record in v1.
-- [ ] Use exact unavailable error: `This Git installation does not include git subtree.`
-- [ ] Run focused tests, implement, rerun to green, and commit `feat: validate subtree operation readiness`.
+- [x] Write failing tests for available/unavailable command through a recording runner, clean parent, staged file, modified file, untracked file, merge conflict, and deterministic blocking paths.
+- [x] Preflight with `git subtree -h`; normalize its help exit behavior because some Git distributions return non-zero after printing usage.
+- [x] Guard with `git status --porcelain=v1 -z` and block on any record in v1.
+- [x] Use exact unavailable error: `This Git installation does not include git subtree.`
+- [x] Run focused tests, implement, rerun to green, and commit `feat: validate subtree operation readiness`.
 
 ## Task 2: Implement Credential-Aware Add, Pull, and Push
 
@@ -77,8 +77,8 @@ func pushSubtree(
 ) async throws
 ```
 
-- [ ] Write local-bare-repository integration tests for Add with squash, Add without squash, Pull with upstream change, Push with prefix change, capability failure, dirty-tree rejection, command failure does not save registry, successful Add saves registry, and notification only after success.
-- [ ] Reuse the existing remote credential injection helpers; add no new token-bearing argument or URL rewriting.
+- [x] Write local-bare-repository integration tests for Add with squash, Add without squash, Pull with upstream change, Push with prefix change, capability failure, dirty-tree rejection, command failure does not save registry, successful Add saves registry, and notification only after success.
+- [x] Reuse the existing remote credential injection helpers; add no new token-bearing argument or URL rewriting.
 - [ ] Execute:
 
 ```text
@@ -87,32 +87,32 @@ git subtree pull --prefix=<path> <repository> <branch> [--squash]
 git subtree push --prefix=<path> <repository> <branch>
 ```
 
-- [ ] Preserve argument boundaries exactly; never compose a shell command string.
-- [ ] Save registry after Add succeeds. Pull/Push never rewrite registry.
-- [ ] Post `.repositoryDidChange` after every successful Add, Pull, or Push so all repository-scoped consumers use one refresh path.
-- [ ] Run focused tests, implement, rerun to green, and commit `feat: run subtree network operations`.
+- [x] Preserve argument boundaries exactly; never compose a shell command string.
+- [x] Save registry after Add succeeds. Pull/Push never rewrite registry.
+- [x] Post `.repositoryDidChange` after every successful Add, Pull, or Push so all repository-scoped consumers use one refresh path.
+- [x] Run focused tests, implement, rerun to green, and commit `feat: run subtree network operations`.
 
 ## Task 3: Complete Add/Pull/Push UI
 
-- [ ] Enable `Add new subtree` mode in `AddOrLinkSubtreeSheet`; default to Add, keep Link selectable, and default `Squash imported history` on.
-- [ ] Existing remote names and a raw URL are accepted; branch and relative path are required.
-- [ ] Add context actions `Pull from Subtree Remote...` and `Push to Subtree Remote...` only when `folderExists`.
-- [ ] Pull confirmation states source repository/branch, destination prefix, and squash policy.
-- [ ] Push confirmation states that commits affecting the prefix will be split and sent to the configured repository/branch.
-- [ ] Route operations through `MainWindowView` with provider credentials and immediate progress labels: `Adding subtree...`, `Pulling <name>...`, and `Pushing <name>...`.
-- [ ] On a dirty-tree guard, list up to five blocking paths plus a remaining-count suffix; do not start Git.
-- [ ] Keep sheets/confirmations open on recoverable failure and sanitize error output.
-- [ ] Run all Phase 5 focused tests and build; commit `feat: add subtree operation UI`.
+- [x] Enable `Add new subtree` mode in `AddOrLinkSubtreeSheet`; default to Add, keep Link selectable, and default `Squash imported history` on.
+- [x] Existing remote names and a raw URL are accepted; branch and relative path are required.
+- [x] Add context actions `Pull from Subtree Remote...` and `Push to Subtree Remote...` only when `folderExists`.
+- [x] Pull confirmation states source repository/branch, destination prefix, and squash policy.
+- [x] Push confirmation states that commits affecting the prefix will be split and sent to the configured repository/branch.
+- [x] Route operations through `MainWindowView` with provider credentials and immediate progress labels: `Adding subtree...`, `Pulling <name>...`, and `Pushing <name>...`.
+- [x] On a dirty-tree guard, list up to five blocking paths plus a remaining-count suffix; do not start Git.
+- [x] Keep sheets/confirmations open on recoverable failure and sanitize error output.
+- [x] Run all Phase 5 focused tests and build; commit `feat: add subtree operation UI`.
 
 ## Task 4: Final Verification and Roadmap Completion
 
-- [ ] Run all subtree and credential focused tests:
+- [x] Run all subtree and credential focused tests:
 
 ```bash
 rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/GitSubtreeCapabilityTests -only-testing:macgitTests/GitSubtreeOperationTests -only-testing:macgitTests/SubtreeOperationPolicyTests -only-testing:macgitTests/GitCredentialInjectorTests
 ```
 
-- [ ] Run the complete suite once and build:
+- [x] Run the complete suite once and build:
 
 ```bash
 rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS'
