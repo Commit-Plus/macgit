@@ -78,6 +78,7 @@ struct MainWindowView: View {
     @State private var showingPushSheet = false
     @State private var showingFetchSheet = false
     @State private var showingAddSubmoduleSheet = false
+    @State private var showingAddLinkSubtreeSheet = false
     @State private var showingBranchSheet = false
     @State private var branchSheetStartPoint: GitBranchStartPoint?
     @State private var showingTagSheet = false
@@ -183,6 +184,7 @@ struct MainWindowView: View {
             .sheet(isPresented: $showingPushSheet) { pushSheet }
             .sheet(isPresented: $showingFetchSheet) { fetchSheet }
             .sheet(isPresented: $showingAddSubmoduleSheet) { addSubmoduleSheet }
+            .sheet(isPresented: $showingAddLinkSubtreeSheet) { addLinkSubtreeSheet }
             .sheet(isPresented: $showingBranchSheet, onDismiss: { branchSheetStartPoint = nil }) { branchSheet }
             .sheet(isPresented: $showingTagSheet, onDismiss: resetTagSheet) { tagSheet }
             .sheet(isPresented: tagDetailsSheetPresented) {
@@ -571,6 +573,27 @@ struct MainWindowView: View {
             onRequestAddSubmodule: {
                 showingAddSubmoduleSheet = true
             },
+            onRequestAddLinkSubtree: {
+                showingAddLinkSubtreeSheet = true
+            },
+            onRequestShowSubtreeInFinder: { path in
+                NSWorkspace.shared.activateFileViewerSelecting([path])
+            },
+            onRequestOpenSubtreeInTerminal: { path in
+                openWorktreeInTerminal(at: path)
+            },
+            onRequestUpdateSubtreeLink: { entry in
+                let registry = GitSubtreeRegistry()
+                try await registry.save(entry, in: repositoryURL)
+                NotificationCenter.default.post(
+                    name: .repositoryDidChange,
+                    object: nil,
+                    userInfo: ["repositoryURL": repositoryURL]
+                )
+            },
+            onRequestUnlinkSubtree: { entry in
+                try await GitStatusService.shared.unlinkSubtree(id: entry.id, in: repositoryURL)
+            },
             onRequestInitializeSubmodule: { path in
                 runRepositoryOperation("Initializing \(path)...") {
                     await initializeSubmodule(at: path)
@@ -689,6 +712,8 @@ struct MainWindowView: View {
                 StashView(repositoryURL: repositoryURL, stashRef: ref)
             case .submodule:
                 EmptyStateView(message: "Double-click to open this submodule")
+            case .subtree:
+                EmptyStateView(message: "Select a subtree action from the sidebar")
             case .item(.search):
                 SearchView(repositoryURL: repositoryURL)
             case .none:
@@ -818,6 +843,21 @@ struct MainWindowView: View {
             onCompleted: { request in
                 appState.showSubmodules = true
                 selectedItem = .submodule(request.path)
+            },
+            onRunRepositoryOperation: runRepositoryOperation
+        )
+    }
+
+    @ViewBuilder
+    private var addLinkSubtreeSheet: some View {
+        AddLinkSubtreeSheet(
+            repositoryURL: repositoryURL,
+            onLink: { request in
+                try await GitStatusService.shared.linkExistingSubtree(request, in: repositoryURL)
+            },
+            onCompleted: { entry in
+                appState.showSubtrees = true
+                selectedItem = .subtree(entry.id)
             },
             onRunRepositoryOperation: runRepositoryOperation
         )
@@ -1806,6 +1846,8 @@ struct MainWindowView: View {
             if !syncing { showingFetchSheet = true }
         case .addSubmodule:
             showingAddSubmoduleSheet = true
+        case .addLinkSubtree:
+            showingAddLinkSubtreeSheet = true
         case .branch:
             presentBranchSheet(startPoint: nil)
         case .merge:
