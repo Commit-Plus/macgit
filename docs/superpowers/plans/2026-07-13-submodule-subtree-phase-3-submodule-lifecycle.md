@@ -46,10 +46,10 @@ struct SubmoduleLifecycleDecision: Equatable {
 }
 ```
 
-- [ ] Write failing policy tests for clean initialized, dirty initialized, uninitialized, missing, and conflict entries.
-- [ ] Require confirmation for every deinitialize/remove operation; require explicit force for dirty/conflict child working trees.
-- [ ] Use exact distinctions in copy: `Deinitialize` says local checkout files are removed while `.gitmodules` and the recorded gitlink remain; `Remove Submodule` says the path and `.gitmodules` entry are staged for removal.
-- [ ] Run focused policy tests, implement the pure policy, rerun to green, and commit `feat: define submodule lifecycle guards`.
+- [x] Write failing policy tests for clean initialized, dirty initialized, uninitialized, missing, and conflict entries.
+- [x] Require confirmation for every deinitialize/remove operation; require explicit force for dirty/conflict child working trees.
+- [x] Use exact distinctions in copy: `Deinitialize` says local checkout files are removed while `.gitmodules` and the recorded gitlink remain; `Remove Submodule` says the path and `.gitmodules` entry are staged for removal.
+- [x] Run focused policy tests, implement the pure policy, rerun to green, and commit `feat: define submodule lifecycle guards`.
 
 ## Task 2: Implement Configuration and Lifecycle Services
 
@@ -76,9 +76,9 @@ func removeSubmodule(
 ) async throws
 ```
 
-- [ ] Write integration tests for set URL, set branch, clear branch to default, clean deinitialize, dirty deinitialize rejection, forced deinitialize, clean removal, dirty removal rejection, forced removal, `.gitmodules` cleanup, and notification only after success.
-- [ ] Before deinitialize/remove, re-read child status instead of trusting stale sidebar state.
-- [ ] Implement:
+- [x] Write integration tests for set URL, set branch, clear branch to default, clean deinitialize, dirty deinitialize rejection, forced deinitialize, clean removal, dirty removal rejection, forced removal, `.gitmodules` cleanup, and notification only after success.
+- [x] Before deinitialize/remove, re-read child status instead of trusting stale sidebar state.
+- [x] Implement:
 
 ```text
 git submodule set-url -- <path> <url>
@@ -88,30 +88,32 @@ git submodule deinit [--force] -- <path>
 git rm [-f] -- <path>
 ```
 
-- [ ] After `git rm`, remove an empty `.gitmodules` file with Git-aware staging only when no submodule sections remain. Do not manually delete `.git/modules/<name>` in v1.
-- [ ] Rerun focused tests to green and commit `feat: manage submodule lifecycle`.
+- [x] After `git rm`, remove an empty `.gitmodules` file with Git-aware staging only when no submodule sections remain. Do not manually delete `.git/modules/<name>` in v1.
+- [x] Rerun focused tests to green and commit `feat: manage submodule lifecycle`.
 
 ## Task 3: Add Settings Sheet and Destructive UI
 
-- [ ] Extend sidebar policy tests for exact action availability.
-- [ ] Add `EditSubmoduleSheet` with `Repository URL`, optional `Branch`, Cancel/Save, validation, and inline error.
-- [ ] Add context actions `Edit Submodule Settings...`, `Deinitialize...`, and `Remove Submodule...` with destructive roles only where appropriate.
-- [ ] Add separate confirmation presentations; never reuse one generic destructive alert.
-- [ ] Route execution through `MainWindowView` progress and refresh callbacks. Preserve selection for Edit/Deinitialize; move selection to File status after successful Remove.
-- [ ] Verify policy/service tests and build; commit `feat: add submodule lifecycle UI`.
+- [x] Extend sidebar policy tests for exact action availability.
+- [x] Add `EditSubmoduleSheet` with `Repository URL`, optional `Branch`, Cancel/Save, validation, and inline error.
+- [x] Add context actions `Edit Submodule Settings...`, `Deinitialize...`, and `Remove Submodule...` with destructive roles only where appropriate.
+- [x] Add separate confirmation presentations; never reuse one generic destructive alert.
+- [x] Route execution through `MainWindowView` progress and refresh callbacks. Preserve selection for Edit/Deinitialize; move selection to File status after successful Remove.
+- [x] Verify policy/service tests and build; commit `feat: add submodule lifecycle UI`.
 
 ## Task 4: Verification and Roadmap Handoff
 
-- [ ] Run Phase 3 focused tests:
+- [x] Run Phase 3 focused tests:
 
 ```bash
 rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/SubmoduleLifecyclePolicyTests -only-testing:macgitTests/GitSubmoduleLifecycleTests -only-testing:macgitTests/SubmoduleSidebarPolicyTests
 ```
 
-- [ ] Run the complete suite once and build:
+- [x] Run the complete suite once and build:
 
 ```bash
 rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS'
 rtk xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build
 ```
-- [ ] Merge to `main`, verify, then mark Phase 3 `[completed]` with the landed commit.
+- [x] Merge to `main`, verify, then mark Phase 3 `[completed]` with the landed commit.
+
+Result: Phase 3 landed on `main` at `87e5ba7`. `SubmoduleSidebarPolicyTests` and the final build passed on `main`; the focused lifecycle/full-suite commands hit the documented test-host bootstrap abort and were not rerun.

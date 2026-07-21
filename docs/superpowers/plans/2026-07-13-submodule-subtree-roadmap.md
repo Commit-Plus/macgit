@@ -27,7 +27,7 @@
 
 - Phase 1: [completed] [2026-07-13-submodule-subtree-phase-1-submodule-discovery.md](2026-07-13-submodule-subtree-phase-1-submodule-discovery.md) (branch: `codex/submodule-subtree-phase-1-submodule-discovery`, landed on `main` at `37aaad7`)
 - Phase 2: [completed] [2026-07-13-submodule-subtree-phase-2-submodule-safe-actions.md](2026-07-13-submodule-subtree-phase-2-submodule-safe-actions.md) (branch: `codex/submodule-subtree-phase-2-submodule-safe-actions`, landed on `main` at `d4a202a`)
-- Phase 3: [pending] [2026-07-13-submodule-subtree-phase-3-submodule-lifecycle.md](2026-07-13-submodule-subtree-phase-3-submodule-lifecycle.md) (branch: `codex/submodule-subtree-phase-3-submodule-lifecycle`)
+- Phase 3: [completed] [2026-07-13-submodule-subtree-phase-3-submodule-lifecycle.md](2026-07-13-submodule-subtree-phase-3-submodule-lifecycle.md) (branch: `codex/submodule-subtree-phase-3-submodule-lifecycle`, landed on `main` at `87e5ba7`)
 - Phase 4: [pending] [2026-07-13-submodule-subtree-phase-4-subtree-registry.md](2026-07-13-submodule-subtree-phase-4-subtree-registry.md) (branch: `codex/submodule-subtree-phase-4-subtree-registry`)
 - Phase 5: [pending] [2026-07-13-submodule-subtree-phase-5-subtree-operations.md](2026-07-13-submodule-subtree-phase-5-subtree-operations.md) (branch: `codex/submodule-subtree-phase-5-subtree-operations`)
 
@@ -94,7 +94,7 @@
 
 - [x] Phase 1 merged to `main` at `37aaad7`; focused tests and build verified on the phase branch. The full-suite attempt hit the documented test-host bootstrap abort and was not rerun.
 - [x] Phase 2 merged to `main` at `d4a202a`; focused tests and build verified, and the full test-host bootstrap crash was hit again on the focused test pass so it was not rerun.
-- [ ] Phase 3 merged to `main`; focused tests, full tests, and build verified.
+- [x] Phase 3 merged to `main` at `87e5ba7`; focused sidebar policy tests and build verified on `main`. The full-suite attempt hit the documented test-host bootstrap abort and was not rerun.
 - [ ] Phase 4 merged to `main`; focused tests, full tests, and build verified.
 - [ ] Phase 5 merged to `main`; focused tests, full tests, and build verified.
 - [ ] Manual QA covers light/dark mode, collapsed/expanded persistence, empty states, all confirmation copy, and cancellation behavior.
