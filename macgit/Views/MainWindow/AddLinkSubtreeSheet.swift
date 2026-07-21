@@ -28,26 +28,47 @@ struct AddLinkSubtreeSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let repositoryURL: URL
+    let onAdd: (SubtreeLinkRequest) async throws -> GitSubtreeEntry
     let onLink: (SubtreeLinkRequest) async throws -> GitSubtreeEntry
     let onCompleted: (GitSubtreeEntry) -> Void
     let onRunRepositoryOperation: RepositoryOperationRunner
 
-    @State private var mode: SubtreeSheetMode = .linkExisting
+    @State private var mode: SubtreeSheetMode = .addNew
     @State private var name = ""
     @State private var path = ""
     @State private var repository = ""
     @State private var branch = "main"
-    @State private var squash = false
+    @State private var squash = true
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    private var canLink: Bool {
+    private var canSubmit: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !repository.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !isLoading
-            && mode == .linkExisting
+    }
+
+    private var submitTitle: String {
+        switch mode {
+        case .addNew: "Add Subtree"
+        case .linkExisting: "Link Subtree"
+        }
+    }
+
+    private var loadingTitle: String {
+        switch mode {
+        case .addNew: "Adding..."
+        case .linkExisting: "Linking..."
+        }
+    }
+
+    private var progressMessage: String {
+        switch mode {
+        case .addNew: "Adding subtree..."
+        case .linkExisting: "Linking subtree \(path)..."
+        }
     }
 
     var body: some View {
@@ -63,12 +84,6 @@ struct AddLinkSubtreeSheet: View {
                     }
                 }
                 .pickerStyle(.segmented)
-
-                if mode == .addNew {
-                    Text("Available in Phase 5")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
 
                 fieldRow(title: "Name") {
                     TextField("SharedKit", text: $name)
@@ -94,7 +109,7 @@ struct AddLinkSubtreeSheet: View {
                         .disableAutocorrection(true)
                 }
 
-                Toggle("Squashed", isOn: $squash)
+                Toggle("Squash imported history", isOn: $squash)
                     .toggleStyle(.checkbox)
                     .font(.system(size: 13))
 
@@ -116,13 +131,12 @@ struct AddLinkSubtreeSheet: View {
                 .keyboardShortcut(.cancelAction)
                 .disabled(isLoading)
 
-                Button(isLoading ? "Linking..." : "Link Subtree") {
+                Button(isLoading ? loadingTitle : submitTitle) {
                     submit()
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 13))
-                .disabled(!canLink)
-                .help(mode == .addNew ? "Available in Phase 5" : "")
+                .disabled(!canSubmit)
             }
             .padding([.horizontal, .bottom], 24)
         }
@@ -143,7 +157,7 @@ struct AddLinkSubtreeSheet: View {
     }
 
     private func submit() {
-        guard canLink else { return }
+        guard canSubmit else { return }
 
         let request = SubtreeLinkRequest(
             name: name,
@@ -154,9 +168,15 @@ struct AddLinkSubtreeSheet: View {
         )
         isLoading = true
         errorMessage = nil
-        onRunRepositoryOperation("Linking subtree \(path)...") {
+        onRunRepositoryOperation(progressMessage) {
             do {
-                let entry = try await onLink(request)
+                let entry: GitSubtreeEntry
+                switch mode {
+                case .addNew:
+                    entry = try await onAdd(request)
+                case .linkExisting:
+                    entry = try await onLink(request)
+                }
                 await MainActor.run {
                     onCompleted(entry)
                     isLoading = false
@@ -164,11 +184,20 @@ struct AddLinkSubtreeSheet: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    errorMessage = sanitizedErrorMessage(error.localizedDescription)
                     isLoading = false
                 }
             }
         }
     }
-}
 
+    private func sanitizedErrorMessage(_ message: String) -> String {
+        let lines = message
+            .replacingOccurrences(of: "\r", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let limited = lines.prefix(8).joined(separator: "\n")
+        return limited.isEmpty ? "The subtree operation failed." : limited
+    }
+}

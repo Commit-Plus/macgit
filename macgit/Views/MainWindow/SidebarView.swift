@@ -300,6 +300,8 @@ struct SidebarView: View {
     let onRequestAddLinkSubtree: () -> Void
     let onRequestShowSubtreeInFinder: (URL) -> Void
     let onRequestOpenSubtreeInTerminal: (URL) -> Void
+    let onRequestPullSubtree: (GitSubtreeEntry) -> Void
+    let onRequestPushSubtree: (GitSubtreeEntry) -> Void
     let onRequestUpdateSubtreeLink: (GitSubtreeEntry) async throws -> Void
     let onRequestUnlinkSubtree: (GitSubtreeEntry) async throws -> Void
     let onRequestInitializeSubmodule: (String) -> Void
@@ -427,6 +429,8 @@ struct SidebarView: View {
         onRequestAddLinkSubtree: @escaping () -> Void = {},
         onRequestShowSubtreeInFinder: @escaping (URL) -> Void = { _ in },
         onRequestOpenSubtreeInTerminal: @escaping (URL) -> Void = { _ in },
+        onRequestPullSubtree: @escaping (GitSubtreeEntry) -> Void = { _ in },
+        onRequestPushSubtree: @escaping (GitSubtreeEntry) -> Void = { _ in },
         onRequestUpdateSubtreeLink: @escaping (GitSubtreeEntry) async throws -> Void = { _ in },
         onRequestUnlinkSubtree: @escaping (GitSubtreeEntry) async throws -> Void = { _ in },
         onRequestInitializeSubmodule: @escaping (String) -> Void = { _ in },
@@ -475,6 +479,8 @@ struct SidebarView: View {
         self.onRequestAddLinkSubtree = onRequestAddLinkSubtree
         self.onRequestShowSubtreeInFinder = onRequestShowSubtreeInFinder
         self.onRequestOpenSubtreeInTerminal = onRequestOpenSubtreeInTerminal
+        self.onRequestPullSubtree = onRequestPullSubtree
+        self.onRequestPushSubtree = onRequestPushSubtree
         self.onRequestUpdateSubtreeLink = onRequestUpdateSubtreeLink
         self.onRequestUnlinkSubtree = onRequestUnlinkSubtree
         self.onRequestInitializeSubmodule = onRequestInitializeSubmodule
@@ -850,6 +856,8 @@ struct SidebarView: View {
             entry: entry,
             onShowInFinder: { onRequestShowSubtreeInFinder(path) },
             onOpenInTerminal: { onRequestOpenSubtreeInTerminal(path) },
+            onPull: { onRequestPullSubtree(entry) },
+            onPush: { onRequestPushSubtree(entry) },
             onEditLink: { subtreeToEdit = entry },
             onUnlink: { subtreeToUnlink = entry }
         )

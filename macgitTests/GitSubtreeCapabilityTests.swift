@@ -15,14 +15,15 @@
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-import Foundation
+import XCTest
+@testable import macgit
 
-enum SubtreeSidebarPolicy {
-    static func actions(for entry: GitSubtreeEntry) -> Set<SubtreeSidebarAction> {
-        var actions: Set<SubtreeSidebarAction> = [.editLink, .unlink]
-        if entry.folderExists {
-            actions.formUnion([.showInFinder, .openInTerminal, .pull, .push])
-        }
-        return actions
+final class GitSubtreeCapabilityTests: XCTestCase {
+    func testUnavailableSubtreeErrorCopyIsExact() {
+        XCTAssertEqual(
+            SubtreeOperationPolicy.unavailableMessage,
+            "This Git installation does not include git subtree."
+        )
     }
 }
+
