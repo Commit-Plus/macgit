@@ -175,6 +175,11 @@ struct macgitApp: App {
                 }
                 .disabled(!appState.hasOpenRepository)
 
+                Button("Add/Link Subtree...") {
+                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.addLinkSubtree])
+                }
+                .disabled(!appState.hasOpenRepository)
+
                 Divider()
 
                 Button("Branch...") {

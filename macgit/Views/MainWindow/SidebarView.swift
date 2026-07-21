@@ -35,6 +35,7 @@ enum SidebarSelection: Hashable {
     case stash(String)
     case head(String)
     case submodule(String)
+    case subtree(String)
 }
 
 enum SidebarItem: String, CaseIterable, Identifiable {
@@ -135,6 +136,132 @@ enum SidebarBranchSyncBadgeResolver {
     }
 }
 
+private struct WorktreePresentationModifier: ViewModifier {
+    @Binding var worktreeToLabel: WorktreeEntry?
+    @Binding var worktreeToLock: WorktreeEntry?
+    @Binding var worktreeToMove: WorktreeEntry?
+    @Binding var worktreeToCheckout: WorktreeEntry?
+    @Binding var showingCreateWorktreeSheet: Bool
+    @Binding var showingWorktreeRemovalConfirmation: Bool
+    @Binding var showingMissingWorktreeAlert: Bool
+    @Binding var showingWorktreeForceCheckoutConfirmation: Bool
+    @Binding var showingPruneWorktreesConfirmation: Bool
+    @Binding var pendingWorktreeRemoval: WorktreeEntry?
+    @Binding var pendingWorktreeForceCheckout: WorktreeEntry?
+    @Binding var missingWorktreeEntry: WorktreeEntry?
+
+    let worktreeRemovalNeedsForce: Bool
+    let worktreeRemovalMessage: String
+    let worktreeLabelSheet: () -> AnyView
+    let worktreeLockSheet: () -> AnyView
+    let worktreeMoveSheet: () -> AnyView
+    let worktreeCheckoutSheet: () -> AnyView
+    let createWorktreeSheet: () -> AnyView
+    let chooseReplacementWorktreeFolder: (WorktreeEntry) -> Void
+    let deleteMissingWorktree: (WorktreeEntry) async -> Void
+    let removeWorktree: (WorktreeEntry, Bool) async -> Void
+    let checkoutWorktree: (WorktreeEntry, Bool) async -> Void
+    let pruneWorktrees: () async -> Void
+    let onRunRepositoryOperation: RepositoryOperationRunner
+
+    func body(content: Content) -> some View {
+        content
+            .alert("Remove Worktree", isPresented: $showingWorktreeRemovalConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button(worktreeRemovalNeedsForce ? "Force Remove" : "Remove", role: .destructive) {
+                    if let entry = pendingWorktreeRemoval {
+                        onRunRepositoryOperation("Removing \(entry.displayTitle)...") {
+                            await removeWorktree(entry, worktreeRemovalNeedsForce)
+                        }
+                    }
+                }
+            } message: {
+                Text(worktreeRemovalMessage)
+            }
+            .alert("Worktree Moved or Deleted", isPresented: $showingMissingWorktreeAlert, presenting: missingWorktreeEntry) { entry in
+                Button("Delete", role: .destructive) {
+                    onRunRepositoryOperation("Removing missing worktree...") {
+                        await deleteMissingWorktree(entry)
+                    }
+                }
+                Button("Change folder") {
+                    chooseReplacementWorktreeFolder(entry)
+                }
+                Button("Cancel", role: .cancel) {
+                    missingWorktreeEntry = nil
+                }
+            } message: { entry in
+                Text("\"\(entry.displayTitle)\" is no longer available at \(entry.path.path).")
+            }
+            .alert("Force Switch Branch", isPresented: $showingWorktreeForceCheckoutConfirmation) {
+                Button("Cancel", role: .cancel) {
+                    pendingWorktreeForceCheckout = nil
+                }
+                Button("Force Switch", role: .destructive) {
+                    if let entry = pendingWorktreeForceCheckout {
+                        onRunRepositoryOperation("Switching \(entry.displayTitle)...") {
+                            await checkoutWorktree(entry, true)
+                        }
+                    }
+                }
+            } message: {
+                Text("This worktree has uncommitted changes. Force checkout and discard conflicting changes?")
+            }
+            .alert("Prune Worktrees", isPresented: $showingPruneWorktreesConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Prune", role: .destructive) {
+                    onRunRepositoryOperation("Pruning worktrees...") {
+                        await pruneWorktrees()
+                    }
+                }
+            } message: {
+                Text("Remove stale worktree metadata and orphaned labels for paths that no longer exist?")
+            }
+            .sheet(item: $worktreeToLabel) { _ in worktreeLabelSheet() }
+            .sheet(item: $worktreeToLock) { _ in worktreeLockSheet() }
+            .sheet(item: $worktreeToMove) { _ in worktreeMoveSheet() }
+            .sheet(item: $worktreeToCheckout) { _ in worktreeCheckoutSheet() }
+            .sheet(isPresented: $showingCreateWorktreeSheet) { createWorktreeSheet() }
+    }
+}
+
+private struct SubtreePresentationModifier: ViewModifier {
+    @Binding var subtreeToEdit: GitSubtreeEntry?
+    @Binding var subtreeToUnlink: GitSubtreeEntry?
+
+    let editSubtreeSheet: (GitSubtreeEntry) -> AnyView
+    let unlinkSubtree: (GitSubtreeEntry) async -> Void
+    let onRunRepositoryOperation: RepositoryOperationRunner
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $subtreeToEdit) { entry in
+                editSubtreeSheet(entry)
+            }
+            .alert("Unlink Subtree", isPresented: Binding(
+                get: { subtreeToUnlink != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        subtreeToUnlink = nil
+                    }
+                }
+            )) {
+                Button("Cancel", role: .cancel) {
+                    subtreeToUnlink = nil
+                }
+                Button("Unlink", role: .destructive) {
+                    if let entry = subtreeToUnlink {
+                        onRunRepositoryOperation("Unlinking \(entry.path)...") {
+                            await unlinkSubtree(entry)
+                        }
+                    }
+                }
+            } message: {
+                Text("Unlink removes Commit+ metadata only. Files under \(subtreeToUnlink?.path ?? "") remain unchanged.")
+            }
+    }
+}
+
 struct SidebarView: View {
     @EnvironmentObject private var appUpdateController: AppUpdateController
     @EnvironmentObject private var appState: AppState
@@ -170,6 +297,11 @@ struct SidebarView: View {
     let onRequestShowSubmoduleInFinder: (URL) -> Void
     let onRequestOpenSubmoduleInTerminal: (URL) -> Void
     let onRequestAddSubmodule: () -> Void
+    let onRequestAddLinkSubtree: () -> Void
+    let onRequestShowSubtreeInFinder: (URL) -> Void
+    let onRequestOpenSubtreeInTerminal: (URL) -> Void
+    let onRequestUpdateSubtreeLink: (GitSubtreeEntry) async throws -> Void
+    let onRequestUnlinkSubtree: (GitSubtreeEntry) async throws -> Void
     let onRequestInitializeSubmodule: (String) -> Void
     let onRequestUpdateSubmodule: (String, SubmoduleUpdateMode) -> Void
     let onRequestSynchronizeSubmoduleURL: (String) -> Void
@@ -204,6 +336,11 @@ struct SidebarView: View {
     @State private var submoduleToEdit: GitSubmoduleEntry?
     @State private var submoduleToDeinitialize: GitSubmoduleEntry?
     @State private var submoduleToRemove: GitSubmoduleEntry?
+    @State private var subtreeEntries: [GitSubtreeEntry] = []
+    @State private var hasLoadedSubtrees = false
+    @State private var isLoadingSubtrees = false
+    @State private var subtreeToEdit: GitSubtreeEntry?
+    @State private var subtreeToUnlink: GitSubtreeEntry?
     @State private var worktreeEntries: [WorktreeEntry] = []
     @State private var hasLoadedWorktrees = false
     @State private var isLoadingWorktrees = false
@@ -287,6 +424,11 @@ struct SidebarView: View {
         onRequestShowSubmoduleInFinder: @escaping (URL) -> Void = { _ in },
         onRequestOpenSubmoduleInTerminal: @escaping (URL) -> Void = { _ in },
         onRequestAddSubmodule: @escaping () -> Void = {},
+        onRequestAddLinkSubtree: @escaping () -> Void = {},
+        onRequestShowSubtreeInFinder: @escaping (URL) -> Void = { _ in },
+        onRequestOpenSubtreeInTerminal: @escaping (URL) -> Void = { _ in },
+        onRequestUpdateSubtreeLink: @escaping (GitSubtreeEntry) async throws -> Void = { _ in },
+        onRequestUnlinkSubtree: @escaping (GitSubtreeEntry) async throws -> Void = { _ in },
         onRequestInitializeSubmodule: @escaping (String) -> Void = { _ in },
         onRequestUpdateSubmodule: @escaping (String, SubmoduleUpdateMode) -> Void = { _, _ in },
         onRequestSynchronizeSubmoduleURL: @escaping (String) -> Void = { _ in },
@@ -330,6 +472,11 @@ struct SidebarView: View {
         self.onRequestShowSubmoduleInFinder = onRequestShowSubmoduleInFinder
         self.onRequestOpenSubmoduleInTerminal = onRequestOpenSubmoduleInTerminal
         self.onRequestAddSubmodule = onRequestAddSubmodule
+        self.onRequestAddLinkSubtree = onRequestAddLinkSubtree
+        self.onRequestShowSubtreeInFinder = onRequestShowSubtreeInFinder
+        self.onRequestOpenSubtreeInTerminal = onRequestOpenSubtreeInTerminal
+        self.onRequestUpdateSubtreeLink = onRequestUpdateSubtreeLink
+        self.onRequestUnlinkSubtree = onRequestUnlinkSubtree
         self.onRequestInitializeSubmodule = onRequestInitializeSubmodule
         self.onRequestUpdateSubmodule = onRequestUpdateSubmodule
         self.onRequestSynchronizeSubmoduleURL = onRequestSynchronizeSubmoduleURL
@@ -349,209 +496,12 @@ struct SidebarView: View {
                 }
             }
 
-            List(selection: $selection) {
-                Section(SidebarSection.workspace.rawValue) {
-                    ForEach(SidebarSection.workspace.items) { item in
-                        if item == .search {
-                            Label(item.rawValue, systemImage: item.icon)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    onRequestSearch()
-                                }
-                        } else {
-                            Label(item.rawValue, systemImage: item.icon)
-                                .tag(SidebarSelection.item(item))
-                        }
-                    }
-                }
+            sidebarContent
+        }
+    }
 
-                Section {
-                    branchesSectionHeaderRow
-
-                    if sectionStates.branchesExpanded {
-                        if isLoadingBranches && branchNodes.isEmpty {
-                            ProgressView()
-                                .scaleEffect(0.6)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, 4)
-                        } else if branchNodes.isEmpty {
-                            Text("No branches")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            if currentBranch.isEmpty && !headHash.isEmpty {
-                                headRowView
-                            }
-
-                            ForEach(visibleBranchRows) { row in
-                                branchRowView(for: row)
-                            }
-                        }
-                    }
-                }
-
-                Section {
-                    sectionHeader(.worktrees, isExpanded: sectionStates.worktreesExpanded)
-
-                    if sectionStates.worktreesExpanded {
-                        if isLoadingWorktrees && worktreeEntries.isEmpty {
-                            ProgressView()
-                                .scaleEffect(0.6)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, 4)
-                        } else if worktreeEntries.isEmpty {
-                            Text("No worktrees")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(worktreeEntries) { entry in
-                                worktreeRowView(for: entry)
-                            }
-                        }
-                    }
-                }
-
-                Section {
-                    tagsSectionHeaderRow
-
-                    if sectionStates.tagsExpanded {
-                        if isLoadingTags && tagNodes.isEmpty {
-                            ProgressView()
-                                .scaleEffect(0.6)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, 4)
-                        } else if tagNodes.isEmpty {
-                            Text("No tags")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(visibleTagRows) { row in
-                                tagRowView(for: row)
-                            }
-                        }
-                    }
-                }
-
-                Section {
-                    remotesSectionHeaderRow
-
-                    if sectionStates.remotesExpanded {
-                        if isLoadingRemotes && remoteNodes.isEmpty {
-                            ProgressView()
-                                .scaleEffect(0.6)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, 4)
-                        } else if remoteNodes.isEmpty {
-                            Text("No remotes")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(visibleRemoteRows) { row in
-                                remoteRowView(for: row)
-                            }
-                        }
-                    }
-                }
-
-                Section {
-                    stashesSectionHeaderRow
-
-                    if sectionStates.stashesExpanded {
-                        if isLoadingStashes && stashEntries.isEmpty {
-                            ProgressView()
-                                .scaleEffect(0.6)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, 4)
-                        } else if stashEntries.isEmpty {
-                            Text("No stashes")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(stashEntries) { stash in
-                                stashRowView(for: stash)
-                            }
-                        }
-                    }
-                }
-
-                if appState.showSubmodules {
-                    Section {
-                        sectionHeader(.submodules, isExpanded: sectionStates.submodulesExpanded)
-
-                        if sectionStates.submodulesExpanded {
-                            if isLoadingSubmodules && submoduleEntries.isEmpty {
-                                ProgressView()
-                                    .scaleEffect(0.6)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.leading, 4)
-                            } else if submoduleEntries.isEmpty {
-                                Text("No submodules")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                ForEach(submoduleEntries) { entry in
-                                    let path = repositoryURL.appendingPathComponent(
-                                        entry.path,
-                                        isDirectory: true
-                                    )
-                                    SidebarSubmoduleRow(
-                                        entry: entry,
-                                        onOpen: { onRequestOpenSubmodule(path) },
-                                        onShowInFinder: { onRequestShowSubmoduleInFinder(path) },
-                                        onOpenInTerminal: { onRequestOpenSubmoduleInTerminal(path) },
-                                        onInitialize: { onRequestInitializeSubmodule(entry.path) },
-                                        onUpdateToRecordedCommit: { onRequestUpdateSubmodule(entry.path, .recordedCommit) },
-                                        onUpdateFromRemote: { onRequestUpdateSubmodule(entry.path, .remoteCheckout) },
-                                        onSynchronizeURL: { onRequestSynchronizeSubmoduleURL(entry.path) },
-                                        onEditSettings: { submoduleToEdit = entry },
-                                        onDeinitialize: { presentDeinitializeSubmoduleConfirmation(entry) },
-                                        onRemove: { presentRemoveSubmoduleConfirmation(entry) }
-                                    )
-                                    .tag(SidebarSelection.submodule(entry.path))
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if appState.showSubtrees {
-                    Section(SidebarSection.subtrees.rawValue) {
-                        Text("Coming soon")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .disabled(true)
-                }
-            }
-            .listStyle(.sidebar)
-            .contextMenu {
-                Button("Add Submodule...", systemImage: "plus", action: onRequestAddSubmodule)
-            }
-            .task(id: repositoryURL) {
-                loadSectionStates()
-                resetLazySectionData()
-                await loadVisibleSections(force: false)
-                await loadTags()
-                await loadRemotes()
-                await loadStashes()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { notification in
-                if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
-                    Task {
-                        await loadVisibleSections(force: true)
-                        await loadTags()
-                        await loadRemotes()
-                        await loadStashes()
-                    }
-                }
-            }
-            .onChange(of: appState.showSubmodules) { _, isVisible in
-                guard isVisible, sectionStates.submodulesExpanded else { return }
-                Task {
-                    await loadSubmodules(force: false)
-                }
-            }
+    private var sidebarContent: some View {
+        sidebarList
             .alert("Error", isPresented: $showingError) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -584,74 +534,8 @@ struct SidebarView: View {
             } message: {
                 Text("Delete '\(remoteBranchDeleteTarget?.fullPath ?? "")' from the remote?")
             }
-            .alert("Remove Worktree", isPresented: $showingWorktreeRemovalConfirmation) {
-                Button("Cancel", role: .cancel) {}
-                Button(worktreeRemovalNeedsForce ? "Force Remove" : "Remove", role: .destructive) {
-                    if let entry = pendingWorktreeRemoval {
-                        onRunRepositoryOperation("Removing \(entry.displayTitle)...") {
-                            await removeWorktree(entry, force: worktreeRemovalNeedsForce)
-                        }
-                    }
-                }
-            } message: {
-                Text(worktreeRemovalMessage)
-            }
-            .alert("Worktree Moved or Deleted", isPresented: $showingMissingWorktreeAlert, presenting: missingWorktreeEntry) { entry in
-                Button("Delete", role: .destructive) {
-                    onRunRepositoryOperation("Removing missing worktree...") {
-                        await deleteMissingWorktree(entry)
-                    }
-                }
-
-                Button("Change folder") {
-                    chooseReplacementWorktreeFolder(for: entry)
-                }
-
-                Button("Cancel", role: .cancel) {
-                    missingWorktreeEntry = nil
-                }
-            } message: { entry in
-                Text("\"\(entry.displayTitle)\" is no longer available at \(entry.path.path).")
-            }
-            .alert("Force Switch Branch", isPresented: $showingWorktreeForceCheckoutConfirmation) {
-                Button("Cancel", role: .cancel) {
-                    pendingWorktreeForceCheckout = nil
-                }
-                Button("Force Switch", role: .destructive) {
-                    if let entry = pendingWorktreeForceCheckout {
-                        onRunRepositoryOperation("Switching \(entry.displayTitle)...") {
-                            await checkoutWorktree(entry, force: true)
-                        }
-                    }
-                }
-            } message: {
-                Text("This worktree has uncommitted changes. Force checkout and discard conflicting changes?")
-            }
-            .alert("Prune Worktrees", isPresented: $showingPruneWorktreesConfirmation) {
-                Button("Cancel", role: .cancel) {}
-                Button("Prune", role: .destructive) {
-                    onRunRepositoryOperation("Pruning worktrees...") {
-                        await pruneWorktrees()
-                    }
-                }
-            } message: {
-                Text("Remove stale worktree metadata and orphaned labels for paths that no longer exist?")
-            }
-            .sheet(item: $worktreeToLabel) { _ in
-                worktreeLabelSheet
-            }
-            .sheet(item: $worktreeToLock) { _ in
-                worktreeLockSheet
-            }
-            .sheet(item: $worktreeToMove) { _ in
-                worktreeMoveSheet
-            }
-            .sheet(item: $worktreeToCheckout) { _ in
-                worktreeCheckoutSheet
-            }
-            .sheet(isPresented: $showingCreateWorktreeSheet) {
-                createWorktreeSheet
-            }
+            .modifier(sidebarWorktreePresentation)
+            .modifier(sidebarSubtreePresentation)
             .modifier(
                 SubmoduleLifecyclePresentationModifier(
                     submoduleToEdit: $submoduleToEdit,
@@ -665,7 +549,311 @@ struct SidebarView: View {
                     onRunRepositoryOperation: onRunRepositoryOperation
                 )
             )
+    }
+
+    private var sidebarList: some View {
+        List(selection: $selection) {
+            sidebarRows
         }
+        .listStyle(.sidebar)
+        .contextMenu {
+            Button("Add Submodule...", systemImage: "plus", action: onRequestAddSubmodule)
+            Button("Add/Link Subtree...", systemImage: "plus", action: onRequestAddLinkSubtree)
+        }
+        .task(id: repositoryURL) {
+            loadSectionStates()
+            resetLazySectionData()
+            await loadVisibleSections(force: false)
+            await loadTags()
+            await loadRemotes()
+            await loadStashes()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { notification in
+            if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
+                Task {
+                    await loadVisibleSections(force: true)
+                    await loadTags()
+                    await loadRemotes()
+                    await loadStashes()
+                }
+            }
+        }
+        .onChange(of: appState.showSubmodules) { _, isVisible in
+            guard isVisible, sectionStates.submodulesExpanded else { return }
+            Task {
+                await loadSubmodules(force: false)
+            }
+        }
+        .onChange(of: appState.showSubtrees) { _, isVisible in
+            guard isVisible, sectionStates.subtreesExpanded else { return }
+            Task {
+                await loadSubtrees(force: false)
+            }
+        }
+    }
+
+    private var sidebarWorktreePresentation: some ViewModifier {
+        WorktreePresentationModifier(
+            worktreeToLabel: $worktreeToLabel,
+            worktreeToLock: $worktreeToLock,
+            worktreeToMove: $worktreeToMove,
+            worktreeToCheckout: $worktreeToCheckout,
+            showingCreateWorktreeSheet: $showingCreateWorktreeSheet,
+            showingWorktreeRemovalConfirmation: $showingWorktreeRemovalConfirmation,
+            showingMissingWorktreeAlert: $showingMissingWorktreeAlert,
+            showingWorktreeForceCheckoutConfirmation: $showingWorktreeForceCheckoutConfirmation,
+            showingPruneWorktreesConfirmation: $showingPruneWorktreesConfirmation,
+            pendingWorktreeRemoval: $pendingWorktreeRemoval,
+            pendingWorktreeForceCheckout: $pendingWorktreeForceCheckout,
+            missingWorktreeEntry: $missingWorktreeEntry,
+            worktreeRemovalNeedsForce: worktreeRemovalNeedsForce,
+            worktreeRemovalMessage: worktreeRemovalMessage,
+            worktreeLabelSheet: { AnyView(worktreeLabelSheet) },
+            worktreeLockSheet: { AnyView(worktreeLockSheet) },
+            worktreeMoveSheet: { AnyView(worktreeMoveSheet) },
+            worktreeCheckoutSheet: { AnyView(worktreeCheckoutSheet) },
+            createWorktreeSheet: { AnyView(createWorktreeSheet) },
+            chooseReplacementWorktreeFolder: chooseReplacementWorktreeFolder,
+            deleteMissingWorktree: deleteMissingWorktree,
+            removeWorktree: removeWorktree,
+            checkoutWorktree: checkoutWorktree,
+            pruneWorktrees: pruneWorktrees,
+            onRunRepositoryOperation: onRunRepositoryOperation
+        )
+    }
+
+    private var sidebarSubtreePresentation: some ViewModifier {
+        SubtreePresentationModifier(
+            subtreeToEdit: $subtreeToEdit,
+            subtreeToUnlink: $subtreeToUnlink,
+            editSubtreeSheet: { entry in
+                AnyView(
+                    EditSubtreeSheet(
+                        entry: entry,
+                        onSave: { updated in
+                            try await onRequestUpdateSubtreeLink(updated)
+                        },
+                        onRunRepositoryOperation: onRunRepositoryOperation
+                    )
+                )
+            },
+            unlinkSubtree: unlinkSubtree,
+            onRunRepositoryOperation: onRunRepositoryOperation
+        )
+    }
+
+    @ViewBuilder
+    private var sidebarRows: some View {
+        Section(SidebarSection.workspace.rawValue) {
+            ForEach(SidebarSection.workspace.items) { item in
+                if item == .search {
+                    Label(item.rawValue, systemImage: item.icon)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            onRequestSearch()
+                        }
+                } else {
+                    Label(item.rawValue, systemImage: item.icon)
+                        .tag(SidebarSelection.item(item))
+                }
+            }
+        }
+
+        Section {
+            branchesSectionHeaderRow
+
+            if sectionStates.branchesExpanded {
+                if isLoadingBranches && branchNodes.isEmpty {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 4)
+                } else if branchNodes.isEmpty {
+                    Text("No branches")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    if currentBranch.isEmpty && !headHash.isEmpty {
+                        headRowView
+                    }
+
+                    ForEach(visibleBranchRows) { row in
+                        branchRowView(for: row)
+                    }
+                }
+            }
+        }
+
+        Section {
+            sectionHeader(.worktrees, isExpanded: sectionStates.worktreesExpanded)
+
+            if sectionStates.worktreesExpanded {
+                if isLoadingWorktrees && worktreeEntries.isEmpty {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 4)
+                } else if worktreeEntries.isEmpty {
+                    Text("No worktrees")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(worktreeEntries) { entry in
+                        worktreeRowView(for: entry)
+                    }
+                }
+            }
+        }
+
+        Section {
+            tagsSectionHeaderRow
+
+            if sectionStates.tagsExpanded {
+                if isLoadingTags && tagNodes.isEmpty {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 4)
+                } else if tagNodes.isEmpty {
+                    Text("No tags")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(visibleTagRows) { row in
+                        tagRowView(for: row)
+                    }
+                }
+            }
+        }
+
+        Section {
+            remotesSectionHeaderRow
+
+            if sectionStates.remotesExpanded {
+                if isLoadingRemotes && remoteNodes.isEmpty {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 4)
+                } else if remoteNodes.isEmpty {
+                    Text("No remotes")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(visibleRemoteRows) { row in
+                        remoteRowView(for: row)
+                    }
+                }
+            }
+        }
+
+        Section {
+            stashesSectionHeaderRow
+
+            if sectionStates.stashesExpanded {
+                if isLoadingStashes && stashEntries.isEmpty {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 4)
+                } else if stashEntries.isEmpty {
+                    Text("No stashes")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(stashEntries) { stash in
+                        stashRowView(for: stash)
+                    }
+                }
+            }
+        }
+
+        if appState.showSubmodules {
+            submodulesSection
+        }
+
+        if appState.showSubtrees {
+            subtreesSection
+        }
+    }
+
+    @ViewBuilder
+    private var submodulesSection: some View {
+        Section {
+            sectionHeader(.submodules, isExpanded: sectionStates.submodulesExpanded)
+
+            if sectionStates.submodulesExpanded {
+                if isLoadingSubmodules && submoduleEntries.isEmpty {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 4)
+                } else if submoduleEntries.isEmpty {
+                    Text("No submodules")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(submoduleEntries) { entry in
+                        submoduleRow(entry)
+                    }
+                }
+            }
+        }
+    }
+
+    private func submoduleRow(_ entry: GitSubmoduleEntry) -> some View {
+        let path = repositoryURL.appendingPathComponent(entry.path, isDirectory: true)
+        return SidebarSubmoduleRow(
+            entry: entry,
+            onOpen: { onRequestOpenSubmodule(path) },
+            onShowInFinder: { onRequestShowSubmoduleInFinder(path) },
+            onOpenInTerminal: { onRequestOpenSubmoduleInTerminal(path) },
+            onInitialize: { onRequestInitializeSubmodule(entry.path) },
+            onUpdateToRecordedCommit: { onRequestUpdateSubmodule(entry.path, .recordedCommit) },
+            onUpdateFromRemote: { onRequestUpdateSubmodule(entry.path, .remoteCheckout) },
+            onSynchronizeURL: { onRequestSynchronizeSubmoduleURL(entry.path) },
+            onEditSettings: { submoduleToEdit = entry },
+            onDeinitialize: { presentDeinitializeSubmoduleConfirmation(entry) },
+            onRemove: { presentRemoveSubmoduleConfirmation(entry) }
+        )
+        .tag(SidebarSelection.submodule(entry.path))
+    }
+
+    @ViewBuilder
+    private var subtreesSection: some View {
+        Section {
+            sectionHeader(.subtrees, isExpanded: sectionStates.subtreesExpanded)
+
+            if sectionStates.subtreesExpanded {
+                if isLoadingSubtrees && subtreeEntries.isEmpty {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 4)
+                } else if subtreeEntries.isEmpty {
+                    Text("No subtrees")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(subtreeEntries) { entry in
+                        subtreeRow(entry)
+                    }
+                }
+            }
+        }
+    }
+
+    private func subtreeRow(_ entry: GitSubtreeEntry) -> some View {
+        let path = repositoryURL.appendingPathComponent(entry.path, isDirectory: true)
+        return SidebarSubtreeRow(
+            entry: entry,
+            onShowInFinder: { onRequestShowSubtreeInFinder(path) },
+            onOpenInTerminal: { onRequestOpenSubtreeInTerminal(path) },
+            onEditLink: { subtreeToEdit = entry },
+            onUnlink: { subtreeToUnlink = entry }
+        )
+        .tag(SidebarSelection.subtree(entry.id))
     }
 
     // Use a real list row for the branches title because List section headers are unreliable drop targets on macOS.
@@ -977,6 +1165,12 @@ struct SidebarView: View {
                     .buttonStyle(.plain)
                     .help("Add Submodule")
             }
+            if section == .subtrees {
+                Button("Add/Link Subtree", systemImage: "plus", action: onRequestAddLinkSubtree)
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.plain)
+                    .help("Add/Link Subtree")
+            }
             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -1203,6 +1397,10 @@ struct SidebarView: View {
         submoduleEntries = []
         hasLoadedSubmodules = false
         isLoadingSubmodules = false
+
+        subtreeEntries = []
+        hasLoadedSubtrees = false
+        isLoadingSubtrees = false
     }
 
     private func loadVisibleSections(force: Bool) async {
@@ -1214,6 +1412,9 @@ struct SidebarView: View {
         }
         if appState.showSubmodules && sectionStates.submodulesExpanded {
             await loadSubmodules(force: force)
+        }
+        if appState.showSubtrees && sectionStates.subtreesExpanded {
+            await loadSubtrees(force: force)
         }
     }
 
@@ -1230,6 +1431,10 @@ struct SidebarView: View {
         case .submodules:
             if appState.showSubmodules && sectionStates.submodulesExpanded {
                 await loadSubmodules(force: false)
+            }
+        case .subtrees:
+            if appState.showSubtrees && sectionStates.subtreesExpanded {
+                await loadSubtrees(force: false)
             }
         default:
             break
@@ -2720,6 +2925,49 @@ struct SidebarView: View {
                 hasLoadedSubmodules = true
                 if case .submodule(let path) = selection,
                    !entries.contains(where: { $0.path == path }) {
+                    selection = nil
+                }
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    private func loadSubtrees(force: Bool = false) async {
+        if !force && hasLoadedSubtrees {
+            return
+        }
+
+        isLoadingSubtrees = true
+        defer { isLoadingSubtrees = false }
+
+        do {
+            let entries = try await GitStatusService.shared.subtrees(in: repositoryURL)
+            await MainActor.run {
+                subtreeEntries = entries
+                hasLoadedSubtrees = true
+                if case .subtree(let id) = selection,
+                   !entries.contains(where: { $0.id == id }) {
+                    selection = nil
+                }
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+
+    private func unlinkSubtree(_ entry: GitSubtreeEntry) async {
+        do {
+            try await onRequestUnlinkSubtree(entry)
+            await MainActor.run {
+                subtreeToUnlink = nil
+                if selection == .subtree(entry.id) {
                     selection = nil
                 }
             }
