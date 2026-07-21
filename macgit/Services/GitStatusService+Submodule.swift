@@ -102,6 +102,81 @@ extension GitStatusService {
         notifySubmoduleMutationSucceeded(in: repositoryURL)
     }
 
+    func updateSubmoduleSettings(
+        path: String,
+        url: String,
+        branch: String?,
+        in repositoryURL: URL
+    ) async throws {
+        let path = try validatedSubmodulePath(path)
+        let url = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty else {
+            throw SubmoduleRequestValidationError.emptyRepository
+        }
+
+        _ = try await runGit(
+            arguments: ["submodule", "set-url", "--", path, url],
+            in: repositoryURL
+        )
+
+        let branch = branch?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let branch, !branch.isEmpty {
+            _ = try await runGit(
+                arguments: ["submodule", "set-branch", "--branch", branch, "--", path],
+                in: repositoryURL
+            )
+        } else {
+            _ = try await runGit(
+                arguments: ["submodule", "set-branch", "--default", "--", path],
+                in: repositoryURL
+            )
+        }
+
+        notifySubmoduleMutationSucceeded(in: repositoryURL)
+    }
+
+    func deinitializeSubmodule(
+        path: String,
+        force: Bool,
+        in repositoryURL: URL
+    ) async throws {
+        let path = try validatedSubmodulePath(path)
+        try await rejectDirtySubmoduleCheckout(path: path, force: force, in: repositoryURL)
+
+        var arguments = ["submodule", "deinit"]
+        if force {
+            arguments.append("--force")
+        }
+        arguments += ["--", path]
+        _ = try await runGit(arguments: arguments, in: repositoryURL)
+        notifySubmoduleMutationSucceeded(in: repositoryURL)
+    }
+
+    func removeSubmodule(
+        path: String,
+        force: Bool,
+        in repositoryURL: URL
+    ) async throws {
+        let path = try validatedSubmodulePath(path)
+        try await rejectDirtySubmoduleCheckout(path: path, force: force, in: repositoryURL)
+
+        var arguments = ["rm"]
+        if force {
+            arguments.append("-f")
+        }
+        arguments += ["--", path]
+        _ = try await runGit(arguments: arguments, in: repositoryURL)
+
+        if configuredSubmodulePaths(in: repositoryURL).isEmpty {
+            let gitmodulesURL = repositoryURL.appendingPathComponent(".gitmodules")
+            if FileManager.default.fileExists(atPath: gitmodulesURL.path) {
+                _ = try await runGit(arguments: ["rm", "-f", "--", ".gitmodules"], in: repositoryURL)
+            }
+        }
+
+        notifySubmoduleMutationSucceeded(in: repositoryURL)
+    }
+
     nonisolated func configuredSubmodulePaths(in repositoryURL: URL) -> Set<String> {
         let gitmodulesURL = repositoryURL.appendingPathComponent(".gitmodules")
         guard FileManager.default.fileExists(atPath: gitmodulesURL.path) else {
@@ -262,5 +337,45 @@ extension GitStatusService {
             object: nil,
             userInfo: ["repositoryURL": repositoryURL]
         )
+    }
+
+    private func rejectDirtySubmoduleCheckout(
+        path: String,
+        force: Bool,
+        in repositoryURL: URL
+    ) async throws {
+        guard !force else { return }
+        let checkoutURL = repositoryURL.appendingPathComponent(path, isDirectory: true)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: checkoutURL.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return
+        }
+
+        let status = try await runGit(arguments: ["status", "--porcelain"], in: checkoutURL)
+        guard status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw GitError.commandFailed("This submodule has uncommitted changes. Confirm force to continue.")
+        }
+    }
+
+    private func validatedSubmodulePath(_ rawPath: String) throws -> String {
+        let path = rawPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\", with: "/")
+        guard !path.isEmpty else {
+            throw SubmoduleRequestValidationError.emptyPath
+        }
+        guard !NSString(string: path).isAbsolutePath else {
+            throw SubmoduleRequestValidationError.absolutePath
+        }
+
+        let standardizedPath = NSString(string: path).standardizingPath
+            .replacingOccurrences(of: "\\", with: "/")
+        guard standardizedPath != ".",
+              !standardizedPath.hasPrefix("../"),
+              standardizedPath != ".." else {
+            throw SubmoduleRequestValidationError.pathOutsideRepository
+        }
+        return standardizedPath
     }
 }

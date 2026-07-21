@@ -26,6 +26,9 @@ struct SidebarSubmoduleRow: View {
     let onUpdateToRecordedCommit: () -> Void
     let onUpdateFromRemote: () -> Void
     let onSynchronizeURL: () -> Void
+    let onEditSettings: () -> Void
+    let onDeinitialize: () -> Void
+    let onRemove: () -> Void
 
     private var actions: Set<SubmoduleSidebarAction> {
         SubmoduleSidebarPolicy.actions(for: entry)
@@ -84,6 +87,15 @@ struct SidebarSubmoduleRow: View {
             }
             if actions.contains(.synchronizeURL) {
                 Button("Synchronize URL", systemImage: "arrow.triangle.merge", action: onSynchronizeURL)
+            }
+            if actions.contains(.editSettings) {
+                Button("Edit Submodule Settings...", systemImage: "slider.horizontal.3", action: onEditSettings)
+            }
+            if actions.contains(.deinitialize) {
+                Button("Deinitialize...", systemImage: "externaldrive.badge.minus", action: onDeinitialize)
+            }
+            if actions.contains(.remove) {
+                Button("Remove Submodule...", systemImage: "trash", role: .destructive, action: onRemove)
             }
         }
         .accessibilityElement(children: .combine)

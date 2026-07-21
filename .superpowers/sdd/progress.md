@@ -1,8 +1,8 @@
-# Submodule/Subtree Phase 2 SDD Progress
+# Submodule/Subtree Phase 3 SDD Progress
 
-Branch base: `13776c48519116fb6796ceb125a2a3b0a47368b2`
-Plan: `docs/superpowers/plans/2026-07-13-submodule-subtree-phase-2-submodule-safe-actions.md`
+Branch base: `12d9528f5658ed2c55f083f377342438822d6993`
+Plan: `docs/superpowers/plans/2026-07-13-submodule-subtree-phase-3-submodule-lifecycle.md`
 
-Task 1: complete (commits 13776c4..7481d1a, review clean; Minor noted: strengthen legacy rejection error assertions)
-Task 2: complete (commit 3d9da33, build verified; submodule service actions and credential handling landed)
-Task 3: complete (commit 6e705da, build verified and `SubmoduleSidebarPolicyTests` passed; add sheet, sidebar actions, and Actions menu wired)
+Task 1: complete (commit e911411, local review clean; focused `SubmoduleLifecyclePolicyTests` passed)
+Task 2: complete (service implementation, focused lifecycle test command hit documented test-host bootstrap abort; `build-for-testing` and app build passed)
+Task 3: complete (UI lifecycle actions, edit sheet, distinct confirmations; `SubmoduleSidebarPolicyTests`, `build-for-testing`, and app build passed)

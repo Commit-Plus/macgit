@@ -587,6 +587,28 @@ struct MainWindowView: View {
                     await synchronizeSubmoduleURL(at: path)
                 }
             },
+            onRequestUpdateSubmoduleSettings: { path, url, branch in
+                try await GitStatusService.shared.updateSubmoduleSettings(
+                    path: path,
+                    url: url,
+                    branch: branch,
+                    in: repositoryURL
+                )
+            },
+            onRequestDeinitializeSubmodule: { path, force in
+                try await GitStatusService.shared.deinitializeSubmodule(
+                    path: path,
+                    force: force,
+                    in: repositoryURL
+                )
+            },
+            onRequestRemoveSubmodule: { path, force in
+                try await GitStatusService.shared.removeSubmodule(
+                    path: path,
+                    force: force,
+                    in: repositoryURL
+                )
+            },
             onRequestSearch: {
                 showingSearchModal = true
             },
