@@ -18,6 +18,27 @@
 import Foundation
 
 extension GitStatusService {
+    func supportsGitSubtree(in repositoryURL: URL) async -> Bool {
+        do {
+            _ = try await runGit(arguments: ["subtree", "-h"], in: repositoryURL)
+            return true
+        } catch {
+            let message = error.localizedDescription.lowercased()
+            if message.contains("usage: git subtree") {
+                return true
+            }
+            return false
+        }
+    }
+
+    func subtreeOperationDecision(in repositoryURL: URL) async throws -> SubtreeOperationDecision {
+        let status = try await runGit(
+            arguments: ["status", "--porcelain=v1", "-z"],
+            in: repositoryURL
+        )
+        return SubtreeOperationPolicy.decision(forStatus: status)
+    }
+
     func subtrees(
         in repositoryURL: URL,
         registry: any GitSubtreeRegistryProtocol = GitSubtreeRegistry()
@@ -108,4 +129,3 @@ extension GitStatusService {
         )
     }
 }
-
