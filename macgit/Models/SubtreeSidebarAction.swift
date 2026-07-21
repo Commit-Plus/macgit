@@ -20,7 +20,8 @@ import Foundation
 enum SubtreeSidebarAction: Hashable, Sendable {
     case showInFinder
     case openInTerminal
+    case pull
+    case push
     case editLink
     case unlink
 }
-

@@ -52,6 +52,15 @@ private struct PendingPushBranchDropConfirmation: Identifiable, Equatable {
     }
 }
 
+private struct PendingSubtreeOperation: Identifiable, Equatable {
+    let operation: SubtreeOperation
+    let entry: GitSubtreeEntry
+
+    var id: String {
+        "\(operation)-\(entry.id)"
+    }
+}
+
 private struct BranchTagStartPoint: Equatable {
     let branchName: String
     let hash: String
@@ -112,6 +121,7 @@ struct MainWindowView: View {
     @State private var pendingCommitDropConfirmation: PendingCommitDropConfirmation?
     @State private var pendingBranchDropConfirmation: PendingBranchDropConfirmation?
     @State private var pendingPushBranchDropConfirmation: PendingPushBranchDropConfirmation?
+    @State private var pendingSubtreeOperation: PendingSubtreeOperation?
     @State private var isPerformingBranchDropOperation = false
     @StateObject private var operationProgress = RepositoryOperationProgress()
 
@@ -213,6 +223,19 @@ struct MainWindowView: View {
             }
             .sheet(item: $pendingBranchDropConfirmation) { confirmation in
                 branchDropConfirmationSheet(for: confirmation)
+            }
+            .sheet(item: $pendingSubtreeOperation) { pending in
+                SubtreeOperationConfirmationSheet(
+                    operation: pending.operation,
+                    entry: pending.entry,
+                    onConfirm: {
+                        try await performSubtreeOperation(pending)
+                    },
+                    onCompleted: {
+                        pendingSubtreeOperation = nil
+                    },
+                    onRunRepositoryOperation: runRepositoryOperation
+                )
             }
             .confirmationDialog(
                 "Push Branch",
@@ -582,6 +605,12 @@ struct MainWindowView: View {
             onRequestOpenSubtreeInTerminal: { path in
                 openWorktreeInTerminal(at: path)
             },
+            onRequestPullSubtree: { entry in
+                pendingSubtreeOperation = PendingSubtreeOperation(operation: .pull, entry: entry)
+            },
+            onRequestPushSubtree: { entry in
+                pendingSubtreeOperation = PendingSubtreeOperation(operation: .push, entry: entry)
+            },
             onRequestUpdateSubtreeLink: { entry in
                 let registry = GitSubtreeRegistry()
                 try await registry.save(entry, in: repositoryURL)
@@ -852,6 +881,13 @@ struct MainWindowView: View {
     private var addLinkSubtreeSheet: some View {
         AddLinkSubtreeSheet(
             repositoryURL: repositoryURL,
+            onAdd: { request in
+                try await GitStatusService.shared.addSubtree(
+                    request,
+                    in: repositoryURL,
+                    credentialResolver: providerAccountController.credentialResolver()
+                )
+            },
             onLink: { request in
                 try await GitStatusService.shared.linkExistingSubtree(request, in: repositoryURL)
             },
@@ -2288,5 +2324,40 @@ struct MainWindowView: View {
                 syncState.showError(error.localizedDescription)
             }
         }
+    }
+
+    private func performSubtreeOperation(_ pending: PendingSubtreeOperation) async throws {
+        let decision = try await GitStatusService.shared.subtreeOperationDecision(in: repositoryURL)
+        guard decision.isAllowed else {
+            throw GitError.commandFailed(subtreeBlockedMessage(for: decision))
+        }
+
+        switch pending.operation {
+        case .add:
+            return
+        case .pull:
+            try await GitStatusService.shared.pullSubtree(
+                pending.entry,
+                in: repositoryURL,
+                credentialResolver: providerAccountController.credentialResolver()
+            )
+        case .push:
+            try await GitStatusService.shared.pushSubtree(
+                pending.entry,
+                in: repositoryURL,
+                credentialResolver: providerAccountController.credentialResolver()
+            )
+        }
+    }
+
+    private func subtreeBlockedMessage(for decision: SubtreeOperationDecision) -> String {
+        guard !decision.blockingPaths.isEmpty else {
+            return decision.message ?? SubtreeOperationPolicy.dirtyTreeMessage
+        }
+
+        let shownPaths = decision.blockingPaths.prefix(5).map { "- \($0)" }.joined(separator: "\n")
+        let remaining = decision.blockingPaths.count - 5
+        let suffix = remaining > 0 ? "\n+ \(remaining) more" : ""
+        return "\(decision.message ?? SubtreeOperationPolicy.dirtyTreeMessage)\n\n\(shownPaths)\(suffix)"
     }
 }

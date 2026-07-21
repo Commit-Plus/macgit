@@ -22,7 +22,7 @@ final class SubtreeSidebarPolicyTests: XCTestCase {
     func testExistingFolderExposesFinderTerminalEditAndUnlink() {
         XCTAssertEqual(
             SubtreeSidebarPolicy.actions(for: entry(folderExists: true)),
-            [.showInFinder, .openInTerminal, .editLink, .unlink]
+            [.showInFinder, .openInTerminal, .pull, .push, .editLink, .unlink]
         )
     }
 
@@ -45,4 +45,3 @@ final class SubtreeSidebarPolicyTests: XCTestCase {
         )
     }
 }
-

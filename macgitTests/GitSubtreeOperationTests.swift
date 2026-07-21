@@ -199,6 +199,37 @@ final class GitSubtreeOperationTests: XCTestCase {
         XCTAssertEqual(savedPaths, ["Vendor/SharedKit"])
     }
 
+    func testAddSubtreeUsesCredentialEnvironmentWithoutTokenArguments() async throws {
+        let repository = URL(fileURLWithPath: "/tmp/repo")
+        let token = "secret-subtree-token"
+        let remote = "https://github.com/example/shared.git"
+        let runner = RecordingSubtreeOperationRunner(outputs: [
+            "subtree -h": "usage: git subtree add --prefix=<prefix> <repository> <ref>",
+            "status --porcelain=v1 -z": "",
+            "subtree add --prefix=Vendor/SharedKit \(remote) main": ""
+        ])
+        let service = GitStatusService(runner: runner)
+
+        _ = try await service.addSubtree(
+            request(repository: remote),
+            in: repository,
+            credentialResolver: makeCredentialResolver(token: token),
+            registry: RecordingSubtreeRegistry()
+        )
+
+        let calls = await runner.recordedArguments()
+        let environments = await runner.recordedEnvironments()
+        let addEnvironment = try XCTUnwrap(environments.last ?? nil)
+        XCTAssertEqual(
+            calls.last,
+            ["subtree", "add", "--prefix=Vendor/SharedKit", remote, "main"]
+        )
+        XCTAssertFalse(calls.flatMap { $0 }.contains { $0.contains(token) })
+        XCTAssertEqual(addEnvironment["GIT_TERMINAL_PROMPT"], "0")
+        XCTAssertNotNil(addEnvironment["GIT_ASKPASS"])
+        XCTAssertFalse(addEnvironment.values.contains { $0.contains(token) })
+    }
+
     private func request(
         name: String = "SharedKit",
         path: String = "Vendor/SharedKit",
@@ -255,6 +286,36 @@ final class GitSubtreeOperationTests: XCTestCase {
         try String(contentsOf: repository.appendingPathComponent(path), encoding: .utf8)
     }
 
+    private func makeCredentialResolver(token: String) -> GitProviderCredentialResolver {
+        let account = GitProviderAccount(
+            id: "account-1",
+            macgitUID: "user-1",
+            provider: .github,
+            hostURL: URL(string: "https://github.com")!,
+            providerUserID: "example",
+            username: "example",
+            displayName: "Example",
+            avatarURL: nil,
+            scopes: [],
+            permissions: [:],
+            tokenStatus: .valid,
+            connectedAt: Date(),
+            lastValidatedAt: Date()
+        )
+        return GitProviderCredentialResolver(
+            accounts: [account],
+            tokenVault: SubtreeOperationTokenVault(
+                accountID: account.id,
+                token: GitProviderToken(
+                    accessToken: token,
+                    refreshToken: nil,
+                    expiresAt: nil,
+                    tokenType: "bearer"
+                )
+            )
+        )
+    }
+
     @discardableResult
     private func runGit(_ arguments: [String], in directory: URL) throws -> String {
         let process = Process()
@@ -295,6 +356,7 @@ private actor RecordingSubtreeOperationRunner: GitCommandRunning {
     private let outputs: [String: String]
     private let failures: [String: Error]
     private var calls: [[String]] = []
+    private var environments: [[String: String]?] = []
 
     init(outputs: [String: String] = [:], failures: [String: Error] = [:]) {
         self.outputs = outputs
@@ -302,11 +364,18 @@ private actor RecordingSubtreeOperationRunner: GitCommandRunning {
     }
 
     func runGit(arguments: [String], in directory: URL) async throws -> String {
-        try await runGit(arguments: arguments, in: directory, environment: [:])
+        calls.append(arguments)
+        environments.append(nil)
+        let key = arguments.joined(separator: " ")
+        if let failure = failures[key] {
+            throw failure
+        }
+        return outputs[key] ?? ""
     }
 
     func runGit(arguments: [String], in directory: URL, environment: [String: String]) async throws -> String {
         calls.append(arguments)
+        environments.append(environment)
         let key = arguments.joined(separator: " ")
         if let failure = failures[key] {
             throw failure
@@ -316,6 +385,10 @@ private actor RecordingSubtreeOperationRunner: GitCommandRunning {
 
     func recordedArguments() -> [[String]] {
         calls
+    }
+
+    func recordedEnvironments() -> [[String: String]?] {
+        environments
     }
 }
 
@@ -337,6 +410,24 @@ private actor RecordingSubtreeRegistry: GitSubtreeRegistryProtocol {
     func savedEntries() -> [GitSubtreeEntry] {
         entries
     }
+}
+
+private final class SubtreeOperationTokenVault: GitProviderTokenVault {
+    private let accountID: String
+    private let token: GitProviderToken
+
+    init(accountID: String, token: GitProviderToken) {
+        self.accountID = accountID
+        self.token = token
+    }
+
+    func readToken(for account: GitProviderAccount) throws -> GitProviderToken? {
+        account.id == accountID ? token : nil
+    }
+
+    func saveToken(_ token: GitProviderToken, for account: GitProviderAccount) throws {}
+
+    func deleteToken(for account: GitProviderAccount) throws {}
 }
 
 private func XCTAssertThrowsErrorAsync(

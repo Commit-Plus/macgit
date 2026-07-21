@@ -21,6 +21,8 @@ struct SidebarSubtreeRow: View {
     let entry: GitSubtreeEntry
     let onShowInFinder: () -> Void
     let onOpenInTerminal: () -> Void
+    let onPull: () -> Void
+    let onPush: () -> Void
     let onEditLink: () -> Void
     let onUnlink: () -> Void
 
@@ -68,6 +70,12 @@ struct SidebarSubtreeRow: View {
             if actions.contains(.openInTerminal) {
                 Button("Open in Terminal", systemImage: "terminal", action: onOpenInTerminal)
             }
+            if actions.contains(.pull) {
+                Button("Pull from Subtree Remote...", systemImage: "arrow.down.circle", action: onPull)
+            }
+            if actions.contains(.push) {
+                Button("Push to Subtree Remote...", systemImage: "arrow.up.circle", action: onPush)
+            }
             if actions.contains(.editLink) {
                 Button("Edit Link...", systemImage: "slider.horizontal.3", action: onEditLink)
             }
@@ -90,4 +98,3 @@ struct SidebarSubtreeRow: View {
         return parts.joined(separator: ", ")
     }
 }
-

@@ -19,3 +19,13 @@ Plan: `docs/superpowers/plans/2026-07-13-submodule-subtree-phase-5-subtree-opera
 - Added local bare-repository integration coverage for add without squash, add with squash, pull, and push.
 - Added recording-runner coverage for missing capability, dirty parent rejection, command failure without registry save/notification, and successful add save/notification ordering.
 - Verification: `rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/GitSubtreeCapabilityTests -only-testing:macgitTests/SubtreeOperationPolicyTests -only-testing:macgitTests/GitSubtreeOperationTests` passed.
+
+## Task 3 - Add/Pull/Push UI
+
+- Enabled Add New in `AddLinkSubtreeSheet`, defaulting to Add New and `Squash imported history`.
+- Routed Add through `GitStatusService.addSubtree` with provider credentials and the progress label `Adding subtree...`.
+- Added folder-gated subtree row actions `Pull from Subtree Remote...` and `Push to Subtree Remote...`.
+- Added MainWindow-owned pull/push confirmation sheets with repository, branch, prefix, squash policy, credential-aware service calls, and inline recoverable errors.
+- Added a dirty-tree preflight message that lists up to five blocking paths with a remaining-count suffix before running the subtree operation.
+- Extended subtree operation coverage for credential environment injection without token-bearing git arguments.
+- Verification: `rtk xcodebuild test -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' -only-testing:macgitTests/GitSubtreeCapabilityTests -only-testing:macgitTests/GitSubtreeOperationTests -only-testing:macgitTests/SubtreeOperationPolicyTests -only-testing:macgitTests/SubtreeSidebarPolicyTests -only-testing:macgitTests/GitCredentialInjectorTests` passed.
