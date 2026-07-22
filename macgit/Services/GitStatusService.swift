@@ -22,6 +22,30 @@
 //
 import Foundation
 
+nonisolated private final class GitProcessOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var standardOutput = Data()
+    private var standardError = Data()
+
+    func storeStandardOutput(_ data: Data) {
+        lock.lock()
+        standardOutput = data
+        lock.unlock()
+    }
+
+    func storeStandardError(_ data: Data) {
+        lock.lock()
+        standardError = data
+        lock.unlock()
+    }
+
+    func snapshot() -> (standardOutput: Data, standardError: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (standardOutput, standardError)
+    }
+}
+
 actor GitStatusService {
     static let shared = GitStatusService()
 
@@ -54,9 +78,16 @@ actor GitStatusService {
     }
 
     func runGitRaw(arguments: [String], in directory: URL) async throws -> Data {
-        let executable = gitExecutable()
+        try await runProcessRaw(
+            executableURL: URL(fileURLWithPath: gitExecutable()),
+            arguments: arguments,
+            in: directory
+        )
+    }
+
+    func runProcessRaw(executableURL: URL, arguments: [String], in directory: URL) async throws -> Data {
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: executable)
+        task.executableURL = executableURL
         task.arguments = arguments
         task.currentDirectoryURL = directory
         task.environment = ProcessInfo.processInfo.environment
@@ -67,23 +98,43 @@ actor GitStatusService {
         task.standardError = stderr
 
         return try await withCheckedThrowingContinuation { continuation in
-            task.terminationHandler = { process in
-                let outData = stdout.fileHandleForReading.readDataToEndOfFile()
-                let errData = stderr.fileHandleForReading.readDataToEndOfFile()
-                let errorOutput = String(data: errData, encoding: .utf8) ?? ""
+            let output = GitProcessOutput()
+            let readers = DispatchGroup()
+            readers.enter()
+            readers.enter()
 
-                if process.terminationStatus != 0 {
-                    let output = String(data: outData, encoding: .utf8) ?? ""
-                    let message = errorOutput.isEmpty ? output : errorOutput
-                    continuation.resume(throwing: GitError.commandFailed(message.trimmingCharacters(in: .whitespacesAndNewlines)))
-                } else {
-                    continuation.resume(returning: outData)
+            task.terminationHandler = { process in
+                readers.notify(queue: .global(qos: .userInitiated)) {
+                    let captured = output.snapshot()
+                    let errorOutput = String(data: captured.standardError, encoding: .utf8) ?? ""
+
+                    if process.terminationStatus != 0 {
+                        let standardOutput = String(data: captured.standardOutput, encoding: .utf8) ?? ""
+                        let message = errorOutput.isEmpty ? standardOutput : errorOutput
+                        continuation.resume(throwing: GitError.commandFailed(message.trimmingCharacters(in: .whitespacesAndNewlines)))
+                    } else {
+                        continuation.resume(returning: captured.standardOutput)
+                    }
                 }
             }
 
             do {
                 try task.run()
+
+                // Drain both pipes while Git is running. Waiting until process
+                // termination deadlocks once output exceeds the pipe buffer.
+                DispatchQueue.global(qos: .userInitiated).async {
+                    output.storeStandardOutput(stdout.fileHandleForReading.readDataToEndOfFile())
+                    readers.leave()
+                }
+                DispatchQueue.global(qos: .userInitiated).async {
+                    output.storeStandardError(stderr.fileHandleForReading.readDataToEndOfFile())
+                    readers.leave()
+                }
             } catch {
+                task.terminationHandler = nil
+                readers.leave()
+                readers.leave()
                 continuation.resume(throwing: GitError.gitNotFound)
             }
         }

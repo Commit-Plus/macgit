@@ -28,6 +28,9 @@ struct FileStatusView: View {
     var undoManager: GitUndoManager? = nil
 
     @State private var gitStatus: GitStatus = GitStatus(staged: [], unstaged: [], untracked: [])
+    @State private var changedFiles: [StatusFile] = []
+    @State private var visibleStagedFileCount = 100
+    @State private var visibleChangedFileCount = 100
     @State private var selectedFile: StatusFile? = nil
     @State private var selectedActionFileKeys: Set<FileStatusSelectionKey> = []
     @State private var diffHunks: [DiffHunk] = []
@@ -47,8 +50,14 @@ struct FileStatusView: View {
     @State private var ignoreTargetFile: StatusFile? = nil
     @State private var conflictResolverWindow: NSWindow?
 
-    private var changedFiles: [StatusFile] {
-        gitStatus.unstaged + gitStatus.untracked
+    private let fileDisplayPageSize = 100
+
+    private var visibleStagedFiles: ArraySlice<StatusFile> {
+        gitStatus.staged.prefix(visibleStagedFileCount)
+    }
+
+    private var visibleChangedFiles: ArraySlice<StatusFile> {
+        changedFiles.prefix(visibleChangedFileCount)
     }
 
     private var hasChanges: Bool {
@@ -69,10 +78,9 @@ struct FileStatusView: View {
 
     private func sectionCheckState(isStaged: Bool) -> NSControl.StateValue {
         let files = isStaged ? gitStatus.staged : changedFiles
-        let allKeys = Set(files.map { FileStatusSelectionKey(file: $0, isStaged: isStaged) })
-        let selected = selectedActionFileKeys.intersection(allKeys)
-        if selected.isEmpty { return .off }
-        if selected == allKeys { return .on }
+        let selectedCount = selectedActionFileKeys.count { $0.isStaged == isStaged }
+        if selectedCount == 0 { return .off }
+        if selectedCount == files.count { return .on }
         return .mixed
     }
 
@@ -228,70 +236,94 @@ struct FileStatusView: View {
     }
 
     private var fileListPanel: some View {
-        List(selection: $selectedFile) {
-            if !gitStatus.staged.isEmpty {
-                Section {
-                    ForEach(gitStatus.staged) { file in
-                        fileRow(file: file, isStaged: true)
-                            .tag(file)
-                    }
-                } header: {
-                    HStack(spacing: 8) {
-                        TriStateCheckbox(state: sectionCheckState(isStaged: true), accessibilityLabel: "Select all staged") { selectAll in
-                            toggleSelectAll(isStaged: true, selectAll: selectAll)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                if !gitStatus.staged.isEmpty {
+                    Section {
+                        ForEach(visibleStagedFiles) { file in
+                            fileRow(file: file, isStaged: true)
                         }
-                        Text("Staged")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .textCase(.none)
-                        Spacer()
-                        Button(actionSelection.title(for: .staged)) {
-                            Task {
-                                if actionSelection.selectedStagedFiles.isEmpty {
-                                    await unstageAll()
-                                } else {
-                                    await unstageSelected()
-                                }
+                        if visibleStagedFileCount < gitStatus.staged.count {
+                            filePageLoader {
+                                visibleStagedFileCount = min(
+                                    visibleStagedFileCount + fileDisplayPageSize,
+                                    gitStatus.staged.count
+                                )
                             }
                         }
-                        .buttonStyle(GlassButtonStyle(tint: .yellow, fontSize: 10))
+                    } header: {
+                        HStack(spacing: 8) {
+                            TriStateCheckbox(state: sectionCheckState(isStaged: true), accessibilityLabel: "Select all staged") { selectAll in
+                                toggleSelectAll(isStaged: true, selectAll: selectAll)
+                            }
+                            Text("Staged")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .textCase(.none)
+                            Spacer()
+                            Button(actionSelection.title(for: .staged)) {
+                                Task {
+                                    if actionSelection.selectedStagedFiles.isEmpty {
+                                        await unstageAll()
+                                    } else {
+                                        await unstageSelected()
+                                    }
+                                }
+                            }
+                            .buttonStyle(GlassButtonStyle(tint: .yellow, fontSize: 10))
+                        }
+                        .padding(.horizontal, 4)
+                        .background(Color(nsColor: .controlBackgroundColor))
                     }
-                    .padding(.horizontal, 4)
                 }
-            }
 
-            if !changedFiles.isEmpty {
-                Section {
-                    ForEach(changedFiles) { file in
-                        fileRow(file: file, isStaged: false)
-                            .tag(file)
-                    }
-                } header: {
-                    HStack(spacing: 8) {
-                        TriStateCheckbox(state: sectionCheckState(isStaged: false), accessibilityLabel: "Select all changed") { selectAll in
-                            toggleSelectAll(isStaged: false, selectAll: selectAll)
+                if !changedFiles.isEmpty {
+                    Section {
+                        ForEach(visibleChangedFiles) { file in
+                            fileRow(file: file, isStaged: false)
                         }
-                        Text("Changed")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .textCase(.none)
-                        Spacer()
-                        Button(actionSelection.title(for: .changed)) {
-                            Task {
-                                if actionSelection.selectedChangedFiles.isEmpty {
-                                    await stageAll()
-                                } else {
-                                    await stageSelected()
-                                }
+                        if visibleChangedFileCount < changedFiles.count {
+                            filePageLoader {
+                                visibleChangedFileCount = min(
+                                    visibleChangedFileCount + fileDisplayPageSize,
+                                    changedFiles.count
+                                )
                             }
                         }
-                        .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 10))
+                    } header: {
+                        HStack(spacing: 8) {
+                            TriStateCheckbox(state: sectionCheckState(isStaged: false), accessibilityLabel: "Select all changed") { selectAll in
+                                toggleSelectAll(isStaged: false, selectAll: selectAll)
+                            }
+                            Text("Changed")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .textCase(.none)
+                            Spacer()
+                            Button(actionSelection.title(for: .changed)) {
+                                Task {
+                                    if actionSelection.selectedChangedFiles.isEmpty {
+                                        await stageAll()
+                                    } else {
+                                        await stageSelected()
+                                    }
+                                }
+                            }
+                            .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 10))
+                        }
+                        .padding(.horizontal, 4)
+                        .background(Color(nsColor: .controlBackgroundColor))
                     }
-                    .padding(.horizontal, 4)
                 }
             }
         }
-        .listStyle(.inset)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private func filePageLoader(action: @escaping () -> Void) -> some View {
+        Color.clear
+            .frame(height: 1)
+            .onAppear(perform: action)
     }
 
     private func fileRow(file: StatusFile, isStaged: Bool) -> some View {
@@ -854,7 +886,17 @@ struct FileStatusView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            gitStatus = try await GitStatusService.shared.status(for: repositoryURL)
+            let loadedStatus = try await GitStatusService.shared.status(for: repositoryURL)
+            gitStatus = loadedStatus
+            changedFiles = loadedStatus.unstaged + loadedStatus.untracked
+            visibleStagedFileCount = min(
+                max(visibleStagedFileCount, fileDisplayPageSize),
+                loadedStatus.staged.count
+            )
+            visibleChangedFileCount = min(
+                max(visibleChangedFileCount, fileDisplayPageSize),
+                changedFiles.count
+            )
             recentCommits = await GitStatusService.shared.recentCommits(in: repositoryURL)
 
             if selectedFile == nil {
@@ -872,7 +914,9 @@ struct FileStatusView: View {
                 }
             }
 
-            selectedActionFileKeys = actionSelection.prunedSelection
+            if !selectedActionFileKeys.isEmpty {
+                selectedActionFileKeys = actionSelection.prunedSelection
+            }
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -1121,6 +1165,7 @@ struct FileStatusView: View {
     private func confirmIgnore(file: StatusFile, pattern: String) async {
         do {
             try await GitStatusService.shared.ignore(file: file, pattern: pattern, in: repositoryURL)
+            await syncState?.refresh(repositoryURL: repositoryURL)
             await loadStatus()
         } catch {
             errorMessage = error.localizedDescription

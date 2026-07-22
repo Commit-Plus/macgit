@@ -31,9 +31,6 @@ struct BadgeToolbarButton: View {
     let action: () -> Void
 
     private var badgeText: String {
-        if badgeCount > 99 {
-            return "99+"
-        }
         return String(badgeCount)
     }
 

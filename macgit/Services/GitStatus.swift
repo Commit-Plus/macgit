@@ -48,10 +48,15 @@ enum FileStatus: String, CaseIterable {
 }
 
 struct StatusFile: Identifiable, Equatable, Hashable {
-    let id = UUID()
     let path: String
     let status: FileStatus
     let originalPath: String?
+
+    // Status refreshes recreate these values. Keep identity stable so a large
+    // untracked tree is diffed in place instead of being removed and rebuilt.
+    var id: String {
+        "\(status.rawValue):\(path):\(originalPath ?? "")"
+    }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)

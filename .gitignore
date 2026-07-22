@@ -3,3 +3,8 @@
 .tmp
 .superpowers/
 .env.local
+firebase-tests/
+functions/node_modules/
+*.log
+scripts/firebase/node_modules/
+*.map

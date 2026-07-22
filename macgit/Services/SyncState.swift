@@ -53,23 +53,33 @@ class SyncState: ObservableObject {
     }
 
     private var backgroundTask: Task<Void, Never>? = nil
+    private var refreshGeneration = 0
 
     func refresh(repositoryURL: URL) async {
-        do {
-            let status = try await GitStatusService.shared.status(for: repositoryURL)
-            let totalChanges = status.staged.count + status.unstaged.count + status.untracked.count
-            let counts = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
-            let operation = await GitStatusService.shared.inProgressOperation(in: repositoryURL)
-            await MainActor.run {
-                self.commitBadgeCount = totalChanges
-                self.stagedBadgeCount = status.staged.count
-                self.stashableCount = status.staged.count + status.unstaged.count
-                self.pushBadgeCount = counts.ahead
-                self.pullBadgeCount = counts.behind
-                self.inProgressOperation = operation
-            }
-        } catch {
-            // Silently ignore refresh failures to avoid spamming the user
+        let generation = await MainActor.run { () -> Int in
+            refreshGeneration += 1
+            return refreshGeneration
+        }
+
+        let uncommittedCount = await GitStatusService.shared.uncommittedChangeCount(in: repositoryURL)
+        let trackedCounts = await GitStatusService.shared.trackedStatusCounts(in: repositoryURL)
+        await MainActor.run {
+            guard generation == refreshGeneration else { return }
+            self.commitBadgeCount = uncommittedCount
+            self.stagedBadgeCount = trackedCounts.staged
+            self.stashableCount = trackedCounts.staged + trackedCounts.unstaged
+        }
+
+        let counts = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
+        let operation = await GitStatusService.shared.inProgressOperation(in: repositoryURL)
+        await MainActor.run {
+            // A checkout or another repository change can start a newer
+            // refresh while this one is still reading Git state. Never let
+            // the older snapshot overwrite the newer one.
+            guard generation == refreshGeneration else { return }
+            self.pushBadgeCount = counts.ahead
+            self.pullBadgeCount = counts.behind
+            self.inProgressOperation = operation
         }
     }
 
