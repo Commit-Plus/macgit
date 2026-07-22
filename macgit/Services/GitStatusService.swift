@@ -233,6 +233,15 @@ actor GitStatusService {
         ).run()
     }
 
+    func runProcessRaw(executableURL: URL, arguments: [String], in directory: URL) async throws -> Data {
+        try await GitProcessExecution(
+            executable: executableURL.path,
+            arguments: arguments,
+            directory: directory,
+            environment: ProcessInfo.processInfo.environment
+        ).run()
+    }
+
     struct PushOptions {
         var remote: String = "origin"
         var branches: [String] = []

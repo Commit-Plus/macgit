@@ -4,9 +4,11 @@
 .superpowers/
 .env.local
 .firebase/
-firebase-debug.log
-firestore-debug.log
 node_modules/
 functions/lib/
 
-*/node_modules/
+*/node_modules/*
+firebase-tests/
+functions/node_modules/
+*.log
+*.map

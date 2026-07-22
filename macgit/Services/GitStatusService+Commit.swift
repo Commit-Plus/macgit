@@ -114,12 +114,23 @@ extension GitStatusService {
     }
 
     func aheadBehindCount(in repositoryURL: URL) async -> (ahead: Int, behind: Int) {
-        let aheadOutput = (try? await runGit(arguments: ["rev-list", "--count", "@{upstream}..HEAD"], in: repositoryURL))?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let behindOutput = (try? await runGit(arguments: ["rev-list", "--count", "HEAD..@{upstream}"], in: repositoryURL))?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let ahead = Int(aheadOutput ?? "0") ?? 0
-        let behind = Int(behindOutput ?? "0") ?? 0
+        // Pull and Push badges describe only the checked-out branch. A local
+        // branch without an upstream has no meaningful remote comparison.
+        guard let branch = await currentBranch(in: repositoryURL),
+              await upstreamBranch(for: branch, in: repositoryURL) != nil else {
+            return (ahead: 0, behind: 0)
+        }
+
+        let output = (try? await runGit(
+            arguments: ["rev-list", "--count", "--left-right", "@{upstream}...HEAD"],
+            in: repositoryURL
+        ))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let parts = output.split(whereSeparator: { $0 == " " || $0 == "\t" })
+        guard parts.count == 2,
+              let behind = Int(parts[0]),
+              let ahead = Int(parts[1]) else {
+            return (ahead: 0, behind: 0)
+        }
         return (ahead: ahead, behind: behind)
     }
 

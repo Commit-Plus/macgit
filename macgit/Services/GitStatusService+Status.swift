@@ -23,6 +23,38 @@
 import Foundation
 
 extension GitStatusService {
+    func uncommittedChangeCount(in repositoryURL: URL) async -> Int {
+        let script = "\"$1\" status --porcelain -uall | /usr/bin/wc -l"
+        let output = try? await runProcessRaw(
+            executableURL: URL(fileURLWithPath: "/bin/zsh"),
+            arguments: ["-o", "pipefail", "-c", script, "macgit-status-count", gitExecutable()],
+            in: repositoryURL
+        )
+        let text = output.flatMap { String(data: $0, encoding: .utf8) }?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return Int(text ?? "") ?? 0
+    }
+
+    func trackedStatusCounts(in repositoryURL: URL) async -> (staged: Int, unstaged: Int) {
+        let output = (try? await runGit(
+            arguments: ["status", "--porcelain", "--untracked-files=no"],
+            in: repositoryURL
+        )) ?? ""
+
+        var staged = 0
+        var unstaged = 0
+
+        for line in output.split(separator: "\n") where line.count >= 2 {
+            let indexStatus = line.first!
+            let worktreeStatus = line.dropFirst().first!
+
+            if indexStatus != " " { staged += 1 }
+            if worktreeStatus != " " { unstaged += 1 }
+        }
+
+        return (staged: staged, unstaged: unstaged)
+    }
+
     func status(for repositoryURL: URL) async throws -> GitStatus {
         let output = try await runGit(arguments: ["status", "--porcelain", "--untracked-files=all"], in: repositoryURL)
         var staged: [StatusFile] = []

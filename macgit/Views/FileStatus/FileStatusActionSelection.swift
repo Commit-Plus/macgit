@@ -63,26 +63,26 @@ struct FileStatusActionSelection {
     }
 
     var isSingleFileActionDisabled: Bool {
-        selectedFiles.count > 1
+        selectedKeys.count > 1
     }
 
     func title(for section: FileStatusSelectionSection) -> String {
         switch section {
         case .staged:
-            return selectedStagedFiles.isEmpty ? "Unstage All" : "Unstage selected"
+            return hasSelectedFiles(isStaged: true) ? "Unstage selected" : "Unstage All"
         case .changed:
-            return selectedChangedFiles.isEmpty ? "Stage All" : "Stage selected"
+            return hasSelectedFiles(isStaged: false) ? "Stage selected" : "Stage All"
         }
     }
 
     func title(for action: FileStatusSelectionAction) -> String {
         switch action {
         case .stage:
-            return isSingleFileActionDisabled && !selectedChangedFiles.isEmpty ? "Stage selected" : "Stage"
+            return isSingleFileActionDisabled && hasSelectedFiles(isStaged: false) ? "Stage selected" : "Stage"
         case .unstage:
-            return isSingleFileActionDisabled && !selectedStagedFiles.isEmpty ? "Unstage selected" : "Unstage"
+            return isSingleFileActionDisabled && hasSelectedFiles(isStaged: true) ? "Unstage selected" : "Unstage"
         case .discard:
-            return isSingleFileActionDisabled && !selectedChangedFiles.isEmpty ? "Discard selected" : "Discard"
+            return isSingleFileActionDisabled && hasSelectedFiles(isStaged: false) ? "Discard selected" : "Discard"
         case .remove:
             return isSingleFileActionDisabled ? "Remove selected" : "Remove"
         }
@@ -128,6 +128,10 @@ struct FileStatusActionSelection {
 
     private func selectedFiles(from files: [StatusFile], isStaged: Bool) -> [StatusFile] {
         files.filter { selectedKeys.contains(FileStatusSelectionKey(file: $0, isStaged: isStaged)) }
+    }
+
+    private func hasSelectedFiles(isStaged: Bool) -> Bool {
+        selectedKeys.contains { $0.isStaged == isStaged }
     }
 
     private func selectedActionFiles(_ files: [StatusFile], fallback: StatusFile) -> [StatusFile] {

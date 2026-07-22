@@ -241,6 +241,24 @@ final class GitStatusServiceStatusTests: XCTestCase {
                       "The new path should be consumed by the worktree rename pairing")
     }
 
+    func testStatusDrainsLargeUntrackedOutputWithoutDeadlocking() async throws {
+        let repoURL = try makeTempRepo()
+        let filesURL = repoURL.appendingPathComponent("generated", isDirectory: true)
+        try FileManager.default.createDirectory(at: filesURL, withIntermediateDirectories: true)
+
+        let fileCount = 2_000
+        for index in 0..<fileCount {
+            let filename = String(format: "generated-file-%04d-with-a-long-name-to-exceed-the-process-pipe-buffer.txt", index)
+            try Data().write(to: filesURL.appendingPathComponent(filename))
+        }
+
+        let status = try await GitStatusService.shared.status(for: repoURL)
+        let count = await GitStatusService.shared.uncommittedChangeCount(in: repoURL)
+
+        XCTAssertEqual(status.untracked.count, fileCount)
+        XCTAssertEqual(count, fileCount)
+    }
+
     private func makeTempRepo() throws -> URL {
         let repoURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("macgit-status-binary-\(UUID().uuidString)", isDirectory: true)
