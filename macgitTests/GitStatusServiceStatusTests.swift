@@ -20,6 +20,40 @@ import XCTest
 
 @MainActor
 final class GitStatusServiceStatusTests: XCTestCase {
+    func testRunGitDrainsLargeStandardOutputWhileProcessIsRunning() async throws {
+        let repoURL = try makeTempRepo()
+        let payload = String(repeating: "x", count: 1_000_000)
+        try payload.write(
+            to: repoURL.appendingPathComponent("large-output.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try runGit(["add", "large-output.txt"], in: repoURL)
+        try runGit(["commit", "-m", "add large output"], in: repoURL)
+
+        let operation = Task {
+            try await GitStatusService.shared.runGit(
+                arguments: ["show", "HEAD:large-output.txt"],
+                in: repoURL
+            )
+        }
+        let completed = expectation(description: "large Git output completes")
+        Task {
+            _ = try? await operation.value
+            completed.fulfill()
+        }
+
+        let result = await XCTWaiter.fulfillment(of: [completed], timeout: 3)
+        guard result == .completed else {
+            operation.cancel()
+            XCTFail("Git command blocked while writing large stdout")
+            return
+        }
+
+        let output = try await operation.value
+        XCTAssertEqual(output.count, payload.count)
+    }
+
     func testStatusIncludesUntrackedBinaryFile() async throws {
         let repoURL = try makeTempRepo()
         let fileURL = repoURL.appendingPathComponent("clip.mp4")

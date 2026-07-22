@@ -54,6 +54,24 @@ final class GitSubmoduleActionTests: XCTestCase {
         XCTAssertEqual(Set(staged.split(separator: "\n").map(String.init)), [".gitmodules", "Packages/SharedKit"])
     }
 
+    func testAddSubmoduleReplacesEmptyPrecreatedDestinationFolder() async throws {
+        let setup = try makeRepositories()
+        let destination = setup.parent.appendingPathComponent("backend")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let request = SubmoduleAddRequest(
+            repository: setup.child.path,
+            path: "backend",
+            branch: nil,
+            initializeAfterAdd: true,
+            shallow: false
+        )
+
+        try await GitStatusService.shared.addSubmodule(request, in: setup.parent, credentialResolver: nil)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent("shared.txt").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent(".git").path))
+    }
+
     func testAddSubmoduleUsesSpecificBranch() async throws {
         let setup = try makeRepositories()
         try runGit(["checkout", "-b", "release"], in: setup.child)
@@ -73,6 +91,43 @@ final class GitSubmoduleActionTests: XCTestCase {
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: setup.parent.appendingPathComponent("Packages/SharedKit/release.txt").path))
         XCTAssertEqual(try runGitCapture(["config", "--file", ".gitmodules", "--get", "submodule.Packages/SharedKit.branch"], in: setup.parent), "release\n")
+    }
+
+    func testAddLocalSubmoduleAllowsFileTransport() async throws {
+        let setup = try makeRepositories()
+        let runner = RecordingSubmoduleRunner()
+        let service = GitStatusService(runner: runner)
+        let request = SubmoduleAddRequest(
+            repository: setup.child.path,
+            path: "Packages/SharedKit",
+            branch: nil,
+            initializeAfterAdd: true,
+            shallow: false
+        )
+
+        try await service.addSubmodule(request, in: setup.parent, credentialResolver: nil)
+
+        let calls = await runner.calls
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(calls[0].environment?["GIT_ALLOW_PROTOCOL"], "file")
+    }
+
+    func testAddedSubmoduleCanBeDiscoveredImmediately() async throws {
+        let setup = try makeRepositories()
+        let request = SubmoduleAddRequest(
+            repository: setup.child.path,
+            path: "backend",
+            branch: nil,
+            initializeAfterAdd: true,
+            shallow: false
+        )
+
+        try await GitStatusService.shared.addSubmodule(request, in: setup.parent, credentialResolver: nil)
+        unsetenv("GIT_ALLOW_PROTOCOL")
+
+        let entries = try await GitStatusService.shared.submodules(in: setup.parent)
+        XCTAssertEqual(entries.map(\.path), ["backend"])
+        XCTAssertEqual(entries.first?.state, .clean)
     }
 
     func testAddWithoutInitializationLeavesStagedMetadataAndUninitializedCheckout() async throws {

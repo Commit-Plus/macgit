@@ -30,6 +30,56 @@ final class SubmoduleRequestValidationTests: XCTestCase {
         )
     }
 
+    func testRejectsAbsoluteRepositoryThatIsNotAGitRepository() throws {
+        let repository = try makeRepositoryDirectory()
+        let localSource = repository.deletingLastPathComponent().appendingPathComponent("NotGit")
+        try FileManager.default.createDirectory(at: localSource, withIntermediateDirectories: true)
+
+        XCTAssertThrowsError(
+            try SubmoduleRequestValidator.validate(
+                addRequest: request(repository: localSource.path),
+                in: repository
+            )
+        ) { error in
+            XCTAssertEqual(error as? SubmoduleRequestValidationError, .invalidLocalRepository)
+        }
+    }
+
+    func testAcceptsAbsoluteRepositoryWithGitMetadata() throws {
+        let repository = try makeRepositoryDirectory()
+        let localSource = repository.deletingLastPathComponent().appendingPathComponent("LocalSource")
+        try FileManager.default.createDirectory(at: localSource, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: localSource.appendingPathComponent(".git"),
+            withIntermediateDirectories: true
+        )
+
+        let validated = try SubmoduleRequestValidator.validate(
+            addRequest: request(repository: localSource.path),
+            in: repository
+        )
+
+        XCTAssertEqual(validated.repository, localSource.path)
+    }
+
+    func testBuildsRelativePathForFolderInsideRepository() throws {
+        let repository = try makeRepositoryDirectory()
+        let destination = repository.appendingPathComponent("Packages/SharedKit")
+
+        XCTAssertEqual(
+            SubmoduleRequestValidator.relativePath(for: destination, in: repository),
+            "Packages/SharedKit"
+        )
+    }
+
+    func testDoesNotBuildRelativePathForFolderOutsideRepositoryOrRoot() throws {
+        let repository = try makeRepositoryDirectory()
+        let outside = repository.deletingLastPathComponent().appendingPathComponent("Outside")
+
+        XCTAssertNil(SubmoduleRequestValidator.relativePath(for: repository, in: repository))
+        XCTAssertNil(SubmoduleRequestValidator.relativePath(for: outside, in: repository))
+    }
+
     func testRejectsAbsolutePath() throws {
         let repository = try makeRepositoryDirectory()
 

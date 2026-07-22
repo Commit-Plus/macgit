@@ -335,6 +335,7 @@ struct SidebarView: View {
     @State private var submoduleEntries: [GitSubmoduleEntry] = []
     @State private var hasLoadedSubmodules = false
     @State private var isLoadingSubmodules = false
+    @State private var activeSubmoduleLoadID: UUID?
     @State private var submoduleToEdit: GitSubmoduleEntry?
     @State private var submoduleToDeinitialize: GitSubmoduleEntry?
     @State private var submoduleToRemove: GitSubmoduleEntry?
@@ -566,7 +567,7 @@ struct SidebarView: View {
             Button("Add Submodule...", systemImage: "plus", action: onRequestAddSubmodule)
             Button("Add/Link Subtree...", systemImage: "plus", action: onRequestAddLinkSubtree)
         }
-        .task(id: repositoryURL) {
+        .task(id: "\(repositoryURL.path)|\(appState.showSubmodules)") {
             loadSectionStates()
             resetLazySectionData()
             await loadVisibleSections(force: false)
@@ -582,12 +583,6 @@ struct SidebarView: View {
                     await loadRemotes()
                     await loadStashes()
                 }
-            }
-        }
-        .onChange(of: appState.showSubmodules) { _, isVisible in
-            guard isVisible, sectionStates.submodulesExpanded else { return }
-            Task {
-                await loadSubmodules(force: false)
             }
         }
         .onChange(of: appState.showSubtrees) { _, isVisible in
@@ -2918,29 +2913,39 @@ struct SidebarView: View {
         }
     }
 
+    @MainActor
     private func loadSubmodules(force: Bool = false) async {
         if !force && hasLoadedSubmodules {
             return
         }
 
+        let loadID = UUID()
+        activeSubmoduleLoadID = loadID
         isLoadingSubmodules = true
-        defer { isLoadingSubmodules = false }
 
         do {
             let entries = try await GitStatusService.shared.submodules(in: repositoryURL)
-            await MainActor.run {
-                submoduleEntries = entries
-                hasLoadedSubmodules = true
-                if case .submodule(let path) = selection,
-                   !entries.contains(where: { $0.path == path }) {
-                    selection = nil
-                }
+            guard activeSubmoduleLoadID == loadID else { return }
+            submoduleEntries = entries
+            hasLoadedSubmodules = true
+            isLoadingSubmodules = false
+            activeSubmoduleLoadID = nil
+            if case .submodule(let path) = selection,
+               !entries.contains(where: { $0.path == path }) {
+                selection = nil
+            }
+        } catch is CancellationError {
+            if activeSubmoduleLoadID == loadID {
+                isLoadingSubmodules = false
+                activeSubmoduleLoadID = nil
             }
         } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-                showingError = true
-            }
+            guard activeSubmoduleLoadID == loadID else { return }
+            hasLoadedSubmodules = true
+            isLoadingSubmodules = false
+            activeSubmoduleLoadID = nil
+            errorMessage = error.localizedDescription
+            showingError = true
         }
     }
 

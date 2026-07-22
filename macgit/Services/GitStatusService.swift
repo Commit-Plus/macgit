@@ -28,10 +28,14 @@ nonisolated private final class GitProcessExecution: @unchecked Sendable {
     private let directory: URL
     private let environment: [String: String]
     private let lock = NSLock()
+    private let outputLock = NSLock()
+    private let outputGroup = DispatchGroup()
 
     private var task: Process?
     private var stdout: Pipe?
     private var stderr: Pipe?
+    private var stdoutData = Data()
+    private var stderrData = Data()
     private var continuation: CheckedContinuation<Data, Error>?
     private var didResume = false
 
@@ -71,20 +75,49 @@ nonisolated private final class GitProcessExecution: @unchecked Sendable {
         self.continuation = continuation
         lock.unlock()
 
-        task.terminationHandler = { [weak self] process in
-            self?.finish(process: process)
+        outputGroup.enter()
+        outputGroup.enter()
+        task.terminationHandler = { [weak self, outputGroup] process in
+            outputGroup.notify(queue: .global(qos: .utility)) {
+                self?.finish(process: process)
+            }
         }
 
         do {
             try task.run()
+            drain(stdout.fileHandleForReading, intoStandardError: false)
+            drain(stderr.fileHandleForReading, intoStandardError: true)
         } catch {
+            stdout.fileHandleForWriting.closeFile()
+            stderr.fileHandleForWriting.closeFile()
+            outputGroup.leave()
+            outputGroup.leave()
             resume(throwing: GitError.gitNotFound)
         }
     }
 
+    private func drain(_ handle: FileHandle, intoStandardError: Bool) {
+        let outputGroup = outputGroup
+        DispatchQueue.global(qos: .utility).async { [weak self, outputGroup] in
+            defer { outputGroup.leave() }
+            let data = handle.readDataToEndOfFile()
+            guard let self else { return }
+
+            outputLock.lock()
+            if intoStandardError {
+                stderrData = data
+            } else {
+                stdoutData = data
+            }
+            outputLock.unlock()
+        }
+    }
+
     private func finish(process: Process) {
-        let outData = stdout?.fileHandleForReading.readDataToEndOfFile() ?? Data()
-        let errData = stderr?.fileHandleForReading.readDataToEndOfFile() ?? Data()
+        outputLock.lock()
+        let outData = stdoutData
+        let errData = stderrData
+        outputLock.unlock()
         let errorOutput = String(data: errData, encoding: .utf8) ?? ""
 
         if process.terminationStatus != 0 {

@@ -32,6 +32,7 @@ enum SubmoduleUpdateMode: Equatable, Sendable {
 
 enum SubmoduleRequestValidationError: LocalizedError, Equatable {
     case emptyRepository
+    case invalidLocalRepository
     case emptyPath
     case absolutePath
     case pathOutsideRepository
@@ -41,6 +42,8 @@ enum SubmoduleRequestValidationError: LocalizedError, Equatable {
         switch self {
         case .emptyRepository:
             "Enter a submodule repository URL."
+        case .invalidLocalRepository:
+            "The selected local folder is not a Git repository."
         case .emptyPath:
             "Choose a path inside this repository."
         case .absolutePath:
@@ -61,6 +64,14 @@ enum SubmoduleRequestValidator {
         let repository = request.repository.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !repository.isEmpty else {
             throw SubmoduleRequestValidationError.emptyRepository
+        }
+        if NSString(string: repository).isAbsolutePath {
+            let localRepositoryURL = URL(fileURLWithPath: repository).standardizedFileURL
+            guard FileManager.default.fileExists(
+                atPath: localRepositoryURL.appendingPathComponent(".git").path
+            ) else {
+                throw SubmoduleRequestValidationError.invalidLocalRepository
+            }
         }
 
         let rawPath = request.path
@@ -110,6 +121,19 @@ enum SubmoduleRequestValidator {
             initializeAfterAdd: request.initializeAfterAdd,
             shallow: request.shallow
         )
+    }
+
+    static func relativePath(for url: URL, in repositoryURL: URL) -> String? {
+        let root = repositoryURL.standardizedFileURL
+        let candidate = url.standardizedFileURL
+        guard candidate != root,
+              candidate.pathComponents.starts(with: root.pathComponents) else {
+            return nil
+        }
+
+        return candidate.pathComponents
+            .dropFirst(root.pathComponents.count)
+            .joined(separator: "/")
     }
 
 }

@@ -41,7 +41,18 @@ extension GitStatusService {
             arguments += ["--depth", "1"]
         }
         arguments += ["--", request.repository, request.path]
-        _ = try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
+        try removeEmptySubmoduleDestinationIfNeeded(path: request.path, in: repositoryURL)
+        if NSString(string: request.repository).isAbsolutePath {
+            var environment = injection?.environment ?? ProcessInfo.processInfo.environment
+            environment["GIT_ALLOW_PROTOCOL"] = "file"
+            _ = try await runGit(
+                arguments: arguments,
+                in: repositoryURL,
+                environment: environment
+            )
+        } else {
+            _ = try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
+        }
 
         if !request.initializeAfterAdd {
             _ = try await runGit(
@@ -50,6 +61,24 @@ extension GitStatusService {
             )
         }
         notifySubmoduleMutationSucceeded(in: repositoryURL)
+    }
+
+    private func removeEmptySubmoduleDestinationIfNeeded(path: String, in repositoryURL: URL) throws {
+        let destinationURL = repositoryURL.appendingPathComponent(path)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: destinationURL.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return
+        }
+
+        guard try FileManager.default.contentsOfDirectory(
+            at: destinationURL,
+            includingPropertiesForKeys: nil,
+            options: []
+        ).isEmpty else {
+            return
+        }
+        try FileManager.default.removeItem(at: destinationURL)
     }
 
     func initializeSubmodule(

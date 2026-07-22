@@ -15,6 +15,7 @@
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
+import AppKit
 import SwiftUI
 
 struct AddSubmoduleSheet: View {
@@ -30,6 +31,8 @@ struct AddSubmoduleSheet: View {
     @State private var branch = ""
     @State private var initializeAfterAdd = true
     @State private var shallow = false
+    @State private var showingInitializeHelp = false
+    @State private var showingShallowHelp = false
     @State private var isLoading = false
     @State private var isValid = false
     @State private var errorMessage: String?
@@ -57,15 +60,21 @@ struct AddSubmoduleSheet: View {
                         .fontWeight(.semibold)
 
                     fieldRow(title: "Repository URL") {
-                        TextField("https://github.com/user/repo.git", text: $repository)
-                            .textFieldStyle(.roundedBorder)
-                            .disableAutocorrection(true)
+                        inputWithPicker {
+                            TextField("https://github.com/user/repo.git", text: $repository)
+                                .disableAutocorrection(true)
+                        } action: {
+                            chooseRepositoryFolder()
+                        }
                     }
 
-                    fieldRow(title: "Local folder") {
-                        TextField("Packages/SharedKit", text: $path)
-                            .textFieldStyle(.roundedBorder)
-                            .disableAutocorrection(true)
+                    fieldRow(title: "Local Folder") {
+                        inputWithPicker {
+                            TextField("Packages/SharedKit", text: $path)
+                                .disableAutocorrection(true)
+                        } action: {
+                            chooseLocalFolder()
+                        }
                     }
 
                     fieldRow(title: "Branch") {
@@ -75,10 +84,20 @@ struct AddSubmoduleSheet: View {
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
-                        Toggle("Initialize after adding", isOn: $initializeAfterAdd)
-                            .toggleStyle(.checkbox)
-                        Toggle("Shallow clone", isOn: $shallow)
-                            .toggleStyle(.checkbox)
+                        optionRow(
+                            title: "Initialize after adding",
+                            isOn: $initializeAfterAdd,
+                            showingHelp: $showingInitializeHelp,
+                            helpTitle: "Initialize after adding",
+                            helpText: "When enabled, the submodule is cloned and checked out immediately. When disabled, its configuration is added but the working copy stays uninitialized until you run Initialize."
+                        )
+                        optionRow(
+                            title: "Shallow clone",
+                            isOn: $shallow,
+                            showingHelp: $showingShallowHelp,
+                            helpTitle: "Shallow clone",
+                            helpText: "When enabled, only the latest commit is cloned (depth 1), making the operation faster and smaller. Older history is not available until you fetch it later."
+                        )
                     }
                     .font(.system(size: 13))
 
@@ -128,6 +147,87 @@ struct AddSubmoduleSheet: View {
                 .frame(width: 132, alignment: .trailing)
             content()
         }
+    }
+
+    private func inputWithPicker<Content: View>(
+        @ViewBuilder content: () -> Content,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 6) {
+            content()
+                .textFieldStyle(.roundedBorder)
+
+            Button("…", action: action)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("Choose folder")
+        }
+    }
+
+    private func optionRow(
+        title: String,
+        isOn: Binding<Bool>,
+        showingHelp: Binding<Bool>,
+        helpTitle: String,
+        helpText: String
+    ) -> some View {
+        HStack(spacing: 6) {
+            Toggle(title, isOn: isOn)
+                .toggleStyle(.checkbox)
+
+            Button {
+                showingHelp.wrappedValue.toggle()
+            } label: {
+                Image(systemName: "questionmark.circle")
+                    .imageScale(.small)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(helpText)
+            .accessibilityLabel("Help for (helpTitle)")
+            .popover(isPresented: showingHelp) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(helpTitle)
+                        .font(.headline)
+                    Text(helpText)
+                        .font(.system(size: 13))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(14)
+                .frame(width: 300, alignment: .leading)
+            }
+        }
+    }
+
+    private func chooseRepositoryFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = repositoryURL.deletingLastPathComponent()
+        panel.message = "Select a local Git repository"
+        panel.prompt = "Choose"
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+        repository = url.path
+    }
+
+    private func chooseLocalFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = repositoryURL
+        panel.message = "Select a folder inside the current repository"
+        panel.prompt = "Choose"
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+        path = SubmoduleRequestValidator.relativePath(for: url, in: repositoryURL) ?? url.path
     }
 
     private func refreshValidation() {
