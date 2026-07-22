@@ -22,15 +22,17 @@ import SwiftUI
 struct GitProviderAccountsSection: View {
     @ObservedObject var controller: GitProviderAccountController
     let isSignedIn: Bool
+    let onSignIn: () -> Void
     @State private var connectionTask: Task<Void, Never>?
     @State private var showingAddAccountSheet = false
     @State private var editingAccount: GitProviderAccount?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: isSignedIn ? .leading : .center, spacing: 12) {
             Text("Git Provider Accounts")
                 .font(.headline)
                 .fontWeight(.semibold)
+                .frame(maxWidth: .infinity, alignment: isSignedIn ? .leading : .center)
 
             if isSignedIn {
                 if controller.accounts.isEmpty {
@@ -65,8 +67,10 @@ struct GitProviderAccountsSection: View {
                     )
                 }
             } else {
-                Button("Sign in to Commit+ to connect a Git provider account", systemImage: "person.crop.circle.badge.exclamationmark") {}
-                    .disabled(true)
+                Button("Sign in to Commit+ to connect a Git provider account", systemImage: "person.crop.circle.badge.exclamationmark", action: onSignIn)
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.roundedRectangle(radius: 12))
+                    .controlSize(.large)
             }
 
             if controller.isLoading {
@@ -84,7 +88,7 @@ struct GitProviderAccountsSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: isSignedIn ? .leading : .center)
         .onDisappear(perform: cancelConnection)
         .sheet(isPresented: $showingAddAccountSheet) {
             GitProviderAddAccountSheet(controller: controller)

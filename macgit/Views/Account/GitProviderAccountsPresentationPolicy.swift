@@ -19,6 +19,7 @@
 import Foundation
 
 enum GitProviderAccountPresentationAction: Equatable {
+    case signIn
     case add
     case edit
     case delete
@@ -57,7 +58,7 @@ enum GitProviderAccountsPresentationPolicy {
         isSignedIn: Bool,
         account: GitProviderAccount?
     ) -> [GitProviderAccountPresentationAction] {
-        guard isSignedIn else { return [] }
+        guard isSignedIn else { return [.signIn] }
         guard let account else { return [.add] }
 
         return [.edit, .delete]

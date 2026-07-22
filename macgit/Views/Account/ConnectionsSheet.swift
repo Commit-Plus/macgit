@@ -30,7 +30,8 @@ struct ConnectionsSheet: View {
 
             GitProviderAccountsSection(
                 controller: providerAccountController,
-                isSignedIn: accountController.account != nil
+                isSignedIn: accountController.account != nil,
+                onSignIn: { accountController.presentAuthentication(.signIn) }
             )
 
             HStack {

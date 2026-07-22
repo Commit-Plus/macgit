@@ -23,7 +23,7 @@ final class GitProviderAccountsSectionTests: XCTestCase {
     func testGuestCannotConnectProviderUntilSignedIn() {
         XCTAssertEqual(
             GitProviderAccountsPresentationPolicy.actions(isSignedIn: false, account: nil),
-            []
+            [.signIn]
         )
     }
 
