@@ -728,7 +728,22 @@ struct MainWindowView: View {
                     selectedBranch: selectedBranchName,
                     undoManager: undoManager,
                     syncState: syncState,
-                    onRunRepositoryOperation: runRepositoryOperation
+                    onRunRepositoryOperation: runRepositoryOperation,
+                    onRequestCheckout: { ref, isTag in
+                        if isTag {
+                            tagToCheckout = ref
+                            if repoSettings.confirmDetachedHeadCheckout {
+                                showingDetachedHeadConfirmation = true
+                            } else {
+                                Task {
+                                    await performTagCheckout(tag: ref)
+                                }
+                            }
+                        } else {
+                            branchToCheckout = ref
+                            showingCheckoutConfirmation = true
+                        }
+                    }
                 )
             case .item(.pullRequests):
                 PullRequestListView(

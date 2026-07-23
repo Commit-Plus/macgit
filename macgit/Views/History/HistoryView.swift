@@ -30,6 +30,7 @@ struct HistoryView: View {
     let undoManager: GitUndoManager?
     var syncState: SyncState? = nil
     let onRunRepositoryOperation: RepositoryOperationRunner
+    let onRequestCheckout: (String, Bool) -> Void
     private static let historyPageSize = 120
     private static let historyScrollSpaceName = "historyScroll"
     
@@ -69,6 +70,7 @@ struct HistoryView: View {
     // MARK: - Checkout confirmation state
     @State private var showingCheckoutConfirmation = false
     @State private var discardLocalChanges = false
+    @State private var hasUncommittedChanges = false
     @State private var resetMode: ResetMode = .mixed
     @State private var currentBranchName: String = ""
     
@@ -85,13 +87,15 @@ struct HistoryView: View {
         syncState: SyncState? = nil,
         onRunRepositoryOperation: @escaping RepositoryOperationRunner = { _, operation in
             Task { await operation() }
-        }
+        },
+        onRequestCheckout: @escaping (String, Bool) -> Void = { _, _ in }
     ) {
         self.repositoryURL = repositoryURL
         self.selectedBranch = selectedBranch
         self.undoManager = undoManager
         self.syncState = syncState
         self.onRunRepositoryOperation = onRunRepositoryOperation
+        self.onRequestCheckout = onRequestCheckout
         self._showAllBranches = State(initialValue: selectedBranch == nil)
         self._paging = State(initialValue: HistoryPagingState(pageSize: Self.historyPageSize))
     }
@@ -410,14 +414,17 @@ struct HistoryView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
             
-            Toggle("Discard local changes", isOn: $discardLocalChanges)
-                .toggleStyle(.checkbox)
-                .font(.system(size: 12))
+            if hasUncommittedChanges {
+                Toggle("Discard local changes", isOn: $discardLocalChanges)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12))
+            }
             
             HStack(spacing: 12) {
                 Spacer()
                 Button("Cancel", role: .cancel) {
                     showingCheckoutConfirmation = false
+                    hasUncommittedChanges = false
                 }
                 .keyboardShortcut(.cancelAction)
                 
@@ -570,7 +577,10 @@ struct HistoryView: View {
                                                 messageWidth: effectiveMessageWidth,
                                                 authorWidth: CGFloat(authorColumnWidth),
                                                 dateWidth: CGFloat(dateColumnWidth),
-                                                commitWidth: CGFloat(commitColumnWidth)
+                                                commitWidth: CGFloat(commitColumnWidth),
+                                                onDoubleClick: {
+                                                    handleCommitDoubleClick(commit)
+                                                }
                                             )
                                             .id(commit.hash)
                                             .background(
@@ -1059,6 +1069,7 @@ struct HistoryView: View {
             await MainActor.run {
                 pendingCommit = nil
                 discardLocalChanges = false
+                hasUncommittedChanges = false
                 showingCheckoutConfirmation = false
             }
             NotificationCenter.default.post(
@@ -1070,6 +1081,25 @@ struct HistoryView: View {
             await MainActor.run {
                 errorMessage = error.localizedDescription
                 showingError = true
+            }
+        }
+    }
+
+    private func handleCommitDoubleClick(_ commit: Commit) {
+        if let branchRef = HistoryCheckoutPolicy.branchRef(from: commit.refs) {
+            onRequestCheckout(branchRef, false)
+            return
+        }
+
+        pendingCommit = commit
+        discardLocalChanges = false
+        hasUncommittedChanges = false
+        Task {
+            let changeCount = await GitStatusService.shared.uncommittedChangeCount(in: repositoryURL)
+            await MainActor.run {
+                guard pendingCommit?.hash == commit.hash else { return }
+                hasUncommittedChanges = changeCount > 0
+                showingCheckoutConfirmation = true
             }
         }
     }

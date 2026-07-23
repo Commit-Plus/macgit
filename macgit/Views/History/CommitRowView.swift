@@ -31,6 +31,7 @@ struct CommitRowView: View {
     let authorWidth: CGFloat
     let dateWidth: CGFloat
     let commitWidth: CGFloat
+    let onDoubleClick: () -> Void
 
     private var authorText: String {
         "\(commit.author) <\(commit.email)>"
@@ -99,6 +100,7 @@ struct CommitRowView: View {
         .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
         .opacity(isDragActive ? 0.4 : 1)
         .contentShape(Rectangle())
+        .onTapGesture(count: 2, perform: onDoubleClick)
     }
 }
 
