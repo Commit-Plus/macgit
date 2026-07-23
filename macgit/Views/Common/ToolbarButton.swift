@@ -36,7 +36,7 @@ struct ToolbarButtonLabel: View {
                     .font(.system(size: 9))
             }
         }
-        .frame(minWidth: 44)
+        .frame(minWidth: 40)
     }
 }
 

@@ -62,7 +62,7 @@ struct BadgeToolbarButton: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .frame(minWidth: 44)
+            .frame(minWidth: 40)
         }
         .help(label)
         .disabled(disabled || isLoading)
