@@ -153,7 +153,17 @@ struct PullRequestListView: View {
                 detail: detail,
                 onClose: closeDetail,
                 onOpenPullRequest: { controller.openInBrowser(detail.summary) },
-                onOpenChanges: { controller.openChangesInBrowser(detail) }
+                onOpenChanges: { controller.openChangesInBrowser(detail) },
+                isRefreshingDetail: controller.isLoadingDetail,
+                onRefreshDetail: {
+                    Task {
+                        await controller.loadPullRequestDetail(detail.summary, forceRefresh: true)
+                    }
+                },
+                isSubmittingComment: controller.isPerformingAction,
+                onSubmitComment: { body in
+                    Task { await controller.comment(on: detail.summary, body: body) }
+                }
             )
         } else {
             ProgressView("Loading pull request…")
@@ -419,6 +429,13 @@ private struct PullRequestDetailPane: View {
     let onClose: () -> Void
     let onOpenPullRequest: () -> Void
     let onOpenChanges: () -> Void
+    let isRefreshingDetail: Bool
+    let onRefreshDetail: () -> Void
+    let isSubmittingComment: Bool
+    let onSubmitComment: (String) -> Void
+    @State private var isCommentBarExpanded = false
+    @State private var commentText = ""
+    @FocusState private var isCommentFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -435,9 +452,24 @@ private struct PullRequestDetailPane: View {
                 .padding(20)
             }
 
+            commentComposer
             footer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onChange(of: isCommentBarExpanded) { _, isExpanded in
+            if isExpanded {
+                Task { @MainActor in
+                    await Task.yield()
+                    isCommentFocused = true
+                }
+            } else {
+                isCommentFocused = false
+            }
+        }
+        .onChange(of: detail.id) { _, _ in
+            isCommentBarExpanded = false
+            commentText = ""
+        }
     }
 
     private var header: some View {
@@ -536,10 +568,23 @@ private struct PullRequestDetailPane: View {
                     .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(.separator, lineWidth: 0.5)
+                        .stroke(.separator, lineWidth: 0.5)
                     }
                 }
             }
+            Button(action: onRefreshDetail) {
+                if isRefreshingDetail {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Label("Refresh comments", systemImage: "arrow.clockwise")
+                }
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .disabled(isRefreshingDetail)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.top, 2)
         }
     }
 
@@ -558,6 +603,118 @@ private struct PullRequestDetailPane: View {
                 .fill(.separator)
                 .frame(height: 0.5)
         }
+    }
+
+    private var commentComposer: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if isCommentBarExpanded {
+                expandedCommentComposer
+            } else {
+                collapsedCommentComposer
+            }
+        }
+        .background(.regularMaterial)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(.separator)
+                .frame(height: 0.5)
+        }
+    }
+
+    private var collapsedCommentComposer: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "bubble.left.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Image(systemName: "pencil")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+
+                TextField("Add a comment", text: $commentText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .disabled(true)
+
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.background)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(.separator.opacity(0.45), lineWidth: 0.5)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isCommentBarExpanded = true
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private var expandedCommentComposer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "bubble.left.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.secondary)
+
+                Text("Comment on #\(detail.summary.number)")
+                    .font(.system(size: 12, weight: .semibold))
+
+                Spacer()
+            }
+
+            TextEditor(text: $commentText)
+                .focused($isCommentFocused)
+                .font(.system(size: 13))
+                .lineSpacing(2)
+                .frame(minHeight: 48, maxHeight: 100)
+                .padding(6)
+                .background(.background)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(.separator.opacity(0.45), lineWidth: 0.5)
+                }
+
+            HStack {
+                Spacer()
+
+                Button("Cancel") {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isCommentBarExpanded = false
+                    }
+                }
+                .buttonStyle(.borderless)
+
+                Button("Add Comment") {
+                    let body = commentText
+                    commentText = ""
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isCommentBarExpanded = false
+                    }
+                    onSubmitComment(body)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(
+                    isSubmittingComment
+                        || commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 }
 

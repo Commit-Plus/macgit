@@ -93,6 +93,8 @@ final class PullRequestController: ObservableObject {
     private let pullRequestPageSize = 30
     private let listCacheTTL: TimeInterval = 45
     private let detailCacheTTL: TimeInterval = 300
+    private let commentRefreshAttempts = 3
+    private let commentRefreshDelayNanoseconds: UInt64 = 300_000_000
     private var listCache: [PullRequestListCacheKey: CachedPullRequestListPage] = [:]
     private var detailCache: [PullRequestDetailCacheKey: CachedPullRequestDetail] = [:]
 
@@ -474,10 +476,30 @@ final class PullRequestController: ObservableObject {
             )
             invalidateDetailCache(for: pullRequest.number)
             if selectedDetail?.summary.number == pullRequest.number {
-                await loadPullRequestDetail(pullRequest, forceRefresh: true)
+                await refreshDetailAfterComment(pullRequest, body: trimmedBody)
             }
         } catch {
             detailErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshDetailAfterComment(
+        _ pullRequest: PullRequestSummary,
+        body: String
+    ) async {
+        let previousCommentIDs = Set(selectedDetail?.comments.map(\.id) ?? [])
+
+        for attempt in 0..<commentRefreshAttempts {
+            await loadPullRequestDetail(pullRequest, forceRefresh: true)
+
+            let containsNewComment = selectedDetail?.comments.contains { comment in
+                !previousCommentIDs.contains(comment.id) && comment.body == body
+            } == true
+            if containsNewComment || attempt == commentRefreshAttempts - 1 {
+                return
+            }
+
+            try? await Task.sleep(nanoseconds: commentRefreshDelayNanoseconds)
         }
     }
 
