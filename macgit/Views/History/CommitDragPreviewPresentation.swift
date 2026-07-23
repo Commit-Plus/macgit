@@ -32,7 +32,7 @@ nonisolated struct CommitDragPreviewPresentation: Equatable, Sendable {
     init(commit: Commit, commitCount: Int) {
         self.subject = commit.message
         self.shortHash = commit.shortHash
-        self.author = commit.author
+        self.author = "\(commit.author) <\(commit.email)>"
         self.date = commit.date
         self.commitCount = max(1, commitCount)
     }

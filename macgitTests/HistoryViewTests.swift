@@ -190,7 +190,7 @@ final class HistoryViewTests: XCTestCase {
 
         XCTAssertEqual(presentation.subject, "Polish commit drag preview")
         XCTAssertEqual(presentation.shortHash, "1234567")
-        XCTAssertEqual(presentation.author, "Taylor")
+        XCTAssertEqual(presentation.author, "Taylor <taylor@example.com>")
         XCTAssertEqual(presentation.date, date)
         XCTAssertFalse(presentation.showsStack)
         XCTAssertNil(presentation.countBadgeText)
