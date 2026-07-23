@@ -1581,11 +1581,13 @@ struct SidebarView: View {
                 .onTapGesture {
                     selection = .branch(row.fullPath)
                 }
-                .onTapGesture(count: 2) {
-                    if !isCurrentBranch {
-                        onRequestCheckout(row.fullPath, false)
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded {
+                        if !isCurrentBranch {
+                            onRequestCheckout(row.fullPath, false)
+                        }
                     }
-                }
+                )
                 .contextMenu {
                     branchContextMenu(for: row.fullPath)
                 }

@@ -966,8 +966,14 @@ struct HistoryView: View {
             commits = loadedCommits
             graphModel = newGraphModel
             let visibleHashes = loadedCommits.map(\.hash)
-            commitSelection.prune(visibleHashes: visibleHashes)
-            if commitSelection.selectedHashes.isEmpty, let newSelectedCommit {
+            if skip == 0 {
+                // A branch change must select that branch's tip, even when the
+                // previously selected commit is also reachable from the new branch.
+                commitSelection = HistoryCommitSelection()
+            } else {
+                commitSelection.prune(visibleHashes: visibleHashes)
+            }
+            if (skip == 0 || commitSelection.selectedHashes.isEmpty), let newSelectedCommit {
                 commitSelection.select(
                     newSelectedCommit.hash,
                     modifiers: [],
@@ -976,7 +982,11 @@ struct HistoryView: View {
             }
             selectedCommit = Self.commit(withHash: commitSelection.primaryHash, in: loadedCommits)
             if skip == 0 {
-                scrollTarget = selectedCommit?.hash ?? newScrollTarget
+                scrollTarget = Self.reloadTargetHash(
+                    reset: true,
+                    selectedCommitHash: selectedCommit?.hash,
+                    newScrollTarget: newScrollTarget
+                )
             }
             paging.finishLoadingMore(loaded: newCommits.count)
             cancelHistoryRefreshIndicator()
@@ -1405,6 +1415,14 @@ struct HistoryView: View {
             return .ref(selectedBranch)
         }
         return .currentBranch
+    }
+
+    static func reloadTargetHash(
+        reset: Bool,
+        selectedCommitHash: String?,
+        newScrollTarget: String?
+    ) -> String? {
+        reset ? (newScrollTarget ?? selectedCommitHash) : selectedCommitHash
     }
 
     static func highlighting(

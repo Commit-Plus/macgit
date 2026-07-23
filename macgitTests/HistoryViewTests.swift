@@ -56,6 +56,17 @@ final class HistoryViewTests: XCTestCase {
         }
     }
 
+    func testBranchReloadStartsSelectionAndScrollAtNewBranchTip() {
+        XCTAssertEqual(
+            HistoryView.reloadTargetHash(
+                reset: true,
+                selectedCommitHash: "shared-ancestor",
+                newScrollTarget: "branch-tip"
+            ),
+            "branch-tip"
+        )
+    }
+
     func testHistoryRowDoesNotAutoCenterWhenVisible() {
         let rowFrames = ["abc123": CGRect(x: 0, y: 0, width: 100, height: 24)]
 
