@@ -248,9 +248,27 @@ extension GitStatusService {
 
     @discardableResult
     func checkoutRemoteBranch(remote: String, branch: String, in repositoryURL: URL) async throws -> String {
+        try await checkoutRemoteBranch(
+            remote: remote,
+            branch: branch,
+            localBranch: branch,
+            trackRemote: true,
+            in: repositoryURL
+        )
+    }
+
+    @discardableResult
+    func checkoutRemoteBranch(
+        remote: String,
+        branch: String,
+        localBranch: String,
+        trackRemote: Bool,
+        in repositoryURL: URL
+    ) async throws -> String {
         let trimmedRemote = remote.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedBranch = branch.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedRemote.isEmpty, !trimmedBranch.isEmpty else {
+        let trimmedLocalBranch = localBranch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRemote.isEmpty, !trimmedBranch.isEmpty, !trimmedLocalBranch.isEmpty else {
             throw GitError.commandFailed("Remote branch is required.")
         }
         guard trimmedBranch != "HEAD" else {
@@ -258,16 +276,19 @@ extension GitStatusService {
         }
 
         let localBranches = await localBranches(in: repositoryURL)
-        if localBranches.contains(trimmedBranch) {
-            _ = try await runGit(arguments: ["checkout", trimmedBranch], in: repositoryURL)
-            return trimmedBranch
+        if localBranches.contains(trimmedLocalBranch) {
+            _ = try await runGit(arguments: ["checkout", trimmedLocalBranch], in: repositoryURL)
+            return trimmedLocalBranch
         }
 
-        _ = try await runGit(
-            arguments: ["checkout", "-b", trimmedBranch, "--track", "\(trimmedRemote)/\(trimmedBranch)"],
-            in: repositoryURL
-        )
-        return trimmedBranch
+        var arguments = ["checkout", "-b", trimmedLocalBranch]
+        if trackRemote {
+            arguments.append(contentsOf: ["--track", "\(trimmedRemote)/\(trimmedBranch)"])
+        } else {
+            arguments.append("\(trimmedRemote)/\(trimmedBranch)")
+        }
+        _ = try await runGit(arguments: arguments, in: repositoryURL)
+        return trimmedLocalBranch
     }
 
     func remotes(in repositoryURL: URL) async -> [String] {

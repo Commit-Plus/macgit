@@ -97,6 +97,7 @@ struct MainWindowView: View {
     @State private var showingStashSheet = false
     @State private var showingCheckoutConfirmation = false
     @State private var branchToCheckout: String = ""
+    @State private var pendingRemoteBranchCheckout: RemoteBranchCheckoutTarget?
     @State private var showingRenameBranchSheet = false
     @State private var branchToRename: String = ""
     @State private var showingDetachedHeadConfirmation = false
@@ -267,6 +268,17 @@ struct MainWindowView: View {
                 CheckoutConfirmationSheet(branchName: branchToCheckout) { stash in
                     runRepositoryOperation("Checking out \(branchToCheckout)...") {
                         await performCheckout(ref: branchToCheckout, stash: stash)
+                    }
+                }
+            }
+            .sheet(item: $pendingRemoteBranchCheckout) { target in
+                RemoteBranchCheckoutSheet(target: target) { localBranch, trackRemote in
+                    runRepositoryOperation("Checking out \(localBranch)...") {
+                        await performRemoteBranchCheckout(
+                            target: target,
+                            localBranch: localBranch,
+                            trackRemote: trackRemote
+                        )
                     }
                 }
             }
@@ -740,8 +752,19 @@ struct MainWindowView: View {
                                 }
                             }
                         } else {
-                            branchToCheckout = ref
-                            showingCheckoutConfirmation = true
+                            Task {
+                                let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
+                                if let target = remoteBranchCheckoutTarget(for: ref, remotes: remotes) {
+                                    await MainActor.run {
+                                        pendingRemoteBranchCheckout = target
+                                    }
+                                } else {
+                                    await MainActor.run {
+                                        branchToCheckout = ref
+                                        showingCheckoutConfirmation = true
+                                    }
+                                }
+                            }
                         }
                     }
                 )
@@ -1294,6 +1317,45 @@ struct MainWindowView: View {
 
     private func performTagCheckout(tag: String) async {
         await performCheckout(ref: tag, stash: false)
+    }
+
+    private func remoteBranchCheckoutTarget(
+        for reference: String,
+        remotes: [String]
+    ) -> RemoteBranchCheckoutTarget? {
+        guard let separator = reference.firstIndex(of: "/") else { return nil }
+        let remote = String(reference[..<separator])
+        let branchStart = reference.index(after: separator)
+        let branch = String(reference[branchStart...])
+        guard remotes.contains(remote), !branch.isEmpty, branch != "HEAD" else { return nil }
+        return RemoteBranchCheckoutTarget(remote: remote, branch: branch)
+    }
+
+    private func performRemoteBranchCheckout(
+        target: RemoteBranchCheckoutTarget,
+        localBranch: String,
+        trackRemote: Bool
+    ) async {
+        do {
+            let checkedOutBranch = try await GitStatusService.shared.checkoutRemoteBranch(
+                remote: target.remote,
+                branch: target.branch,
+                localBranch: localBranch,
+                trackRemote: trackRemote,
+                in: repositoryURL
+            )
+            await syncState.refresh(repositoryURL: repositoryURL)
+            await MainActor.run {
+                selectedItem = .branch(checkedOutBranch)
+            }
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+        } catch {
+            syncState.showError(error.localizedDescription)
+        }
     }
 
     private func performCommitDropCherryPick(_ confirmation: PendingCommitDropConfirmation) async {
