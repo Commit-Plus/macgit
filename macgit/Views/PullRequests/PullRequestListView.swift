@@ -16,6 +16,7 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+import MarkdownUI
 import SwiftUI
 
 struct PullRequestListView: View {
@@ -24,6 +25,7 @@ struct PullRequestListView: View {
     var accountConnectionErrorMessage: String? = nil
     var onReconnectAccount: () -> Void = {}
     @State private var pendingCommentPullRequest: PullRequestSummary?
+    @State private var selectedPullRequestID: Int?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,7 +48,7 @@ struct PullRequestListView: View {
                         HStack(spacing: 10) {
                             Button(controller.accountConnectionActionTitle, action: onReconnectAccount)
                             Button("Reload", systemImage: "arrow.clockwise") {
-                                Task { await controller.loadPullRequests(repositoryURL: repositoryURL) }
+                                Task { await controller.loadPullRequests(repositoryURL: repositoryURL, forceRefresh: true) }
                             }
                             .disabled(controller.isLoading)
                         }
@@ -63,45 +65,19 @@ struct PullRequestListView: View {
                 Text(emptyStateMessage)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                VStack(spacing: 0) {
-                    List(controller.visibleItems) { item in
-                        PullRequestRow(
-                            summary: item,
-                            isBusy: controller.isPerformingAction,
-                            onOpen: { controller.openInBrowser(item) },
-                            onCheckout: {
-                                Task { await controller.checkout(item) }
-                            },
-                            onComment: {
-                                pendingCommentPullRequest = item
-                            }
-                        )
-                        .onTapGesture(count: 2) {
-                            Task { await controller.loadPullRequestDetail(item) }
-                        }
-                        .listRowSeparator(.visible)
+            } else if selectedPullRequestID != nil {
+                PersistentHSplit(
+                    autosaveName: "PullRequestMainSplit",
+                    left: {
+                        pullRequestListPanel
+                    },
+                    right: {
+                        detailPanel
+                            .frame(minWidth: 420, idealWidth: 600, maxWidth: .infinity)
                     }
-                    .listStyle(.plain)
-
-                    paginationFooter
-                }
-            }
-        }
-        .overlay {
-            if controller.isLoadingDetail {
-                ProgressView()
-                    .padding(20)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-            }
-        }
-        .sheet(isPresented: detailSheetPresented) {
-            if let detail = controller.selectedDetail {
-                PullRequestDetailSheet(
-                    detail: detail,
-                    onOpenPullRequest: { controller.openInBrowser(detail.summary) },
-                    onOpenChanges: { controller.openChangesInBrowser(detail) }
                 )
+            } else {
+                pullRequestListPanel
             }
         }
         .sheet(item: $pendingCommentPullRequest) { pullRequest in
@@ -127,22 +103,67 @@ struct PullRequestListView: View {
             Text(controller.detailErrorMessage ?? "Could not load pull request details.")
         }
         .task(id: repositoryURL) {
+            closeDetail()
             await controller.loadPullRequests(repositoryURL: repositoryURL)
         }
         .onChange(of: controller.stateFilter) { _, _ in
+            closeDetail()
             Task { await controller.loadPullRequests(repositoryURL: repositoryURL) }
         }
     }
 
-    private var detailSheetPresented: Binding<Bool> {
-        Binding(
-            get: { controller.selectedDetail != nil },
-            set: { isPresented in
-                if !isPresented {
+    private var pullRequestListPanel: some View {
+        VStack(spacing: 0) {
+            List(controller.visibleItems) { item in
+                PullRequestRow(
+                    summary: item,
+                    isBusy: controller.isPerformingAction,
+                    onOpen: { controller.openInBrowser(item) },
+                    onCheckout: {
+                        Task { await controller.checkout(item) }
+                    },
+                    onComment: {
+                        pendingCommentPullRequest = item
+                    }
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    selectedPullRequestID = item.id
                     controller.clearSelectedDetail()
+                    Task { await controller.loadPullRequestDetail(item) }
                 }
+                .listRowSeparator(.visible)
             }
-        )
+            .listStyle(.plain)
+
+            paginationFooter
+        }
+        .frame(minWidth: 280, idealWidth: 360, maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var detailPanel: some View {
+        if controller.isLoadingDetail,
+           controller.selectedDetail?.id != selectedPullRequestID {
+            ProgressView("Loading pull request…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let detail = controller.selectedDetail,
+                  detail.id == selectedPullRequestID {
+            PullRequestDetailPane(
+                detail: detail,
+                onClose: closeDetail,
+                onOpenPullRequest: { controller.openInBrowser(detail.summary) },
+                onOpenChanges: { controller.openChangesInBrowser(detail) }
+            )
+        } else {
+            ProgressView("Loading pull request…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func closeDetail() {
+        selectedPullRequestID = nil
+        controller.clearSelectedDetail()
     }
 
     private var detailErrorPresented: Binding<Bool> {
@@ -175,7 +196,7 @@ struct PullRequestListView: View {
             }
             .disabled(controller.isLoading || controller.errorMessage != nil)
             Button("Refresh pull requests", systemImage: "arrow.clockwise") {
-                Task { await controller.loadPullRequests(repositoryURL: repositoryURL) }
+                Task { await controller.loadPullRequests(repositoryURL: repositoryURL, forceRefresh: true) }
             }
             .buttonStyle(.borderless)
             .labelStyle(.iconOnly)
@@ -393,11 +414,11 @@ private struct PullRequestRow: View {
     }
 }
 
-private struct PullRequestDetailSheet: View {
+private struct PullRequestDetailPane: View {
     let detail: PullRequestDetail
+    let onClose: () -> Void
     let onOpenPullRequest: () -> Void
     let onOpenChanges: () -> Void
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 0) {
@@ -416,17 +437,24 @@ private struct PullRequestDetailSheet: View {
 
             footer
         }
-        .frame(minWidth: 640, idealWidth: 760, minHeight: 520)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(detail.summary.title)
-                .font(.title3.weight(.semibold))
-                .lineLimit(2)
-            Text("#\(detail.summary.number) \(detail.summary.source.ref) -> \(detail.summary.target.ref)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(detail.summary.title)
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(2)
+                Text("#\(detail.summary.number) \(detail.summary.source.ref) -> \(detail.summary.target.ref)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button("Close detail", systemImage: "xmark", action: onClose)
+                .buttonStyle(.borderless)
+                .labelStyle(.iconOnly)
+                .help("Close pull request detail")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
@@ -456,7 +484,9 @@ private struct PullRequestDetailSheet: View {
                     .font(.body)
                     .foregroundStyle(.secondary)
             } else {
-                MarkdownText(detail.body)
+                Markdown(detail.body)
+                    .markdownTheme(.gitHub)
+                    .textSelection(.enabled)
             }
         }
     }
@@ -497,7 +527,9 @@ private struct PullRequestDetailSheet: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        MarkdownText(comment.body)
+                        Markdown(comment.body)
+                            .markdownTheme(.gitHub)
+                            .textSelection(.enabled)
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -516,10 +548,8 @@ private struct PullRequestDetailSheet: View {
             Button("Open PR", systemImage: "safari", action: onOpenPullRequest)
             Button("Open Changes", systemImage: "doc.text.magnifyingglass", action: onOpenChanges)
             Spacer()
-            Button("Done") {
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
+            Button("Close", action: onClose)
+                .keyboardShortcut(.cancelAction)
         }
         .padding(16)
         .background(Color(nsColor: .controlBackgroundColor))
@@ -528,167 +558,6 @@ private struct PullRequestDetailSheet: View {
                 .fill(.separator)
                 .frame(height: 0.5)
         }
-    }
-}
-
-private struct MarkdownText: View {
-    let source: String
-
-    init(_ source: String) {
-        self.source = source
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(MarkdownBlock.blocks(from: source)) { block in
-                switch block.kind {
-                case .paragraph(let text):
-                    Text(attributedMarkdown(text))
-                        .font(.body)
-                        .textSelection(.enabled)
-                case .checklist(let isChecked, let text):
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Image(systemName: isChecked ? "checkmark.square" : "square")
-                            .foregroundStyle(isChecked ? .green : .secondary)
-                        Text(attributedMarkdown(text))
-                            .font(.body)
-                            .textSelection(.enabled)
-                    }
-                case .code(let language, let text):
-                    VStack(alignment: .leading, spacing: 6) {
-                        if let language, !language.isEmpty {
-                            Text(language)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        Text(text)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(.separator, lineWidth: 0.5)
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func attributedMarkdown(_ text: String) -> AttributedString {
-        do {
-            return try AttributedString(
-                markdown: text,
-                options: AttributedString.MarkdownParsingOptions(
-                    interpretedSyntax: .inlineOnlyPreservingWhitespace
-                )
-            )
-        } catch {
-            return AttributedString(text)
-        }
-    }
-}
-
-private struct MarkdownBlock: Identifiable {
-    let id = UUID()
-    let kind: Kind
-
-    enum Kind {
-        case paragraph(String)
-        case checklist(isChecked: Bool, text: String)
-        case code(language: String?, text: String)
-    }
-
-    static func blocks(from source: String) -> [MarkdownBlock] {
-        let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
-        let lines = normalized.components(separatedBy: "\n")
-        var blocks: [MarkdownBlock] = []
-        var paragraphLines: [String] = []
-        var codeLanguage: String?
-        var codeLines: [String] = []
-        var isInCodeBlock = false
-
-        func flushParagraph() {
-            let text = paragraphLines
-                .joined(separator: "\n")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty {
-                blocks.append(MarkdownBlock(kind: .paragraph(text)))
-            }
-            paragraphLines.removeAll()
-        }
-
-        func flushCodeBlock() {
-            blocks.append(MarkdownBlock(kind: .code(
-                language: codeLanguage,
-                text: codeLines.joined(separator: "\n")
-            )))
-            codeLanguage = nil
-            codeLines.removeAll()
-        }
-
-        for line in lines {
-            if line.hasPrefix("```") {
-                if isInCodeBlock {
-                    flushCodeBlock()
-                    isInCodeBlock = false
-                } else {
-                    flushParagraph()
-                    isInCodeBlock = true
-                    codeLanguage = String(line.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-                continue
-            }
-
-            if isInCodeBlock {
-                codeLines.append(line)
-                continue
-            }
-
-            if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                flushParagraph()
-                continue
-            }
-
-            if let checklist = checklistItem(from: line) {
-                flushParagraph()
-                blocks.append(MarkdownBlock(kind: .checklist(
-                    isChecked: checklist.isChecked,
-                    text: checklist.text
-                )))
-                continue
-            }
-
-            paragraphLines.append(line)
-        }
-
-        if isInCodeBlock {
-            flushCodeBlock()
-        }
-        flushParagraph()
-        return blocks
-    }
-
-    private static func checklistItem(from line: String) -> (isChecked: Bool, text: String)? {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        let prefixes: [(String, Bool)] = [
-            ("- [x] ", true),
-            ("- [X] ", true),
-            ("* [x] ", true),
-            ("* [X] ", true),
-            ("- [ ] ", false),
-            ("* [ ] ", false),
-            ("[x] ", true),
-            ("[X] ", true),
-            ("[ ] ", false),
-        ]
-        for (prefix, isChecked) in prefixes where trimmed.hasPrefix(prefix) {
-            return (isChecked, String(trimmed.dropFirst(prefix.count)))
-        }
-        return nil
     }
 }
 

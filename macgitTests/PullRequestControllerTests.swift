@@ -343,6 +343,74 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(service.receivedDetailNumber, 12)
     }
 
+    func testLoadPullRequestsUsesMemoryCacheUntilForcedRefresh() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let service = FakePullRequestProvider(result: .success([makeSummary()]))
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "https://github.com/octocat/Hello-World.git")
+        await controller.loadPullRequests(remoteURLString: "https://github.com/octocat/Hello-World.git")
+        await controller.loadPullRequests(
+            remoteURLString: "https://github.com/octocat/Hello-World.git",
+            forceRefresh: true
+        )
+
+        XCTAssertEqual(service.listCallCount, 2)
+    }
+
+    func testLoadPullRequestDetailUsesMemoryCache() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let detail = PullRequestDetail(
+            summary: makeSummary(),
+            body: "Cached detail.",
+            assignees: [],
+            comments: [],
+            changesURL: URL(string: "https://github.com/octocat/Hello-World/pull/12/files")!
+        )
+        let service = FakePullRequestProvider(
+            result: .success([makeSummary()]),
+            detailResult: .success(detail)
+        )
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "https://github.com/octocat/Hello-World.git")
+        await controller.loadPullRequestDetail(makeSummary())
+        await controller.loadPullRequestDetail(makeSummary())
+
+        XCTAssertEqual(service.detailCallCount, 1)
+        XCTAssertEqual(controller.selectedDetail, detail)
+    }
+
     func testOpenChangesInBrowserUsesDetailChangesURL() {
         var openedURL: URL?
         let controller = PullRequestController(
@@ -703,6 +771,8 @@ private final class FakePullRequestProvider: PullRequestProviding {
     private(set) var receivedPage: Int?
     private(set) var receivedPerPage: Int?
     private(set) var receivedDetailNumber: Int?
+    private(set) var listCallCount = 0
+    private(set) var detailCallCount = 0
     private(set) var createdDraft: PullRequestDraft?
     private(set) var createdCommentBody: String?
 
@@ -729,6 +799,7 @@ private final class FakePullRequestProvider: PullRequestProviding {
         page: Int,
         perPage: Int
     ) async throws -> PullRequestListPage {
+        listCallCount += 1
         receivedRepository = repository
         receivedToken = token
         receivedFilter = filter
@@ -748,6 +819,7 @@ private final class FakePullRequestProvider: PullRequestProviding {
         token: GitProviderToken,
         number: Int
     ) async throws -> PullRequestDetail {
+        detailCallCount += 1
         receivedRepository = repository
         receivedToken = token
         receivedDetailNumber = number

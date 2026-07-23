@@ -19,6 +19,44 @@
 import Combine
 import Foundation
 
+private struct PullRequestListCacheKey: Hashable {
+    let repository: GitRepositoryIdentityKey
+    let accountID: String
+    let filter: PullRequestListFilter
+    let page: Int
+    let perPage: Int
+}
+
+private struct PullRequestDetailCacheKey: Hashable {
+    let repository: GitRepositoryIdentityKey
+    let accountID: String
+    let number: Int
+}
+
+private struct GitRepositoryIdentityKey: Hashable {
+    let provider: GitProviderKind
+    let host: String
+    let owner: String
+    let name: String
+
+    init(_ repository: GitRepositoryIdentity) {
+        provider = repository.provider
+        host = repository.hostURL.absoluteString.lowercased()
+        owner = repository.owner.lowercased()
+        name = repository.name.lowercased()
+    }
+}
+
+private struct CachedPullRequestListPage {
+    let value: PullRequestListPage
+    let expiresAt: Date
+}
+
+private struct CachedPullRequestDetail {
+    let value: PullRequestDetail
+    let expiresAt: Date
+}
+
 @MainActor
 final class PullRequestController: ObservableObject {
     @Published private(set) var items: [PullRequestSummary] = []
@@ -53,6 +91,10 @@ final class PullRequestController: ObservableObject {
     private var activeRemoteURLString: String?
     private var activeToken: GitProviderToken?
     private let pullRequestPageSize = 30
+    private let listCacheTTL: TimeInterval = 45
+    private let detailCacheTTL: TimeInterval = 300
+    private var listCache: [PullRequestListCacheKey: CachedPullRequestListPage] = [:]
+    private var detailCache: [PullRequestDetailCacheKey: CachedPullRequestDetail] = [:]
 
     init(
         providerAccountController: GitProviderAccountController,
@@ -127,7 +169,7 @@ final class PullRequestController: ObservableObject {
         errorMessage == "Reconnect..." ? "Reconnect" : "Connect Account"
     }
 
-    func loadPullRequests(repositoryURL: URL, page: Int = 1) async {
+    func loadPullRequests(repositoryURL: URL, page: Int = 1, forceRefresh: Bool = false) async {
         activeRepositoryURL = repositoryURL
         guard let remoteName = await remoteNameProvider(repositoryURL),
               let remoteURLString = await remoteURLProvider(repositoryURL, remoteName) else {
@@ -140,10 +182,15 @@ final class PullRequestController: ObservableObject {
             return
         }
         activeRemoteName = remoteName
-        await loadPullRequests(remoteURLString: remoteURLString, page: page)
+        await loadPullRequests(remoteURLString: remoteURLString, page: page, forceRefresh: forceRefresh)
     }
 
-    func loadPullRequests(repositoryURL: URL, remoteName: String, page: Int = 1) async {
+    func loadPullRequests(
+        repositoryURL: URL,
+        remoteName: String,
+        page: Int = 1,
+        forceRefresh: Bool = false
+    ) async {
         activeRepositoryURL = repositoryURL
         guard let remoteURLString = await remoteURLProvider(repositoryURL, remoteName) else {
             items = []
@@ -155,10 +202,10 @@ final class PullRequestController: ObservableObject {
             return
         }
         activeRemoteName = remoteName
-        await loadPullRequests(remoteURLString: remoteURLString, page: page)
+        await loadPullRequests(remoteURLString: remoteURLString, page: page, forceRefresh: forceRefresh)
     }
 
-    func loadPullRequests(remoteURLString: String, page: Int = 1) async {
+    func loadPullRequests(remoteURLString: String, page: Int = 1, forceRefresh: Bool = false) async {
         isLoading = true
         errorMessage = nil
         accountConnectionHost = nil
@@ -221,6 +268,26 @@ final class PullRequestController: ObservableObject {
             return
         }
 
+        activeRepository = repository
+        activeToken = token
+        let cacheKey = PullRequestListCacheKey(
+            repository: GitRepositoryIdentityKey(repository),
+            accountID: apiCredential.account.id,
+            filter: stateFilter,
+            page: page,
+            perPage: pullRequestPageSize
+        )
+        if !forceRefresh,
+           let cached = listCache[cacheKey] {
+            if cached.expiresAt > Date() {
+                apply(cached.value)
+                accountConnectionHost = nil
+                errorMessage = nil
+                return
+            }
+            listCache.removeValue(forKey: cacheKey)
+        }
+
         do {
             let pageResult = try await service.listPullRequests(
                 repository: repository,
@@ -229,12 +296,11 @@ final class PullRequestController: ObservableObject {
                 page: page,
                 perPage: pullRequestPageSize
             )
-            items = pageResult.items
-            currentPage = pageResult.page
-            hasPreviousPage = pageResult.hasPreviousPage
-            hasNextPage = pageResult.hasNextPage
-            activeRepository = repository
-            activeToken = token
+            listCache[cacheKey] = CachedPullRequestListPage(
+                value: pageResult,
+                expiresAt: Date().addingTimeInterval(listCacheTTL)
+            )
+            apply(pageResult)
             accountConnectionHost = nil
             errorMessage = nil
         } catch let error as PullRequestProviderError {
@@ -264,7 +330,7 @@ final class PullRequestController: ObservableObject {
         _ = openURL(summary.webURL)
     }
 
-    func loadPullRequestDetail(_ summary: PullRequestSummary) async {
+    func loadPullRequestDetail(_ summary: PullRequestSummary, forceRefresh: Bool = false) async {
         guard let repository = activeRepository,
               let token = activeToken,
               let service = services[repository.provider] else {
@@ -276,12 +342,31 @@ final class PullRequestController: ObservableObject {
         detailErrorMessage = nil
         defer { isLoadingDetail = false }
 
+        let cacheKey = PullRequestDetailCacheKey(
+            repository: GitRepositoryIdentityKey(repository),
+            accountID: selectedProviderAccountID ?? "",
+            number: summary.number
+        )
+        if !forceRefresh,
+           let cached = detailCache[cacheKey] {
+            if cached.expiresAt > Date() {
+                selectedDetail = cached.value
+                return
+            }
+            detailCache.removeValue(forKey: cacheKey)
+        }
+
         do {
-            selectedDetail = try await service.pullRequestDetail(
+            let detail = try await service.pullRequestDetail(
                 repository: repository,
                 token: token,
                 number: summary.number
             )
+            detailCache[cacheKey] = CachedPullRequestDetail(
+                value: detail,
+                expiresAt: Date().addingTimeInterval(detailCacheTTL)
+            )
+            selectedDetail = detail
         } catch {
             detailErrorMessage = error.localizedDescription
         }
@@ -355,8 +440,9 @@ final class PullRequestController: ObservableObject {
         do {
             _ = try await service.createPullRequest(draft, token: token)
             createDraftSeed = nil
+            invalidateListCache()
             if let activeRemoteURLString {
-                await loadPullRequests(remoteURLString: activeRemoteURLString, page: 1)
+                await loadPullRequests(remoteURLString: activeRemoteURLString, page: 1, forceRefresh: true)
             }
         } catch {
             detailErrorMessage = error.localizedDescription
@@ -386,8 +472,9 @@ final class PullRequestController: ObservableObject {
                 repository: repository,
                 token: token
             )
+            invalidateDetailCache(for: pullRequest.number)
             if selectedDetail?.summary.number == pullRequest.number {
-                await loadPullRequestDetail(pullRequest)
+                await loadPullRequestDetail(pullRequest, forceRefresh: true)
             }
         } catch {
             detailErrorMessage = error.localizedDescription
@@ -437,6 +524,25 @@ final class PullRequestController: ObservableObject {
         return providerAccountController.accounts.filter { account in
             account.provider == repository.provider && normalizedHost(account.hostURL) == repositoryHost
         }
+    }
+
+    private func apply(_ page: PullRequestListPage) {
+        items = page.items
+        currentPage = page.page
+        hasPreviousPage = page.hasPreviousPage
+        hasNextPage = page.hasNextPage
+    }
+
+    private func invalidateListCache() {
+        listCache.removeAll()
+    }
+
+    private func invalidateDetailCache(for number: Int? = nil) {
+        guard let number else {
+            detailCache.removeAll()
+            return
+        }
+        detailCache = detailCache.filter { $0.key.number != number }
     }
 
     private func apiCredential(for accounts: [GitProviderAccount]) -> (
