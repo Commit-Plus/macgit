@@ -298,6 +298,8 @@ struct SidebarView: View {
     let onRequestOpenSubmoduleInTerminal: (URL) -> Void
     let onRequestAddSubmodule: () -> Void
     let onRequestAddLinkSubtree: () -> Void
+    let onRequestCreateBranch: () -> Void
+    let onRequestCreateTag: () -> Void
     let onRequestShowSubtreeInFinder: (URL) -> Void
     let onRequestOpenSubtreeInTerminal: (URL) -> Void
     let onRequestPullSubtree: (GitSubtreeEntry) -> Void
@@ -428,6 +430,8 @@ struct SidebarView: View {
         onRequestOpenSubmoduleInTerminal: @escaping (URL) -> Void = { _ in },
         onRequestAddSubmodule: @escaping () -> Void = {},
         onRequestAddLinkSubtree: @escaping () -> Void = {},
+        onRequestCreateBranch: @escaping () -> Void = {},
+        onRequestCreateTag: @escaping () -> Void = {},
         onRequestShowSubtreeInFinder: @escaping (URL) -> Void = { _ in },
         onRequestOpenSubtreeInTerminal: @escaping (URL) -> Void = { _ in },
         onRequestPullSubtree: @escaping (GitSubtreeEntry) -> Void = { _ in },
@@ -478,6 +482,8 @@ struct SidebarView: View {
         self.onRequestOpenSubmoduleInTerminal = onRequestOpenSubmoduleInTerminal
         self.onRequestAddSubmodule = onRequestAddSubmodule
         self.onRequestAddLinkSubtree = onRequestAddLinkSubtree
+        self.onRequestCreateBranch = onRequestCreateBranch
+        self.onRequestCreateTag = onRequestCreateTag
         self.onRequestShowSubtreeInFinder = onRequestShowSubtreeInFinder
         self.onRequestOpenSubtreeInTerminal = onRequestOpenSubtreeInTerminal
         self.onRequestPullSubtree = onRequestPullSubtree
@@ -566,6 +572,9 @@ struct SidebarView: View {
         .contextMenu {
             Button("Add Submodule...", systemImage: "plus", action: onRequestAddSubmodule)
             Button("Add/Link Subtree...", systemImage: "plus", action: onRequestAddLinkSubtree)
+            Divider()
+            Button("New Branch...", systemImage: "arrow.triangle.branch", action: onRequestCreateBranch)
+            Button("New Tag...", systemImage: "tag", action: onRequestCreateTag)
         }
         .task(id: "\(repositoryURL.path)|\(appState.showSubmodules)") {
             loadSectionStates()

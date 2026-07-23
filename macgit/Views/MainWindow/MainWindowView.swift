@@ -91,6 +91,7 @@ struct MainWindowView: View {
     @State private var showingBranchSheet = false
     @State private var branchSheetStartPoint: GitBranchStartPoint?
     @State private var showingTagSheet = false
+    @State private var showingNewTagSheet = false
     @State private var tagNameInput = ""
     @State private var branchTagStartPoint: BranchTagStartPoint?
     @State private var showingMergeSheet = false
@@ -198,6 +199,7 @@ struct MainWindowView: View {
             .sheet(isPresented: $showingAddLinkSubtreeSheet) { addLinkSubtreeSheet }
             .sheet(isPresented: $showingBranchSheet, onDismiss: { branchSheetStartPoint = nil }) { branchSheet }
             .sheet(isPresented: $showingTagSheet, onDismiss: resetTagSheet) { tagSheet }
+            .sheet(isPresented: $showingNewTagSheet) { newTagSheet }
             .sheet(isPresented: tagDetailsSheetPresented) {
                 if let details = displayedTagDetails {
                     TagDetailsSheet(details: details) {
@@ -611,6 +613,12 @@ struct MainWindowView: View {
             onRequestAddLinkSubtree: {
                 showingAddLinkSubtreeSheet = true
             },
+            onRequestCreateBranch: {
+                presentBranchSheet(startPoint: nil)
+            },
+            onRequestCreateTag: {
+                showingNewTagSheet = true
+            },
             onRequestShowSubtreeInFinder: { path in
                 NSWorkspace.shared.activateFileViewerSelecting([path])
             },
@@ -998,6 +1006,17 @@ struct MainWindowView: View {
         }
         .padding(24)
         .frame(minWidth: 360, idealWidth: 420)
+    }
+
+    @ViewBuilder
+    private var newTagSheet: some View {
+        TagSheetView(
+            repositoryURL: repositoryURL,
+            onRunRepositoryOperation: runRepositoryOperation,
+            onCreate: { request in
+                try await createTag(from: request)
+            }
+        )
     }
 
     @ViewBuilder
@@ -2246,6 +2265,31 @@ struct MainWindowView: View {
                 syncState.showError(error.localizedDescription)
             }
         }
+    }
+
+    private func createTag(from request: TagCreationRequest) async throws {
+        try await GitStatusService.shared.createTag(
+            name: request.name,
+            commit: request.commitReference,
+            annotated: false,
+            message: nil,
+            in: repositoryURL
+        )
+
+        if let remote = request.pushRemote {
+            _ = try await GitStatusService.shared.push(
+                options: GitStatusService.PushOptions(remote: remote, tags: [request.name]),
+                in: repositoryURL,
+                credentialResolver: providerAccountController.credentialResolver()
+            )
+        }
+
+        await syncState.refresh(repositoryURL: repositoryURL)
+        NotificationCenter.default.post(
+            name: .repositoryDidChange,
+            object: nil,
+            userInfo: ["repositoryURL": repositoryURL]
+        )
     }
 
     private func presentTagDetails(_ tag: String) async {
