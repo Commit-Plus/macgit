@@ -30,6 +30,26 @@ struct BranchPushInfo: Identifiable {
     var isTracked: Bool
 }
 
+enum BranchPushInfoBuilder {
+    static func build(
+        localBranches: [String],
+        upstreams: [String: String],
+        currentBranch: String
+    ) -> [BranchPushInfo] {
+        localBranches.map { branch in
+            let upstream = upstreams[branch]
+            let isTracked = upstream != nil
+            let remoteName = upstream?.components(separatedBy: "/").dropFirst().joined(separator: "/") ?? branch
+            return BranchPushInfo(
+                local: branch,
+                remote: isTracked ? remoteName : "",
+                isSelected: branch == currentBranch && isTracked,
+                isTracked: isTracked
+            )
+        }
+    }
+}
+
 struct PushSheetView: View {
     @Environment(\.dismiss) private var dismiss
     let repositoryURL: URL
@@ -235,37 +255,34 @@ struct PushSheetView: View {
         isLoading = true
         defer { isLoading = false }
 
-        let currentRemotes = await GitStatusService.shared.remotes(in: repositoryURL)
-        let currentBranches = await GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
+        async let remotesTask = GitStatusService.shared.remotes(in: repositoryURL)
+        async let branchesTask = GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
+        async let currentBranchTask = GitStatusService.shared.currentBranch(in: repositoryURL)
+        async let upstreamsTask = GitStatusService.shared.localBranchUpstreams(in: repositoryURL)
+
+        let currentRemotes = await remotesTask
+        let currentBranches = await branchesTask
         let currentRemote = currentRemotes.first ?? ""
-        let currentBranch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
+        let currentBranch = await currentBranchTask ?? ""
+        let upstreams = await upstreamsTask
 
         await MainActor.run {
             remotes = currentRemotes
             selectedRemote = currentRemote
         }
 
-        if !currentRemote.isEmpty {
-            await loadRemoteURL(remote: currentRemote)
-        }
-
-        var branchInfos: [BranchPushInfo] = []
-        for branch in currentBranches {
-            let upstream = await GitStatusService.shared.upstreamBranch(for: branch, in: repositoryURL)
-            let isTracked = upstream != nil
-            let remoteName = upstream?.components(separatedBy: "/").dropFirst().joined(separator: "/") ?? branch
-            // Auto-select only if this is the current branch AND it is already tracked on remote
-            let shouldSelect = (branch == currentBranch) && isTracked
-            branchInfos.append(BranchPushInfo(
-                local: branch,
-                remote: isTracked ? remoteName : "",
-                isSelected: shouldSelect,
-                isTracked: isTracked
-            ))
-        }
+        let branchInfos = BranchPushInfoBuilder.build(
+            localBranches: currentBranches,
+            upstreams: upstreams,
+            currentBranch: currentBranch
+        )
 
         await MainActor.run {
             branches = branchInfos
+        }
+
+        if !currentRemote.isEmpty {
+            await loadRemoteURL(remote: currentRemote)
         }
     }
 
