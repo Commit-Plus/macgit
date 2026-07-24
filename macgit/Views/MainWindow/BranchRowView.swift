@@ -33,6 +33,7 @@ struct BranchRowContent: View, Equatable {
     let syncStatus: BranchSyncStatus?
     let headBadgeVisible: Bool
     let folderIsExpanded: Bool
+    let isCurrentBranchPrefix: Bool
 
     static func == (lhs: BranchRowContent, rhs: BranchRowContent) -> Bool {
         lhs.row == rhs.row
@@ -43,6 +44,7 @@ struct BranchRowContent: View, Equatable {
             && lhs.syncStatus == rhs.syncStatus
             && lhs.headBadgeVisible == rhs.headBadgeVisible
             && lhs.folderIsExpanded == rhs.folderIsExpanded
+            && lhs.isCurrentBranchPrefix == rhs.isCurrentBranchPrefix
     }
 
     var body: some View {
@@ -58,7 +60,8 @@ struct BranchRowContent: View, Equatable {
 
             Text(row.name)
                 .font(.system(size: 12))
-                .fontWeight(isCurrentBranch && !row.isFolder ? .bold : .regular)
+                .fontWeight(isCurrentBranch && !row.isFolder || isCurrentBranchPrefix ? .semibold : .regular)
+                .foregroundStyle(isCurrentBranchPrefix ? Color.accentColor : .primary)
                 .lineLimit(1)
 
             Spacer()
@@ -75,7 +78,13 @@ struct BranchRowContent: View, Equatable {
             }
         }
         .padding(.vertical, 2)
-        .background(isActiveDropRow ? Color.accentColor.opacity(0.24) : Color.clear)
+        .background(
+            isActiveDropRow
+                ? Color.accentColor.opacity(0.24)
+                : isCurrentBranchPrefix
+                    ? Color.accentColor.opacity(0.10)
+                    : Color.clear
+        )
         .overlay {
             if isActiveDropRow {
                 RoundedRectangle(cornerRadius: 5)
@@ -90,7 +99,7 @@ struct BranchRowContent: View, Equatable {
         if row.isFolder {
             Image(systemName: folderIsExpanded ? "chevron.down" : "chevron.right")
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isCurrentBranchPrefix ? Color.accentColor : .secondary)
                 .frame(width: 16, alignment: .center)
         } else if isCurrentBranch {
             Image(systemName: "circle.fill")

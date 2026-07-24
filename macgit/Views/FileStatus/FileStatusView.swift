@@ -37,6 +37,7 @@ struct FileStatusView: View {
     @State private var selectedFileKey: FileStatusSelectionKey? = nil
     @State private var selectedActionFileKeys: Set<FileStatusSelectionKey> = []
     @State private var diffHunks: [DiffHunk] = []
+    @State private var isLoadingDiff = false
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showingError = false
@@ -207,13 +208,16 @@ struct FileStatusView: View {
         .task {
             await loadStatus()
         }
-        .onChange(of: selectedFile) { _, newFile in
-            if let file = newFile {
-                Task {
-                    await loadDiff(for: file)
-                }
-            } else {
-                diffHunks = []
+        .onChange(of: selectedFileKey) { _, newSelectionKey in
+            diffHunks = []
+            isLoadingDiff = newSelectionKey != nil
+            guard let newSelectionKey,
+                  let file = selectedFile else {
+                return
+            }
+
+            Task {
+                await loadDiff(for: file, selectionKey: newSelectionKey)
             }
         }
         .alert("Error", isPresented: $showingError, actions: {
@@ -401,19 +405,6 @@ struct FileStatusView: View {
             .padding(.vertical, 3)
             .padding(.horizontal, 2)
             .contentShape(Rectangle())
-            .onTapGesture(count: 2) {
-                Task {
-                    if isStaged {
-                        await unstage(file: file)
-                    } else {
-                        await stage(file: file)
-                    }
-                }
-            }
-            .onTapGesture {
-                selectedFile = file
-                selectedFileKey = selectionKey
-            }
             .onDrag {
                 makeFileItemProvider(payload: dragPayload)
             } preview: {
@@ -433,6 +424,23 @@ struct FileStatusView: View {
                 .fill(isSelected ? Color.accentColor : Color.clear)
                 .frame(width: 3)
         }
+        .onTapGesture {
+            selectedFile = file
+            selectedFileKey = selectionKey
+            diffHunks = []
+            isLoadingDiff = true
+        }
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                Task {
+                    if isStaged {
+                        await unstage(file: file)
+                    } else {
+                        await stage(file: file)
+                    }
+                }
+            }
+        )
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .contextMenu {
             fileContextMenu(file: file, isStaged: isStaged)
@@ -674,7 +682,10 @@ struct FileStatusView: View {
                             .frame(height: 0.5)
                     }
 
-                    if file.isImage {
+                    if isLoadingDiff {
+                        ProgressView("Loading diff…")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if file.isImage {
                         imagePreview(file: file)
                     } else if file.isVideo {
                         videoPreview(file: file)
@@ -1022,15 +1033,22 @@ struct FileStatusView: View {
             selectedFile = nil
             selectedFileKey = nil
             diffHunks = []
+            isLoadingDiff = false
         }
     }
 
-    private func loadDiff(for file: StatusFile) async {
+    private func loadDiff(for file: StatusFile, selectionKey: FileStatusSelectionKey) async {
         do {
-            diffHunks = try await GitStatusService.shared.diff(for: file, in: repositoryURL)
+            let loadedDiffHunks = try await GitStatusService.shared.diff(for: file, in: repositoryURL)
+            guard selectedFileKey == selectionKey else { return }
+            diffHunks = loadedDiffHunks
         } catch {
+            guard selectedFileKey == selectionKey else { return }
             diffHunks = []
         }
+
+        guard selectedFileKey == selectionKey else { return }
+        isLoadingDiff = false
     }
 
     private func continueInProgressOperation(_ operation: GitInProgressOperation) async {

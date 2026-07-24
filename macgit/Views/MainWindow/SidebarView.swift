@@ -321,6 +321,8 @@ struct SidebarView: View {
     @State private var headHash: String = ""
     @State private var branchSyncStatus: [String: BranchSyncStatus] = [:]
     @State private var activeBranchSyncLoadID: UUID?
+    @State private var loadedBranchSyncBranches: Set<String> = []
+    @State private var syncingBranchSyncBranches: Set<String> = []
     @State private var expandedFolders: Set<String> = []
     @State private var hasLoadedBranches = false
     @State private var isLoadingBranches = false
@@ -1389,6 +1391,8 @@ struct SidebarView: View {
         currentBranch = ""
         headHash = ""
         branchSyncStatus = [:]
+        loadedBranchSyncBranches = []
+        syncingBranchSyncBranches = []
         expandedFolders = []
         hasLoadedBranches = false
         isLoadingBranches = false
@@ -1570,6 +1574,7 @@ struct SidebarView: View {
     @ViewBuilder
     private func branchRowView(for row: BranchRowItem) -> some View {
         let isCurrentBranch = row.fullPath == currentBranch
+        let isCurrentBranchPrefix = row.isFolder && currentBranch.hasPrefix(row.fullPath + "/")
         let branchTarget = GitDragTarget.localBranch(
             name: row.fullPath,
             isCurrent: isCurrentBranch
@@ -1591,7 +1596,8 @@ struct SidebarView: View {
             isBranchSyncing: isBranchSyncing(row.fullPath),
             syncStatus: resolvedSyncStatus,
             headBadgeVisible: headBadgeVisible,
-            folderIsExpanded: expandedFolders.contains(row.fullPath)
+            folderIsExpanded: expandedFolders.contains(row.fullPath),
+            isCurrentBranchPrefix: isCurrentBranchPrefix
         )
 
         if row.isFolder {
@@ -1986,6 +1992,9 @@ struct SidebarView: View {
             expandedFolders.remove(path)
         } else {
             expandedFolders.insert(path)
+            if let loadID = activeBranchSyncLoadID {
+                startBranchSync(for: branchesUnderPrefix(path), loadID: loadID)
+            }
         }
     }
 
@@ -2887,6 +2896,12 @@ struct SidebarView: View {
         let tree = SidebarTreeBuilder.buildTree(from: filteredLocals)
         let allFolders = collectFolderPaths(from: tree)
         let loadID = UUID()
+        let hadLoadedBranches = hasLoadedBranches
+        let currentBranchFolders = SidebarTreeBuilder.expandedFolderPaths(revealing: current)
+            .intersection(allFolders)
+        let expandedFoldersForLoad = hadLoadedBranches
+            ? expandedFolders.union(currentBranchFolders).intersection(allFolders)
+            : currentBranchFolders
         activeBranchSyncLoadID = loadID
 
         await MainActor.run {
@@ -2895,15 +2910,15 @@ struct SidebarView: View {
             currentBranch = current
             headHash = ""
             branchSyncStatus = [:]
-            let reveal = SidebarTreeBuilder.expandedFolderPaths(revealing: current)
-                .intersection(allFolders)
-            if hasLoadedBranches {
+            loadedBranchSyncBranches = []
+            syncingBranchSyncBranches = []
+            if hadLoadedBranches {
                 // Subsequent reloads: preserve user-expanded folders, reveal the
                 // current branch, and drop folders that no longer exist.
-                expandedFolders = expandedFolders.union(reveal).intersection(allFolders)
+                expandedFolders = expandedFoldersForLoad
             } else {
                 // First load: reveal the current branch.
-                expandedFolders = reveal
+                expandedFolders = expandedFoldersForLoad
             }
             hasLoadedBranches = true
         }
@@ -2918,37 +2933,59 @@ struct SidebarView: View {
             }
         }
 
+        let initiallyVisibleBranches = filteredLocals.filter { branch in
+            branch == current
+                || !branch.contains("/")
+                || expandedFoldersForLoad.contains { folder in
+                    branch.hasPrefix(folder + "/")
+                }
+        }
+        startBranchSync(for: initiallyVisibleBranches, loadID: loadID)
+    }
+
+    private func startBranchSync(for branches: [String], loadID: UUID) {
+        let pendingBranches = branches.filter {
+            !loadedBranchSyncBranches.contains($0)
+                && !syncingBranchSyncBranches.contains($0)
+        }
+        guard !pendingBranches.isEmpty else { return }
+
+        syncingBranchSyncBranches.formUnion(pendingBranches)
         Task {
-            await loadBranchSyncStatuses(for: filteredLocals, loadID: loadID)
+            await loadBranchSyncStatuses(for: pendingBranches, loadID: loadID)
         }
     }
 
     private func loadBranchSyncStatuses(for branches: [String], loadID: UUID) async {
-        await withTaskGroup(of: (String, BranchSyncStatus)?.self) { group in
+        await withTaskGroup(of: (String, BranchSyncStatus?).self) { group in
             for branch in branches {
                 group.addTask {
-                    guard let status = await GitStatusService.shared.branchSyncStatus(
+                    let status = await GitStatusService.shared.branchSyncStatus(
                         for: branch,
                         in: repositoryURL
-                    ) else {
-                        return nil
-                    }
+                    )
                     return (branch, status)
                 }
             }
 
             for await result in group {
-                guard let (branch, status) = result else { continue }
                 await MainActor.run {
                     guard activeBranchSyncLoadID == loadID else { return }
-                    branchSyncStatus[branch] = status
+                    let (branch, status) = result
+                    if let status {
+                        branchSyncStatus[branch] = status
+                    }
+                    loadedBranchSyncBranches.insert(branch)
+                    syncingBranchSyncBranches.remove(branch)
                 }
             }
         }
 
         await MainActor.run {
             if activeBranchSyncLoadID == loadID {
-                activeBranchSyncLoadID = nil
+                for branch in branches {
+                    syncingBranchSyncBranches.remove(branch)
+                }
             }
         }
     }

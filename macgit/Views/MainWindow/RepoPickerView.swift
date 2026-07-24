@@ -39,6 +39,9 @@ func determineRepoIconName(from remoteURLString: String) -> String {
 
 struct RepoPickerRowState {
     var currentBranch: String?
+    var commitCount: Int
+    var pullCount: Int
+    var pushCount: Int
     var isMissing: Bool
     var isLoading: Bool
 }
@@ -336,7 +339,14 @@ struct RepoPickerView: View {
     private func openRecentRepository(_ repo: RecentRepository) {
         guard isValidGitRepository(at: repo.url) else {
             repoIcons[repo.url] = "code-branch"
-            rowStates[repo.url] = RepoPickerRowState(currentBranch: nil, isMissing: true, isLoading: false)
+            rowStates[repo.url] = RepoPickerRowState(
+                currentBranch: nil,
+                commitCount: 0,
+                pullCount: 0,
+                pushCount: 0,
+                isMissing: true,
+                isLoading: false
+            )
             missingRepository = repo
             showingMissingRepositoryAlert = true
             return
@@ -392,12 +402,20 @@ struct RepoPickerView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(Color.orange, in: Capsule())
-        } else if let branch = rowState?.currentBranch, !branch.isEmpty {
-            Text(branch)
-                .font(.caption.weight(.medium))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.quaternary, in: Capsule())
+        } else if let rowState {
+            HStack(spacing: 6) {
+                if let branch = rowState.currentBranch, !branch.isEmpty {
+                    Label(branch, systemImage: "arrow.triangle.branch")
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.quaternary, in: Capsule())
+                }
+
+                RepoPickerCountBadge(icon: "checkmark", label: "Commit", count: rowState.commitCount, tint: .yellow)
+                RepoPickerCountBadge(icon: "arrow.down.to.line", label: "Pull", count: rowState.pullCount, tint: .purple)
+                RepoPickerCountBadge(icon: "arrow.up.to.line", label: "Push", count: rowState.pushCount, tint: .green)
+            }
         }
     }
 
@@ -405,6 +423,9 @@ struct RepoPickerView: View {
         await MainActor.run {
             rowStates[repo.url] = RepoPickerRowState(
                 currentBranch: rowStates[repo.url]?.currentBranch,
+                commitCount: 0,
+                pullCount: 0,
+                pushCount: 0,
                 isMissing: false,
                 isLoading: true
             )
@@ -416,19 +437,36 @@ struct RepoPickerView: View {
               FileManager.default.fileExists(atPath: gitMetadataPath) else {
             await MainActor.run {
                 repoIcons[repo.url] = "code-branch"
-                rowStates[repo.url] = RepoPickerRowState(currentBranch: nil, isMissing: true, isLoading: false)
+                rowStates[repo.url] = RepoPickerRowState(
+                    currentBranch: nil,
+                    commitCount: 0,
+                    pullCount: 0,
+                    pushCount: 0,
+                    isMissing: true,
+                    isLoading: false
+                )
             }
             return
         }
 
         async let branch = GitStatusService.shared.currentBranch(in: repo.url)
         async let remoteURLString = GitStatusService.shared.remoteURL(remote: "origin", in: repo.url)
-        let (currentBranch, remoteURL) = await (branch, remoteURLString)
+        async let commitCount = GitStatusService.shared.uncommittedChangeCount(in: repo.url)
+        async let aheadBehind = GitStatusService.shared.aheadBehindCount(in: repo.url)
+        let (currentBranch, remoteURL, uncommittedCount, syncCounts) = await (
+            branch,
+            remoteURLString,
+            commitCount,
+            aheadBehind
+        )
 
         await MainActor.run {
             repoIcons[repo.url] = remoteURL.isEmpty ? "code-branch" : determineRepoIconName(from: remoteURL)
             rowStates[repo.url] = RepoPickerRowState(
                 currentBranch: currentBranch,
+                commitCount: uncommittedCount,
+                pullCount: syncCounts.behind,
+                pushCount: syncCounts.ahead,
                 isMissing: false,
                 isLoading: false
             )
@@ -520,6 +558,28 @@ struct RepoPickerView: View {
                     errorMessage = "The selected folder does not contain a .git directory."
                     showingError = true
                 }
+            }
+        }
+    }
+}
+
+private struct RepoPickerCountBadge: View {
+    let icon: String
+    let label: String
+    let count: Int
+    let tint: Color
+
+    var body: some View {
+        Group {
+            if count > 0 {
+                Label(String(count), systemImage: icon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 3)
+                    .background(tint.opacity(0.2), in: Capsule())
+                    .help("\(label): \(count)")
+                    .accessibilityLabel("\(label): \(count)")
             }
         }
     }
