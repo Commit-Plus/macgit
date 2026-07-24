@@ -320,6 +320,7 @@ struct SidebarView: View {
     @State private var currentBranch: String = ""
     @State private var headHash: String = ""
     @State private var branchSyncStatus: [String: BranchSyncStatus] = [:]
+    @State private var activeBranchSyncLoadID: UUID?
     @State private var expandedFolders: Set<String> = []
     @State private var hasLoadedBranches = false
     @State private var isLoadingBranches = false
@@ -579,18 +580,12 @@ struct SidebarView: View {
         .task(id: "\(repositoryURL.path)|\(appState.showSubmodules)") {
             loadSectionStates()
             resetLazySectionData()
-            await loadVisibleSections(force: false)
-            await loadTags()
-            await loadRemotes()
-            await loadStashes()
+            await loadAllSections(force: false)
         }
         .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { notification in
             if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
                 Task {
-                    await loadVisibleSections(force: true)
-                    await loadTags()
-                    await loadRemotes()
-                    await loadStashes()
+                    await loadAllSections(force: true)
                 }
             }
         }
@@ -1195,11 +1190,7 @@ struct SidebarView: View {
     }
 
     private func loadSectionStates() {
-        var state = SidebarSettingsStore.shared.state(for: repositoryURL.path)
-        state.branchesExpanded = false
-        state.worktreesExpanded = false
-        SidebarSettingsStore.shared.update(for: repositoryURL.path, state: state)
-        sectionStates = state
+        sectionStates = SidebarSettingsStore.shared.state(for: repositoryURL.path)
     }
 
     private func toggleSection(_ section: SidebarSection) {
@@ -1416,17 +1407,44 @@ struct SidebarView: View {
     }
 
     private func loadVisibleSections(force: Bool) async {
-        if sectionStates.branchesExpanded {
-            await loadBranches(force: force)
+        await withTaskGroup(of: Void.self) { group in
+            if sectionStates.branchesExpanded {
+                group.addTask {
+                    await loadBranches(force: force)
+                }
+            }
+            if sectionStates.worktreesExpanded {
+                group.addTask {
+                    await loadWorktrees(force: force)
+                }
+            }
+            if appState.showSubmodules && sectionStates.submodulesExpanded {
+                group.addTask {
+                    await loadSubmodules(force: force)
+                }
+            }
+            if appState.showSubtrees && sectionStates.subtreesExpanded {
+                group.addTask {
+                    await loadSubtrees(force: force)
+                }
+            }
         }
-        if sectionStates.worktreesExpanded {
-            await loadWorktrees(force: force)
-        }
-        if appState.showSubmodules && sectionStates.submodulesExpanded {
-            await loadSubmodules(force: force)
-        }
-        if appState.showSubtrees && sectionStates.subtreesExpanded {
-            await loadSubtrees(force: force)
+    }
+
+    private func loadAllSections(force: Bool) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                await loadVisibleSections(force: force)
+            }
+            group.addTask {
+                await loadTags()
+            }
+            group.addTask {
+                await loadRemotes()
+            }
+            group.addTask {
+                await loadStashes()
+            }
         }
     }
 
@@ -2861,40 +2879,22 @@ struct SidebarView: View {
         isLoadingBranches = true
         defer { isLoadingBranches = false }
 
-        let locals = await GitStatusService.shared.localBranches(in: repositoryURL)
-        let current = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
+        let (locals, current) = await (
+            GitStatusService.shared.localBranches(in: repositoryURL),
+            GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
+        )
         let filteredLocals = locals.filter { $0 != "HEAD" && !$0.contains("HEAD detached") }
         let tree = SidebarTreeBuilder.buildTree(from: filteredLocals)
         let allFolders = collectFolderPaths(from: tree)
-
-        var syncMap: [String: BranchSyncStatus] = [:]
-        await withTaskGroup(of: (String, BranchSyncStatus)?.self) { group in
-            for branch in locals {
-                group.addTask {
-                    if let status = await GitStatusService.shared.branchSyncStatus(for: branch, in: repositoryURL) {
-                        return (branch, status)
-                    }
-                    return nil
-                }
-            }
-
-            for await result in group {
-                if let (branch, status) = result {
-                    syncMap[branch] = status
-                }
-            }
-        }
-
-        var headHashValue = ""
-        if current.isEmpty, let hash = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL) {
-            headHashValue = String(hash.prefix(7))
-        }
+        let loadID = UUID()
+        activeBranchSyncLoadID = loadID
 
         await MainActor.run {
+            guard activeBranchSyncLoadID == loadID else { return }
             branchNodes = tree
             currentBranch = current
-            headHash = headHashValue
-            branchSyncStatus = syncMap
+            headHash = ""
+            branchSyncStatus = [:]
             let reveal = SidebarTreeBuilder.expandedFolderPaths(revealing: current)
                 .intersection(allFolders)
             if hasLoadedBranches {
@@ -2906,6 +2906,50 @@ struct SidebarView: View {
                 expandedFolders = reveal
             }
             hasLoadedBranches = true
+        }
+
+        if current.isEmpty {
+            Task {
+                guard let hash = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL) else { return }
+                await MainActor.run {
+                    guard activeBranchSyncLoadID == loadID else { return }
+                    headHash = String(hash.prefix(7))
+                }
+            }
+        }
+
+        Task {
+            await loadBranchSyncStatuses(for: filteredLocals, loadID: loadID)
+        }
+    }
+
+    private func loadBranchSyncStatuses(for branches: [String], loadID: UUID) async {
+        await withTaskGroup(of: (String, BranchSyncStatus)?.self) { group in
+            for branch in branches {
+                group.addTask {
+                    guard let status = await GitStatusService.shared.branchSyncStatus(
+                        for: branch,
+                        in: repositoryURL
+                    ) else {
+                        return nil
+                    }
+                    return (branch, status)
+                }
+            }
+
+            for await result in group {
+                guard let (branch, status) = result else { continue }
+                await MainActor.run {
+                    guard activeBranchSyncLoadID == loadID else { return }
+                    branchSyncStatus[branch] = status
+                }
+            }
+        }
+
+        await MainActor.run {
+            if activeBranchSyncLoadID == loadID {
+                activeBranchSyncLoadID = nil
+            }
         }
     }
 
