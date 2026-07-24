@@ -578,6 +578,14 @@ struct HistoryView: View {
                                                 authorWidth: CGFloat(authorColumnWidth),
                                                 dateWidth: CGFloat(dateColumnWidth),
                                                 commitWidth: CGFloat(commitColumnWidth),
+                                                onClick: {
+                                                    selectedCommit = Self.selectCommitFromNativeTap(
+                                                        commit.hash,
+                                                        modifierFlags: NSEvent.modifierFlags,
+                                                        commits: commits,
+                                                        selection: &commitSelection
+                                                    )
+                                                },
                                                 onDoubleClick: {
                                                     handleCommitDoubleClick(commit)
                                                 }
@@ -591,20 +599,19 @@ struct HistoryView: View {
                                                     )
                                                 }
                                             )
-                                            .contentShape(Rectangle())
-                                            .onTapGesture {
-                                                selectedCommit = Self.selectCommitFromNativeTap(
-                                                    commit.hash,
-                                                    modifierFlags: NSEvent.modifierFlags,
-                                                    commits: commits,
-                                                    selection: &commitSelection
-                                                )
-                                            }
                                             .contextMenu {
                                                 commitContextMenu(for: commit)
                                             }
                                             .onDrag {
-                                                makeCommitItemProvider(payload: draggedPayload)
+                                                if !commitSelection.selectedHashes.contains(commit.hash) {
+                                                    selectedCommit = Self.selectCommitFromNativeTap(
+                                                        commit.hash,
+                                                        modifierFlags: [],
+                                                        commits: commits,
+                                                        selection: &commitSelection
+                                                    )
+                                                }
+                                                return makeCommitItemProvider(payload: draggedPayload)
                                             } preview: {
                                                 CommitDragPreview(
                                                     presentation: CommitDragPreviewPresentation(

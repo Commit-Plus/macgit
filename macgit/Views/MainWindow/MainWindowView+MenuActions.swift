@@ -30,7 +30,7 @@ extension MainWindowView {
         let syncing = syncState.isAnySyncing
         switch action {
         case .commit:
-            if !syncing && syncState.stagedBadgeCount > 0 {
+            if !syncing {
                 showCommitSheetIfNoConflicts()
             }
         case .pull:

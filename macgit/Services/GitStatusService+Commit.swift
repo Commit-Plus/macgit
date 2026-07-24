@@ -24,7 +24,11 @@ import Foundation
 
 extension GitStatusService {
     func commit(message: String, in repositoryURL: URL, amend: Bool = false, noVerify: Bool = false, signOff: Bool = false) async throws {
-        var arguments = ["commit", "-m", message]
+        var arguments = ["commit"]
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            arguments.append("--allow-empty-message")
+        }
+        arguments.append(contentsOf: ["-m", message])
         if amend { arguments.append("--amend") }
         if noVerify { arguments.append("--no-verify") }
         if signOff { arguments.append("--signoff") }

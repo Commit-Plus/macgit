@@ -499,12 +499,15 @@ class SyncState: ObservableObject {
         repositoryURL: URL,
         undoManager: GitUndoManager? = nil,
         noVerify: Bool = false,
-        signOff: Bool = false
+        signOff: Bool = false,
+        commitAllChanges: Bool = false
     ) async {
         await MainActor.run { isCommitting = true }
         defer { Task { @MainActor in isCommitting = false } }
-        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         do {
+            if commitAllChanges {
+                try await GitStatusService.shared.stageAllChanges(in: repositoryURL)
+            }
             let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
             try await GitStatusService.shared.commit(
                 message: message,

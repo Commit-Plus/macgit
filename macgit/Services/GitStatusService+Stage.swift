@@ -23,6 +23,10 @@
 import Foundation
 
 extension GitStatusService {
+    func stageAllChanges(in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["add", "--all"], in: repositoryURL)
+    }
+
     func stage(file: StatusFile, in repositoryURL: URL) async throws {
         if let originalPath = file.originalPath {
             try await stageRename(file: file, originalPath: originalPath, in: repositoryURL)

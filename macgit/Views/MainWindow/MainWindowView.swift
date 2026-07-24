@@ -876,7 +876,7 @@ struct MainWindowView: View {
         let showText = appState.showToolbarButtonText
         if windowWidth > 1000 {
             HStack(spacing: 2) {
-                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, isLoading: syncState.isCommitting, disabled: syncing || syncState.stagedBadgeCount == 0, showText: showText, action: { showCommitSheetIfNoConflicts() })
+                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, isLoading: syncState.isCommitting, disabled: false, showText: showText, action: { showCommitSheetIfNoConflicts() })
                 BadgeToolbarButton(icon: "arrow.down.to.line", label: "Pull", badgeCount: syncState.pullBadgeCount, isLoading: syncState.isPulling, disabled: syncing, showText: showText, action: { showingPullSheet = true })
                 BadgeToolbarButton(icon: "arrow.up.to.line", label: "Push", badgeCount: syncState.pushBadgeCount, isLoading: syncState.isPushing, disabled: syncing, showText: showText, action: { showingPushSheet = true })
                 toolbarButton(icon: "arrow.down.circle", label: "Fetch", showText: showText, isLoading: syncState.isFetching, disabled: syncing, action: { showingFetchSheet = true })
@@ -892,7 +892,7 @@ struct MainWindowView: View {
             }
         } else if windowWidth > 800 {
             HStack(spacing: 2) {
-                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, isLoading: syncState.isCommitting, disabled: syncing || syncState.stagedBadgeCount == 0, showText: showText, action: { showCommitSheetIfNoConflicts() })
+                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, isLoading: syncState.isCommitting, disabled: false, showText: showText, action: { showCommitSheetIfNoConflicts() })
                 BadgeToolbarButton(icon: "arrow.down.to.line", label: "Pull", badgeCount: syncState.pullBadgeCount, isLoading: syncState.isPulling, disabled: syncing, showText: showText, action: { showingPullSheet = true })
                 BadgeToolbarButton(icon: "arrow.up.to.line", label: "Push", badgeCount: syncState.pushBadgeCount, isLoading: syncState.isPushing, disabled: syncing, showText: showText, action: { showingPushSheet = true })
                 toolbarButton(icon: "arrow.down.circle", label: "Fetch", showText: showText, isLoading: syncState.isFetching, disabled: syncing, action: { showingFetchSheet = true })
@@ -900,7 +900,7 @@ struct MainWindowView: View {
             }
         } else {
             HStack(spacing: 2) {
-                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, isLoading: syncState.isCommitting, disabled: syncing || syncState.stagedBadgeCount == 0, showText: showText, action: { showCommitSheetIfNoConflicts() })
+                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, isLoading: syncState.isCommitting, disabled: false, showText: showText, action: { showCommitSheetIfNoConflicts() })
                 moreMenu
             }
         }
@@ -940,16 +940,21 @@ struct MainWindowView: View {
 
     func showCommitSheetIfNoConflicts() {
         Task {
+            if syncState.isAnySyncing {
+                syncState.showInfo("Wait for the current Git operation to finish before committing.")
+                return
+            }
             if await syncState.checkConflicts(repositoryURL: repositoryURL) { return }
             showingCommitSheet = true
         }
     }
 
-    func commitFromToolbar(message: String) async {
+    func commitFromToolbar(message: String, commitAllChanges: Bool) async {
         await syncState.performCommit(
             message: message,
             repositoryURL: repositoryURL,
-            undoManager: undoManager
+            undoManager: undoManager,
+            commitAllChanges: commitAllChanges
         )
     }
 
