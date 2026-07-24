@@ -3105,9 +3105,25 @@ struct SidebarView: View {
         defer { isLoadingRemotes = false }
 
         let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
-        var fetchedBranchesByRemote: [String: [String]] = [:]
-        for remote in remotes {
-            fetchedBranchesByRemote[remote] = await GitStatusService.shared.cachedRemoteBranches(remote: remote, in: repositoryURL)
+        let fetchedBranchesByRemote = await withTaskGroup(
+            of: (String, [String]).self,
+            returning: [String: [String]].self
+        ) { group in
+            for remote in remotes {
+                group.addTask {
+                    let branches = await GitStatusService.shared.cachedRemoteBranches(
+                        remote: remote,
+                        in: repositoryURL
+                    )
+                    return (remote, branches)
+                }
+            }
+
+            var result: [String: [String]] = [:]
+            for await (remote, branches) in group {
+                result[remote] = branches
+            }
+            return result
         }
         let upstreams = await GitStatusService.shared.localBranchUpstreams(in: repositoryURL)
 
