@@ -56,6 +56,11 @@ struct BranchFilterBar: View {
 struct ColumnResizer: View {
     @Binding var leftWidth: CGFloat
     @Binding var rightWidth: CGFloat
+    var minimumLeftWidth: CGFloat = 40
+    @State private var initialLeftWidth: CGFloat?
+    @State private var initialRightWidth: CGFloat?
+    @State private var dragHasRightColumn = false
+
     /// Whether the right side is a real column (true) or empty space (false)
     private var hasRightColumn: Bool { rightWidth > 10 }
 
@@ -63,21 +68,22 @@ struct ColumnResizer: View {
         initialLeft: CGFloat,
         initialRight: CGFloat,
         translation: CGFloat,
-        hasRightColumn: Bool
+        hasRightColumn: Bool,
+        minimumLeftWidth: CGFloat = 40
     ) -> (left: CGFloat, right: CGFloat) {
-        let minimumWidth: CGFloat = 40
+        let minimumRightWidth: CGFloat = 40
 
         if hasRightColumn {
             // Standard two-column resizer: space moves from right to left.
-            let maxExpand = initialRight - minimumWidth
-            let actualDelta = max(-(initialLeft - minimumWidth), min(translation, maxExpand))
+            let maxExpand = initialRight - minimumRightWidth
+            let actualDelta = max(-(initialLeft - minimumLeftWidth), min(translation, maxExpand))
             return (
                 left: initialLeft + actualDelta,
                 right: initialRight - actualDelta
             )
         } else {
             // Last resizer: only clamp left column minimum.
-            let actualDelta = max(-(initialLeft - minimumWidth), translation)
+            let actualDelta = max(-(initialLeft - minimumLeftWidth), translation)
             return (
                 left: initialLeft + actualDelta,
                 right: initialRight
@@ -99,16 +105,32 @@ struct ColumnResizer: View {
                 }
             }
             .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onEnded { value in
-                        let committedWidths = Self.committedWidths(
-                            initialLeft: leftWidth,
-                            initialRight: rightWidth,
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        if initialLeftWidth == nil {
+                            initialLeftWidth = leftWidth
+                            initialRightWidth = rightWidth
+                            dragHasRightColumn = hasRightColumn
+                        }
+
+                        guard let initialLeftWidth,
+                              let initialRightWidth else {
+                            return
+                        }
+
+                        let resizedWidths = Self.committedWidths(
+                            initialLeft: initialLeftWidth,
+                            initialRight: initialRightWidth,
                             translation: value.translation.width,
-                            hasRightColumn: hasRightColumn
+                            hasRightColumn: dragHasRightColumn,
+                            minimumLeftWidth: minimumLeftWidth
                         )
-                        leftWidth = committedWidths.left
-                        rightWidth = committedWidths.right
+                        leftWidth = resizedWidths.left
+                        rightWidth = resizedWidths.right
+                    }
+                    .onEnded { _ in
+                        initialLeftWidth = nil
+                        initialRightWidth = nil
                     }
             )
             .overlay(

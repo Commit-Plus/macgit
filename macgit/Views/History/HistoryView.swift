@@ -444,7 +444,7 @@ struct HistoryView: View {
     
     private var graphWidth: CGFloat {
         let maxLane = graphModel?.laneCount ?? 1
-        return CGFloat(maxLane) * 14 + 8
+        return CGFloat(maxLane) * 14 + 4
     }
 
     private func commitListHeader(messageWidth: CGFloat) -> some View {
@@ -461,13 +461,16 @@ struct HistoryView: View {
 
             ColumnResizer(
                 leftWidth: Binding(
-                    get: { CGFloat(messageColumnWidth) },
+                    // Include viewport fill space so the divider can resize the
+                    // full visible Message column, not only its persisted base.
+                    get: { messageWidth },
                     set: { messageColumnWidth = Double($0) }
                 ),
                 rightWidth: Binding(
                     get: { CGFloat(authorColumnWidth) },
                     set: { authorColumnWidth = Double($0) }
-                )
+                ),
+                minimumLeftWidth: 27
             )
 
             Text("Author")

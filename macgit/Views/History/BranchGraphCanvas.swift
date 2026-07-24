@@ -28,7 +28,7 @@ struct BranchGraphCanvas: View {
     let rowHeight: CGFloat = 24
     let laneWidth: CGFloat = 14
     let dotSize: CGFloat = 8
-    let graphTrailingPadding: CGFloat = 8
+    let graphTrailingPadding: CGFloat = 4
 
     init(model: CommitGraphModel) {
         self.model = model
