@@ -85,9 +85,28 @@ actor BranchListCache {
         invalidate(.remote(repositoryURL, remote))
     }
 
+    func invalidateRemotes(repositoryURL: URL) {
+        let keys = entries.keys.filter {
+            $0.repositoryURL == repositoryURL && isRemoteKey($0)
+        }
+        let inFlightKeys = inFlight.keys.filter {
+            $0.repositoryURL == repositoryURL && isRemoteKey($0)
+        }
+        for key in Set(keys + inFlightKeys) {
+            invalidate(key)
+        }
+    }
+
     private func invalidate(_ key: Key) {
         entries[key] = nil
         generations[key, default: 0] += 1
         inFlight[key] = nil
+    }
+
+    private func isRemoteKey(_ key: Key) -> Bool {
+        if case .remote = key {
+            return true
+        }
+        return false
     }
 }

@@ -67,6 +67,9 @@ extension GitStatusService {
             )
             outputs.append(tagOutput)
         }
+        if !options.branches.isEmpty {
+            await branchListCache.invalidateRemote(repositoryURL: repositoryURL, remote: options.remote)
+        }
         return outputs.joined(separator: "\n")
     }
 
@@ -185,6 +188,7 @@ extension GitStatusService {
         )
         defer { injection?.cleanup() }
         _ = try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
+        await branchListCache.invalidateRemotes(repositoryURL: repositoryURL)
     }
 
     func fetchBranch(
@@ -206,6 +210,7 @@ extension GitStatusService {
         let remoteTrackingRef = "refs/remotes/\(remote)/\(branch)"
         let branchRefSpec = "+refs/heads/\(branch):\(remoteTrackingRef)"
         _ = try await runRemoteGit(arguments: ["fetch", remote, branchRefSpec], in: repositoryURL, injection: injection)
+        await branchListCache.invalidateRemote(repositoryURL: repositoryURL, remote: remote)
     }
 
     private func isAncestor(_ ancestor: String, of descendant: String, in repositoryURL: URL) async -> Bool {
@@ -275,7 +280,7 @@ extension GitStatusService {
             throw GitError.commandFailed("Cannot checkout a remote HEAD symbolic ref.")
         }
 
-        let localBranches = await localBranches(in: repositoryURL)
+        let localBranches = await cachedLocalBranches(in: repositoryURL)
         if localBranches.contains(trimmedLocalBranch) {
             _ = try await runGit(arguments: ["checkout", trimmedLocalBranch], in: repositoryURL)
             return trimmedLocalBranch
@@ -309,6 +314,12 @@ extension GitStatusService {
             }
             return clean
         }.filter { !$0.isEmpty }
+    }
+
+    func cachedRemoteBranches(remote: String, in repositoryURL: URL) async -> [String] {
+        await branchListCache.values(for: .remote(repositoryURL, remote)) { [repositoryURL, remote] in
+            await self.remoteBranches(remote: remote, in: repositoryURL)
+        }
     }
 
     func remoteURL(remote: String, in repositoryURL: URL) async -> String {

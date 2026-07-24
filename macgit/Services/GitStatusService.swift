@@ -174,6 +174,7 @@ actor GitStatusService {
     static let shared = GitStatusService()
 
     private let runner: (any GitCommandRunning)?
+    let branchListCache = BranchListCache()
 
     init(runner: (any GitCommandRunning)? = nil) {
         self.runner = runner

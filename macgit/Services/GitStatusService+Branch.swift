@@ -49,6 +49,16 @@ extension GitStatusService {
         return output.split(separator: "\n").map { String($0) }.filter { !$0.isEmpty }
     }
 
+    func cachedLocalBranches(in repositoryURL: URL) async -> [String] {
+        await branchListCache.values(for: .local(repositoryURL)) { [repositoryURL] in
+            await self.localBranches(in: repositoryURL)
+        }
+    }
+
+    func invalidateBranchListCache(in repositoryURL: URL) async {
+        await branchListCache.invalidate(repositoryURL: repositoryURL)
+    }
+
     func upstreamBranch(for branch: String, in repositoryURL: URL) async -> String? {
         let upstream = (try? await runGit(arguments: ["rev-parse", "--abbrev-ref", "\(branch)@{upstream}"], in: repositoryURL))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -78,32 +88,41 @@ extension GitStatusService {
     }
 
     func createBranch(name: String, checkout: Bool, commit: String?, in repositoryURL: URL) async throws -> String {
+        let output: String
         if checkout {
             var arguments = ["checkout", "-b", name]
             if let commit = commit, !commit.isEmpty {
                 arguments.append(commit)
             }
-            return try await runGit(arguments: arguments, in: repositoryURL)
+            output = try await runGit(arguments: arguments, in: repositoryURL)
         } else {
             var arguments = ["branch", name]
             if let commit = commit, !commit.isEmpty {
                 arguments.append(commit)
             }
-            return try await runGit(arguments: arguments, in: repositoryURL)
+            output = try await runGit(arguments: arguments, in: repositoryURL)
         }
+        await invalidateBranchListCache(in: repositoryURL)
+        return output
     }
 
     func deleteBranch(name: String, force: Bool, in repositoryURL: URL) async throws -> String {
         let flag = force ? "-D" : "-d"
-        return try await runGit(arguments: ["branch", flag, name], in: repositoryURL)
+        let output = try await runGit(arguments: ["branch", flag, name], in: repositoryURL)
+        await invalidateBranchListCache(in: repositoryURL)
+        return output
     }
 
     func renameBranch(from oldName: String, to newName: String, in repositoryURL: URL) async throws -> String {
-        return try await runGit(arguments: ["branch", "-m", oldName, newName], in: repositoryURL)
+        let output = try await runGit(arguments: ["branch", "-m", oldName, newName], in: repositoryURL)
+        await invalidateBranchListCache(in: repositoryURL)
+        return output
     }
 
     func deleteRemoteBranch(remote: String, name: String, in repositoryURL: URL) async throws -> String {
-        return try await runGit(arguments: ["push", remote, "--delete", name], in: repositoryURL)
+        let output = try await runGit(arguments: ["push", remote, "--delete", name], in: repositoryURL)
+        await branchListCache.invalidateRemote(repositoryURL: repositoryURL, remote: remote)
+        return output
     }
 
     func tags(in repositoryURL: URL) async -> [String] {
