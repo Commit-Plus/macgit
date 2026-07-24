@@ -114,7 +114,7 @@ final class PullRequestController: ObservableObject {
             await GitStatusService.shared.currentBranch(in: repositoryURL)
         },
         localBranchesProvider: @escaping (URL) async -> [String] = { repositoryURL in
-            await GitStatusService.shared.localBranches(in: repositoryURL)
+            await GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
         },
         fetchPullRequestRef: @escaping (String, String, String, URL, GitProviderCredentialResolver?) async throws -> Void = { remote, reference, localBranch, repositoryURL, credentialResolver in
             try await GitStatusService.shared.fetchPullRequestRef(

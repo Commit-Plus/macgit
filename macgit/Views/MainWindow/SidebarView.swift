@@ -2889,7 +2889,7 @@ struct SidebarView: View {
         defer { isLoadingBranches = false }
 
         let (locals, current) = await (
-            GitStatusService.shared.localBranches(in: repositoryURL),
+            GitStatusService.shared.cachedLocalBranches(in: repositoryURL),
             GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
         )
         let filteredLocals = locals.filter { $0 != "HEAD" && !$0.contains("HEAD detached") }
@@ -3107,7 +3107,7 @@ struct SidebarView: View {
         let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
         var fetchedBranchesByRemote: [String: [String]] = [:]
         for remote in remotes {
-            fetchedBranchesByRemote[remote] = await GitStatusService.shared.remoteBranches(remote: remote, in: repositoryURL)
+            fetchedBranchesByRemote[remote] = await GitStatusService.shared.cachedRemoteBranches(remote: remote, in: repositoryURL)
         }
         let upstreams = await GitStatusService.shared.localBranchUpstreams(in: repositoryURL)
 
@@ -3274,7 +3274,7 @@ struct SidebarView: View {
     }
 
     private func prepareCreateWorktreeSheet() async {
-        let branches = await GitStatusService.shared.localBranches(in: repositoryURL)
+        let branches = await GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
         let current = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
         let root: URL
         if let gitDirectory = try? await GitStatusService.shared.gitCommonDirectory(in: repositoryURL) {
@@ -3474,7 +3474,7 @@ struct SidebarView: View {
     }
 
     private func prepareCheckoutWorktreeSheet(for entry: WorktreeEntry) async {
-        let branches = await GitStatusService.shared.localBranches(in: repositoryURL).filter { !$0.isEmpty }
+        let branches = await GitStatusService.shared.cachedLocalBranches(in: repositoryURL).filter { !$0.isEmpty }
         let selectedBranch = branches.contains(entry.branch ?? "") ? (entry.branch ?? "") : (branches.first ?? "")
 
         await MainActor.run {

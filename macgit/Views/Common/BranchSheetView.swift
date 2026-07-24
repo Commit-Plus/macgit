@@ -553,7 +553,7 @@ struct BranchSheetView: View {
     }
 
     private func loadDeleteData() async {
-        let locals = await GitStatusService.shared.localBranches(in: repositoryURL)
+        let locals = await GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
         let remotesList = await GitStatusService.shared.remotes(in: repositoryURL)
 
         var items: [BranchDeleteItem] = []
@@ -563,7 +563,7 @@ struct BranchSheetView: View {
         }
 
         for remote in remotesList {
-            let remoteBranches = await GitStatusService.shared.remoteBranches(remote: remote, in: repositoryURL)
+            let remoteBranches = await GitStatusService.shared.cachedRemoteBranches(remote: remote, in: repositoryURL)
             for branchName in remoteBranches {
                 // Skip HEAD symbolic refs
                 if branchName == "HEAD" { continue }

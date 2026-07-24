@@ -191,7 +191,7 @@ struct PullSheetView: View {
     }
 
     private func loadRemoteBranches(remote: String) async {
-        let branches = await GitStatusService.shared.remoteBranches(remote: remote, in: repositoryURL)
+        let branches = await GitStatusService.shared.cachedRemoteBranches(remote: remote, in: repositoryURL)
         await MainActor.run {
             remoteBranches = branches
             // Auto-select preselected branch, then fall back to matching local branch

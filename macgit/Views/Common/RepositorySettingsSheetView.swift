@@ -381,7 +381,7 @@ struct RepositorySettingsSheetView: View {
 
     private func loadOptions() async {
         async let loadedRemotes = GitStatusService.shared.remotes(in: repositoryURL)
-        async let loadedBranches = GitStatusService.shared.localBranches(in: repositoryURL)
+        async let loadedBranches = GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
         async let loadedCurrentBranch = GitStatusService.shared.currentBranch(in: repositoryURL)
 
         let (loadedRemotesValue, loadedBranchesValue, currentBranch) = await (

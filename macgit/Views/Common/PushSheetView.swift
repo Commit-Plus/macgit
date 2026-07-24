@@ -236,7 +236,7 @@ struct PushSheetView: View {
         defer { isLoading = false }
 
         let currentRemotes = await GitStatusService.shared.remotes(in: repositoryURL)
-        let currentBranches = await GitStatusService.shared.localBranches(in: repositoryURL)
+        let currentBranches = await GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
         let currentRemote = currentRemotes.first ?? ""
         let currentBranch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
 

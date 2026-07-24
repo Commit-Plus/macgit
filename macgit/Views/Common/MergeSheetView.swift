@@ -127,13 +127,13 @@ struct MergeSheetView: View {
         isLoading = true
         defer { isLoading = false }
 
-        let local = await GitStatusService.shared.localBranches(in: repositoryURL)
+        let local = await GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
         let current = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
         let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
 
         var branches: [String] = local
         for remote in remotes {
-            let remoteBranchList = await GitStatusService.shared.remoteBranches(remote: remote, in: repositoryURL)
+            let remoteBranchList = await GitStatusService.shared.cachedRemoteBranches(remote: remote, in: repositoryURL)
             for branch in remoteBranchList {
                 branches.append("\(remote)/\(branch)")
             }
