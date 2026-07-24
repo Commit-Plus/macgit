@@ -29,20 +29,20 @@ struct WindowWidthKey: PreferenceKey {
     }
 }
 
-private struct PendingCommitDropConfirmation: Identifiable, Equatable {
+struct PendingCommitDropConfirmation: Identifiable, Equatable {
     let id = UUID()
     let commits: [GitDraggedCommit]
     let targetBranch: String
 }
 
-private struct PendingBranchDropConfirmation: Identifiable, Equatable {
+struct PendingBranchDropConfirmation: Identifiable, Equatable {
     let id = UUID()
     let sourceBranch: String
     let targetBranch: String
     var operation: GitDragBranchOperation
 }
 
-private struct PendingPushBranchDropConfirmation: Identifiable, Equatable {
+struct PendingPushBranchDropConfirmation: Identifiable, Equatable {
     let id = UUID()
     let branch: String
     let remote: String
@@ -52,7 +52,7 @@ private struct PendingPushBranchDropConfirmation: Identifiable, Equatable {
     }
 }
 
-private struct PendingSubtreeOperation: Identifiable, Equatable {
+struct PendingSubtreeOperation: Identifiable, Equatable {
     let operation: SubtreeOperation
     let entry: GitSubtreeEntry
 
@@ -61,7 +61,7 @@ private struct PendingSubtreeOperation: Identifiable, Equatable {
     }
 }
 
-private struct BranchTagStartPoint: Equatable {
+struct BranchTagStartPoint: Equatable {
     let branchName: String
     let hash: String
     let message: String
@@ -75,57 +75,57 @@ struct MainWindowView: View {
     let repositoryURL: URL
     @ObservedObject var providerAccountController: GitProviderAccountController
     let onOpenConnections: () -> Void
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject var appState: AppState
     @Environment(\.openWindow) private var openWindow
-    private let repoSettingsStore = RepoSettingsStore.shared
+    let repoSettingsStore = RepoSettingsStore.shared
     private let fileService = RepositorySettingsFileService()
-    private let undoExecutor = GitUndoExecutor()
-    @State private var selectedItem: SidebarSelection? = .item(.fileStatus)
+    let undoExecutor = GitUndoExecutor()
+    @State var selectedItem: SidebarSelection? = .item(.fileStatus)
     @State private var windowWidth: CGFloat = 0
     @State private var showingCommitSheet = false
-    @State private var showingPullSheet = false
-    @State private var showingPushSheet = false
-    @State private var showingFetchSheet = false
-    @State private var showingAddSubmoduleSheet = false
-    @State private var showingAddLinkSubtreeSheet = false
-    @State private var showingBranchSheet = false
-    @State private var branchSheetStartPoint: GitBranchStartPoint?
-    @State private var showingTagSheet = false
-    @State private var showingNewTagSheet = false
-    @State private var tagNameInput = ""
-    @State private var branchTagStartPoint: BranchTagStartPoint?
-    @State private var showingMergeSheet = false
-    @State private var showingStashSheet = false
-    @State private var showingCheckoutConfirmation = false
-    @State private var branchToCheckout: String = ""
+    @State var showingPullSheet = false
+    @State var showingPushSheet = false
+    @State var showingFetchSheet = false
+    @State var showingAddSubmoduleSheet = false
+    @State var showingAddLinkSubtreeSheet = false
+    @State var showingBranchSheet = false
+    @State var branchSheetStartPoint: GitBranchStartPoint?
+    @State var showingTagSheet = false
+    @State var showingNewTagSheet = false
+    @State var tagNameInput = ""
+    @State var branchTagStartPoint: BranchTagStartPoint?
+    @State var showingMergeSheet = false
+    @State var showingStashSheet = false
+    @State var showingCheckoutConfirmation = false
+    @State var branchToCheckout: String = ""
     @State private var pendingRemoteBranchCheckout: RemoteBranchCheckoutTarget?
     @State private var showingRenameBranchSheet = false
-    @State private var branchToRename: String = ""
-    @State private var showingDetachedHeadConfirmation = false
-    @State private var tagToCheckout: String = ""
+    @State var branchToRename: String = ""
+    @State var showingDetachedHeadConfirmation = false
+    @State var tagToCheckout: String = ""
     @State private var displayedTagDetails: GitTagDetails?
     @State private var tagPendingDeletion: String?
-    @State private var pendingStashRef: String?
-    @State private var pendingStashAction: StashAction?
-    @State private var pendingStashPaths: [String] = []
-    @StateObject private var syncState = SyncState()
-    @StateObject private var undoManager = GitUndoManager()
-    @StateObject private var pullRequestController: PullRequestController
+    @State var pendingStashRef: String?
+    @State var pendingStashAction: StashAction?
+    @State var pendingStashPaths: [String] = []
+    @StateObject var syncState = SyncState()
+    @StateObject var undoManager = GitUndoManager()
+    @StateObject var pullRequestController: PullRequestController
     @State private var repoIconName: String = "code-branch"
     @State private var remoteURLString: String = ""
-    @State private var selectedBranchName: String? = nil
+    @State var selectedBranchName: String? = nil
     @State private var pullPreselectedBranch: String? = nil
-    @State private var showingSearchModal = false
-    @State private var showingRepositorySettings = false
-    @State private var pendingSearchFileOpenRequest: SearchFileOpenRequest?
-    @State private var repoSettings = RepoSettings.defaults(currentBranch: nil, remotes: [])
-    @State private var pendingConfirmedUndo: (entry: GitUndoEntry, action: GitUndoMenuAction)?
-    @State private var pendingCommitDropConfirmation: PendingCommitDropConfirmation?
-    @State private var pendingBranchDropConfirmation: PendingBranchDropConfirmation?
-    @State private var pendingPushBranchDropConfirmation: PendingPushBranchDropConfirmation?
+    @State var showingSearchModal = false
+    @State var showingRepositorySettings = false
+    @State var pendingSearchFileOpenRequest: SearchFileOpenRequest?
+    @State var repoSettings = RepoSettings.defaults(currentBranch: nil, remotes: [])
+    @State var pendingConfirmedUndo: (entry: GitUndoEntry, action: GitUndoMenuAction)?
+    @State var pendingCommitDropConfirmation: PendingCommitDropConfirmation?
+    @State var pendingBranchDropConfirmation: PendingBranchDropConfirmation?
+    @State var pendingPushBranchDropConfirmation: PendingPushBranchDropConfirmation?
     @State private var pendingSubtreeOperation: PendingSubtreeOperation?
     @State private var isPerformingBranchDropOperation = false
-    @StateObject private var operationProgress = RepositoryOperationProgress()
+    @StateObject var operationProgress = RepositoryOperationProgress()
 
     init(
         repositoryURL: URL,
@@ -414,7 +414,7 @@ struct MainWindowView: View {
         }
     }
 
-    private func runRepositoryOperation(_ message: String, _ operation: @escaping () async -> Void) {
+    func runRepositoryOperation(_ message: String, _ operation: @escaping () async -> Void) {
         operationProgress.run(message: message, operation: operation)
     }
 
@@ -847,352 +847,6 @@ struct MainWindowView: View {
         }
     }
 
-    @ViewBuilder
-    private var commitSheet: some View {
-        CommitSheetView { message in
-            runRepositoryOperation("Committing changes...") {
-                await commitFromToolbar(message: message)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var pullSheet: some View {
-        PullSheetView(
-            repositoryURL: repositoryURL,
-            preselectedRemote: repoSettings.defaultRemoteName,
-            preselectedBranch: resolvedPullPreselectedBranch(),
-            defaultPullStrategy: repoSettings.pullStrategy
-        ) { remote, branch, options in
-            runRepositoryOperation("Pulling \(remote)/\(branch)...") {
-                await syncState.performPull(
-                    remote: remote,
-                    branch: branch,
-                    options: options,
-                    repositoryURL: repositoryURL,
-                    undoManager: undoManager,
-                    credentialResolver: providerAccountController.credentialResolver()
-                )
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var pushSheet: some View {
-        PushSheetView(repositoryURL: repositoryURL) { options in
-            runRepositoryOperation("Pushing branches...") {
-                await syncState.performPush(
-                    options: options,
-                    repositoryURL: repositoryURL,
-                    undoManager: undoManager,
-                    credentialResolver: providerAccountController.credentialResolver()
-                )
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var fetchSheet: some View {
-        FetchSheetView(repositoryURL: repositoryURL) { options in
-            runRepositoryOperation("Fetching remotes...") {
-                await syncState.performFetch(
-                    options: options,
-                    repositoryURL: repositoryURL,
-                    credentialResolver: providerAccountController.credentialResolver()
-                )
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var addSubmoduleSheet: some View {
-        AddSubmoduleSheet(
-            repositoryURL: repositoryURL,
-            onAdd: { request in
-                try await GitStatusService.shared.addSubmodule(
-                    request,
-                    in: repositoryURL,
-                    credentialResolver: providerAccountController.credentialResolver()
-                )
-            },
-            onCompleted: { request in
-                appState.showSubmodules = true
-                selectedItem = .submodule(request.path)
-            },
-            onRunRepositoryOperation: runRepositoryOperation
-        )
-    }
-
-    @ViewBuilder
-    private var addLinkSubtreeSheet: some View {
-        AddLinkSubtreeSheet(
-            repositoryURL: repositoryURL,
-            onAdd: { request in
-                try await GitStatusService.shared.addSubtree(
-                    request,
-                    in: repositoryURL,
-                    credentialResolver: providerAccountController.credentialResolver()
-                )
-            },
-            onLink: { request in
-                try await GitStatusService.shared.linkExistingSubtree(request, in: repositoryURL)
-            },
-            onCompleted: { entry in
-                appState.showSubtrees = true
-                selectedItem = .subtree(entry.id)
-            },
-            onRunRepositoryOperation: runRepositoryOperation
-        )
-    }
-
-    @ViewBuilder
-    private var branchSheet: some View {
-        BranchSheetView(
-            repositoryURL: repositoryURL,
-            undoManager: undoManager,
-            initialStartPoint: branchSheetStartPoint,
-            onRunRepositoryOperation: runRepositoryOperation,
-            onCompleted: {
-                Task {
-                    await syncState.refresh(repositoryURL: repositoryURL)
-                    NotificationCenter.default.post(
-                        name: .repositoryDidChange,
-                        object: nil,
-                        userInfo: ["repositoryURL": repositoryURL]
-                    )
-                }
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var tagSheet: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Create Tag")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            if let startPoint = branchTagStartPoint {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("From branch:")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text("\(startPoint.branchName) at \(startPoint.shortHash) : \(startPoint.message)")
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Tag name:")
-                    .font(.system(size: 13))
-                TextField("Enter tag name...", text: $tagNameInput)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            HStack(spacing: 12) {
-                Spacer()
-                Button("Cancel", role: .cancel) {
-                    showingTagSheet = false
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Button("Create Tag") {
-                    Task { await createTagFromBranch() }
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(tagNameInput.trimmingCharacters(in: .whitespaces).isEmpty || branchTagStartPoint == nil)
-            }
-        }
-        .padding(24)
-        .frame(minWidth: 360, idealWidth: 420)
-    }
-
-    @ViewBuilder
-    private var newTagSheet: some View {
-        TagSheetView(
-            repositoryURL: repositoryURL,
-            onRunRepositoryOperation: runRepositoryOperation,
-            onCreate: { request in
-                try await createTag(from: request)
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var renameSheet: some View {
-        RenameBranchSheetView(
-            repositoryURL: repositoryURL,
-            currentName: branchToRename,
-            undoManager: undoManager,
-            onRunRepositoryOperation: runRepositoryOperation,
-            onCompleted: {
-                Task {
-                    await syncState.refresh(repositoryURL: repositoryURL)
-                    NotificationCenter.default.post(
-                        name: .repositoryDidChange,
-                        object: nil,
-                        userInfo: ["repositoryURL": repositoryURL]
-                    )
-                }
-            }
-        )
-    }
-
-    @ViewBuilder
-    private func commitDropConfirmationSheet(
-        for confirmation: PendingCommitDropConfirmation
-    ) -> some View {
-        GitDragActionConfirmationSheet(
-            title: "Cherry-pick Commits",
-            message: "Cherry-pick the selected commits into the current HEAD branch.",
-            targetBranchName: confirmation.targetBranch,
-            commits: confirmation.commits,
-            primaryActionTitle: "Cherry-pick",
-            onConfirm: {
-                let request = confirmation
-                pendingCommitDropConfirmation = nil
-                runRepositoryOperation("Cherry-picking commits...") {
-                    await performCommitDropCherryPick(request)
-                }
-            },
-            onCancel: {
-                pendingCommitDropConfirmation = nil
-            }
-        )
-    }
-
-    @ViewBuilder
-    private func branchDropConfirmationSheet(
-        for confirmation: PendingBranchDropConfirmation
-    ) -> some View {
-        GitDragActionConfirmationSheet(
-            title: "Merge or Rebase Branch",
-            message: "Review the branch action before continuing.",
-            sourceBranchName: confirmation.sourceBranch,
-            targetBranchName: confirmation.targetBranch,
-            commits: [],
-            primaryActionTitle: "Continue",
-            selectedBranchOperation: Binding(
-                get: { pendingBranchDropConfirmation?.operation ?? confirmation.operation },
-                set: { newValue in
-                    guard var pending = pendingBranchDropConfirmation else { return }
-                    pending.operation = newValue
-                    pendingBranchDropConfirmation = pending
-                }
-            ),
-            onConfirm: {
-                guard let request = pendingBranchDropConfirmation else { return }
-                pendingBranchDropConfirmation = nil
-                runRepositoryOperation(request.operation == .merge ? "Merging \(request.sourceBranch)..." : "Rebasing onto \(request.sourceBranch)...") {
-                    await performBranchDropOperation(request)
-                }
-            },
-            onCancel: {
-                pendingBranchDropConfirmation = nil
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var mergeSheet: some View {
-        MergeSheetView(repositoryURL: repositoryURL) { branch, message, options in
-            runRepositoryOperation("Merging \(branch)...") {
-                await syncState.performMerge(branch: branch, options: options, repositoryURL: repositoryURL)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var stashSheet: some View {
-        StashSheetView(paths: pendingStashPaths) { options in
-            let pathsToStash = options.paths
-            runRepositoryOperation(pathsToStash.isEmpty ? "Stashing changes..." : "Stashing \(pathsToStash.count) files...") {
-                await syncState.performStash(
-                    options: options,
-                    repositoryURL: repositoryURL,
-                    undoManager: undoManager
-                )
-            }
-            clearPendingStashPaths()
-        }
-        .onDisappear {
-            clearPendingStashPaths()
-        }
-    }
-
-    @MainActor
-    private func clearPendingStashPaths() {
-        guard !pendingStashPaths.isEmpty else { return }
-        pendingStashPaths = []
-    }
-
-    @ViewBuilder
-    private var stashActionSheet: some View {
-        if let ref = pendingStashRef, let action = pendingStashAction {
-            StashActionConfirmationSheet(stashRef: ref, action: action) { deleteAfterApplying in
-                runRepositoryOperation(action == .apply ? "Applying \(ref)..." : "Deleting \(ref)...") {
-                    await performStashAction(
-                        ref: ref,
-                        action: action,
-                        deleteAfterApplying: deleteAfterApplying
-                    )
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var repositorySettingsSheet: some View {
-        RepositorySettingsSheetView(
-            repositoryURL: repositoryURL,
-            initialSettings: repoSettings,
-            onSave: { newSettings in
-                repoSettings = newSettings
-                repoSettingsStore.update(for: repositoryURL.path, settings: newSettings)
-                syncState.startBackgroundSync(repositoryURL: repositoryURL, settings: newSettings)
-                Task {
-                    await refreshRemotePresentation(for: newSettings.defaultRemoteName)
-                }
-            },
-            onOpenGitIgnore: openGitIgnoreFile,
-            onOpenGitConfig: openGitConfigFile,
-            onOpenRemoteURL: { remote in
-                openRemoteURL(remote: remote)
-            }
-        )
-    }
-
-    private var createPullRequestSheetPresented: Binding<Bool> {
-        Binding(
-            get: { pullRequestController.createDraftSeed != nil },
-            set: { isPresented in
-                if !isPresented {
-                    pullRequestController.dismissCreatePullRequest()
-                }
-            }
-        )
-    }
-
-    private func copyToPasteboard(_ value: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(value, forType: .string)
-    }
-
-    @ViewBuilder
-    private var createPullRequestSheet: some View {
-        if let seed = pullRequestController.createDraftSeed {
-            CreatePullRequestSheet(
-                seed: seed,
-                isSubmitting: pullRequestController.isPerformingAction,
-                onCancel: { pullRequestController.dismissCreatePullRequest() },
-                onCreate: { draft in
-                    Task { await pullRequestController.createPullRequest(draft) }
-                }
-            )
-        }
-    }
-
     private func performInitialLoad() async {
         async let loadedRemotes = GitStatusService.shared.remotes(in: repositoryURL)
         async let loadedCurrentBranch = GitStatusService.shared.currentBranch(in: repositoryURL)
@@ -1284,14 +938,14 @@ struct MainWindowView: View {
         .help("More Actions")
     }
 
-    private func showCommitSheetIfNoConflicts() {
+    func showCommitSheetIfNoConflicts() {
         Task {
             if await syncState.checkConflicts(repositoryURL: repositoryURL) { return }
             showingCommitSheet = true
         }
     }
 
-    private func commitFromToolbar(message: String) async {
+    func commitFromToolbar(message: String) async {
         await syncState.performCommit(
             message: message,
             repositoryURL: repositoryURL,
@@ -1299,85 +953,7 @@ struct MainWindowView: View {
         )
     }
 
-    private func performCheckout(ref: String, stash: Bool) async {
-        do {
-            let support = GitBranchUndoSupport()
-            let previousRef = try await support.currentRef(in: repositoryURL)
-            if stash {
-                try await GitStatusService.shared.stash(
-                    options: GitStatusService.StashOptions(
-                        message: "Stashed before switching to \(ref)",
-                        keepIndex: false
-                    ),
-                    in: repositoryURL
-                )
-            }
-            try await GitStatusService.shared.checkoutCommit(ref, in: repositoryURL)
-            await MainActor.run {
-                undoManager.register(
-                    GitUndoEntry(
-                        repositoryURL: repositoryURL,
-                        label: "Checkout \(ref)",
-                        undoOperation: .checkoutRef(ref: previousRef),
-                        redoOperation: .checkoutRef(ref: ref)
-                    )
-                )
-            }
-            await syncState.refresh(repositoryURL: repositoryURL)
-            NotificationCenter.default.post(
-                name: .repositoryDidChange,
-                object: nil,
-                userInfo: ["repositoryURL": repositoryURL]
-            )
-        } catch {
-            syncState.showError(error.localizedDescription)
-        }
-    }
-
-    private func performTagCheckout(tag: String) async {
-        await performCheckout(ref: tag, stash: false)
-    }
-
-    private func remoteBranchCheckoutTarget(
-        for reference: String,
-        remotes: [String]
-    ) -> RemoteBranchCheckoutTarget? {
-        guard let separator = reference.firstIndex(of: "/") else { return nil }
-        let remote = String(reference[..<separator])
-        let branchStart = reference.index(after: separator)
-        let branch = String(reference[branchStart...])
-        guard remotes.contains(remote), !branch.isEmpty, branch != "HEAD" else { return nil }
-        return RemoteBranchCheckoutTarget(remote: remote, branch: branch)
-    }
-
-    private func performRemoteBranchCheckout(
-        target: RemoteBranchCheckoutTarget,
-        localBranch: String,
-        trackRemote: Bool
-    ) async {
-        do {
-            let checkedOutBranch = try await GitStatusService.shared.checkoutRemoteBranch(
-                remote: target.remote,
-                branch: target.branch,
-                localBranch: localBranch,
-                trackRemote: trackRemote,
-                in: repositoryURL
-            )
-            await syncState.refresh(repositoryURL: repositoryURL)
-            await MainActor.run {
-                selectedItem = .branch(checkedOutBranch)
-            }
-            NotificationCenter.default.post(
-                name: .repositoryDidChange,
-                object: nil,
-                userInfo: ["repositoryURL": repositoryURL]
-            )
-        } catch {
-            syncState.showError(error.localizedDescription)
-        }
-    }
-
-    private func performCommitDropCherryPick(_ confirmation: PendingCommitDropConfirmation) async {
+    func performCommitDropCherryPick(_ confirmation: PendingCommitDropConfirmation) async {
         guard !syncState.isAnySyncing else {
             await MainActor.run {
                 syncState.showInfo("Wait for the current Git operation to finish before dragging commits.")
@@ -1426,7 +1002,7 @@ struct MainWindowView: View {
         }
     }
 
-    private func performBranchDropOperation(_ confirmation: PendingBranchDropConfirmation) async {
+    func performBranchDropOperation(_ confirmation: PendingBranchDropConfirmation) async {
         guard !syncState.isAnySyncing, !isPerformingBranchDropOperation else {
             await MainActor.run {
                 syncState.showInfo("Wait for the current Git operation to finish before dragging branches.")
@@ -1554,7 +1130,7 @@ struct MainWindowView: View {
         }
     }
 
-    private func requestStashAction(ref: String, action: StashAction) {
+    func requestStashAction(ref: String, action: StashAction) {
         if action == .delete && !repoSettings.confirmDestructiveStashActions {
             Task {
                 await performStashAction(ref: ref, action: action, deleteAfterApplying: false)
@@ -1582,7 +1158,7 @@ struct MainWindowView: View {
         pendingStashAction = nil
     }
 
-    private func performStashAction(ref: String, action: StashAction, deleteAfterApplying: Bool) async {
+    func performStashAction(ref: String, action: StashAction, deleteAfterApplying: Bool) async {
         do {
             switch action {
             case .apply:
@@ -1668,7 +1244,7 @@ struct MainWindowView: View {
         }
     }
 
-    private func openRemoteURL(remote: String? = nil) {
+    func openRemoteURL(remote: String? = nil) {
         if let remote {
             Task {
                 let remoteValue = await GitStatusService.shared.remoteURL(remote: remote, in: repositoryURL)
@@ -1687,168 +1263,6 @@ struct MainWindowView: View {
 
         guard let url = browserURL(from: remoteURLString) else { return }
         NSWorkspace.shared.open(url)
-    }
-
-    private func openPullRequest(branch: String) async {
-        guard let upstream = await GitStatusService.shared.upstreamBranch(for: branch, in: repositoryURL) else {
-            await MainActor.run {
-                syncState.showError("Branch '\(branch)' has no upstream. Push it first to create a pull request.")
-            }
-            return
-        }
-        let parts = upstream.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
-        guard parts.count == 2, !parts[0].isEmpty else {
-            await MainActor.run {
-                syncState.showError("Could not parse upstream '\(upstream)'.")
-            }
-            return
-        }
-        let remoteName = parts[0]
-        let remoteBranch = parts[1]
-        let remoteURL = await GitStatusService.shared.remoteURL(remote: remoteName, in: repositoryURL)
-        guard let url = PullRequestURLBuilder.build(remoteURL: remoteURL, branch: remoteBranch) else {
-            await MainActor.run {
-                syncState.showError("Remote '\(remoteName)' is not a recognized pull request host (GitHub, GitLab, or Bitbucket).")
-            }
-            return
-        }
-        await MainActor.run {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    private func prepareCreatePullRequest(branch: String) async {
-        do {
-            let remote = try await prepareRemoteBranchForPullRequest(branch: branch)
-            await pullRequestController.loadPullRequests(repositoryURL: repositoryURL, remoteName: remote)
-            if let errorMessage = pullRequestController.errorMessage {
-                await MainActor.run {
-                    syncState.showError(errorMessage)
-                }
-                return
-            }
-            await pullRequestController.presentCreatePullRequest(sourceBranch: branch)
-            if pullRequestController.createDraftSeed == nil,
-               let detailErrorMessage = pullRequestController.detailErrorMessage {
-                await MainActor.run {
-                    syncState.showError(detailErrorMessage)
-                    pullRequestController.detailErrorMessage = nil
-                }
-            }
-        } catch {
-            await MainActor.run {
-                syncState.showError(error.localizedDescription)
-            }
-        }
-    }
-
-    private func prepareRemoteBranchForPullRequest(branch: String) async throws -> String {
-        let localBranch = branch.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !localBranch.isEmpty else {
-            throw GitError.commandFailed("Branch name is required.")
-        }
-
-        if let upstream = await GitStatusService.shared.upstreamBranch(for: localBranch, in: repositoryURL) {
-            let remoteBranch = try parseRemoteBranch(upstream)
-            if let status = await GitStatusService.shared.branchSyncStatus(for: localBranch, in: repositoryURL) {
-                if status.behind > 0 {
-                    throw GitError.commandFailed("Branch '\(localBranch)' is behind '\(upstream)'. Pull or rebase it before creating a pull request.")
-                }
-                if status.ahead > 0 {
-                    try await pushBranchForPullRequest(
-                        localBranch: localBranch,
-                        remote: remoteBranch.remote,
-                        remoteBranch: remoteBranch.branch,
-                        setUpstream: false
-                    )
-                }
-            }
-            return remoteBranch.remote
-        }
-
-        let remote = try await defaultPullRequestRemote()
-        try await pushBranchForPullRequest(
-            localBranch: localBranch,
-            remote: remote,
-            remoteBranch: localBranch,
-            setUpstream: true
-        )
-        return remote
-    }
-
-    private func defaultPullRequestRemote() async throws -> String {
-        let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
-        guard !remotes.isEmpty else {
-            throw GitError.commandFailed("No remotes configured. Add a remote before creating a pull request.")
-        }
-        if let preferred = repoSettings.defaultRemoteName,
-           remotes.contains(preferred) {
-            return preferred
-        }
-        return remotes.first(where: { $0 == "origin" }) ?? remotes[0]
-    }
-
-    private func parseRemoteBranch(_ upstream: String) throws -> (remote: String, branch: String) {
-        let parts = upstream.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
-        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else {
-            throw GitError.commandFailed("Could not parse upstream '\(upstream)'.")
-        }
-        return (parts[0], parts[1])
-    }
-
-    private func pushBranchForPullRequest(
-        localBranch: String,
-        remote: String,
-        remoteBranch: String,
-        setUpstream: Bool
-    ) async throws {
-        await MainActor.run {
-            syncState.isPushing = true
-            syncState.activeSyncBranch = localBranch
-        }
-        defer {
-            Task { @MainActor in
-                syncState.isPushing = false
-                syncState.activeSyncBranch = nil
-            }
-        }
-
-        let options = GitStatusService.PushOptions(
-            remote: remote,
-            branches: [localBranch],
-            branchMappings: [localBranch: remoteBranch]
-        )
-        _ = try await GitStatusService.shared.push(
-            options: options,
-            in: repositoryURL,
-            credentialResolver: providerAccountController.credentialResolver()
-        )
-        if setUpstream {
-            try await GitStatusService.shared.setUpstream(
-                upstream: "\(remote)/\(remoteBranch)",
-                branch: localBranch,
-                in: repositoryURL
-            )
-        }
-        await syncState.refresh(repositoryURL: repositoryURL)
-        NotificationCenter.default.post(
-            name: .repositoryDidChange,
-            object: nil,
-            userInfo: ["repositoryURL": repositoryURL]
-        )
-    }
-
-    private func openPullRequest(remote: String, branch: String) async {
-        let remoteURL = await GitStatusService.shared.remoteURL(remote: remote, in: repositoryURL)
-        guard let url = PullRequestURLBuilder.build(remoteURL: remoteURL, branch: branch) else {
-            await MainActor.run {
-                syncState.showError("Remote '\(remote)' is not a recognized pull request host (GitHub, GitLab, or Bitbucket).")
-            }
-            return
-        }
-        await MainActor.run {
-            NSWorkspace.shared.open(url)
-        }
     }
 
     private func showInFinder() {
@@ -1882,7 +1296,7 @@ struct MainWindowView: View {
         }
     }
 
-    private func openGitIgnoreFile() {
+    func openGitIgnoreFile() {
         do {
             let fileURL = try fileService.prepareGitIgnore(in: repositoryURL)
             NSWorkspace.shared.open(fileURL)
@@ -1891,7 +1305,7 @@ struct MainWindowView: View {
         }
     }
 
-    private func openGitConfigFile() {
+    func openGitConfigFile() {
         guard let fileURL = fileService.gitConfigURL(in: repositoryURL) else {
             syncState.showInfo("Could not find .git/config for this repository.")
             return
@@ -1899,7 +1313,7 @@ struct MainWindowView: View {
         NSWorkspace.shared.open(fileURL)
     }
 
-    private func refreshRemotePresentation(for preferredRemote: String?) async {
+    func refreshRemotePresentation(for preferredRemote: String?) async {
         let fallbackRemote = await GitStatusService.shared.remotes(in: repositoryURL).first
         let remote = preferredRemote ?? fallbackRemote
         guard let remote else {
@@ -1917,307 +1331,14 @@ struct MainWindowView: View {
         }
     }
 
-    private func resolvedPullPreselectedBranch() -> String? {
+    func resolvedPullPreselectedBranch() -> String? {
         if repoSettings.defaultPullBranch.isEmpty {
             return pullPreselectedBranch
         }
         return repoSettings.defaultPullBranch
     }
 
-    private func browserURL(from remoteURLString: String) -> URL? {
-        var cleaned = remoteURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Convert SSH URL format: git@host:user/repo.git -> https://host/user/repo.git
-        if cleaned.hasPrefix("git@") {
-            let withoutPrefix = cleaned.dropFirst("git@".count)
-            if let colonIndex = withoutPrefix.firstIndex(of: ":") {
-                let host = withoutPrefix[..<colonIndex]
-                let path = withoutPrefix[withoutPrefix.index(after: colonIndex)...]
-                cleaned = "https://\(host)/\(path)"
-            }
-        }
-
-        // Convert ssh:// format: ssh://git@host/user/repo.git -> https://host/user/repo.git
-        if cleaned.hasPrefix("ssh://") {
-            cleaned = String(cleaned.dropFirst("ssh://".count))
-            if cleaned.hasPrefix("git@") {
-                cleaned = String(cleaned.dropFirst("git@".count))
-            }
-            cleaned = "https://\(cleaned)"
-        }
-
-        // Remove .git suffix
-        if cleaned.hasSuffix(".git") {
-            cleaned = String(cleaned.dropLast(".git".count))
-        }
-
-        return URL(string: cleaned)
-    }
-
-    private var toolbarActionBinding: Binding<ToolbarAction> {
-        Binding(
-            get: { .commit },
-            set: { newValue in
-                handleToolbarAction(newValue)
-            }
-        )
-    }
-
-    private func handleToolbarAction(_ action: ToolbarAction) {
-        let syncing = syncState.isAnySyncing
-        switch action {
-        case .commit:
-            if !syncing && syncState.stagedBadgeCount > 0 {
-                showCommitSheetIfNoConflicts()
-            }
-        case .pull:
-            if !syncing { showingPullSheet = true }
-        case .push:
-            if !syncing { showingPushSheet = true }
-        case .fetch:
-            if !syncing { showingFetchSheet = true }
-        case .addSubmodule:
-            showingAddSubmoduleSheet = true
-        case .addLinkSubtree:
-            showingAddLinkSubtreeSheet = true
-        case .branch:
-            presentBranchSheet(startPoint: nil)
-        case .merge:
-            if !syncing { showingMergeSheet = true }
-        case .stash:
-            if !syncing && syncState.stashableCount > 0 {
-                showingStashSheet = true
-            }
-        case .search:
-            showingSearchModal = true
-        }
-    }
-
-    private func handleGitUndoMenuAction(_ action: GitUndoMenuAction) {
-        guard !syncState.isAnySyncing else {
-            syncState.showInfo("Wait for the current Git operation to finish before undoing.")
-            return
-        }
-        guard pendingConfirmedUndo == nil else { return }
-
-        switch action {
-        case .undo:
-            guard let entry = undoManager.popForUndo() else {
-                syncState.showInfo("Nothing to undo.")
-                return
-            }
-            if entry.confirmationMessage?.isEmpty == false {
-                pendingConfirmedUndo = (entry, action)
-                return
-            }
-            Task {
-                await executeUndoEntry(entry, menuAction: .undo)
-            }
-        case .redo:
-            guard let entry = undoManager.popForRedo() else {
-                syncState.showInfo("Nothing to redo.")
-                return
-            }
-            if entry.confirmationMessage?.isEmpty == false {
-                pendingConfirmedUndo = (entry, action)
-                return
-            }
-            Task {
-                await executeUndoEntry(entry, menuAction: .redo)
-            }
-        }
-    }
-
-    private func handleDragDropRequest(_ request: GitDragDropRequest) {
-        switch request {
-        case .cherryPick(let commits, let targetBranch):
-            pendingCommitDropConfirmation = PendingCommitDropConfirmation(
-                commits: commits,
-                targetBranch: targetBranch
-            )
-        case .branchOperation(let source, let target, let operation):
-            pendingBranchDropConfirmation = PendingBranchDropConfirmation(
-                sourceBranch: source,
-                targetBranch: target,
-                operation: operation
-            )
-        case .createBranch(let startPoint):
-            presentCreateBranchSheet(startPoint: startPoint)
-        case .checkoutRemoteBranch(let fullPath):
-            runRepositoryOperation("Checking out \(fullPath)...") {
-                await checkoutRemoteBranchFromDrop(fullPath)
-            }
-        case .createTagFromBranch(let sourceBranch):
-            Task {
-                await presentTagSheetFromBranchTip(sourceBranch)
-            }
-        case .pushBranchToRemote(let branch):
-            Task {
-                await presentPushBranchDropConfirmation(branch)
-            }
-        case .stashFiles(let paths):
-            handleStashFilesDrop(paths: paths)
-        case .applyStash(let ref):
-            requestStashAction(ref: ref, action: .apply)
-        }
-    }
-
-    private func handleStashFilesDrop(paths: [String]) {
-        guard !paths.isEmpty else { return }
-        if syncState.isAnySyncing {
-            syncState.showInfo("Wait for the current operation to finish before stashing more files.")
-            return
-        }
-        pendingStashPaths = paths
-        showingStashSheet = true
-    }
-
-    private func checkoutRemoteBranchFromDrop(_ fullPath: String) async {
-        let parts = fullPath.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
-        guard parts.count == 2 else {
-            await MainActor.run {
-                syncState.showError("Could not parse remote branch '\(fullPath)'.")
-            }
-            return
-        }
-
-        let remote = String(parts[0])
-        let branch = String(parts[1])
-        guard !remote.isEmpty, !branch.isEmpty else {
-            await MainActor.run {
-                syncState.showError("Could not parse remote branch '\(fullPath)'.")
-            }
-            return
-        }
-
-        do {
-            let localBranch = try await GitStatusService.shared.checkoutRemoteBranch(
-                remote: remote,
-                branch: branch,
-                in: repositoryURL
-            )
-            await MainActor.run {
-                selectedItem = .branch(localBranch)
-            }
-            NotificationCenter.default.post(
-                name: .repositoryDidChange,
-                object: nil,
-                userInfo: ["repositoryURL": repositoryURL]
-            )
-        } catch {
-            await MainActor.run {
-                syncState.showError(error.localizedDescription)
-            }
-        }
-    }
-
-    private func presentCreateBranchSheet(startPoint: GitBranchStartPoint) {
-        switch startPoint {
-        case .commit:
-            presentBranchSheet(startPoint: startPoint)
-        case .branch(let sourceBranch):
-            Task {
-                await presentBranchSheetFromBranchTip(sourceBranch)
-            }
-        }
-    }
-
-    private func presentBranchSheetFromBranchTip(_ sourceBranch: String) async {
-        let commits = await GitStatusService.shared.commitHistory(
-            branch: sourceBranch,
-            limit: 1,
-            in: repositoryURL
-        )
-
-        await MainActor.run {
-            if let commit = commits.first {
-                presentBranchSheet(
-                    startPoint: .commit(hash: commit.hash, message: commit.message)
-                )
-            } else {
-                syncState.showError("Could not find the last commit for \(sourceBranch).")
-            }
-        }
-    }
-
-    private func presentBranchSheet(startPoint: GitBranchStartPoint?) {
-        branchSheetStartPoint = startPoint
-        showingBranchSheet = true
-    }
-
-    private func initializeSubmodule(at path: String) async {
-        do {
-            try await GitStatusService.shared.initializeSubmodule(
-                path: path,
-                in: repositoryURL,
-                credentialResolver: providerAccountController.credentialResolver()
-            )
-        } catch {
-            await MainActor.run {
-                syncState.showError(error.localizedDescription)
-            }
-        }
-    }
-
-    private func updateSubmodule(at path: String, mode: SubmoduleUpdateMode) async {
-        do {
-            try await GitStatusService.shared.updateSubmodule(
-                path: path,
-                mode: mode,
-                in: repositoryURL,
-                credentialResolver: providerAccountController.credentialResolver()
-            )
-        } catch {
-            await MainActor.run {
-                syncState.showError(error.localizedDescription)
-            }
-        }
-    }
-
-    private func synchronizeSubmoduleURL(at path: String) async {
-        do {
-            try await GitStatusService.shared.synchronizeSubmoduleURL(
-                path: path,
-                in: repositoryURL
-            )
-        } catch {
-            await MainActor.run {
-                syncState.showError(error.localizedDescription)
-            }
-        }
-    }
-
-    private func presentPushBranchDropConfirmation(_ branch: String) async {
-        let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
-        await MainActor.run {
-            guard let remote = remotes.first(where: { $0 == "origin" }) ?? remotes.first else {
-                syncState.showError("No remotes configured.")
-                return
-            }
-
-            pendingPushBranchDropConfirmation = PendingPushBranchDropConfirmation(
-                branch: branch,
-                remote: remote
-            )
-        }
-    }
-
-    private func performConfirmedBranchPush(_ confirmation: PendingPushBranchDropConfirmation) async {
-        let options = GitStatusService.PushOptions(
-            remote: confirmation.remote,
-            branches: [confirmation.branch],
-            branchMappings: [confirmation.branch: confirmation.branch]
-        )
-
-        await syncState.performPush(
-            options: options,
-            repositoryURL: repositoryURL,
-            undoManager: undoManager,
-            credentialResolver: providerAccountController.credentialResolver()
-        )
-    }
-
-    private func presentTagSheetFromBranchTip(_ sourceBranch: String) async {
+    func presentTagSheetFromBranchTip(_ sourceBranch: String) async {
         let commits = await GitStatusService.shared.commitHistory(
             branch: sourceBranch,
             limit: 1,
@@ -2238,7 +1359,7 @@ struct MainWindowView: View {
         }
     }
 
-    private func createTagFromBranch() async {
+    func createTagFromBranch() async {
         guard let startPoint = branchTagStartPoint else { return }
         let name = tagNameInput.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
@@ -2267,7 +1388,7 @@ struct MainWindowView: View {
         }
     }
 
-    private func createTag(from request: TagCreationRequest) async throws {
+    func createTag(from request: TagCreationRequest) async throws {
         try await GitStatusService.shared.createTag(
             name: request.name,
             commit: request.commitReference,
@@ -2334,151 +1455,4 @@ struct MainWindowView: View {
         branchTagStartPoint = nil
     }
 
-    private func executeUndoEntry(_ entry: GitUndoEntry, menuAction: GitUndoMenuAction) async {
-        let operation: GitUndoOperation
-        switch menuAction {
-        case .undo:
-            operation = entry.undoOperation
-        case .redo:
-            operation = entry.redoOperation
-        }
-
-        do {
-            try await undoExecutor.execute(operation, in: entry.repositoryURL)
-            await syncState.refresh(repositoryURL: repositoryURL)
-            NotificationCenter.default.post(
-                name: .repositoryDidChange,
-                object: nil,
-                userInfo: ["repositoryURL": repositoryURL]
-            )
-            await MainActor.run {
-                switch menuAction {
-                case .undo:
-                    undoManager.completeUndo(entry)
-                    syncState.showInfo("Undid \(entry.label).")
-                case .redo:
-                    undoManager.completeRedo(entry)
-                    syncState.showInfo("Redid \(entry.label).")
-                }
-            }
-        } catch {
-            await MainActor.run {
-                switch menuAction {
-                case .undo:
-                    undoManager.restoreUndo(entry)
-                case .redo:
-                    undoManager.restoreRedo(entry)
-                }
-                syncState.showError(error.localizedDescription)
-            }
-        }
-    }
-
-    private func handleSearchAction(_ action: SearchAction) {
-        switch action {
-        case .showCommit(let hash):
-            selectedItem = .item(.history)
-            selectedBranchName = hash
-        case .showFile(let path):
-            prepareToOpenSearchFile(path)
-        case .checkoutBranch(let branch):
-            if branch.hasPrefix("remotes/") {
-                let localName = branch.replacingOccurrences(of: "remotes/", with: "")
-                if let slashIndex = localName.firstIndex(of: "/") {
-                    let branchName = String(localName[localName.index(after: slashIndex)...])
-                    branchToCheckout = branchName
-                    showingCheckoutConfirmation = true
-                }
-            } else {
-                branchToCheckout = branch
-                showingCheckoutConfirmation = true
-            }
-        case .showTag(let tag):
-            tagToCheckout = tag
-            showingDetachedHeadConfirmation = true
-        }
-    }
-
-    private func prepareToOpenSearchFile(_ relativePath: String) {
-        let applications = SearchFileApplicationResolver.availableApplications()
-
-        if let preferredBundleIdentifier = appState.preferredSearchFileApplicationBundleIdentifier {
-            if let preferredApplication = applications.first(where: {
-                $0.bundleIdentifier == preferredBundleIdentifier
-            }) {
-                openSearchFile(relativePath, using: preferredApplication)
-                return
-            }
-
-            appState.preferredSearchFileApplicationBundleIdentifier = nil
-        }
-
-        guard !applications.isEmpty else {
-            syncState.showError("No supported application is available to open this file.")
-            return
-        }
-
-        pendingSearchFileOpenRequest = SearchFileOpenRequest(
-            relativePath: relativePath,
-            applications: applications
-        )
-    }
-
-    private func openSearchFile(
-        _ relativePath: String,
-        using application: SearchFileApplication
-    ) {
-        let progressID = operationProgress.begin(
-            message: "Opening \((relativePath as NSString).lastPathComponent) in \(application.displayName)...",
-            canCancel: false
-        )
-
-        Task {
-            defer { operationProgress.end(progressID) }
-            do {
-                try await SearchFileOpener.open(
-                    relativePath: relativePath,
-                    in: repositoryURL,
-                    using: application
-                )
-            } catch {
-                syncState.showError(error.localizedDescription)
-            }
-        }
-    }
-
-    private func performSubtreeOperation(_ pending: PendingSubtreeOperation) async throws {
-        let decision = try await GitStatusService.shared.subtreeOperationDecision(in: repositoryURL)
-        guard decision.isAllowed else {
-            throw GitError.commandFailed(subtreeBlockedMessage(for: decision))
-        }
-
-        switch pending.operation {
-        case .add:
-            return
-        case .pull:
-            try await GitStatusService.shared.pullSubtree(
-                pending.entry,
-                in: repositoryURL,
-                credentialResolver: providerAccountController.credentialResolver()
-            )
-        case .push:
-            try await GitStatusService.shared.pushSubtree(
-                pending.entry,
-                in: repositoryURL,
-                credentialResolver: providerAccountController.credentialResolver()
-            )
-        }
-    }
-
-    private func subtreeBlockedMessage(for decision: SubtreeOperationDecision) -> String {
-        guard !decision.blockingPaths.isEmpty else {
-            return decision.message ?? SubtreeOperationPolicy.dirtyTreeMessage
-        }
-
-        let shownPaths = decision.blockingPaths.prefix(5).map { "- \($0)" }.joined(separator: "\n")
-        let remaining = decision.blockingPaths.count - 5
-        let suffix = remaining > 0 ? "\n+ \(remaining) more" : ""
-        return "\(decision.message ?? SubtreeOperationPolicy.dirtyTreeMessage)\n\n\(shownPaths)\(suffix)"
-    }
 }
