@@ -427,49 +427,20 @@ struct SidebarView: View {
             } message: {
                 Text(errorMessage)
             }
-            .sheet(item: $deleteConfirmationTarget) { target in
-                switch target {
-                case .single(let branch):
-                    SidebarDeleteBranchSheet(
-                        branchName: branch,
-                        forceDelete: $forceDeleteBranch,
-                        onCancel: cancelDeleteConfirmation,
-                        onDelete: { confirmDeleteBranch(branch) }
-                    )
-                case .prefix(let prefix):
-                    let allBranches = branchesUnderPrefix(prefix)
-                    let deletableBranches = allBranches.filter { $0 != currentBranch }
-                    let skippedBranches = allBranches.filter { $0 == currentBranch }
-                    SidebarDeletePrefixSheet(
-                        prefix: prefix,
-                        allBranches: allBranches,
-                        deletableBranches: deletableBranches,
-                        skippedBranches: skippedBranches,
-                        forceDelete: $forceDeleteBranch,
-                        onCancel: cancelDeleteConfirmation,
-                        onDelete: { confirmDeletePrefix(prefix) }
-                    )
-                }
-            }
-            .alert("Delete Remote Branch", isPresented: Binding(
-                get: { remoteBranchDeleteTarget != nil },
-                set: { isPresented in
-                    if !isPresented {
-                        remoteBranchDeleteTarget = nil
-                    }
-                }
-            )) {
-                Button("Cancel", role: .cancel) {}
-                Button("Delete", role: .destructive) {
-                    if let target = remoteBranchDeleteTarget {
-                        onRunRepositoryOperation("Deleting \(target.fullPath)...") {
-                            await deleteRemoteBranch(target)
-                        }
-                    }
-                }
-            } message: {
-                Text("Delete '\(remoteBranchDeleteTarget?.fullPath ?? "")' from the remote?")
-            }
+            .modifier(
+                SidebarBranchPresentationModifier(
+                    deleteConfirmationTarget: $deleteConfirmationTarget,
+                    forceDeleteBranch: $forceDeleteBranch,
+                    remoteBranchDeleteTarget: $remoteBranchDeleteTarget,
+                    currentBranch: currentBranch,
+                    branchesUnderPrefix: branchesUnderPrefix,
+                    cancelDeleteConfirmation: cancelDeleteConfirmation,
+                    confirmDeleteBranch: confirmDeleteBranch,
+                    confirmDeletePrefix: confirmDeletePrefix,
+                    deleteRemoteBranch: deleteRemoteBranch,
+                    onRunRepositoryOperation: onRunRepositoryOperation
+                )
+            )
             .modifier(
                 SidebarWorktreePresentationModifier(
                     worktreeToLabel: $worktreeToLabel,
