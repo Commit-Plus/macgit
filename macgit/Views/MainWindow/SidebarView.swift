@@ -26,132 +26,6 @@ import CoreTransferable
 import SwiftUI
 import UniformTypeIdentifiers
 
-private struct WorktreePresentationModifier: ViewModifier {
-    @Binding var worktreeToLabel: WorktreeEntry?
-    @Binding var worktreeToLock: WorktreeEntry?
-    @Binding var worktreeToMove: WorktreeEntry?
-    @Binding var worktreeToCheckout: WorktreeEntry?
-    @Binding var showingCreateWorktreeSheet: Bool
-    @Binding var showingWorktreeRemovalConfirmation: Bool
-    @Binding var showingMissingWorktreeAlert: Bool
-    @Binding var showingWorktreeForceCheckoutConfirmation: Bool
-    @Binding var showingPruneWorktreesConfirmation: Bool
-    @Binding var pendingWorktreeRemoval: WorktreeEntry?
-    @Binding var pendingWorktreeForceCheckout: WorktreeEntry?
-    @Binding var missingWorktreeEntry: WorktreeEntry?
-
-    let worktreeRemovalNeedsForce: Bool
-    let worktreeRemovalMessage: String
-    let worktreeLabelSheet: () -> AnyView
-    let worktreeLockSheet: () -> AnyView
-    let worktreeMoveSheet: () -> AnyView
-    let worktreeCheckoutSheet: () -> AnyView
-    let createWorktreeSheet: () -> AnyView
-    let chooseReplacementWorktreeFolder: (WorktreeEntry) -> Void
-    let deleteMissingWorktree: (WorktreeEntry) async -> Void
-    let removeWorktree: (WorktreeEntry, Bool) async -> Void
-    let checkoutWorktree: (WorktreeEntry, Bool) async -> Void
-    let pruneWorktrees: () async -> Void
-    let onRunRepositoryOperation: RepositoryOperationRunner
-
-    func body(content: Content) -> some View {
-        content
-            .alert("Remove Worktree", isPresented: $showingWorktreeRemovalConfirmation) {
-                Button("Cancel", role: .cancel) {}
-                Button(worktreeRemovalNeedsForce ? "Force Remove" : "Remove", role: .destructive) {
-                    if let entry = pendingWorktreeRemoval {
-                        onRunRepositoryOperation("Removing \(entry.displayTitle)...") {
-                            await removeWorktree(entry, worktreeRemovalNeedsForce)
-                        }
-                    }
-                }
-            } message: {
-                Text(worktreeRemovalMessage)
-            }
-            .alert("Worktree Moved or Deleted", isPresented: $showingMissingWorktreeAlert, presenting: missingWorktreeEntry) { entry in
-                Button("Delete", role: .destructive) {
-                    onRunRepositoryOperation("Removing missing worktree...") {
-                        await deleteMissingWorktree(entry)
-                    }
-                }
-                Button("Change folder") {
-                    chooseReplacementWorktreeFolder(entry)
-                }
-                Button("Cancel", role: .cancel) {
-                    missingWorktreeEntry = nil
-                }
-            } message: { entry in
-                Text("\"\(entry.displayTitle)\" is no longer available at \(entry.path.path).")
-            }
-            .alert("Force Switch Branch", isPresented: $showingWorktreeForceCheckoutConfirmation) {
-                Button("Cancel", role: .cancel) {
-                    pendingWorktreeForceCheckout = nil
-                }
-                Button("Force Switch", role: .destructive) {
-                    if let entry = pendingWorktreeForceCheckout {
-                        onRunRepositoryOperation("Switching \(entry.displayTitle)...") {
-                            await checkoutWorktree(entry, true)
-                        }
-                    }
-                }
-            } message: {
-                Text("This worktree has uncommitted changes. Force checkout and discard conflicting changes?")
-            }
-            .alert("Prune Worktrees", isPresented: $showingPruneWorktreesConfirmation) {
-                Button("Cancel", role: .cancel) {}
-                Button("Prune", role: .destructive) {
-                    onRunRepositoryOperation("Pruning worktrees...") {
-                        await pruneWorktrees()
-                    }
-                }
-            } message: {
-                Text("Remove stale worktree metadata and orphaned labels for paths that no longer exist?")
-            }
-            .sheet(item: $worktreeToLabel) { _ in worktreeLabelSheet() }
-            .sheet(item: $worktreeToLock) { _ in worktreeLockSheet() }
-            .sheet(item: $worktreeToMove) { _ in worktreeMoveSheet() }
-            .sheet(item: $worktreeToCheckout) { _ in worktreeCheckoutSheet() }
-            .sheet(isPresented: $showingCreateWorktreeSheet) { createWorktreeSheet() }
-    }
-}
-
-private struct SubtreePresentationModifier: ViewModifier {
-    @Binding var subtreeToEdit: GitSubtreeEntry?
-    @Binding var subtreeToUnlink: GitSubtreeEntry?
-
-    let editSubtreeSheet: (GitSubtreeEntry) -> AnyView
-    let unlinkSubtree: (GitSubtreeEntry) async -> Void
-    let onRunRepositoryOperation: RepositoryOperationRunner
-
-    func body(content: Content) -> some View {
-        content
-            .sheet(item: $subtreeToEdit) { entry in
-                editSubtreeSheet(entry)
-            }
-            .alert("Unlink Subtree", isPresented: Binding(
-                get: { subtreeToUnlink != nil },
-                set: { isPresented in
-                    if !isPresented {
-                        subtreeToUnlink = nil
-                    }
-                }
-            )) {
-                Button("Cancel", role: .cancel) {
-                    subtreeToUnlink = nil
-                }
-                Button("Unlink", role: .destructive) {
-                    if let entry = subtreeToUnlink {
-                        onRunRepositoryOperation("Unlinking \(entry.path)...") {
-                            await unlinkSubtree(entry)
-                        }
-                    }
-                }
-            } message: {
-                Text("Unlink removes Commit+ metadata only. Files under \(subtreeToUnlink?.path ?? "") remain unchanged.")
-            }
-    }
-}
-
 struct SidebarView: View {
     @EnvironmentObject private var appUpdateController: AppUpdateController
     @EnvironmentObject private var appState: AppState
@@ -484,6 +358,70 @@ struct SidebarView: View {
         )
     }
 
+    var submoduleSectionActions: SidebarSubmoduleSectionActions {
+        SidebarSubmoduleSectionActions(
+            toggleSection: { toggleSection(.submodules) },
+            open: onRequestOpenSubmodule,
+            showInFinder: onRequestShowSubmoduleInFinder,
+            openInTerminal: onRequestOpenSubmoduleInTerminal,
+            initialize: onRequestInitializeSubmodule,
+            update: onRequestUpdateSubmodule,
+            synchronizeURL: onRequestSynchronizeSubmoduleURL,
+            edit: { submoduleToEdit = $0 },
+            deinitialize: presentDeinitializeSubmoduleConfirmation,
+            remove: presentRemoveSubmoduleConfirmation
+        )
+    }
+
+    var subtreeSectionActions: SidebarSubtreeSectionActions {
+        SidebarSubtreeSectionActions(
+            toggleSection: { toggleSection(.subtrees) },
+            showInFinder: onRequestShowSubtreeInFinder,
+            openInTerminal: onRequestOpenSubtreeInTerminal,
+            pull: onRequestPullSubtree,
+            push: onRequestPushSubtree,
+            edit: { subtreeToEdit = $0 },
+            unlink: { subtreeToUnlink = $0 }
+        )
+    }
+
+    var worktreeSectionActions: SidebarWorktreeSectionActions {
+        SidebarWorktreeSectionActions(
+            toggleSection: { toggleSection(.worktrees) },
+            prepareCreate: {
+                onRunRepositoryOperation("Preparing worktree creation...") {
+                    await prepareCreateWorktreeSheet()
+                }
+            },
+            confirmPrune: { showingPruneWorktreesConfirmation = true },
+            select: selectWorktree,
+            open: openWorktree,
+            openInTerminal: onRequestOpenWorktreeInTerminal,
+            editLabel: beginEditingWorktreeLabel,
+            clearLabel: { entry in
+                onRunRepositoryOperation("Clearing worktree label...") {
+                    await clearWorktreeLabel(entry)
+                }
+            },
+            editLock: beginLockingWorktree,
+            unlock: { entry in
+                onRunRepositoryOperation("Unlocking \(entry.displayTitle)...") {
+                    await unlockWorktree(entry)
+                }
+            },
+            move: beginMovingWorktree,
+            switchBranch: { entry in
+                onRunRepositoryOperation("Preparing branch switch...") {
+                    await prepareCheckoutWorktreeSheet(for: entry)
+                }
+            },
+            confirmRemoval: { entry in
+                pendingWorktreeRemoval = entry
+                showingWorktreeRemovalConfirmation = true
+            }
+        )
+    }
+
     var dropActions: SidebarDropActions {
         SidebarDropActions(
             activePayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
@@ -548,8 +486,74 @@ struct SidebarView: View {
             } message: {
                 Text("Delete '\(remoteBranchDeleteTarget?.fullPath ?? "")' from the remote?")
             }
-            .modifier(sidebarWorktreePresentation)
-            .modifier(sidebarSubtreePresentation)
+            .modifier(
+                SidebarWorktreePresentationModifier(
+                    worktreeToLabel: $worktreeToLabel,
+                    worktreeLabelInput: $worktreeLabelInput,
+                    worktreeToLock: $worktreeToLock,
+                    worktreeLockReasonInput: $worktreeLockReasonInput,
+                    isUpdatingWorktreeLock: isUpdatingWorktreeLock,
+                    worktreeToMove: $worktreeToMove,
+                    worktreeMovePathInput: $worktreeMovePathInput,
+                    worktreeMoveErrorMessage: $worktreeMoveErrorMessage,
+                    canMoveWorktree: canMoveWorktree,
+                    isMovingWorktree: isMovingWorktree,
+                    worktreeToCheckout: $worktreeToCheckout,
+                    availableWorktreeCheckoutBranches: $availableWorktreeCheckoutBranches,
+                    selectedWorktreeCheckoutBranch: $selectedWorktreeCheckoutBranch,
+                    worktreeCheckoutErrorMessage: $worktreeCheckoutErrorMessage,
+                    canCheckoutWorktreeBranch: canCheckoutWorktreeBranch,
+                    isCheckingOutWorktreeBranch: isCheckingOutWorktreeBranch,
+                    showingCreateWorktreeSheet: $showingCreateWorktreeSheet,
+                    createWorktreeMode: $createWorktreeMode,
+                    availableWorktreeBranches: availableWorktreeBranches,
+                    selectedExistingWorktreeBranch: $selectedExistingWorktreeBranch,
+                    newWorktreeBranchName: $newWorktreeBranchName,
+                    newWorktreeBaseBranch: $newWorktreeBaseBranch,
+                    worktreePathInput: $worktreePathInput,
+                    worktreeLabelDraft: $worktreeLabelDraft,
+                    openWorktreeAfterCreate: $openWorktreeAfterCreate,
+                    worktreeCreationErrorMessage: worktreeCreationErrorMessage,
+                    canCreateWorktree: canCreateWorktree,
+                    isCreatingWorktree: isCreatingWorktree,
+                    showingWorktreeRemovalConfirmation: $showingWorktreeRemovalConfirmation,
+                    showingMissingWorktreeAlert: $showingMissingWorktreeAlert,
+                    showingWorktreeForceCheckoutConfirmation: $showingWorktreeForceCheckoutConfirmation,
+                    showingPruneWorktreesConfirmation: $showingPruneWorktreesConfirmation,
+                    pendingWorktreeRemoval: $pendingWorktreeRemoval,
+                    pendingWorktreeForceCheckout: $pendingWorktreeForceCheckout,
+                    missingWorktreeEntry: $missingWorktreeEntry,
+                    worktreeRemovalNeedsForce: worktreeRemovalNeedsForce,
+                    worktreeRemovalMessage: worktreeRemovalMessage,
+                    saveWorktreeLabel: saveWorktreeLabel,
+                    lockWorktree: lockWorktree,
+                    moveWorktree: moveWorktree,
+                    checkoutWorktree: checkoutWorktree,
+                    onCreateWorktreeModeChange: { refreshWorktreePathIfNeeded(force: false) },
+                    onSelectedExistingWorktreeBranchChange: { refreshWorktreePathIfNeeded(force: false) },
+                    onNewWorktreeBranchNameChange: { refreshWorktreePathIfNeeded(force: false) },
+                    onWorktreePathChange: { newValue in
+                        customWorktreePath = newValue != defaultWorktreePath().path
+                    },
+                    createWorktree: createWorktree,
+                    chooseReplacementWorktreeFolder: chooseReplacementWorktreeFolder,
+                    deleteMissingWorktree: deleteMissingWorktree,
+                    removeWorktree: removeWorktree,
+                    pruneWorktrees: pruneWorktrees,
+                    onRunRepositoryOperation: onRunRepositoryOperation
+                )
+            )
+            .modifier(
+                SidebarSubtreePresentationModifier(
+                    subtreeToEdit: $subtreeToEdit,
+                    subtreeToUnlink: $subtreeToUnlink,
+                    updateSubtree: { updated in
+                        try await onRequestUpdateSubtreeLink(updated)
+                    },
+                    unlinkSubtree: unlinkSubtree,
+                    onRunRepositoryOperation: onRunRepositoryOperation
+                )
+            )
             .modifier(
                 SubmoduleLifecyclePresentationModifier(
                     submoduleToEdit: $submoduleToEdit,
@@ -597,56 +601,6 @@ struct SidebarView: View {
         }
     }
 
-    private var sidebarWorktreePresentation: some ViewModifier {
-        WorktreePresentationModifier(
-            worktreeToLabel: $worktreeToLabel,
-            worktreeToLock: $worktreeToLock,
-            worktreeToMove: $worktreeToMove,
-            worktreeToCheckout: $worktreeToCheckout,
-            showingCreateWorktreeSheet: $showingCreateWorktreeSheet,
-            showingWorktreeRemovalConfirmation: $showingWorktreeRemovalConfirmation,
-            showingMissingWorktreeAlert: $showingMissingWorktreeAlert,
-            showingWorktreeForceCheckoutConfirmation: $showingWorktreeForceCheckoutConfirmation,
-            showingPruneWorktreesConfirmation: $showingPruneWorktreesConfirmation,
-            pendingWorktreeRemoval: $pendingWorktreeRemoval,
-            pendingWorktreeForceCheckout: $pendingWorktreeForceCheckout,
-            missingWorktreeEntry: $missingWorktreeEntry,
-            worktreeRemovalNeedsForce: worktreeRemovalNeedsForce,
-            worktreeRemovalMessage: worktreeRemovalMessage,
-            worktreeLabelSheet: { AnyView(worktreeLabelSheet) },
-            worktreeLockSheet: { AnyView(worktreeLockSheet) },
-            worktreeMoveSheet: { AnyView(worktreeMoveSheet) },
-            worktreeCheckoutSheet: { AnyView(worktreeCheckoutSheet) },
-            createWorktreeSheet: { AnyView(createWorktreeSheet) },
-            chooseReplacementWorktreeFolder: chooseReplacementWorktreeFolder,
-            deleteMissingWorktree: deleteMissingWorktree,
-            removeWorktree: removeWorktree,
-            checkoutWorktree: checkoutWorktree,
-            pruneWorktrees: pruneWorktrees,
-            onRunRepositoryOperation: onRunRepositoryOperation
-        )
-    }
-
-    private var sidebarSubtreePresentation: some ViewModifier {
-        SubtreePresentationModifier(
-            subtreeToEdit: $subtreeToEdit,
-            subtreeToUnlink: $subtreeToUnlink,
-            editSubtreeSheet: { entry in
-                AnyView(
-                    EditSubtreeSheet(
-                        entry: entry,
-                        onSave: { updated in
-                            try await onRequestUpdateSubtreeLink(updated)
-                        },
-                        onRunRepositoryOperation: onRunRepositoryOperation
-                    )
-                )
-            },
-            unlinkSubtree: unlinkSubtree,
-            onRunRepositoryOperation: onRunRepositoryOperation
-        )
-    }
-
     @ViewBuilder
     private var sidebarRows: some View {
         SidebarWorkspaceSection(onRequestSearch: onRequestSearch)
@@ -679,26 +633,14 @@ struct SidebarView: View {
             actions: branchSectionActions
         )
 
-        Section {
-            sectionHeader(.worktrees, isExpanded: sectionStates.worktreesExpanded)
-
-            if sectionStates.worktreesExpanded {
-                if isLoadingWorktrees && worktreeEntries.isEmpty {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                } else if worktreeEntries.isEmpty {
-                    Text("No worktrees")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(worktreeEntries) { entry in
-                        worktreeRowView(for: entry)
-                    }
-                }
-            }
-        }
+        SidebarWorktreesSection(
+            currentRepositoryURL: repositoryURL,
+            entries: worktreeEntries,
+            isExpanded: sectionStates.worktreesExpanded,
+            isLoading: isLoadingWorktrees,
+            onOpenInNewWindow: onRequestOpenWorktree,
+            actions: worktreeSectionActions
+        )
 
         SidebarTagsSection(
             rows: visibleTagRows,
@@ -732,92 +674,26 @@ struct SidebarView: View {
         )
 
         if appState.showSubmodules {
-            submodulesSection
+            SidebarSubmodulesSection(
+                repositoryURL: repositoryURL,
+                entries: submoduleEntries,
+                isExpanded: sectionStates.submodulesExpanded,
+                isLoading: isLoadingSubmodules,
+                onAddSubmodule: onRequestAddSubmodule,
+                actions: submoduleSectionActions
+            )
         }
 
         if appState.showSubtrees {
-            subtreesSection
+            SidebarSubtreesSection(
+                repositoryURL: repositoryURL,
+                entries: subtreeEntries,
+                isExpanded: sectionStates.subtreesExpanded,
+                isLoading: isLoadingSubtrees,
+                onAddLinkSubtree: onRequestAddLinkSubtree,
+                actions: subtreeSectionActions
+            )
         }
-    }
-
-    @ViewBuilder
-    private var submodulesSection: some View {
-        Section {
-            sectionHeader(.submodules, isExpanded: sectionStates.submodulesExpanded)
-
-            if sectionStates.submodulesExpanded {
-                if isLoadingSubmodules && submoduleEntries.isEmpty {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                } else if submoduleEntries.isEmpty {
-                    Text("No submodules")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(submoduleEntries) { entry in
-                        submoduleRow(entry)
-                    }
-                }
-            }
-        }
-    }
-
-    private func submoduleRow(_ entry: GitSubmoduleEntry) -> some View {
-        let path = repositoryURL.appendingPathComponent(entry.path, isDirectory: true)
-        return SidebarSubmoduleRow(
-            entry: entry,
-            onOpen: { onRequestOpenSubmodule(path) },
-            onShowInFinder: { onRequestShowSubmoduleInFinder(path) },
-            onOpenInTerminal: { onRequestOpenSubmoduleInTerminal(path) },
-            onInitialize: { onRequestInitializeSubmodule(entry.path) },
-            onUpdateToRecordedCommit: { onRequestUpdateSubmodule(entry.path, .recordedCommit) },
-            onUpdateFromRemote: { onRequestUpdateSubmodule(entry.path, .remoteCheckout) },
-            onSynchronizeURL: { onRequestSynchronizeSubmoduleURL(entry.path) },
-            onEditSettings: { submoduleToEdit = entry },
-            onDeinitialize: { presentDeinitializeSubmoduleConfirmation(entry) },
-            onRemove: { presentRemoveSubmoduleConfirmation(entry) }
-        )
-        .tag(SidebarSelection.submodule(entry.path))
-    }
-
-    @ViewBuilder
-    private var subtreesSection: some View {
-        Section {
-            sectionHeader(.subtrees, isExpanded: sectionStates.subtreesExpanded)
-
-            if sectionStates.subtreesExpanded {
-                if isLoadingSubtrees && subtreeEntries.isEmpty {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                } else if subtreeEntries.isEmpty {
-                    Text("No subtrees")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(subtreeEntries) { entry in
-                        subtreeRow(entry)
-                    }
-                }
-            }
-        }
-    }
-
-    private func subtreeRow(_ entry: GitSubtreeEntry) -> some View {
-        let path = repositoryURL.appendingPathComponent(entry.path, isDirectory: true)
-        return SidebarSubtreeRow(
-            entry: entry,
-            onShowInFinder: { onRequestShowSubtreeInFinder(path) },
-            onOpenInTerminal: { onRequestOpenSubtreeInTerminal(path) },
-            onPull: { onRequestPullSubtree(entry) },
-            onPush: { onRequestPushSubtree(entry) },
-            onEditLink: { subtreeToEdit = entry },
-            onUnlink: { subtreeToUnlink = entry }
-        )
-        .tag(SidebarSelection.subtree(entry.id))
     }
 
     private func presentDeinitializeSubmoduleConfirmation(_ entry: GitSubmoduleEntry) {
@@ -869,54 +745,6 @@ struct SidebarView: View {
                 }
             }
         }
-    }
-
-    @ViewBuilder
-    private func sectionHeader(_ section: SidebarSection, isExpanded: Bool) -> some View {
-        SidebarSectionHeader(
-            section: section,
-            isExpanded: isExpanded,
-            activeDropLabel: nil,
-            onToggle: { toggleSection(section) }
-        ) {
-            if section == .worktrees {
-                Button("Create Worktree", systemImage: "plus") {
-                    onRunRepositoryOperation("Preparing worktree creation...") {
-                        await prepareCreateWorktreeSheet()
-                    }
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.plain)
-                .help("Create Worktree")
-
-                Menu {
-                    Button(WorktreeHeaderAction.prune.rawValue) {
-                        showingPruneWorktreesConfirmation = true
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .foregroundStyle(.secondary)
-                }
-                .menuStyle(.borderlessButton)
-                .tint(Color(nsColor: .secondaryLabelColor))
-                .fixedSize()
-                .help("Worktree Actions")
-            }
-            if section == .submodules {
-                Button("Add Submodule", systemImage: "plus", action: onRequestAddSubmodule)
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.plain)
-                    .help("Add Submodule")
-            }
-            if section == .subtrees {
-                Button("Add/Link Subtree", systemImage: "plus", action: onRequestAddLinkSubtree)
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.plain)
-                    .help("Add/Link Subtree")
-            }
-        }
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func loadSectionStates() {
@@ -1280,59 +1108,6 @@ struct SidebarView: View {
         return "Merge or Cherry-pick"
     }
 
-    @ViewBuilder
-    private func worktreeRowView(for entry: WorktreeEntry) -> some View {
-        let isMain = isCurrentRepositoryWorktree(entry)
-        let baseView = HStack(spacing: 4) {
-            Image(systemName: entry.isLocked ? "lock.fill" : (isMain ? "circle.fill" : "folder"))
-                .font(.system(size: isMain ? 7 : 10))
-                .foregroundStyle(isMain ? Color.accentColor : .secondary)
-                .frame(width: 16, alignment: .center)
-
-            Text(entry.displayTitle)
-                .font(.system(size: 12))
-                .fontWeight(isMain ? .bold : .regular)
-                .italic(isMain)
-                .lineLimit(1)
-
-            if isMain {
-                Text("(this)")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            if !isMain, entry.dirtyCount > 0 {
-                Text("\(entry.dirtyCount)")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Color.orange)
-                    .cornerRadius(4)
-            } else if !isMain, entry.dirtyCount < 0 {
-                Text("?")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-
-        baseView
-            .tag(SidebarSelection.worktree(entry.path))
-            .onTapGesture {
-                selectWorktree(entry)
-            }
-            .onTapGesture(count: 2) {
-                openWorktree(entry)
-            }
-            .contextMenu {
-                worktreeContextMenu(for: entry)
-            }
-    }
-
     private func makeStashItemProvider(ref: String) -> NSItemProvider {
         let payload = makeStashPayload(ref: ref)
 
@@ -1457,227 +1232,6 @@ struct SidebarView: View {
     }
 
     @ViewBuilder
-    private func worktreeContextMenu(for entry: WorktreeEntry) -> some View {
-        Button("Open in New Window") {
-            onRequestOpenWorktree(entry.path)
-        }
-
-        Button("Open in Terminal") {
-            onRequestOpenWorktreeInTerminal(entry.path)
-        }
-
-        Divider()
-
-        Button(entry.label == nil ? "Set Label..." : "Edit Label...") {
-            beginEditingWorktreeLabel(entry)
-        }
-
-        if entry.label != nil {
-            Button("Clear Label") {
-                onRunRepositoryOperation("Clearing worktree label...") {
-                    await clearWorktreeLabel(entry)
-                }
-            }
-        }
-
-        Divider()
-
-        if !isCurrentRepositoryWorktree(entry) {
-            if entry.isLocked {
-                Button("Unlock Worktree") {
-                    onRunRepositoryOperation("Unlocking \(entry.displayTitle)...") {
-                        await unlockWorktree(entry)
-                    }
-                }
-            } else {
-                Button("Lock Worktree...") {
-                    beginLockingWorktree(entry)
-                }
-            }
-
-            Button("Rename/Move Worktree...") {
-                beginMovingWorktree(entry)
-            }
-
-            Button("Switch Branch...") {
-                onRunRepositoryOperation("Preparing branch switch...") {
-                    await prepareCheckoutWorktreeSheet(for: entry)
-                }
-            }
-
-            Divider()
-
-            Button("Remove Worktree...", role: .destructive) {
-                pendingWorktreeRemoval = entry
-                showingWorktreeRemovalConfirmation = true
-            }
-
-            Divider()
-        }
-
-        Button("Copy Path to Clipboard") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(entry.path.path, forType: .string)
-        }
-    }
-
-    @ViewBuilder
-    private var worktreeLabelSheet: some View {
-        if let entry = worktreeToLabel {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(entry.label == nil ? "Set Worktree Label" : "Edit Worktree Label")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Worktree:")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text(entry.path.path)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Label:")
-                        .font(.system(size: 13))
-                    TextField(entry.branch ?? entry.path.lastPathComponent, text: $worktreeLabelInput)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                HStack(spacing: 12) {
-                    Spacer()
-                    Button("Cancel", role: .cancel) {
-                        worktreeToLabel = nil
-                        worktreeLabelInput = ""
-                    }
-                    .keyboardShortcut(.cancelAction)
-
-                    Button("Save") {
-                        onRunRepositoryOperation("Saving worktree label...") {
-                            await saveWorktreeLabel()
-                        }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                }
-            }
-            .padding(24)
-            .frame(minWidth: 420, idealWidth: 480)
-        } else {
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var worktreeLockSheet: some View {
-        if let entry = worktreeToLock {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Lock Worktree")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Worktree:")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text(entry.path.path)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Reason (optional):")
-                        .font(.system(size: 13))
-                    TextField("Reason", text: $worktreeLockReasonInput)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                HStack(spacing: 12) {
-                    Spacer()
-                    Button("Cancel", role: .cancel) {
-                        worktreeToLock = nil
-                        worktreeLockReasonInput = ""
-                    }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isUpdatingWorktreeLock)
-
-                    Button("Lock") {
-                        onRunRepositoryOperation("Locking \(entry.displayTitle)...") {
-                            await lockWorktree(entry)
-                        }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(isUpdatingWorktreeLock)
-                }
-            }
-            .padding(24)
-            .frame(minWidth: 420, idealWidth: 480)
-        } else {
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var worktreeMoveSheet: some View {
-        if let entry = worktreeToMove {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Rename/Move Worktree")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Current path:")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text(entry.path.path)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("New path:")
-                        .font(.system(size: 13))
-                    TextField("", text: $worktreeMovePathInput)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                if let worktreeMoveErrorMessage {
-                    Text(worktreeMoveErrorMessage)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                HStack(spacing: 12) {
-                    Spacer()
-                    Button("Cancel", role: .cancel) {
-                        worktreeToMove = nil
-                        worktreeMovePathInput = ""
-                        worktreeMoveErrorMessage = nil
-                    }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isMovingWorktree)
-
-                    Button("Move") {
-                        onRunRepositoryOperation("Moving \(entry.displayTitle)...") {
-                            await moveWorktree(entry)
-                        }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canMoveWorktree || isMovingWorktree)
-                }
-            }
-            .padding(24)
-            .frame(minWidth: 460, idealWidth: 520)
-        } else {
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
     private func deleteBranchConfirmationSheet(for branch: String) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Delete Branch")
@@ -1780,176 +1334,6 @@ struct SidebarView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    @ViewBuilder
-    private var worktreeCheckoutSheet: some View {
-        if let entry = worktreeToCheckout {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Switch Worktree Branch")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Worktree:")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text(entry.path.path)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Branch:")
-                        .font(.system(size: 13))
-                    Picker("", selection: $selectedWorktreeCheckoutBranch) {
-                        ForEach(availableWorktreeCheckoutBranches, id: \.self) { branch in
-                            Text(branch).tag(branch)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-
-                if let worktreeCheckoutErrorMessage {
-                    Text(worktreeCheckoutErrorMessage)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                HStack(spacing: 12) {
-                    Spacer()
-                    Button("Cancel", role: .cancel) {
-                        worktreeToCheckout = nil
-                        worktreeCheckoutErrorMessage = nil
-                        selectedWorktreeCheckoutBranch = ""
-                        availableWorktreeCheckoutBranches = []
-                    }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isCheckingOutWorktreeBranch)
-
-                    Button("Switch") {
-                        if entry.dirtyCount > 0 {
-                            pendingWorktreeForceCheckout = entry
-                            showingWorktreeForceCheckoutConfirmation = true
-                        } else {
-                            onRunRepositoryOperation("Switching \(entry.displayTitle)...") {
-                                await checkoutWorktree(entry, force: false)
-                            }
-                        }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canCheckoutWorktreeBranch || isCheckingOutWorktreeBranch)
-                }
-            }
-            .padding(24)
-            .frame(minWidth: 420, idealWidth: 480)
-        } else {
-            EmptyView()
-        }
-    }
-
-    private var createWorktreeSheet: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Create Worktree")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            Picker("", selection: $createWorktreeMode) {
-                ForEach(WorktreeCreationMode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .onChange(of: createWorktreeMode) { _, _ in
-                refreshWorktreePathIfNeeded(force: false)
-            }
-
-            if createWorktreeMode == .existingBranch {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Branch:")
-                        .font(.system(size: 13))
-                    Picker("", selection: $selectedExistingWorktreeBranch) {
-                        ForEach(availableWorktreeBranches, id: \.self) { branch in
-                            Text(branch).tag(branch)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .onChange(of: selectedExistingWorktreeBranch) { _, _ in
-                        refreshWorktreePathIfNeeded(force: false)
-                    }
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("New branch name:")
-                        .font(.system(size: 13))
-                    TextField("feature/worktree-task", text: $newWorktreeBranchName)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: newWorktreeBranchName) { _, _ in
-                            refreshWorktreePathIfNeeded(force: false)
-                        }
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Base branch:")
-                        .font(.system(size: 13))
-                    Picker("", selection: $newWorktreeBaseBranch) {
-                        ForEach(availableWorktreeBranches, id: \.self) { branch in
-                            Text(branch).tag(branch)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Path:")
-                    .font(.system(size: 13))
-                TextField("", text: $worktreePathInput)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: worktreePathInput) { _, newValue in
-                        customWorktreePath = newValue != defaultWorktreePath().path
-                    }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Label (optional):")
-                    .font(.system(size: 13))
-                TextField("Task label", text: $worktreeLabelDraft)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            Toggle("Open after create", isOn: $openWorktreeAfterCreate)
-                .toggleStyle(.checkbox)
-                .font(.system(size: 12))
-
-            if let worktreeCreationErrorMessage {
-                Text(worktreeCreationErrorMessage)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: 12) {
-                Spacer()
-                Button("Cancel", role: .cancel) {
-                    showingCreateWorktreeSheet = false
-                }
-                .keyboardShortcut(.cancelAction)
-                .disabled(isCreatingWorktree)
-
-                Button("Create Worktree") {
-                    onRunRepositoryOperation("Creating worktree...") {
-                        await createWorktree()
-                    }
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canCreateWorktree || isCreatingWorktree)
-            }
-        }
-        .padding(24)
-        .frame(minWidth: 440, idealWidth: 500)
     }
 
     private func deleteBranch(_ branch: String, force: Bool = false) async {
