@@ -430,9 +430,25 @@ struct SidebarView: View {
             .sheet(item: $deleteConfirmationTarget) { target in
                 switch target {
                 case .single(let branch):
-                    deleteBranchConfirmationSheet(for: branch)
+                    SidebarDeleteBranchSheet(
+                        branchName: branch,
+                        forceDelete: $forceDeleteBranch,
+                        onCancel: cancelDeleteConfirmation,
+                        onDelete: { confirmDeleteBranch(branch) }
+                    )
                 case .prefix(let prefix):
-                    deletePrefixConfirmationSheet(for: prefix)
+                    let allBranches = branchesUnderPrefix(prefix)
+                    let deletableBranches = allBranches.filter { $0 != currentBranch }
+                    let skippedBranches = allBranches.filter { $0 == currentBranch }
+                    SidebarDeletePrefixSheet(
+                        prefix: prefix,
+                        allBranches: allBranches,
+                        deletableBranches: deletableBranches,
+                        skippedBranches: skippedBranches,
+                        forceDelete: $forceDeleteBranch,
+                        onCancel: cancelDeleteConfirmation,
+                        onDelete: { confirmDeletePrefix(prefix) }
+                    )
                 }
             }
             .alert("Delete Remote Branch", isPresented: Binding(
@@ -774,17 +790,6 @@ struct SidebarView: View {
         return "Remove this worktree? The branch and commits are not deleted."
     }
 
-    private func toggleFolder(_ path: String) {
-        if expandedFolders.contains(path) {
-            expandedFolders.remove(path)
-        } else {
-            expandedFolders.insert(path)
-            if let loadID = activeBranchSyncLoadID {
-                startBranchSync(for: branchesUnderPrefix(path), loadID: loadID)
-            }
-        }
-    }
-
     private func toggleTagFolder(_ path: String) {
         if expandedTagFolders.contains(path) {
             expandedTagFolders.remove(path)
@@ -792,282 +797,6 @@ struct SidebarView: View {
             expandedTagFolders.insert(path)
         }
     }
-
-    private func toggleRemoteFolder(_ path: String) {
-        if expandedRemoteFolders.contains(path) {
-            expandedRemoteFolders.remove(path)
-        } else {
-            expandedRemoteFolders.insert(path)
-        }
-    }
-
-    private func checkoutRemoteBranch(_ fullPath: String) async {
-        guard let remoteBranch = remoteBranchParts(from: fullPath) else {
-            await MainActor.run {
-                errorMessage = "Could not parse remote branch '\(fullPath)'."
-                showingError = true
-            }
-            return
-        }
-
-        do {
-            let localBranch = try await GitStatusService.shared.checkoutRemoteBranch(
-                remote: remoteBranch.remote,
-                branch: remoteBranch.branch,
-                in: repositoryURL
-            )
-            expandBranchesSection()
-            await loadBranches(force: true)
-            await loadRemotes()
-            await MainActor.run {
-                selection = .branch(localBranch)
-            }
-            NotificationCenter.default.post(
-                name: .repositoryDidChange,
-                object: nil,
-                userInfo: ["repositoryURL": repositoryURL]
-            )
-        } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-                showingError = true
-            }
-        }
-    }
-
-    private func deleteRemoteBranch(_ target: RemoteBranchDeleteTarget) async {
-        do {
-            _ = try await GitStatusService.shared.deleteRemoteBranch(
-                remote: target.remote,
-                name: target.branch,
-                in: repositoryURL
-            )
-            await loadRemotes()
-            await MainActor.run {
-                remoteBranchDeleteTarget = nil
-                if selection == .remoteBranch(target.fullPath) {
-                    selection = .item(.history)
-                }
-            }
-            NotificationCenter.default.post(
-                name: .repositoryDidChange,
-                object: nil,
-                userInfo: ["repositoryURL": repositoryURL]
-            )
-        } catch {
-            await MainActor.run {
-                remoteBranchDeleteTarget = nil
-                errorMessage = error.localizedDescription
-                showingError = true
-            }
-        }
-    }
-
-    @MainActor
-    func expandBranchesSection() {
-        guard !sectionStates.branchesExpanded else { return }
-        sectionStates.branchesExpanded = true
-        SidebarSettingsStore.shared.update(for: repositoryURL.path, state: sectionStates)
-    }
-
-    private func remoteBranchParts(from fullPath: String) -> (remote: String, branch: String)? {
-        let parts = fullPath.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
-        guard parts.count == 2 else { return nil }
-        let remote = String(parts[0])
-        let branch = String(parts[1])
-        guard !remote.isEmpty, !branch.isEmpty else { return nil }
-        return (remote, branch)
-    }
-
-    @ViewBuilder
-    private func deleteBranchConfirmationSheet(for branch: String) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Delete Branch")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            Text("Are you sure you want to delete the branch '\(branch)'?")
-                .font(.system(size: 13))
-                .fixedSize(horizontal: false, vertical: true)
-
-            forceDeleteToggle
-
-            HStack(spacing: 12) {
-                Spacer()
-                Button("Cancel", role: .cancel) {
-                    deleteConfirmationTarget = nil
-                    forceDeleteBranch = false
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Button(forceDeleteBranch ? "Force Delete" : "Delete", role: .destructive) {
-                    let force = forceDeleteBranch
-                    deleteConfirmationTarget = nil
-                    forceDeleteBranch = false
-                    onRunRepositoryOperation("Deleting \(branch)...") {
-                        await deleteBranch(branch, force: force)
-                    }
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(minWidth: 420, idealWidth: 480)
-    }
-
-    @ViewBuilder
-    private func deletePrefixConfirmationSheet(for prefix: String) -> some View {
-        let all = branchesUnderPrefix(prefix)
-        let deletable = all.filter { $0 != currentBranch }
-        let skipped = all.filter { $0 == currentBranch }
-
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Delete All Branches in \u{201C}\(prefix)/\u{201D}")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            Text("This will delete \(deletable.count) branch\(deletable.count == 1 ? "" : "es") with the prefix \u{201C}\(prefix)/\u{201D}.")
-                .font(.system(size: 13))
-                .fixedSize(horizontal: false, vertical: true)
-
-            if !skipped.isEmpty {
-                Text("The current branch \u{201C}\(currentBranch)\u{201D} will be skipped because it is checked out.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(deletable, id: \.self) { branch in
-                    Text("\u{2022} \(branch)")
-                        .font(.system(size: 12))
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            forceDeleteToggle
-
-            HStack(spacing: 12) {
-                Spacer()
-                Button("Cancel", role: .cancel) {
-                    deleteConfirmationTarget = nil
-                    forceDeleteBranch = false
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Button(forceDeleteBranch ? "Force Delete All" : "Delete All", role: .destructive) {
-                    let force = forceDeleteBranch
-                    deleteConfirmationTarget = nil
-                    forceDeleteBranch = false
-                    onRunRepositoryOperation("Deleting branches in \(prefix)/...") {
-                        await deleteBranchesWithPrefix(prefix, force: force)
-                    }
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(deletable.isEmpty)
-            }
-        }
-        .padding(24)
-        .frame(minWidth: 420, idealWidth: 480)
-    }
-
-    private var forceDeleteToggle: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Toggle("Force delete regardless of merge status", isOn: $forceDeleteBranch)
-                .toggleStyle(.checkbox)
-                .font(.system(size: 12))
-
-            Text("Use \u{201C}git branch -D\u{201D}. Required for branches that are not fully merged; otherwise their commits may become unreachable.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func deleteBranch(_ branch: String, force: Bool = false) async {
-        do {
-            let support = GitBranchUndoSupport()
-            let tip = try await support.tip(of: branch, in: repositoryURL)
-            let upstream = await support.upstream(of: branch, in: repositoryURL)
-            _ = try await GitStatusService.shared.deleteBranch(name: branch, force: force, in: repositoryURL)
-
-            await MainActor.run {
-                var undoOperations: [GitUndoOperation] = [
-                    .createLocalBranch(name: branch, startPoint: tip, checkout: false)
-                ]
-
-                if let upstream {
-                    undoOperations.append(.setUpstream(branch: branch, upstream: upstream))
-                }
-
-                undoManager?.register(
-                    GitUndoEntry(
-                        repositoryURL: repositoryURL,
-                        label: "Delete branch \(branch)",
-                        undoOperation: .sequence(undoOperations),
-                        redoOperation: .deleteLocalBranch(name: branch, force: force, expectedTip: tip)
-                    )
-                )
-            }
-
-            NotificationCenter.default.post(name: .repositoryDidChange, object: nil, userInfo: ["repositoryURL": repositoryURL])
-        } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-                showingError = true
-            }
-        }
-    }
-
-    private func deleteBranchesWithPrefix(_ prefix: String, force: Bool) async {
-        let toDelete = branchesUnderPrefix(prefix).filter { $0 != currentBranch }
-        guard !toDelete.isEmpty else { return }
-
-        var undoSequences: [GitUndoOperation] = []
-        var redoOperations: [GitUndoOperation] = []
-        var failed: [String] = []
-        let support = GitBranchUndoSupport()
-
-        for branch in toDelete {
-            do {
-                let tip = try await support.tip(of: branch, in: repositoryURL)
-                let upstream = await support.upstream(of: branch, in: repositoryURL)
-                _ = try await GitStatusService.shared.deleteBranch(name: branch, force: force, in: repositoryURL)
-
-                var undoOps: [GitUndoOperation] = [
-                    .createLocalBranch(name: branch, startPoint: tip, checkout: false)
-                ]
-                if let upstream {
-                    undoOps.append(.setUpstream(branch: branch, upstream: upstream))
-                }
-                undoSequences.append(.sequence(undoOps))
-                redoOperations.append(.deleteLocalBranch(name: branch, force: force, expectedTip: tip))
-            } catch {
-                failed.append(branch)
-            }
-        }
-
-        await MainActor.run {
-            if !undoSequences.isEmpty {
-                let label = "Delete \(undoSequences.count) branch\(undoSequences.count == 1 ? "" : "es") in \(prefix)/"
-                undoManager?.register(
-                    GitUndoEntry(
-                        repositoryURL: repositoryURL,
-                        label: label,
-                        undoOperation: .sequence(undoSequences),
-                        redoOperation: .sequence(redoOperations)
-                    )
-                )
-            }
-            if !failed.isEmpty {
-                errorMessage = "Failed to delete: \(failed.joined(separator: ", "))"
-                showingError = true
-            }
-        }
-
-        NotificationCenter.default.post(name: .repositoryDidChange, object: nil, userInfo: ["repositoryURL": repositoryURL])
-    }
-
     func loadWorktrees(force: Bool = false) async {
         if !force && hasLoadedWorktrees {
             return

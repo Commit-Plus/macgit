@@ -119,21 +119,6 @@ extension SidebarView {
         SidebarTreeBuilder.visibleRows(from: remoteNodes, expandedFolders: expandedRemoteFolders)
     }
 
-    func branchesUnderPrefix(_ prefix: String) -> [String] {
-        var leaves: [String] = []
-        func collect(_ nodes: [BranchNode]) {
-            for node in nodes {
-                if node.isFolder {
-                    collect(node.children)
-                } else {
-                    leaves.append(node.fullPath)
-                }
-            }
-        }
-        collect(branchNodes)
-        return leaves.filter { $0.hasPrefix(prefix + "/") }.sorted()
-    }
-
     func loadBranches(force: Bool = false) async {
         if !force && hasLoadedBranches {
             return
