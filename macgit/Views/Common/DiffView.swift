@@ -157,6 +157,98 @@ struct DiffView: View {
     }
 }
 
+struct ReferenceDiffView: View {
+    let repositoryURL: URL
+    let baseRef: String
+    let targetRef: String
+    let title: String
+
+    @State private var changes: [CommitFileChange] = []
+    @State private var selectedFile: CommitFileChange?
+    @State private var diffHunks: [DiffHunk] = []
+    @State private var isLoading = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.left.arrow.right")
+                Text(title).font(.headline)
+                Spacer()
+                Text("\(changes.count) file\(changes.count == 1 ? "" : "s") changed")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(.separator).frame(height: 0.5)
+            }
+
+            if isLoading {
+                ProgressView("Loading comparison…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if changes.isEmpty {
+                EmptyStateView(
+                    icon: "checkmark.circle",
+                    message: "No differences",
+                    detail: "These references point to the same tree"
+                )
+            } else {
+                PersistentHSplit(
+                    autosaveName: "ReferenceDiffSplit",
+                    left: {
+                        CommitFileListView(changes: changes, selectedFile: $selectedFile)
+                            .frame(minWidth: 240)
+                    },
+                    right: {
+                        Group {
+                            if let selectedFile {
+                                DiffView(
+                                    hunks: diffHunks,
+                                    repositoryURL: repositoryURL,
+                                    filePath: selectedFile.path
+                                )
+                            } else {
+                                EmptyStateView(
+                                    icon: "doc.text",
+                                    message: "Select a file",
+                                    detail: "Click a file to see its changes"
+                                )
+                            }
+                        }
+                        .frame(minWidth: 300)
+                    }
+                )
+            }
+        }
+        .task(id: "\(baseRef)→\(targetRef)") {
+            isLoading = true
+            changes = await GitStatusService.shared.changedFiles(
+                from: baseRef,
+                to: targetRef,
+                in: repositoryURL
+            )
+            selectedFile = changes.first
+            isLoading = false
+        }
+        .onChange(of: selectedFile) { _, file in
+            guard let file else {
+                diffHunks = []
+                return
+            }
+            Task {
+                diffHunks = await GitStatusService.shared.diff(
+                    for: file.path,
+                    from: baseRef,
+                    to: targetRef,
+                    in: repositoryURL
+                )
+            }
+        }
+    }
+}
+
 struct HunkView: View {
     let hunk: DiffHunk
     let file: StatusFile?

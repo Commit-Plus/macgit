@@ -106,6 +106,41 @@ extension GitStatusService {
         return changes
     }
 
+    func changedFiles(from baseRef: String, to targetRef: String, in repositoryURL: URL) async -> [CommitFileChange] {
+        let output = (try? await runGit(
+            arguments: ["diff", "--name-status", "--no-renames", baseRef, targetRef],
+            in: repositoryURL
+        )) ?? ""
+
+        return output.split(separator: "\n").compactMap { line in
+            let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { return nil }
+
+            let status: CommitFileStatus
+            switch parts[0].first {
+            case "A": status = .added
+            case "D": status = .deleted
+            case "R": status = .renamed
+            case "C": status = .copied
+            default: status = .modified
+            }
+            return CommitFileChange(path: parts[1], status: status)
+        }
+    }
+
+    func diff(
+        for file: String,
+        from baseRef: String,
+        to targetRef: String,
+        in repositoryURL: URL
+    ) async -> [DiffHunk] {
+        let output = (try? await runGit(
+            arguments: ["diff", "--no-color", "-U3", baseRef, targetRef, "--", file],
+            in: repositoryURL
+        )) ?? ""
+        return DiffParser.parse(output)
+    }
+
     func checkoutCommit(_ commit: String, force: Bool = false, in repositoryURL: URL) async throws {
         var arguments = ["checkout"]
         if force { arguments.append("-f") }

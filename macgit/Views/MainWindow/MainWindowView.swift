@@ -121,6 +121,9 @@ struct MainWindowView: View {
     @State private var repoIconName: String = "code-branch"
     @State private var remoteURLString: String = ""
     @State var selectedBranchName: String? = nil
+    @State private var referenceDiffBase: String?
+    @State private var referenceDiffTarget: String?
+    @State private var referenceDiffTitle: String?
     @State private var pullPreselectedBranch: String? = nil
     @State var showingSearchModal = false
     @State var showingRepositorySettings = false
@@ -431,6 +434,31 @@ struct MainWindowView: View {
         operationProgress.run(message: message, operation: operation)
     }
 
+    private var checkoutRequest: (String, Bool) -> Void {
+        { ref, isTag in
+            if isTag {
+                tagToCheckout = ref
+                if repoSettings.confirmDetachedHeadCheckout {
+                    showingDetachedHeadConfirmation = true
+                } else {
+                    Task { await performTagCheckout(tag: ref) }
+                }
+            } else {
+                Task {
+                    let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
+                    if let target = remoteBranchCheckoutTarget(for: ref, remotes: remotes) {
+                        await MainActor.run { pendingRemoteBranchCheckout = target }
+                    } else {
+                        await MainActor.run {
+                            branchToCheckout = ref
+                            showingCheckoutConfirmation = true
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private var rootView: some View {
         NavigationSplitView {
@@ -532,8 +560,10 @@ struct MainWindowView: View {
                 }
             },
             onRequestDiffTagAgainstCurrent: { tag in
-                selectedItem = .tag(tag)
-                selectedBranchName = tag
+                referenceDiffBase = tag
+                referenceDiffTarget = "HEAD"
+                referenceDiffTitle = "Diff: \(tag) against Current (HEAD)"
+                selectedItem = .item(.history)
             },
             onRequestPushTagToRemote: { tag, remote in
                 runRepositoryOperation("Pushing \(tag) to \(remote)...") {
@@ -755,39 +785,32 @@ struct MainWindowView: View {
                         requestStashAction(ref: ref, action: .apply)
                     }
                 )
-            case .item(.history), .branch, .worktree, .tag, .remoteBranch, .head:
+            case .item(.history):
+                if let referenceDiffBase, let referenceDiffTarget, let referenceDiffTitle {
+                    ReferenceDiffView(
+                        repositoryURL: repositoryURL,
+                        baseRef: referenceDiffBase,
+                        targetRef: referenceDiffTarget,
+                        title: referenceDiffTitle
+                    )
+                } else {
+                    HistoryView(
+                        repositoryURL: repositoryURL,
+                        selectedBranch: selectedBranchName,
+                        undoManager: undoManager,
+                        syncState: syncState,
+                        onRunRepositoryOperation: runRepositoryOperation,
+                        onRequestCheckout: checkoutRequest
+                    )
+                }
+            case .branch, .worktree, .tag, .remoteBranch, .head:
                 HistoryView(
                     repositoryURL: repositoryURL,
                     selectedBranch: selectedBranchName,
                     undoManager: undoManager,
                     syncState: syncState,
                     onRunRepositoryOperation: runRepositoryOperation,
-                    onRequestCheckout: { ref, isTag in
-                        if isTag {
-                            tagToCheckout = ref
-                            if repoSettings.confirmDetachedHeadCheckout {
-                                showingDetachedHeadConfirmation = true
-                            } else {
-                                Task {
-                                    await performTagCheckout(tag: ref)
-                                }
-                            }
-                        } else {
-                            Task {
-                                let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
-                                if let target = remoteBranchCheckoutTarget(for: ref, remotes: remotes) {
-                                    await MainActor.run {
-                                        pendingRemoteBranchCheckout = target
-                                    }
-                                } else {
-                                    await MainActor.run {
-                                        branchToCheckout = ref
-                                        showingCheckoutConfirmation = true
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    onRequestCheckout: checkoutRequest
                 )
             case .item(.pullRequests):
                 PullRequestListView(
