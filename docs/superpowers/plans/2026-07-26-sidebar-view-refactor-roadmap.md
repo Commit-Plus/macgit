@@ -19,7 +19,7 @@
 | Phase | Scope | Status | Plan |
 | --- | --- | --- | --- |
 | 1 | Models, policies, section header, workspace section | [completed] | [`2026-07-26-sidebar-view-refactor-phase-1-foundation.md`](2026-07-26-sidebar-view-refactor-phase-1-foundation.md) |
-| 2 | Branches, tags, remotes, and stashes components | [pending] | [`2026-07-26-sidebar-view-refactor-phase-2-core-sections.md`](2026-07-26-sidebar-view-refactor-phase-2-core-sections.md) |
+| 2 | Branches, tags, remotes, and stashes components | [completed] | [`2026-07-26-sidebar-view-refactor-phase-2-core-sections.md`](2026-07-26-sidebar-view-refactor-phase-2-core-sections.md) |
 | 3 | Worktrees, submodules, subtrees, sheets, and presentation | [pending] | [`2026-07-26-sidebar-view-refactor-phase-3-specialized-sections.md`](2026-07-26-sidebar-view-refactor-phase-3-specialized-sections.md) |
 | 4 | Loading, drag/drop, action extensions, root cleanup, final verification | [pending] | [`2026-07-26-sidebar-view-refactor-phase-4-orchestration.md`](2026-07-26-sidebar-view-refactor-phase-4-orchestration.md) |
 
