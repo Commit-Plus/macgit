@@ -26,56 +26,6 @@ import CoreTransferable
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum SidebarSelection: Hashable {
-    case item(SidebarItem)
-    case branch(String)
-    case worktree(URL)
-    case tag(String)
-    case remoteBranch(String)
-    case stash(String)
-    case head(String)
-    case submodule(String)
-    case subtree(String)
-}
-
-enum SidebarItem: String, CaseIterable, Identifiable {
-    case fileStatus = "File status"
-    case history = "History"
-    case pullRequests = "Pull Requests"
-    case search = "Search"
-
-    var id: String { rawValue }
-
-    var icon: String {
-        switch self {
-        case .fileStatus: return "doc.text.magnifyingglass"
-        case .history: return "clock.arrow.circlepath"
-        case .pullRequests: return "arrow.triangle.pull"
-        case .search: return "magnifyingglass"
-        }
-    }
-}
-
-enum SidebarSection: String, CaseIterable {
-    case workspace = "WORKSPACE"
-    case branches = "BRANCHES"
-    case worktrees = "WORKTREES"
-    case tags = "TAGS"
-    case remotes = "REMOTES"
-    case stashes = "STASHES"
-    case submodules = "SUBMODULES"
-    case subtrees = "SUBTREES"
-
-    var items: [SidebarItem] {
-        switch self {
-        case .workspace:
-            return [.fileStatus, .history, .pullRequests, .search]
-        default:
-            return []
-        }
-    }
-}
-
 struct BranchNode: Identifiable, Hashable {
     let id = UUID()
     let name: String
