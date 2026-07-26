@@ -105,13 +105,13 @@ struct SidebarView: View {
     @State var hasLoadedSubmodules = false
     @State var isLoadingSubmodules = false
     @State var activeSubmoduleLoadID: UUID?
-    @State var submoduleToEdit: GitSubmoduleEntry?
+    @State private var submoduleToEdit: GitSubmoduleEntry?
     @State var submoduleToDeinitialize: GitSubmoduleEntry?
     @State var submoduleToRemove: GitSubmoduleEntry?
     @State var subtreeEntries: [GitSubtreeEntry] = []
     @State var hasLoadedSubtrees = false
     @State var isLoadingSubtrees = false
-    @State var subtreeToEdit: GitSubtreeEntry?
+    @State private var subtreeToEdit: GitSubtreeEntry?
     @State var subtreeToUnlink: GitSubtreeEntry?
     @State var worktreeEntries: [WorktreeEntry] = []
     @State var hasLoadedWorktrees = false
@@ -136,7 +136,7 @@ struct SidebarView: View {
     @State var showingMissingWorktreeAlert = false
     @State var pendingWorktreeRemoval: WorktreeEntry?
     @State var showingWorktreeRemovalConfirmation = false
-    @State var showingPruneWorktreesConfirmation = false
+    @State private var showingPruneWorktreesConfirmation = false
     @State var createWorktreeMode: WorktreeCreationMode = .existingBranch
     @State var availableWorktreeBranches: [String] = []
     @State var currentWorktreeBranch = ""
