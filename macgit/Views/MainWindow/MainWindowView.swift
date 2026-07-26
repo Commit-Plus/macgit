@@ -124,6 +124,7 @@ struct MainWindowView: View {
     @State private var referenceDiffBase: String?
     @State private var referenceDiffTarget: String?
     @State private var referenceDiffTitle: String?
+    @State private var isOpeningReferenceDiff = false
     @State private var pullPreselectedBranch: String? = nil
     @State var showingSearchModal = false
     @State var showingRepositorySettings = false
@@ -424,6 +425,12 @@ struct MainWindowView: View {
             } else {
                 selectedBranchName = nil
             }
+
+            if isOpeningReferenceDiff {
+                isOpeningReferenceDiff = false
+            } else {
+                clearReferenceDiff()
+            }
         }
         .onDisappear {
             syncState.stopBackgroundSync()
@@ -432,6 +439,12 @@ struct MainWindowView: View {
 
     func runRepositoryOperation(_ message: String, _ operation: @escaping () async -> Void) {
         operationProgress.run(message: message, operation: operation)
+    }
+
+    private func clearReferenceDiff() {
+        referenceDiffBase = nil
+        referenceDiffTarget = nil
+        referenceDiffTitle = nil
     }
 
     private var checkoutRequest: (String, Bool) -> Void {
@@ -563,6 +576,7 @@ struct MainWindowView: View {
                 referenceDiffBase = tag
                 referenceDiffTarget = "HEAD"
                 referenceDiffTitle = "Diff: \(tag) against Current (HEAD)"
+                isOpeningReferenceDiff = true
                 selectedItem = .item(.history)
             },
             onRequestPushTagToRemote: { tag, remote in
@@ -791,7 +805,11 @@ struct MainWindowView: View {
                         repositoryURL: repositoryURL,
                         baseRef: referenceDiffBase,
                         targetRef: referenceDiffTarget,
-                        title: referenceDiffTitle
+                        title: referenceDiffTitle,
+                        onClose: {
+                            isOpeningReferenceDiff = false
+                            clearReferenceDiff()
+                        }
                     )
                 } else {
                     HistoryView(

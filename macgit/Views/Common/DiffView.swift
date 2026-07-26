@@ -162,11 +162,15 @@ struct ReferenceDiffView: View {
     let baseRef: String
     let targetRef: String
     let title: String
+    let onClose: () -> Void
 
     @State private var changes: [CommitFileChange] = []
     @State private var selectedFile: CommitFileChange?
     @State private var diffHunks: [DiffHunk] = []
     @State private var isLoading = true
+    @State private var isLoadingDiff = false
+    @State private var diffLoadID = UUID()
+    @AppStorage("referenceDiff.fileListWidth") private var fileListWidth: Double = 240
 
     var body: some View {
         VStack(spacing: 0) {
@@ -177,6 +181,8 @@ struct ReferenceDiffView: View {
                 Text("\(changes.count) file\(changes.count == 1 ? "" : "s") changed")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Button("Close", systemImage: "xmark", action: onClose)
+                    .buttonStyle(.bordered)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
@@ -195,20 +201,36 @@ struct ReferenceDiffView: View {
                     detail: "These references point to the same tree"
                 )
             } else {
-                PersistentHSplit(
-                    autosaveName: "ReferenceDiffSplit",
-                    left: {
+                GeometryReader { geometry in
+                    let availableWidth = max(0, geometry.size.width - 6)
+                    HStack(spacing: 0) {
                         CommitFileListView(changes: changes, selectedFile: $selectedFile)
-                            .frame(minWidth: 240)
-                    },
-                    right: {
+                            .frame(width: CGFloat(fileListWidth))
+
+                        ColumnResizer(
+                            leftWidth: Binding(
+                                get: { CGFloat(fileListWidth) },
+                                set: { fileListWidth = Double($0) }
+                            ),
+                            rightWidth: Binding(
+                                get: { max(40, availableWidth - CGFloat(fileListWidth)) },
+                                set: { fileListWidth = Double(availableWidth - $0) }
+                            ),
+                            minimumLeftWidth: 240
+                        )
+
                         Group {
                             if let selectedFile {
-                                DiffView(
-                                    hunks: diffHunks,
-                                    repositoryURL: repositoryURL,
-                                    filePath: selectedFile.path
-                                )
+                                if isLoadingDiff {
+                                    ProgressView("Loading file diff…")
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                } else {
+                                    DiffView(
+                                        hunks: diffHunks,
+                                        repositoryURL: repositoryURL,
+                                        filePath: selectedFile.path
+                                    )
+                                }
                             } else {
                                 EmptyStateView(
                                     icon: "doc.text",
@@ -217,9 +239,9 @@ struct ReferenceDiffView: View {
                                 )
                             }
                         }
-                        .frame(minWidth: 300)
+                        .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
                     }
-                )
+                }
             }
         }
         .task(id: "\(baseRef)→\(targetRef)") {
@@ -229,21 +251,32 @@ struct ReferenceDiffView: View {
                 to: targetRef,
                 in: repositoryURL
             )
-            selectedFile = changes.first
+            selectedFile = nil
+            diffHunks = []
+            isLoadingDiff = false
             isLoading = false
         }
         .onChange(of: selectedFile) { _, file in
             guard let file else {
                 diffHunks = []
+                isLoadingDiff = false
                 return
             }
+
+            let loadID = UUID()
+            diffLoadID = loadID
+            diffHunks = []
+            isLoadingDiff = true
             Task {
-                diffHunks = await GitStatusService.shared.diff(
+                let hunks = await GitStatusService.shared.diff(
                     for: file.path,
                     from: baseRef,
                     to: targetRef,
                     in: repositoryURL
                 )
+                guard !Task.isCancelled, diffLoadID == loadID else { return }
+                diffHunks = hunks
+                isLoadingDiff = false
             }
         }
     }
