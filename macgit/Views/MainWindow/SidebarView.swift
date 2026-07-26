@@ -484,6 +484,21 @@ struct SidebarView: View {
         )
     }
 
+    var submoduleSectionActions: SidebarSubmoduleSectionActions {
+        SidebarSubmoduleSectionActions(
+            toggleSection: { toggleSection(.submodules) },
+            open: onRequestOpenSubmodule,
+            showInFinder: onRequestShowSubmoduleInFinder,
+            openInTerminal: onRequestOpenSubmoduleInTerminal,
+            initialize: onRequestInitializeSubmodule,
+            update: onRequestUpdateSubmodule,
+            synchronizeURL: onRequestSynchronizeSubmoduleURL,
+            edit: { submoduleToEdit = $0 },
+            deinitialize: presentDeinitializeSubmoduleConfirmation,
+            remove: presentRemoveSubmoduleConfirmation
+        )
+    }
+
     var dropActions: SidebarDropActions {
         SidebarDropActions(
             activePayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
@@ -732,54 +747,19 @@ struct SidebarView: View {
         )
 
         if appState.showSubmodules {
-            submodulesSection
+            SidebarSubmodulesSection(
+                repositoryURL: repositoryURL,
+                entries: submoduleEntries,
+                isExpanded: sectionStates.submodulesExpanded,
+                isLoading: isLoadingSubmodules,
+                onAddSubmodule: onRequestAddSubmodule,
+                actions: submoduleSectionActions
+            )
         }
 
         if appState.showSubtrees {
             subtreesSection
         }
-    }
-
-    @ViewBuilder
-    private var submodulesSection: some View {
-        Section {
-            sectionHeader(.submodules, isExpanded: sectionStates.submodulesExpanded)
-
-            if sectionStates.submodulesExpanded {
-                if isLoadingSubmodules && submoduleEntries.isEmpty {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                } else if submoduleEntries.isEmpty {
-                    Text("No submodules")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(submoduleEntries) { entry in
-                        submoduleRow(entry)
-                    }
-                }
-            }
-        }
-    }
-
-    private func submoduleRow(_ entry: GitSubmoduleEntry) -> some View {
-        let path = repositoryURL.appendingPathComponent(entry.path, isDirectory: true)
-        return SidebarSubmoduleRow(
-            entry: entry,
-            onOpen: { onRequestOpenSubmodule(path) },
-            onShowInFinder: { onRequestShowSubmoduleInFinder(path) },
-            onOpenInTerminal: { onRequestOpenSubmoduleInTerminal(path) },
-            onInitialize: { onRequestInitializeSubmodule(entry.path) },
-            onUpdateToRecordedCommit: { onRequestUpdateSubmodule(entry.path, .recordedCommit) },
-            onUpdateFromRemote: { onRequestUpdateSubmodule(entry.path, .remoteCheckout) },
-            onSynchronizeURL: { onRequestSynchronizeSubmoduleURL(entry.path) },
-            onEditSettings: { submoduleToEdit = entry },
-            onDeinitialize: { presentDeinitializeSubmoduleConfirmation(entry) },
-            onRemove: { presentRemoveSubmoduleConfirmation(entry) }
-        )
-        .tag(SidebarSelection.submodule(entry.path))
     }
 
     @ViewBuilder
