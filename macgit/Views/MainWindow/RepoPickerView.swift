@@ -78,6 +78,7 @@ struct RepoPickerView: View {
     @State private var sortOption: RepoPickerSortOption = .lastOpened
     @State private var selectedFilterTypes: Set<RepoPickerFilterType> = []
     @State private var repoIcons: [URL: String] = [:]
+    @State private var loadingRepoIcons: Set<URL> = []
     @State private var rowStates: [URL: RepoPickerRowState] = [:]
     @State private var missingRepository: RecentRepository?
     @State private var showingMissingRepositoryAlert = false
@@ -339,6 +340,7 @@ struct RepoPickerView: View {
     private func openRecentRepository(_ repo: RecentRepository) {
         guard isValidGitRepository(at: repo.url) else {
             repoIcons[repo.url] = "code-branch"
+            loadingRepoIcons.remove(repo.url)
             rowStates[repo.url] = RepoPickerRowState(
                 currentBranch: nil,
                 commitCount: 0,
@@ -358,12 +360,20 @@ struct RepoPickerView: View {
 
     private func repoRowContent(_ repo: RecentRepository) -> some View {
         HStack(spacing: 12) {
-            Image(repoIcons[repo.url] ?? "code-branch")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 18, height: 18)
+            Group {
+                if loadingRepoIcons.contains(repo.url) {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(repoIcons[repo.url] ?? "code-branch")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 18, height: 18)
+                }
+            }
                 .frame(width: 34, height: 34)
                 .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .accessibilityLabel(loadingRepoIcons.contains(repo.url) ? "Detecting repository provider" : "Repository provider")
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(repo.name)
@@ -421,6 +431,7 @@ struct RepoPickerView: View {
 
     private func loadRowPresentation(for repo: RecentRepository) async {
         await MainActor.run {
+            loadingRepoIcons.insert(repo.url)
             rowStates[repo.url] = RepoPickerRowState(
                 currentBranch: rowStates[repo.url]?.currentBranch,
                 commitCount: 0,
@@ -437,6 +448,7 @@ struct RepoPickerView: View {
               FileManager.default.fileExists(atPath: gitMetadataPath) else {
             await MainActor.run {
                 repoIcons[repo.url] = "code-branch"
+                loadingRepoIcons.remove(repo.url)
                 rowStates[repo.url] = RepoPickerRowState(
                     currentBranch: nil,
                     commitCount: 0,
@@ -453,15 +465,20 @@ struct RepoPickerView: View {
         async let remoteURLString = GitStatusService.shared.remoteURL(remote: "origin", in: repo.url)
         async let commitCount = GitStatusService.shared.uncommittedChangeCount(in: repo.url)
         async let aheadBehind = GitStatusService.shared.aheadBehindCount(in: repo.url)
-        let (currentBranch, remoteURL, uncommittedCount, syncCounts) = await (
+        let remoteURL = await remoteURLString
+
+        await MainActor.run {
+            repoIcons[repo.url] = remoteURL.isEmpty ? "code-branch" : determineRepoIconName(from: remoteURL)
+            loadingRepoIcons.remove(repo.url)
+        }
+
+        let (currentBranch, uncommittedCount, syncCounts) = await (
             branch,
-            remoteURLString,
             commitCount,
             aheadBehind
         )
 
         await MainActor.run {
-            repoIcons[repo.url] = remoteURL.isEmpty ? "code-branch" : determineRepoIconName(from: remoteURL)
             rowStates[repo.url] = RepoPickerRowState(
                 currentBranch: currentBranch,
                 commitCount: uncommittedCount,
