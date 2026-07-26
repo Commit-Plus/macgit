@@ -22,9 +22,7 @@
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-import CoreTransferable
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct SidebarView: View {
     @EnvironmentObject private var appUpdateController: AppUpdateController
@@ -422,36 +420,6 @@ struct SidebarView: View {
         )
     }
 
-    var dropActions: SidebarDropActions {
-        SidebarDropActions(
-            activePayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
-            canAccept: canAcceptDrop,
-            handlePayload: { payload, target, optionKeyPressed in
-                activeBranchDragPayload = nil
-                GitDragPayloadStore.clear(ifMatching: payload)
-                handleDrop([payload], target: target, optionKeyPressed: optionKeyPressed)
-            },
-            handleProviders: { providers, target, optionKeyPressed in
-                activeBranchDragPayload = nil
-                GitDragPayloadStore.clear()
-                return handleDrop(
-                    providers,
-                    target: target,
-                    optionKeyPressed: optionKeyPressed
-                )
-            },
-            clearPayload: { payload in
-                activeBranchDragPayload = nil
-                if let payload {
-                    GitDragPayloadStore.clear(ifMatching: payload)
-                } else {
-                    GitDragPayloadStore.clear()
-                }
-                clearDropHover()
-            }
-        )
-    }
-
     private var sidebarContent: some View {
         sidebarList
             .alert("Error", isPresented: $showingError) {
@@ -626,10 +594,7 @@ struct SidebarView: View {
                 branchesUnderPrefix(prefix).filter { $0 != currentBranch }
             },
             makeBranchPayload: { makeBranchPayload(branchName: $0) },
-            finishBranchDrag: { payload in
-                activeBranchDragPayload = nil
-                GitDragPayloadStore.clear(ifMatching: payload)
-            },
+            finishBranchDrag: finishBranchDrag,
             actions: branchSectionActions
         )
 
@@ -759,189 +724,6 @@ struct SidebarView: View {
         }
     }
 
-    private func updateBranchesHeaderDropTarget(isTargeted: Bool) {
-        if isTargeted {
-            activeDropTarget = .branchesHeader
-            activeDropLabel = draggedRemoteBranch == nil ? "Create Branch" : "Check Out"
-        } else if activeDropTarget == .branchesHeader {
-            clearDropHover()
-        }
-    }
-
-    private func updateTagsHeaderDropTarget(isTargeted: Bool) {
-        if isTargeted {
-            activeDropTarget = .tagsHeader
-            activeDropLabel = "Create Tag"
-        } else if activeDropTarget == .tagsHeader {
-            clearDropHover()
-        }
-    }
-
-    private func updateRemotesHeaderDropTarget(isTargeted: Bool) {
-        if isTargeted {
-            activeDropTarget = .remotesHeader
-            activeDropLabel = "Push Branch"
-        } else if activeDropTarget == .remotesHeader {
-            clearDropHover()
-        }
-    }
-
-    private func updateStashesHeaderDropTarget(isTargeted: Bool) {
-        if isTargeted {
-            activeDropTarget = .stashesHeader
-            let fileCount = currentFileDragCount()
-            activeDropLabel = fileCount > 1 ? "Stash \(fileCount) files" : "Stash"
-        } else if activeDropTarget == .stashesHeader {
-            clearDropHover()
-        }
-    }
-
-    private func currentFileDragCount() -> Int {
-        if let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload(),
-           !payload.files.isEmpty {
-            return payload.files.count
-        }
-        return 0
-    }
-
-    private func updateCurrentBranchDropTarget(isTargeted: Bool) {
-        isCurrentBranchDropTargeted = isTargeted
-    }
-
-    private func makeBranchItemProvider(branchName: String) -> NSItemProvider {
-        let payload = makeBranchPayload(branchName: branchName)
-
-        let provider = NSItemProvider()
-        if let data = try? GitDragPayload.encodeTransferData(payload) {
-            provider.registerDataRepresentation(
-                forTypeIdentifier: UTType.macgitGitDragPayload.identifier,
-                visibility: .all
-            ) { completionHandler in
-                completionHandler(data, nil)
-                return nil
-            }
-        }
-        provider.register(payload)
-        provider.suggestedName = branchName
-        return provider
-    }
-
-    private func makeBranchPayload(branchName: String) -> GitDragPayload {
-        let payload = GitDragPayload.branch(
-            branchName,
-            repositoryURL: repositoryURL
-        )
-        activeBranchDragPayload = payload
-        GitDragPayloadStore.set(payload)
-        return payload
-    }
-
-    private func makeRemoteBranchPayload(remoteBranch: String) -> GitDragPayload {
-        let payload = GitDragPayload.remoteBranch(remoteBranch, repositoryURL: repositoryURL)
-        activeBranchDragPayload = payload
-        GitDragPayloadStore.set(payload)
-        return payload
-    }
-
-    private func makeStashPayload(ref: String) -> GitDragPayload {
-        let payload = GitDragPayload.stash(ref, repositoryURL: repositoryURL)
-        activeBranchDragPayload = payload
-        GitDragPayloadStore.set(payload)
-        return payload
-    }
-
-    private var draggedRemoteBranch: String? {
-        let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload()
-        return payload?.remoteBranch
-    }
-
-    private func finishRemoteBranchDrag(_ remoteBranch: String) {
-        guard let payload = activeBranchDragPayload,
-              payload.remoteBranch == remoteBranch
-        else {
-            return
-        }
-        activeBranchDragPayload = nil
-        GitDragPayloadStore.clear(ifMatching: payload)
-        clearDropHover()
-    }
-
-    private func clearDropHover() {
-        activeDropTarget = nil
-        activeDropLabel = nil
-    }
-
-    private func canAcceptDrop(
-        _ payload: GitDragPayload,
-        target: GitDragTarget,
-        optionKeyPressed: Bool = false
-    ) -> Bool {
-        if case .accept = GitDragDropPolicy.decision(
-            for: payload,
-            target: target,
-            receivingRepositoryURL: repositoryURL,
-            optionKeyPressed: optionKeyPressed
-        ) {
-            return true
-        }
-
-        return false
-    }
-
-    private func handleDrop(
-        _ items: [GitDragPayload],
-        target: GitDragTarget,
-        optionKeyPressed: Bool = false
-    ) {
-        defer { clearDropHover() }
-
-        guard let payload = items.first else { return }
-
-        switch GitDragDropPolicy.decision(
-            for: payload,
-            target: target,
-            receivingRepositoryURL: repositoryURL,
-            optionKeyPressed: optionKeyPressed
-        ) {
-        case .accept(let request):
-            if case .checkoutRemoteBranch = request {
-                expandBranchesSection()
-            }
-            onRequestDragDrop(request)
-        case .reject(let reason):
-            guard payload.remoteBranch == nil else { return }
-            errorMessage = reason
-            showingError = true
-        }
-    }
-
-    private func handleDrop(
-        _ providers: [NSItemProvider],
-        target: GitDragTarget,
-        optionKeyPressed: Bool = false
-    ) -> Bool {
-        guard let provider = providers.first else { return false }
-
-        GitDragPayloadItemProviderLoader.load(from: provider) { result in
-            Task { @MainActor in
-                switch result {
-                case .success(let payload):
-                    handleDrop(
-                        [payload],
-                        target: target,
-                        optionKeyPressed: optionKeyPressed
-                    )
-                case .failure(let error):
-                    clearDropHover()
-                    errorMessage = error.localizedDescription
-                    showingError = true
-                }
-            }
-        }
-
-        return true
-    }
-
     private var canCreateWorktree: Bool {
         let trimmedPath = worktreePathInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPath.isEmpty else { return false }
@@ -990,39 +772,6 @@ struct SidebarView: View {
         }
 
         return "Remove this worktree? The branch and commits are not deleted."
-    }
-
-    private func currentBranchDropLabel() -> String {
-        let activePayload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload()
-        if case .commits = activePayload?.content {
-            return "Cherry-pick"
-        }
-        if case .branch = activePayload?.content {
-            return NSEvent.modifierFlags.contains(.option) ? "Rebase" : "Merge"
-        }
-
-        if NSEvent.modifierFlags.contains(.option) {
-            return "Rebase or Cherry-pick"
-        }
-        return "Merge or Cherry-pick"
-    }
-
-    private func makeStashItemProvider(ref: String) -> NSItemProvider {
-        let payload = makeStashPayload(ref: ref)
-
-        let provider = NSItemProvider()
-        if let data = try? GitDragPayload.encodeTransferData(payload) {
-            provider.registerDataRepresentation(
-                forTypeIdentifier: UTType.macgitGitDragPayload.identifier,
-                visibility: .all
-            ) { completionHandler in
-                completionHandler(data, nil)
-                return nil
-            }
-        }
-        provider.register(payload)
-        provider.suggestedName = ref
-        return provider
     }
 
     private func toggleFolder(_ path: String) {
@@ -1115,7 +864,7 @@ struct SidebarView: View {
     }
 
     @MainActor
-    private func expandBranchesSection() {
+    func expandBranchesSection() {
         guard !sectionStates.branchesExpanded else { return }
         sectionStates.branchesExpanded = true
         SidebarSettingsStore.shared.update(for: repositoryURL.path, state: sectionStates)
