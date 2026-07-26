@@ -406,6 +406,114 @@ struct SidebarView: View {
         }
     }
 
+    var branchSectionActions: SidebarBranchSectionActions {
+        SidebarBranchSectionActions(
+            toggleSection: { toggleSection(.branches) },
+            toggleFolder: toggleFolder,
+            select: { selection = $0 },
+            checkout: { onRequestCheckout($0, false) },
+            fetch: onRequestFetchBranch,
+            pullTracked: onRequestPullTracked,
+            pushTracked: onRequestPushToTracked,
+            rename: onRequestRenameBranch,
+            createPullRequest: onRequestCreatePullRequest,
+            createBranchFrom: onRequestCreateBranchFromBranch,
+            createTagFrom: onRequestCreateTagFromBranch,
+            rebaseOnto: onRequestRebaseOnto,
+            mergeIntoCurrent: onRequestMergeBranchIntoCurrent,
+            pushToRemote: onRequestPushBranchToRemote,
+            trackRemoteBranch: onRequestTrackRemoteBranch,
+            confirmDelete: { deleteConfirmationTarget = $0 },
+            makeItemProvider: makeBranchItemProvider,
+            setHeaderDropTargeted: updateBranchesHeaderDropTarget,
+            setCurrentDropTargeted: updateCurrentBranchDropTarget,
+            currentDropLabel: currentBranchDropLabel,
+            drop: dropActions
+        )
+    }
+
+    var tagSectionActions: SidebarTagSectionActions {
+        SidebarTagSectionActions(
+            toggleSection: { toggleSection(.tags) },
+            toggleFolder: toggleTagFolder,
+            select: { selection = $0 },
+            checkout: { onRequestCheckout($0, true) },
+            showDetails: onRequestTagDetails,
+            diffAgainstCurrent: onRequestDiffTagAgainstCurrent,
+            pushToRemote: onRequestPushTagToRemote,
+            delete: onRequestDeleteTag,
+            setHeaderDropTargeted: updateTagsHeaderDropTarget,
+            drop: dropActions
+        )
+    }
+
+    var remoteSectionActions: SidebarRemoteSectionActions {
+        SidebarRemoteSectionActions(
+            toggleSection: { toggleSection(.remotes) },
+            toggleFolder: toggleRemoteFolder,
+            select: { selection = $0 },
+            checkoutFromRow: { fullPath in
+                Task {
+                    await checkoutRemoteBranch(fullPath)
+                }
+            },
+            checkoutFromContextMenu: { fullPath in
+                onRunRepositoryOperation("Checking out \(fullPath)...") {
+                    await checkoutRemoteBranch(fullPath)
+                }
+            },
+            pullIntoCurrent: onRequestPullRemoteBranch,
+            confirmDelete: { remoteBranchDeleteTarget = $0 },
+            createPullRequest: onRequestCreatePullRequestForRemote,
+            makePayload: makeRemoteBranchPayload,
+            finishDrag: finishRemoteBranchDrag,
+            setHeaderDropTargeted: updateRemotesHeaderDropTarget,
+            drop: dropActions
+        )
+    }
+
+    var stashSectionActions: SidebarStashSectionActions {
+        SidebarStashSectionActions(
+            toggleSection: { toggleSection(.stashes) },
+            select: { selection = $0 },
+            apply: onRequestApplyStash,
+            delete: onRequestDeleteStash,
+            makeItemProvider: makeStashItemProvider,
+            setHeaderDropTargeted: updateStashesHeaderDropTarget,
+            drop: dropActions
+        )
+    }
+
+    var dropActions: SidebarDropActions {
+        SidebarDropActions(
+            activePayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
+            canAccept: canAcceptDrop,
+            handlePayload: { payload, target, optionKeyPressed in
+                activeBranchDragPayload = nil
+                GitDragPayloadStore.clear(ifMatching: payload)
+                handleDrop([payload], target: target, optionKeyPressed: optionKeyPressed)
+            },
+            handleProviders: { providers, target, optionKeyPressed in
+                activeBranchDragPayload = nil
+                GitDragPayloadStore.clear()
+                return handleDrop(
+                    providers,
+                    target: target,
+                    optionKeyPressed: optionKeyPressed
+                )
+            },
+            clearPayload: { payload in
+                activeBranchDragPayload = nil
+                if let payload {
+                    GitDragPayloadStore.clear(ifMatching: payload)
+                } else {
+                    GitDragPayloadStore.clear()
+                }
+                clearDropHover()
+            }
+        )
+    }
+
     private var sidebarContent: some View {
         sidebarList
             .alert("Error", isPresented: $showingError) {
@@ -543,30 +651,33 @@ struct SidebarView: View {
     private var sidebarRows: some View {
         SidebarWorkspaceSection(onRequestSearch: onRequestSearch)
 
-        Section {
-            branchesSectionHeaderRow
-
-            if sectionStates.branchesExpanded {
-                if isLoadingBranches && branchNodes.isEmpty {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                } else if branchNodes.isEmpty {
-                    Text("No branches")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    if currentBranch.isEmpty && !headHash.isEmpty {
-                        headRowView
-                    }
-
-                    ForEach(visibleBranchRows) { row in
-                        branchRowView(for: row)
-                    }
-                }
-            }
-        }
+        SidebarBranchesSection(
+            rows: visibleBranchRows,
+            isExpanded: sectionStates.branchesExpanded,
+            isLoading: isLoadingBranches,
+            currentBranch: currentBranch,
+            headHash: headHash,
+            expandedFolders: expandedFolders,
+            branchSyncStatus: branchSyncStatus,
+            currentBranchFallbackSyncStatus: currentBranchFallbackSyncStatus,
+            upstreamByBranch: upstreamByBranch,
+            remoteNames: remoteNames,
+            branchesByRemote: branchesByRemote,
+            isCurrentBranchDropTargeted: isCurrentBranchDropTargeted,
+            isHeaderDropTargeted: activeDropTarget == .branchesHeader,
+            activeDropLabel: activeDropTarget == .branchesHeader ? activeDropLabel : nil,
+            draggedRemoteBranch: draggedRemoteBranch,
+            isBranchSyncing: isBranchSyncing,
+            deletableBranchesForPrefix: { prefix in
+                branchesUnderPrefix(prefix).filter { $0 != currentBranch }
+            },
+            makeBranchPayload: { makeBranchPayload(branchName: $0) },
+            finishBranchDrag: { payload in
+                activeBranchDragPayload = nil
+                GitDragPayloadStore.clear(ifMatching: payload)
+            },
+            actions: branchSectionActions
+        )
 
         Section {
             sectionHeader(.worktrees, isExpanded: sectionStates.worktreesExpanded)
@@ -589,68 +700,36 @@ struct SidebarView: View {
             }
         }
 
-        Section {
-            tagsSectionHeaderRow
+        SidebarTagsSection(
+            rows: visibleTagRows,
+            isExpanded: sectionStates.tagsExpanded,
+            isLoading: isLoadingTags,
+            expandedFolders: expandedTagFolders,
+            remoteNames: remoteNames,
+            isHeaderDropTargeted: activeDropTarget == .tagsHeader,
+            activeDropLabel: activeDropTarget == .tagsHeader ? activeDropLabel : nil,
+            actions: tagSectionActions
+        )
 
-            if sectionStates.tagsExpanded {
-                if isLoadingTags && tagNodes.isEmpty {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                } else if tagNodes.isEmpty {
-                    Text("No tags")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(visibleTagRows) { row in
-                        tagRowView(for: row)
-                    }
-                }
-            }
-        }
+        SidebarRemotesSection(
+            rows: visibleRemoteRows,
+            isExpanded: sectionStates.remotesExpanded,
+            isLoading: isLoadingRemotes,
+            currentBranch: currentBranch,
+            expandedFolders: expandedRemoteFolders,
+            isHeaderDropTargeted: activeDropTarget == .remotesHeader,
+            activeDropLabel: activeDropTarget == .remotesHeader ? activeDropLabel : nil,
+            actions: remoteSectionActions
+        )
 
-        Section {
-            remotesSectionHeaderRow
-
-            if sectionStates.remotesExpanded {
-                if isLoadingRemotes && remoteNodes.isEmpty {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                } else if remoteNodes.isEmpty {
-                    Text("No remotes")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(visibleRemoteRows) { row in
-                        remoteRowView(for: row)
-                    }
-                }
-            }
-        }
-
-        Section {
-            stashesSectionHeaderRow
-
-            if sectionStates.stashesExpanded {
-                if isLoadingStashes && stashEntries.isEmpty {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                } else if stashEntries.isEmpty {
-                    Text("No stashes")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(stashEntries) { stash in
-                        stashRowView(for: stash)
-                    }
-                }
-            }
-        }
+        SidebarStashesSection(
+            stashes: stashEntries,
+            isExpanded: sectionStates.stashesExpanded,
+            isLoading: isLoadingStashes,
+            isHeaderDropTargeted: activeDropTarget == .stashesHeader,
+            activeDropLabel: activeDropTarget == .stashesHeader ? activeDropLabel : nil,
+            actions: stashSectionActions
+        )
 
         if appState.showSubmodules {
             submodulesSection
@@ -741,182 +820,6 @@ struct SidebarView: View {
         .tag(SidebarSelection.subtree(entry.id))
     }
 
-    // Use a real list row for the branches title because List section headers are unreliable drop targets on macOS.
-    private var branchesSectionHeaderRow: some View {
-        Group {
-            if let remoteBranch = draggedRemoteBranch {
-                RemoteBranchCheckoutDropZone(
-                    remoteBranch: remoteBranch,
-                    isTargeted: activeDropTarget == .branchesHeader
-                )
-            } else {
-                SidebarSectionHeader(
-                    section: .branches,
-                    isExpanded: sectionStates.branchesExpanded,
-                    activeDropLabel: activeDropTarget == .branchesHeader ? activeDropLabel : nil,
-                    onToggle: { toggleSection(.branches) }
-                ) {
-                    EmptyView()
-                }
-            }
-        }
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                draggedRemoteBranch == nil && activeDropTarget == .branchesHeader
-                    ? Color.accentColor.opacity(0.12)
-                    : Color.clear
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay {
-                SidebarBranchDropTarget(
-                    onTap: { toggleSection(.branches) },
-                    onTargetedChange: updateBranchesHeaderDropTarget,
-                    fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
-                    canAcceptDrop: { payload in
-                        canAcceptDrop(
-                            payload,
-                            target: .branchesHeader,
-                            optionKeyPressed: false
-                        )
-                    },
-                    dragPayload: { nil },
-                    dragTitle: { "" },
-                    onDragEnded: { _ in },
-                    onDrop: { payload in
-                        activeBranchDragPayload = nil
-                        GitDragPayloadStore.clear(ifMatching: payload)
-                        handleDrop([payload], target: .branchesHeader)
-                        return true
-                    }
-                )
-                .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
-                    if let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload(),
-                       !canAcceptDrop(
-                           payload,
-                           target: .branchesHeader,
-                           optionKeyPressed: false
-                       ) {
-                        activeBranchDragPayload = nil
-                        GitDragPayloadStore.clear(ifMatching: payload)
-                        clearDropHover()
-                        return false
-                    }
-                    activeBranchDragPayload = nil
-                    GitDragPayloadStore.clear()
-                    return handleDrop(providers, target: .branchesHeader)
-                }
-            }
-    }
-
-    private var tagsSectionHeaderRow: some View {
-        SidebarSectionHeader(
-            section: .tags,
-            isExpanded: sectionStates.tagsExpanded,
-            activeDropLabel: activeDropTarget == .tagsHeader ? activeDropLabel : nil,
-            onToggle: { toggleSection(.tags) }
-        ) {
-            EmptyView()
-        }
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(activeDropTarget == .tagsHeader ? Color.accentColor.opacity(0.12) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay {
-                SidebarBranchDropTarget(
-                    onTap: { toggleSection(.tags) },
-                    onTargetedChange: updateTagsHeaderDropTarget,
-                    fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
-                    canAcceptDrop: { payload in
-                        canAcceptDrop(
-                            payload,
-                            target: .tagsHeader,
-                            optionKeyPressed: false
-                        )
-                    },
-                    dragPayload: { nil },
-                    dragTitle: { "" },
-                    onDragEnded: { _ in },
-                    onDrop: { payload in
-                        activeBranchDragPayload = nil
-                        GitDragPayloadStore.clear(ifMatching: payload)
-                        handleDrop([payload], target: .tagsHeader)
-                        return true
-                    }
-                )
-                .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
-                    if let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload(),
-                       !canAcceptDrop(
-                           payload,
-                           target: .tagsHeader,
-                           optionKeyPressed: false
-                       ) {
-                        activeBranchDragPayload = nil
-                        GitDragPayloadStore.clear(ifMatching: payload)
-                        clearDropHover()
-                        return false
-                    }
-                    activeBranchDragPayload = nil
-                    GitDragPayloadStore.clear()
-                    return handleDrop(providers, target: .tagsHeader)
-                }
-            }
-    }
-
-    private var remotesSectionHeaderRow: some View {
-        SidebarSectionHeader(
-            section: .remotes,
-            isExpanded: sectionStates.remotesExpanded,
-            activeDropLabel: activeDropTarget == .remotesHeader ? activeDropLabel : nil,
-            onToggle: { toggleSection(.remotes) }
-        ) {
-            EmptyView()
-        }
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(activeDropTarget == .remotesHeader ? Color.accentColor.opacity(0.12) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay {
-                SidebarBranchDropTarget(
-                    onTap: { toggleSection(.remotes) },
-                    onTargetedChange: updateRemotesHeaderDropTarget,
-                    fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
-                    canAcceptDrop: { payload in
-                        canAcceptDrop(
-                            payload,
-                            target: .remotesHeader,
-                            optionKeyPressed: false
-                        )
-                    },
-                    dragPayload: { nil },
-                    dragTitle: { "" },
-                    onDragEnded: { _ in },
-                    onDrop: { payload in
-                        activeBranchDragPayload = nil
-                        GitDragPayloadStore.clear(ifMatching: payload)
-                        handleDrop([payload], target: .remotesHeader)
-                        return true
-                    }
-                )
-                .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
-                    if let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload(),
-                       !canAcceptDrop(
-                           payload,
-                           target: .remotesHeader,
-                           optionKeyPressed: false
-                       ) {
-                        activeBranchDragPayload = nil
-                        GitDragPayloadStore.clear(ifMatching: payload)
-                        clearDropHover()
-                        return false
-                    }
-                    activeBranchDragPayload = nil
-                    GitDragPayloadStore.clear()
-                    return handleDrop(providers, target: .remotesHeader)
-                }
-            }
-    }
-
     private func presentDeinitializeSubmoduleConfirmation(_ entry: GitSubmoduleEntry) {
         let decision = SubmoduleLifecyclePolicy.decision(for: .deinitialize(force: false), entry: entry)
         guard decision.requiresConfirmation else {
@@ -966,60 +869,6 @@ struct SidebarView: View {
                 }
             }
         }
-    }
-
-    private var stashesSectionHeaderRow: some View {
-        SidebarSectionHeader(
-            section: .stashes,
-            isExpanded: sectionStates.stashesExpanded,
-            activeDropLabel: activeDropTarget == .stashesHeader ? activeDropLabel : nil,
-            onToggle: { toggleSection(.stashes) }
-        ) {
-            EmptyView()
-        }
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(activeDropTarget == .stashesHeader ? Color.accentColor.opacity(0.12) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay {
-                SidebarBranchDropTarget(
-                    onTap: { toggleSection(.stashes) },
-                    onTargetedChange: updateStashesHeaderDropTarget,
-                    fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
-                    canAcceptDrop: { payload in
-                        canAcceptDrop(
-                            payload,
-                            target: .stashesHeader,
-                            optionKeyPressed: false
-                        )
-                    },
-                    dragPayload: { nil },
-                    dragTitle: { "" },
-                    onDragEnded: { _ in },
-                    onDrop: { payload in
-                        activeBranchDragPayload = nil
-                        GitDragPayloadStore.clear(ifMatching: payload)
-                        handleDrop([payload], target: .stashesHeader)
-                        return true
-                    }
-                )
-                .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
-                    if let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload(),
-                       !canAcceptDrop(
-                           payload,
-                           target: .stashesHeader,
-                           optionKeyPressed: false
-                       ) {
-                        activeBranchDragPayload = nil
-                        GitDragPayloadStore.clear(ifMatching: payload)
-                        clearDropHover()
-                        return false
-                    }
-                    activeBranchDragPayload = nil
-                    GitDragPayloadStore.clear()
-                    return handleDrop(providers, target: .stashesHeader)
-                }
-            }
     }
 
     @ViewBuilder
@@ -1416,160 +1265,6 @@ struct SidebarView: View {
         return "Remove this worktree? The branch and commits are not deleted."
     }
 
-    @ViewBuilder
-    private var headRowView: some View {
-        HStack(spacing: 4) {
-            HStack(spacing: 0) {
-                Color.clear
-                    .frame(width: 16)
-            }
-
-            Image(systemName: "circle.fill")
-                .font(.system(size: 7))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 16, alignment: .center)
-
-            Text("HEAD")
-                .font(.system(size: 12, weight: .bold))
-                .lineLimit(1)
-
-            if !headHash.isEmpty {
-                Text(headHash)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-        }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-        .tag(SidebarSelection.head(headHash))
-        .onTapGesture {
-            selection = .head(headHash)
-        }
-    }
-
-    @ViewBuilder
-    private func branchRowView(for row: BranchRowItem) -> some View {
-        let isCurrentBranch = row.fullPath == currentBranch
-        let isCurrentBranchPrefix = row.isFolder && currentBranch.hasPrefix(row.fullPath + "/")
-        let branchTarget = GitDragTarget.localBranch(
-            name: row.fullPath,
-            isCurrent: isCurrentBranch
-        )
-        let isActiveDropRow = isCurrentBranch && isCurrentBranchDropTargeted
-        let headBadgeVisible = isCurrentBranch && !row.isFolder
-        let resolvedSyncStatus = SidebarBranchSyncBadgeResolver.status(
-            for: row.fullPath,
-            currentBranch: currentBranch,
-            branchSyncStatus: branchSyncStatus,
-            currentBranchFallbackSyncStatus: isCurrentBranch ? currentBranchFallbackSyncStatus : nil
-        )
-
-        let content = BranchRowContent(
-            row: row,
-            isCurrentBranch: isCurrentBranch,
-            isActiveDropRow: isActiveDropRow,
-            dropLabel: isActiveDropRow ? currentBranchDropLabel() : "",
-            isBranchSyncing: isBranchSyncing(row.fullPath),
-            syncStatus: resolvedSyncStatus,
-            headBadgeVisible: headBadgeVisible,
-            folderIsExpanded: expandedFolders.contains(row.fullPath),
-            isCurrentBranchPrefix: isCurrentBranchPrefix
-        )
-
-        if row.isFolder {
-            content
-                .onTapGesture {
-                    toggleFolder(row.fullPath)
-                }
-                .contextMenu {
-                    folderContextMenu(for: row.fullPath)
-                }
-        } else {
-            let rowView = content
-                .tag(SidebarSelection.branch(row.fullPath))
-                .onTapGesture {
-                    selection = .branch(row.fullPath)
-                }
-                .simultaneousGesture(
-                    TapGesture(count: 2).onEnded {
-                        if !isCurrentBranch {
-                            onRequestCheckout(row.fullPath, false)
-                        }
-                    }
-                )
-                .contextMenu {
-                    branchContextMenu(for: row.fullPath)
-                }
-                .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 8))
-                .onDrag {
-                    makeBranchItemProvider(branchName: row.fullPath)
-                } preview: {
-                    BranchDragPreview(branchName: row.fullPath)
-                }
-
-        if isCurrentBranch {
-                rowView
-                    .overlay {
-                        SidebarBranchDropTarget(
-                            onTap: { selection = .branch(row.fullPath) },
-                            onTargetedChange: updateCurrentBranchDropTarget,
-                            fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
-                            canAcceptDrop: { payload in
-                                canAcceptDrop(
-                                    payload,
-                                    target: branchTarget,
-                                    optionKeyPressed: NSEvent.modifierFlags.contains(.option)
-                                )
-                            },
-                            dragPayload: { makeBranchPayload(branchName: row.fullPath) },
-                            dragTitle: { row.fullPath },
-                            onDragEnded: { payload in
-                                activeBranchDragPayload = nil
-                                GitDragPayloadStore.clear(ifMatching: payload)
-                            },
-                            onDrop: { payload in
-                                activeBranchDragPayload = nil
-                                GitDragPayloadStore.clear(ifMatching: payload)
-                                handleDrop(
-                                    [payload],
-                                    target: branchTarget,
-                                    optionKeyPressed: NSEvent.modifierFlags.contains(.option)
-                                )
-                                return true
-                            }
-                        )
-                    }
-                    .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
-                        let optionKeyPressed = NSEvent.modifierFlags.contains(.option)
-                        if let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload(),
-                           !canAcceptDrop(
-                               payload,
-                               target: branchTarget,
-                               optionKeyPressed: optionKeyPressed
-                           ) {
-                            activeBranchDragPayload = nil
-                            GitDragPayloadStore.clear(ifMatching: payload)
-                            clearDropHover()
-                            return false
-                        }
-
-                        activeBranchDragPayload = nil
-                        GitDragPayloadStore.clear()
-                        return handleDrop(
-                            providers,
-                            target: branchTarget,
-                            optionKeyPressed: optionKeyPressed
-                        )
-                    }
-            } else {
-                rowView
-            }
-        }
-    }
-
     private func currentBranchDropLabel() -> String {
         let activePayload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload()
         if case .commits = activePayload?.content {
@@ -1638,216 +1333,6 @@ struct SidebarView: View {
             }
     }
 
-    @ViewBuilder
-    private func tagRowView(for row: BranchRowItem) -> some View {
-        let baseView = HStack(spacing: 4) {
-            HStack(spacing: 0) {
-                ForEach(0..<row.indent, id: \.self) { _ in
-                    Color.clear
-                        .frame(width: 16)
-                }
-            }
-
-            if row.isFolder {
-                Image(systemName: expandedTagFolders.contains(row.fullPath) ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16, alignment: .center)
-            } else {
-                Image(systemName: "tag")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16, alignment: .center)
-            }
-
-            Text(row.name)
-                .font(.system(size: 12))
-                .lineLimit(1)
-        }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-
-        if row.isFolder {
-            baseView
-                .onTapGesture {
-                    toggleTagFolder(row.fullPath)
-                }
-        } else {
-            baseView
-                .tag(SidebarSelection.tag(row.fullPath))
-                .onTapGesture {
-                    selection = .tag(row.fullPath)
-                }
-                .onTapGesture(count: 2) {
-                    onRequestCheckout(row.fullPath, true)
-                }
-                .contextMenu {
-                    tagContextMenu(for: row.fullPath)
-                }
-        }
-    }
-
-    @ViewBuilder
-    private func tagContextMenu(for tag: String) -> some View {
-        Button("Copy Tag Name to Clipboard") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(tag, forType: .string)
-        }
-
-        Divider()
-
-        Button("Checkout \(tag)") {
-            onRequestCheckout(tag, true)
-        }
-        Button("Details...") {
-            onRequestTagDetails(tag)
-        }
-
-        Divider()
-
-        Button("Diff Against Current") {
-            onRequestDiffTagAgainstCurrent(tag)
-        }
-
-        Divider()
-
-        Menu("Push to") {
-            if remoteNames.isEmpty {
-                Text("No remotes configured")
-            } else {
-                ForEach(remoteNames.sorted(), id: \.self) { remote in
-                    Button(remote) {
-                        onRequestPushTagToRemote(tag, remote)
-                    }
-                }
-            }
-        }
-        .disabled(remoteNames.isEmpty)
-
-        Button("Delete \(tag)", role: .destructive) {
-            onRequestDeleteTag(tag)
-        }
-    }
-
-    @ViewBuilder
-    private func remoteRowView(for row: BranchRowItem) -> some View {
-        let baseView = HStack(spacing: 4) {
-            HStack(spacing: 0) {
-                ForEach(0..<row.indent, id: \.self) { _ in
-                    Color.clear
-                        .frame(width: 16)
-                }
-            }
-
-            if row.isFolder {
-                Image(systemName: expandedRemoteFolders.contains(row.fullPath) ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16, alignment: .center)
-            } else {
-                Color.clear
-                    .frame(width: 16)
-            }
-
-            Text(row.name)
-                .font(.system(size: 12))
-                .lineLimit(1)
-        }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-
-        if row.isFolder {
-            baseView
-                .onTapGesture {
-                    toggleRemoteFolder(row.fullPath)
-                }
-        } else {
-            let rowView = baseView
-                .tag(SidebarSelection.remoteBranch(row.fullPath))
-                .onTapGesture {
-                    selection = .remoteBranch(row.fullPath)
-                }
-                .onTapGesture(count: 2) {
-                    selection = .remoteBranch(row.fullPath)
-                    Task {
-                        await checkoutRemoteBranch(row.fullPath)
-                    }
-                }
-
-            if remoteBranchParts(from: row.fullPath)?.branch == "HEAD" {
-                rowView
-                    .contextMenu {
-                        remoteBranchContextMenu(for: row.fullPath)
-                    }
-            } else {
-                rowView
-                    .overlay {
-                        SidebarRemoteBranchDragSource(
-                            onTap: {
-                                selection = .remoteBranch(row.fullPath)
-                            },
-                            onDoubleTap: {
-                                selection = .remoteBranch(row.fullPath)
-                                Task {
-                                    await checkoutRemoteBranch(row.fullPath)
-                                }
-                            },
-                            dragPayload: {
-                                makeRemoteBranchPayload(remoteBranch: row.fullPath)
-                            },
-                            dragTitle: row.fullPath,
-                            onDragEnded: {
-                                finishRemoteBranchDrag(row.fullPath)
-                            }
-                        )
-                    }
-                    .contextMenu {
-                        remoteBranchContextMenu(for: row.fullPath)
-                    }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func stashRowView(for stash: StashEntry) -> some View {
-        let baseView = HStack(spacing: 4) {
-            Image(systemName: "tray")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .frame(width: 16, alignment: .center)
-
-            Text(stash.displayTitle)
-                .font(.system(size: 12))
-                .lineLimit(1)
-
-            Spacer()
-        }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-
-        baseView
-            .tag(SidebarSelection.stash(stash.ref))
-            .onTapGesture {
-                selection = .stash(stash.ref)
-            }
-            .onTapGesture(count: 2) {
-                onRequestApplyStash(stash.ref)
-            }
-            .onDrag {
-                makeStashItemProvider(ref: stash.ref)
-            } preview: {
-                StashDragPreview(title: stash.displayTitle)
-            }
-            .contextMenu {
-                Button("Apply stash") {
-                    onRequestApplyStash(stash.ref)
-                }
-                Button("Delete stash", role: .destructive) {
-                    onRequestDeleteStash(stash.ref)
-                }
-            }
-    }
-
     private func makeStashItemProvider(ref: String) -> NSItemProvider {
         let payload = makeStashPayload(ref: ref)
 
@@ -1890,57 +1375,6 @@ struct SidebarView: View {
             expandedRemoteFolders.remove(path)
         } else {
             expandedRemoteFolders.insert(path)
-        }
-    }
-
-    @ViewBuilder
-    private func remoteBranchContextMenu(for fullPath: String) -> some View {
-        if let remoteBranch = remoteBranchParts(from: fullPath) {
-            Button("Checkout...") {
-                selection = .remoteBranch(fullPath)
-                onRunRepositoryOperation("Checking out \(fullPath)...") {
-                    await checkoutRemoteBranch(fullPath)
-                }
-            }
-            .disabled(remoteBranch.branch == "HEAD")
-
-            let pullTarget = currentBranch.isEmpty ? "current branch" : currentBranch
-            Button("Pull \(fullPath) into \(pullTarget)") {
-                onRequestPullRemoteBranch(remoteBranch.remote, remoteBranch.branch)
-            }
-            .disabled(currentBranch.isEmpty || remoteBranch.branch == "HEAD")
-
-            Divider()
-
-            Button("Copy Branch Name to Clipboard") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(fullPath, forType: .string)
-            }
-
-            Button("Diff Against Current") {}
-                .disabled(true)
-
-            Divider()
-
-            Button("Delete...", role: .destructive) {
-                remoteBranchDeleteTarget = RemoteBranchDeleteTarget(
-                    remote: remoteBranch.remote,
-                    branch: remoteBranch.branch
-                )
-            }
-            .disabled(remoteBranch.branch == "HEAD")
-
-            Divider()
-
-            Button("Create Pull Request...") {
-                onRequestCreatePullRequestForRemote(remoteBranch.remote, remoteBranch.branch)
-            }
-            .disabled(remoteBranch.branch == "HEAD")
-        } else {
-            Button("Copy Branch Name to Clipboard") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(fullPath, forType: .string)
-            }
         }
     }
 
@@ -2020,148 +1454,6 @@ struct SidebarView: View {
         let branch = String(parts[1])
         guard !remote.isEmpty, !branch.isEmpty else { return nil }
         return (remote, branch)
-    }
-
-    @ViewBuilder
-    private func branchContextMenu(for branch: String) -> some View {
-        Button("Checkout \(branch)") {
-            onRequestCheckout(branch, false)
-        }
-        .disabled(branch == currentBranch)
-
-        Divider()
-
-        Button("Merge \(branch) into \(currentBranch)") {
-            onRequestMergeBranchIntoCurrent(branch)
-        }
-        .disabled(branch == currentBranch)
-        Button("Rebase current changes onto \(branch)") {
-            onRequestRebaseOnto(branch)
-        }
-        .disabled(branch == currentBranch)
-
-        Divider()
-
-        Button("Fetch \(branch)") {
-            onRequestFetchBranch(branch)
-        }
-        .disabled(!BranchFetchActionPolicy.shouldEnableFetch(for: branchSyncStatus[branch]))
-        let currentUpstream = upstreamByBranch[branch]
-        let pullLabel = currentUpstream.map { "Pull \($0) (tracked)" } ?? "Pull (tracked)"
-        Button(pullLabel) {
-            onRequestPullTracked(branch)
-        }
-        .disabled(!BranchUpstreamActionPolicy.shouldEnablePullFromUpstream(for: currentUpstream))
-        let pushLabel = currentUpstream.map { "Push to \($0) (tracked)" } ?? "Push to (tracked)"
-        Button(pushLabel) {
-            onRequestPushToTracked(branch)
-        }
-        .disabled(!BranchUpstreamActionPolicy.shouldEnablePushToUpstream(for: currentUpstream))
-        Menu("Push to") {
-            if remoteNames.isEmpty {
-                Text("No remotes configured")
-            } else {
-                ForEach(remoteNames, id: \.self) { remote in
-                    Button(remote) {
-                        onRequestPushBranchToRemote(branch, remote)
-                    }
-                }
-            }
-        }
-        .disabled(remoteNames.isEmpty)
-        Menu("Track Remote Branch") {
-            if remoteNames.isEmpty {
-                Text("No remotes configured")
-            } else {
-                let currentUpstream = upstreamByBranch[branch]
-                let hasAnyRemoteBranch = remoteNames.contains { !(branchesByRemote[$0] ?? []).isEmpty }
-                if hasAnyRemoteBranch {
-                    ForEach(remoteNames.sorted(), id: \.self) { remote in
-                        ForEach((branchesByRemote[remote] ?? []).sorted(), id: \.self) { remoteBranch in
-                            let upstreamRef = "\(remote)/\(remoteBranch)"
-                            Button {
-                                onRequestTrackRemoteBranch(branch, upstreamRef)
-                            } label: {
-                                if currentUpstream == upstreamRef {
-                                    Label(upstreamRef, systemImage: "checkmark")
-                                } else {
-                                    Text(upstreamRef)
-                                }
-                            }
-                        }
-                    }
-                    Divider()
-                } else {
-                    Text("No remote branches")
-                    Divider()
-                }
-                Button {
-                    onRequestTrackRemoteBranch(branch, nil)
-                } label: {
-                    if currentUpstream == nil {
-                        Label("(None)", systemImage: "checkmark")
-                    } else {
-                        Text("(None)")
-                    }
-                }
-            }
-        }
-        .disabled(remoteNames.isEmpty)
-
-        Divider()
-
-        Button("Create Branch from '\(branch)'...") {
-            onRequestCreateBranchFromBranch(branch)
-        }
-        Button("Create Tag from '\(branch)'...") {
-            onRequestCreateTagFromBranch(branch)
-        }
-
-        Divider()
-
-        Button("Diff Against Current") {}
-            .disabled(true)
-
-        Divider()
-
-        Button("Rename...") {
-            onRequestRenameBranch(branch)
-        }
-        Button("Delete \(branch)") {
-            deleteConfirmationTarget = .single(branch)
-        }
-        .disabled(branch == currentBranch)
-
-        Divider()
-
-        Button("Copy Branch Name to Clipboard") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(branch, forType: .string)
-        }
-
-        Divider()
-
-        Button("Create Pull Request...") {
-            onRequestCreatePullRequest(branch)
-        }
-        .disabled(!BranchUpstreamActionPolicy.shouldEnableCreatePullRequest(for: currentUpstream))
-    }
-
-    @ViewBuilder
-    private func folderContextMenu(for prefix: String) -> some View {
-        let deletable = branchesUnderPrefix(prefix).filter { $0 != currentBranch }
-
-        Button("Delete All in \u{201C}\(prefix)/\u{201D}\u{2026}") {
-            deleteConfirmationTarget = .prefix(prefix)
-        }
-        .disabled(deletable.isEmpty)
-
-        Divider()
-
-        Button("Copy Folder Name to Clipboard") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(prefix, forType: .string)
-        }
     }
 
     @ViewBuilder
