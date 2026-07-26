@@ -43,7 +43,7 @@ struct SidebarRemoteRow: View {
             }
             .onTapGesture(count: 2) {
                 actions.select(.remoteBranch(row.fullPath))
-                actions.checkout(row.fullPath)
+                actions.checkoutFromRow(row.fullPath)
             }
 
         if isHeadReference {
@@ -64,7 +64,7 @@ struct SidebarRemoteRow: View {
                         },
                         onDoubleTap: {
                             actions.select(.remoteBranch(row.fullPath))
-                            actions.checkout(row.fullPath)
+                            actions.checkoutFromRow(row.fullPath)
                         },
                         dragPayload: {
                             actions.makePayload(row.fullPath)

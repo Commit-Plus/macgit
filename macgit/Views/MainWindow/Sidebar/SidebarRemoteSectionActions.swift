@@ -21,7 +21,8 @@ struct SidebarRemoteSectionActions {
     let toggleSection: () -> Void
     let toggleFolder: (String) -> Void
     let select: (SidebarSelection) -> Void
-    let checkout: (String) -> Void
+    let checkoutFromRow: (String) -> Void
+    let checkoutFromContextMenu: (String) -> Void
     let pullIntoCurrent: (String, String) -> Void
     let confirmDelete: (RemoteBranchDeleteTarget) -> Void
     let createPullRequest: (String, String) -> Void

@@ -27,7 +27,7 @@ struct SidebarRemoteContextMenu: View {
         if let remoteBranch = remoteBranchParts(from: fullPath) {
             Button("Checkout...") {
                 actions.select(.remoteBranch(fullPath))
-                actions.checkout(fullPath)
+                actions.checkoutFromContextMenu(fullPath)
             }
             .disabled(remoteBranch.branch == "HEAD")
 

@@ -452,8 +452,13 @@ struct SidebarView: View {
             toggleSection: { toggleSection(.remotes) },
             toggleFolder: toggleRemoteFolder,
             select: { selection = $0 },
-            checkout: { fullPath in
+            checkoutFromRow: { fullPath in
                 Task {
+                    await checkoutRemoteBranch(fullPath)
+                }
+            },
+            checkoutFromContextMenu: { fullPath in
+                onRunRepositoryOperation("Checking out \(fullPath)...") {
                     await checkoutRemoteBranch(fullPath)
                 }
             },
