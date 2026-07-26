@@ -26,51 +26,6 @@ import CoreTransferable
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct BranchNode: Identifiable, Hashable {
-    let id = UUID()
-    let name: String
-    let fullPath: String
-    let isFolder: Bool
-    var children: [BranchNode]
-}
-
-struct BranchRowItem: Identifiable, Equatable {
-    let id: UUID
-    let name: String
-    let fullPath: String
-    let isFolder: Bool
-    let indent: Int
-}
-
-enum DeleteConfirmationTarget: Identifiable {
-    case single(String)
-    case prefix(String)
-
-    var id: String {
-        switch self {
-        case .single(let branch): return "single:\(branch)"
-        case .prefix(let prefix): return "prefix:\(prefix)"
-        }
-    }
-}
-
-struct RemoteBranchDeleteTarget: Identifiable, Equatable {
-    let remote: String
-    let branch: String
-
-    var id: String { "\(remote)/\(branch)" }
-    var fullPath: String { id }
-}
-
-enum WorktreeCreationMode: String, CaseIterable {
-    case existingBranch = "Existing Branch"
-    case newBranch = "New Branch"
-}
-
-enum WorktreeHeaderAction: String, CaseIterable {
-    case prune = "Prune Worktrees..."
-}
-
 enum SidebarBranchSyncBadgeResolver {
     static func status(
         for branch: String,
