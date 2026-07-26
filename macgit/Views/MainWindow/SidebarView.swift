@@ -764,7 +764,14 @@ struct SidebarView: View {
                     isTargeted: activeDropTarget == .branchesHeader
                 )
             } else {
-                sectionHeaderContent(.branches, isExpanded: sectionStates.branchesExpanded)
+                SidebarSectionHeader(
+                    section: .branches,
+                    isExpanded: sectionStates.branchesExpanded,
+                    activeDropLabel: activeDropTarget == .branchesHeader ? activeDropLabel : nil,
+                    onToggle: { toggleSection(.branches) }
+                ) {
+                    EmptyView()
+                }
             }
         }
             .padding(.vertical, 2)
@@ -817,7 +824,14 @@ struct SidebarView: View {
     }
 
     private var tagsSectionHeaderRow: some View {
-        sectionHeaderContent(.tags, isExpanded: sectionStates.tagsExpanded)
+        SidebarSectionHeader(
+            section: .tags,
+            isExpanded: sectionStates.tagsExpanded,
+            activeDropLabel: activeDropTarget == .tagsHeader ? activeDropLabel : nil,
+            onToggle: { toggleSection(.tags) }
+        ) {
+            EmptyView()
+        }
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(activeDropTarget == .tagsHeader ? Color.accentColor.opacity(0.12) : Color.clear)
@@ -864,7 +878,14 @@ struct SidebarView: View {
     }
 
     private var remotesSectionHeaderRow: some View {
-        sectionHeaderContent(.remotes, isExpanded: sectionStates.remotesExpanded)
+        SidebarSectionHeader(
+            section: .remotes,
+            isExpanded: sectionStates.remotesExpanded,
+            activeDropLabel: activeDropTarget == .remotesHeader ? activeDropLabel : nil,
+            onToggle: { toggleSection(.remotes) }
+        ) {
+            EmptyView()
+        }
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(activeDropTarget == .remotesHeader ? Color.accentColor.opacity(0.12) : Color.clear)
@@ -962,7 +983,14 @@ struct SidebarView: View {
     }
 
     private var stashesSectionHeaderRow: some View {
-        sectionHeaderContent(.stashes, isExpanded: sectionStates.stashesExpanded)
+        SidebarSectionHeader(
+            section: .stashes,
+            isExpanded: sectionStates.stashesExpanded,
+            activeDropLabel: activeDropTarget == .stashesHeader ? activeDropLabel : nil,
+            onToggle: { toggleSection(.stashes) }
+        ) {
+            EmptyView()
+        }
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(activeDropTarget == .stashesHeader ? Color.accentColor.opacity(0.12) : Color.clear)
@@ -1010,31 +1038,12 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func sectionHeader(_ section: SidebarSection, isExpanded: Bool) -> some View {
-        sectionHeaderContent(section, isExpanded: isExpanded)
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private func sectionHeaderContent(_ section: SidebarSection, isExpanded: Bool) -> some View {
-        let isDropActive = (section == .branches && activeDropTarget == .branchesHeader)
-            || (section == .tags && activeDropTarget == .tagsHeader)
-            || (section == .remotes && activeDropTarget == .remotesHeader)
-            || (section == .stashes && activeDropTarget == .stashesHeader)
-
-        HStack {
-            Text(section.rawValue)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Spacer()
-            if isDropActive, let activeDropLabel {
-                Text(activeDropLabel)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.12), in: Capsule())
-            }
+        SidebarSectionHeader(
+            section: section,
+            isExpanded: isExpanded,
+            activeDropLabel: nil,
+            onToggle: { toggleSection(section) }
+        ) {
             if section == .worktrees {
                 Button("Create Worktree", systemImage: "plus") {
                     onRunRepositoryOperation("Preparing worktree creation...") {
@@ -1070,15 +1079,9 @@ struct SidebarView: View {
                     .buttonStyle(.plain)
                     .help("Add/Link Subtree")
             }
-            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(.trailing, 8)
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            toggleSection(section)
-        }
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func loadSectionStates() {
