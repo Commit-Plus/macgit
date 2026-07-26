@@ -28,10 +28,33 @@ import UniformTypeIdentifiers
 
 private struct WorktreePresentationModifier: ViewModifier {
     @Binding var worktreeToLabel: WorktreeEntry?
+    @Binding var worktreeLabelInput: String
     @Binding var worktreeToLock: WorktreeEntry?
+    @Binding var worktreeLockReasonInput: String
+    let isUpdatingWorktreeLock: Bool
     @Binding var worktreeToMove: WorktreeEntry?
+    @Binding var worktreeMovePathInput: String
+    @Binding var worktreeMoveErrorMessage: String?
+    let canMoveWorktree: Bool
+    let isMovingWorktree: Bool
     @Binding var worktreeToCheckout: WorktreeEntry?
+    @Binding var availableWorktreeCheckoutBranches: [String]
+    @Binding var selectedWorktreeCheckoutBranch: String
+    @Binding var worktreeCheckoutErrorMessage: String?
+    let canCheckoutWorktreeBranch: Bool
+    let isCheckingOutWorktreeBranch: Bool
     @Binding var showingCreateWorktreeSheet: Bool
+    @Binding var createWorktreeMode: WorktreeCreationMode
+    let availableWorktreeBranches: [String]
+    @Binding var selectedExistingWorktreeBranch: String
+    @Binding var newWorktreeBranchName: String
+    @Binding var newWorktreeBaseBranch: String
+    @Binding var worktreePathInput: String
+    @Binding var worktreeLabelDraft: String
+    @Binding var openWorktreeAfterCreate: Bool
+    let worktreeCreationErrorMessage: String?
+    let canCreateWorktree: Bool
+    let isCreatingWorktree: Bool
     @Binding var showingWorktreeRemovalConfirmation: Bool
     @Binding var showingMissingWorktreeAlert: Bool
     @Binding var showingWorktreeForceCheckoutConfirmation: Bool
@@ -42,15 +65,18 @@ private struct WorktreePresentationModifier: ViewModifier {
 
     let worktreeRemovalNeedsForce: Bool
     let worktreeRemovalMessage: String
-    let worktreeLabelSheet: () -> AnyView
-    let worktreeLockSheet: () -> AnyView
-    let worktreeMoveSheet: () -> AnyView
-    let worktreeCheckoutSheet: () -> AnyView
-    let createWorktreeSheet: () -> AnyView
+    let saveWorktreeLabel: () async -> Void
+    let lockWorktree: (WorktreeEntry) async -> Void
+    let moveWorktree: (WorktreeEntry) async -> Void
+    let checkoutWorktree: (WorktreeEntry, Bool) async -> Void
+    let onCreateWorktreeModeChange: () -> Void
+    let onSelectedExistingWorktreeBranchChange: () -> Void
+    let onNewWorktreeBranchNameChange: () -> Void
+    let onWorktreePathChange: (String) -> Void
+    let createWorktree: () async -> Void
     let chooseReplacementWorktreeFolder: (WorktreeEntry) -> Void
     let deleteMissingWorktree: (WorktreeEntry) async -> Void
     let removeWorktree: (WorktreeEntry, Bool) async -> Void
-    let checkoutWorktree: (WorktreeEntry, Bool) async -> Void
     let pruneWorktrees: () async -> Void
     let onRunRepositoryOperation: RepositoryOperationRunner
 
@@ -107,11 +133,109 @@ private struct WorktreePresentationModifier: ViewModifier {
             } message: {
                 Text("Remove stale worktree metadata and orphaned labels for paths that no longer exist?")
             }
-            .sheet(item: $worktreeToLabel) { _ in worktreeLabelSheet() }
-            .sheet(item: $worktreeToLock) { _ in worktreeLockSheet() }
-            .sheet(item: $worktreeToMove) { _ in worktreeMoveSheet() }
-            .sheet(item: $worktreeToCheckout) { _ in worktreeCheckoutSheet() }
-            .sheet(isPresented: $showingCreateWorktreeSheet) { createWorktreeSheet() }
+            .sheet(item: $worktreeToLabel) { entry in
+                WorktreeLabelSheet(
+                    entry: entry,
+                    label: $worktreeLabelInput,
+                    onCancel: {
+                        worktreeToLabel = nil
+                        worktreeLabelInput = ""
+                    },
+                    onSave: {
+                        onRunRepositoryOperation("Saving worktree label...") {
+                            await saveWorktreeLabel()
+                        }
+                    }
+                )
+            }
+            .sheet(item: $worktreeToLock) { entry in
+                WorktreeLockSheet(
+                    entry: entry,
+                    reason: $worktreeLockReasonInput,
+                    isUpdating: isUpdatingWorktreeLock,
+                    onCancel: {
+                        worktreeToLock = nil
+                        worktreeLockReasonInput = ""
+                    },
+                    onLock: {
+                        onRunRepositoryOperation("Locking \(entry.displayTitle)...") {
+                            await lockWorktree(entry)
+                        }
+                    }
+                )
+            }
+            .sheet(item: $worktreeToMove) { entry in
+                WorktreeMoveSheet(
+                    entry: entry,
+                    path: $worktreeMovePathInput,
+                    errorMessage: worktreeMoveErrorMessage,
+                    canMove: canMoveWorktree,
+                    isMoving: isMovingWorktree,
+                    onCancel: {
+                        worktreeToMove = nil
+                        worktreeMovePathInput = ""
+                        worktreeMoveErrorMessage = nil
+                    },
+                    onMove: {
+                        onRunRepositoryOperation("Moving \(entry.displayTitle)...") {
+                            await moveWorktree(entry)
+                        }
+                    }
+                )
+            }
+            .sheet(item: $worktreeToCheckout) { entry in
+                WorktreeCheckoutSheet(
+                    entry: entry,
+                    branches: availableWorktreeCheckoutBranches,
+                    selection: $selectedWorktreeCheckoutBranch,
+                    errorMessage: worktreeCheckoutErrorMessage,
+                    canCheckout: canCheckoutWorktreeBranch,
+                    isCheckingOut: isCheckingOutWorktreeBranch,
+                    onCancel: {
+                        worktreeToCheckout = nil
+                        worktreeCheckoutErrorMessage = nil
+                        selectedWorktreeCheckoutBranch = ""
+                        availableWorktreeCheckoutBranches = []
+                    },
+                    onCheckout: {
+                        if entry.dirtyCount > 0 {
+                            pendingWorktreeForceCheckout = entry
+                            showingWorktreeForceCheckoutConfirmation = true
+                        } else {
+                            onRunRepositoryOperation("Switching \(entry.displayTitle)...") {
+                                await checkoutWorktree(entry, false)
+                            }
+                        }
+                    }
+                )
+            }
+            .sheet(isPresented: $showingCreateWorktreeSheet) {
+                CreateWorktreeSheet(
+                    mode: $createWorktreeMode,
+                    availableBranches: availableWorktreeBranches,
+                    selectedExistingBranch: $selectedExistingWorktreeBranch,
+                    newBranchName: $newWorktreeBranchName,
+                    newBaseBranch: $newWorktreeBaseBranch,
+                    path: $worktreePathInput,
+                    label: $worktreeLabelDraft,
+                    openAfterCreate: $openWorktreeAfterCreate,
+                    errorMessage: worktreeCreationErrorMessage,
+                    canCreate: canCreateWorktree,
+                    isCreating: isCreatingWorktree,
+                    onModeChange: onCreateWorktreeModeChange,
+                    onSelectedExistingBranchChange: onSelectedExistingWorktreeBranchChange,
+                    onNewBranchNameChange: onNewWorktreeBranchNameChange,
+                    onPathChange: onWorktreePathChange,
+                    onCancel: {
+                        showingCreateWorktreeSheet = false
+                    },
+                    onCreate: {
+                        onRunRepositoryOperation("Creating worktree...") {
+                            await createWorktree()
+                        }
+                    }
+                )
+            }
     }
 }
 
@@ -590,10 +714,33 @@ struct SidebarView: View {
     private var sidebarWorktreePresentation: some ViewModifier {
         WorktreePresentationModifier(
             worktreeToLabel: $worktreeToLabel,
+            worktreeLabelInput: $worktreeLabelInput,
             worktreeToLock: $worktreeToLock,
+            worktreeLockReasonInput: $worktreeLockReasonInput,
+            isUpdatingWorktreeLock: isUpdatingWorktreeLock,
             worktreeToMove: $worktreeToMove,
+            worktreeMovePathInput: $worktreeMovePathInput,
+            worktreeMoveErrorMessage: $worktreeMoveErrorMessage,
+            canMoveWorktree: canMoveWorktree,
+            isMovingWorktree: isMovingWorktree,
             worktreeToCheckout: $worktreeToCheckout,
+            availableWorktreeCheckoutBranches: $availableWorktreeCheckoutBranches,
+            selectedWorktreeCheckoutBranch: $selectedWorktreeCheckoutBranch,
+            worktreeCheckoutErrorMessage: $worktreeCheckoutErrorMessage,
+            canCheckoutWorktreeBranch: canCheckoutWorktreeBranch,
+            isCheckingOutWorktreeBranch: isCheckingOutWorktreeBranch,
             showingCreateWorktreeSheet: $showingCreateWorktreeSheet,
+            createWorktreeMode: $createWorktreeMode,
+            availableWorktreeBranches: availableWorktreeBranches,
+            selectedExistingWorktreeBranch: $selectedExistingWorktreeBranch,
+            newWorktreeBranchName: $newWorktreeBranchName,
+            newWorktreeBaseBranch: $newWorktreeBaseBranch,
+            worktreePathInput: $worktreePathInput,
+            worktreeLabelDraft: $worktreeLabelDraft,
+            openWorktreeAfterCreate: $openWorktreeAfterCreate,
+            worktreeCreationErrorMessage: worktreeCreationErrorMessage,
+            canCreateWorktree: canCreateWorktree,
+            isCreatingWorktree: isCreatingWorktree,
             showingWorktreeRemovalConfirmation: $showingWorktreeRemovalConfirmation,
             showingMissingWorktreeAlert: $showingMissingWorktreeAlert,
             showingWorktreeForceCheckoutConfirmation: $showingWorktreeForceCheckoutConfirmation,
@@ -603,15 +750,20 @@ struct SidebarView: View {
             missingWorktreeEntry: $missingWorktreeEntry,
             worktreeRemovalNeedsForce: worktreeRemovalNeedsForce,
             worktreeRemovalMessage: worktreeRemovalMessage,
-            worktreeLabelSheet: { AnyView(worktreeLabelSheet) },
-            worktreeLockSheet: { AnyView(worktreeLockSheet) },
-            worktreeMoveSheet: { AnyView(worktreeMoveSheet) },
-            worktreeCheckoutSheet: { AnyView(worktreeCheckoutSheet) },
-            createWorktreeSheet: { AnyView(createWorktreeSheet) },
+            saveWorktreeLabel: saveWorktreeLabel,
+            lockWorktree: lockWorktree,
+            moveWorktree: moveWorktree,
+            checkoutWorktree: checkoutWorktree,
+            onCreateWorktreeModeChange: { refreshWorktreePathIfNeeded(force: false) },
+            onSelectedExistingWorktreeBranchChange: { refreshWorktreePathIfNeeded(force: false) },
+            onNewWorktreeBranchNameChange: { refreshWorktreePathIfNeeded(force: false) },
+            onWorktreePathChange: { newValue in
+                customWorktreePath = newValue != defaultWorktreePath().path
+            },
+            createWorktree: createWorktree,
             chooseReplacementWorktreeFolder: chooseReplacementWorktreeFolder,
             deleteMissingWorktree: deleteMissingWorktree,
             removeWorktree: removeWorktree,
-            checkoutWorktree: checkoutWorktree,
             pruneWorktrees: pruneWorktrees,
             onRunRepositoryOperation: onRunRepositoryOperation
         )
@@ -1438,162 +1590,6 @@ struct SidebarView: View {
     }
 
     @ViewBuilder
-    private var worktreeLabelSheet: some View {
-        if let entry = worktreeToLabel {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(entry.label == nil ? "Set Worktree Label" : "Edit Worktree Label")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Worktree:")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text(entry.path.path)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Label:")
-                        .font(.system(size: 13))
-                    TextField(entry.branch ?? entry.path.lastPathComponent, text: $worktreeLabelInput)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                HStack(spacing: 12) {
-                    Spacer()
-                    Button("Cancel", role: .cancel) {
-                        worktreeToLabel = nil
-                        worktreeLabelInput = ""
-                    }
-                    .keyboardShortcut(.cancelAction)
-
-                    Button("Save") {
-                        onRunRepositoryOperation("Saving worktree label...") {
-                            await saveWorktreeLabel()
-                        }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                }
-            }
-            .padding(24)
-            .frame(minWidth: 420, idealWidth: 480)
-        } else {
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var worktreeLockSheet: some View {
-        if let entry = worktreeToLock {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Lock Worktree")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Worktree:")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text(entry.path.path)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Reason (optional):")
-                        .font(.system(size: 13))
-                    TextField("Reason", text: $worktreeLockReasonInput)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                HStack(spacing: 12) {
-                    Spacer()
-                    Button("Cancel", role: .cancel) {
-                        worktreeToLock = nil
-                        worktreeLockReasonInput = ""
-                    }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isUpdatingWorktreeLock)
-
-                    Button("Lock") {
-                        onRunRepositoryOperation("Locking \(entry.displayTitle)...") {
-                            await lockWorktree(entry)
-                        }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(isUpdatingWorktreeLock)
-                }
-            }
-            .padding(24)
-            .frame(minWidth: 420, idealWidth: 480)
-        } else {
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var worktreeMoveSheet: some View {
-        if let entry = worktreeToMove {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Rename/Move Worktree")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Current path:")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text(entry.path.path)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("New path:")
-                        .font(.system(size: 13))
-                    TextField("", text: $worktreeMovePathInput)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                if let worktreeMoveErrorMessage {
-                    Text(worktreeMoveErrorMessage)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                HStack(spacing: 12) {
-                    Spacer()
-                    Button("Cancel", role: .cancel) {
-                        worktreeToMove = nil
-                        worktreeMovePathInput = ""
-                        worktreeMoveErrorMessage = nil
-                    }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isMovingWorktree)
-
-                    Button("Move") {
-                        onRunRepositoryOperation("Moving \(entry.displayTitle)...") {
-                            await moveWorktree(entry)
-                        }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canMoveWorktree || isMovingWorktree)
-                }
-            }
-            .padding(24)
-            .frame(minWidth: 460, idealWidth: 520)
-        } else {
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
     private func deleteBranchConfirmationSheet(for branch: String) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Delete Branch")
@@ -1696,176 +1692,6 @@ struct SidebarView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    @ViewBuilder
-    private var worktreeCheckoutSheet: some View {
-        if let entry = worktreeToCheckout {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Switch Worktree Branch")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Worktree:")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text(entry.path.path)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Branch:")
-                        .font(.system(size: 13))
-                    Picker("", selection: $selectedWorktreeCheckoutBranch) {
-                        ForEach(availableWorktreeCheckoutBranches, id: \.self) { branch in
-                            Text(branch).tag(branch)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-
-                if let worktreeCheckoutErrorMessage {
-                    Text(worktreeCheckoutErrorMessage)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                HStack(spacing: 12) {
-                    Spacer()
-                    Button("Cancel", role: .cancel) {
-                        worktreeToCheckout = nil
-                        worktreeCheckoutErrorMessage = nil
-                        selectedWorktreeCheckoutBranch = ""
-                        availableWorktreeCheckoutBranches = []
-                    }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isCheckingOutWorktreeBranch)
-
-                    Button("Switch") {
-                        if entry.dirtyCount > 0 {
-                            pendingWorktreeForceCheckout = entry
-                            showingWorktreeForceCheckoutConfirmation = true
-                        } else {
-                            onRunRepositoryOperation("Switching \(entry.displayTitle)...") {
-                                await checkoutWorktree(entry, force: false)
-                            }
-                        }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canCheckoutWorktreeBranch || isCheckingOutWorktreeBranch)
-                }
-            }
-            .padding(24)
-            .frame(minWidth: 420, idealWidth: 480)
-        } else {
-            EmptyView()
-        }
-    }
-
-    private var createWorktreeSheet: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Create Worktree")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            Picker("", selection: $createWorktreeMode) {
-                ForEach(WorktreeCreationMode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .onChange(of: createWorktreeMode) { _, _ in
-                refreshWorktreePathIfNeeded(force: false)
-            }
-
-            if createWorktreeMode == .existingBranch {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Branch:")
-                        .font(.system(size: 13))
-                    Picker("", selection: $selectedExistingWorktreeBranch) {
-                        ForEach(availableWorktreeBranches, id: \.self) { branch in
-                            Text(branch).tag(branch)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .onChange(of: selectedExistingWorktreeBranch) { _, _ in
-                        refreshWorktreePathIfNeeded(force: false)
-                    }
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("New branch name:")
-                        .font(.system(size: 13))
-                    TextField("feature/worktree-task", text: $newWorktreeBranchName)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: newWorktreeBranchName) { _, _ in
-                            refreshWorktreePathIfNeeded(force: false)
-                        }
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Base branch:")
-                        .font(.system(size: 13))
-                    Picker("", selection: $newWorktreeBaseBranch) {
-                        ForEach(availableWorktreeBranches, id: \.self) { branch in
-                            Text(branch).tag(branch)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Path:")
-                    .font(.system(size: 13))
-                TextField("", text: $worktreePathInput)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: worktreePathInput) { _, newValue in
-                        customWorktreePath = newValue != defaultWorktreePath().path
-                    }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Label (optional):")
-                    .font(.system(size: 13))
-                TextField("Task label", text: $worktreeLabelDraft)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            Toggle("Open after create", isOn: $openWorktreeAfterCreate)
-                .toggleStyle(.checkbox)
-                .font(.system(size: 12))
-
-            if let worktreeCreationErrorMessage {
-                Text(worktreeCreationErrorMessage)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: 12) {
-                Spacer()
-                Button("Cancel", role: .cancel) {
-                    showingCreateWorktreeSheet = false
-                }
-                .keyboardShortcut(.cancelAction)
-                .disabled(isCreatingWorktree)
-
-                Button("Create Worktree") {
-                    onRunRepositoryOperation("Creating worktree...") {
-                        await createWorktree()
-                    }
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canCreateWorktree || isCreatingWorktree)
-            }
-        }
-        .padding(24)
-        .frame(minWidth: 440, idealWidth: 500)
     }
 
     private func deleteBranch(_ branch: String, force: Bool = false) async {
