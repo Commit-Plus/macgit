@@ -53,4 +53,8 @@ extension GitStatusService {
     func deleteTag(name: String, in repositoryURL: URL) async throws {
         _ = try await runGit(arguments: ["tag", "-d", name], in: repositoryURL)
     }
+
+    func moveTag(name: String, commit: String, in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["tag", "--force", name, commit], in: repositoryURL)
+    }
 }

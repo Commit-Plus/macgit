@@ -66,6 +66,30 @@ final class GitTagServiceTests: XCTestCase {
         XCTAssertEqual(tags, ["v2.0.0"])
     }
 
+    func testMoveTagUpdatesLocalTagTarget() async throws {
+        let repositoryURL = try makeRepository()
+        try runGit(["tag", "v1.0.0"], in: repositoryURL)
+        let originalCommit = try runGit(["rev-parse", "HEAD"], in: repositoryURL)
+
+        try "release 2\n".write(
+            to: repositoryURL.appendingPathComponent("release.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try runGit(["add", "release.txt"], in: repositoryURL)
+        try runGit(["commit", "-m", "Release fix"], in: repositoryURL)
+        let newCommit = try runGit(["rev-parse", "HEAD"], in: repositoryURL)
+
+        try await GitStatusService.shared.moveTag(
+            name: "v1.0.0",
+            commit: newCommit,
+            in: repositoryURL
+        )
+
+        XCTAssertNotEqual(originalCommit, newCommit)
+        XCTAssertEqual(try runGit(["rev-parse", "v1.0.0"], in: repositoryURL), newCommit)
+    }
+
     private func makeRepository() throws -> URL {
         let repositoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("macgit-tag-service-\(UUID().uuidString)", isDirectory: true)

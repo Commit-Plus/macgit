@@ -67,6 +67,15 @@ extension SidebarView {
         }
     }
 
+    func updateTagDropTarget(_ tag: String, isTargeted: Bool) {
+        if isTargeted {
+            activeDropTarget = .tag(name: tag)
+            activeDropLabel = "Move Tag"
+        } else if activeDropTarget == .tag(name: tag) {
+            clearDropHover()
+        }
+    }
+
     func updateRemotesHeaderDropTarget(isTargeted: Bool) {
         if isTargeted {
             activeDropTarget = .remotesHeader

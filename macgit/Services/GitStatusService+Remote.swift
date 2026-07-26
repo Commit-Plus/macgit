@@ -52,11 +52,12 @@ extension GitStatusService {
         }
         for tag in options.tags {
             let ref = "refs/tags/\(tag)"
-            let output = try await runRemoteGit(
-                arguments: ["push", options.remote, "\(ref):\(ref)"],
-                in: repositoryURL,
-                injection: injection
-            )
+            var arguments = ["push", options.remote]
+            if options.forceTags {
+                arguments.append("--force")
+            }
+            arguments.append("\(ref):\(ref)")
+            let output = try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
             outputs.append(output)
         }
         if options.pushTags {

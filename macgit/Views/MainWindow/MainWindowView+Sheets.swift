@@ -142,22 +142,19 @@ extension MainWindowView {
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            if let startPoint = branchTagStartPoint {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("From branch:")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text("\(startPoint.branchName) at \(startPoint.shortHash) : \(startPoint.message)")
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                }
-            }
-
             VStack(alignment: .leading, spacing: 4) {
                 Text("Tag name:")
                     .font(.system(size: 13))
                 TextField("Enter tag name...", text: $tagNameInput)
                     .textFieldStyle(.roundedBorder)
+            }
+
+            if let startPoint = tagStartPoint {
+                Text("Create tag from commit: \(startPoint.message) - \(startPoint.shortHash)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
             }
 
             HStack(spacing: 12) {
@@ -171,7 +168,7 @@ extension MainWindowView {
                     Task { await createTagFromBranch() }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(tagNameInput.trimmingCharacters(in: .whitespaces).isEmpty || branchTagStartPoint == nil)
+                .disabled(tagNameInput.trimmingCharacters(in: .whitespaces).isEmpty || tagStartPoint == nil)
             }
         }
         .padding(24)
@@ -352,5 +349,99 @@ extension MainWindowView {
                 }
             )
         }
+    }
+
+    func tagMoveConfirmationSheet(for confirmation: PendingTagMoveConfirmation) -> some View {
+        MoveTagConfirmationSheet(
+            confirmation: confirmation,
+            onConfirm: { remote in
+                pendingTagMoveConfirmation = nil
+                runRepositoryOperation("Moving tag \(confirmation.tagName)...") {
+                    await performTagMove(confirmation, forcePushRemote: remote)
+                }
+            },
+            onCancel: {
+                pendingTagMoveConfirmation = nil
+            }
+        )
+    }
+}
+
+struct MoveTagConfirmationSheet: View {
+    let confirmation: PendingTagMoveConfirmation
+    let onConfirm: (String?) -> Void
+    let onCancel: () -> Void
+
+    @State private var forcePush = false
+    @State private var selectedRemote = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Move Tag \(confirmation.tagName)")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            Text("Move the tag to a different commit. This changes the local tag and may require a force-push if it has already been published.")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+
+            commitSummary(title: "Current commit", hash: confirmation.currentCommit.commitHash, message: confirmation.currentCommit.subject)
+
+            Image(systemName: "arrow.down")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
+
+            commitSummary(title: "New commit", hash: confirmation.newCommit.hash, message: confirmation.newCommit.message)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Force-push updated tag to remote", isOn: $forcePush)
+                    .toggleStyle(.checkbox)
+                    .disabled(confirmation.remotes.isEmpty)
+
+                if forcePush {
+                    Picker("Remote", selection: $selectedRemote) {
+                        ForEach(confirmation.remotes, id: \.self) { remote in
+                            Text(remote).tag(remote)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel", role: .cancel, action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Move Tag") {
+                    onConfirm(forcePush ? selectedRemote : nil)
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 13))
+                .disabled(forcePush && selectedRemote.isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 440, idealWidth: 500, maxWidth: 560)
+        .task {
+            selectedRemote = confirmation.remotes.first ?? ""
+        }
+    }
+
+    private func commitSummary(title: String, hash: String, message: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("\(String(hash.prefix(7))) — \(message)")
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(2)
+                .truncationMode(.tail)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(.quaternary.opacity(0.18))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }

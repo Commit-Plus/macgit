@@ -315,6 +315,8 @@ struct SidebarView: View {
             pushToRemote: onRequestPushTagToRemote,
             delete: onRequestDeleteTag,
             setHeaderDropTargeted: updateTagsHeaderDropTarget,
+            setTagDropTargeted: updateTagDropTarget,
+            isTagDropTargeted: { activeDropTarget == .tag(name: $0) },
             drop: dropActions
         )
     }

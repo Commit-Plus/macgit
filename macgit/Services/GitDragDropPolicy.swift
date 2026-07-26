@@ -68,7 +68,16 @@ enum GitDragDropPolicy {
             return .accept(.createBranch(startPoint: .commit(hash: commit.hash, message: commit.message)))
 
         case .tagsHeader:
-            return .reject("Commits cannot be dropped on Tags. Drop a branch onto Tags to create a tag.")
+            guard commits.count == 1, let commit = commits.first else {
+                return .reject("Select one commit to create a tag.")
+            }
+            return .accept(.createTagFromCommit(commit))
+
+        case .tag(let name):
+            guard commits.count == 1, let commit = commits.first else {
+                return .reject("Select one commit to move a tag.")
+            }
+            return .accept(.moveTag(name: name, commit: commit))
 
         case .remotesHeader:
             return .reject("Commits cannot be dropped on Remotes. Drop a branch onto Remotes to push it.")
@@ -107,6 +116,9 @@ enum GitDragDropPolicy {
 
         case .tagsHeader:
             return .accept(.createTagFromBranch(source))
+
+        case .tag:
+            return .reject("Only commits can be dropped on a tag to move it.")
 
         case .remotesHeader:
             return .accept(.pushBranchToRemote(source))

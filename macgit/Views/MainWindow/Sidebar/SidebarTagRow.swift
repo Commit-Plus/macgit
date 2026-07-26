@@ -16,11 +16,13 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SidebarTagRow: View {
     let row: BranchRowItem
     let expandedFolders: Set<String>
     let remoteNames: [String]
+    let isDropTargeted: Bool
     let actions: SidebarTagSectionActions
 
     var body: some View {
@@ -30,7 +32,8 @@ struct SidebarTagRow: View {
                     actions.toggleFolder(row.fullPath)
                 }
         } else {
-            content
+            let tagTarget = GitDragTarget.tag(name: row.fullPath)
+            let rowView = content
                 .tag(SidebarSelection.tag(row.fullPath))
                 .onTapGesture {
                     actions.select(.tag(row.fullPath))
@@ -44,6 +47,34 @@ struct SidebarTagRow: View {
                         remoteNames: remoteNames,
                         actions: actions
                     )
+                }
+
+            rowView
+                .overlay {
+                    SidebarBranchDropTarget(
+                        onTap: { actions.select(.tag(row.fullPath)) },
+                        onTargetedChange: { actions.setTagDropTargeted(row.fullPath, $0) },
+                        fallbackPayload: actions.drop.activePayload,
+                        canAcceptDrop: { payload in
+                            actions.drop.canAccept(payload, tagTarget, false)
+                        },
+                        dragPayload: { nil },
+                        dragTitle: { row.fullPath },
+                        onDragEnded: { _ in },
+                        onDrop: { payload in
+                            actions.drop.handlePayload(payload, tagTarget, false)
+                            return true
+                        }
+                    )
+                }
+                .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
+                    if let payload = actions.drop.activePayload(),
+                       !actions.drop.canAccept(payload, tagTarget, false) {
+                        actions.drop.clearPayload(payload)
+                        return false
+                    }
+
+                    return actions.drop.handleProviders(providers, tagTarget, false)
                 }
         }
     }
@@ -72,8 +103,22 @@ struct SidebarTagRow: View {
             Text(row.name)
                 .font(.system(size: 12))
                 .lineLimit(1)
+
+            Spacer()
+
+            if isDropTargeted {
+                BranchDropLabel(text: "Move Tag")
+            }
         }
         .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isDropTargeted ? Color.accentColor.opacity(0.24) : Color.clear)
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(Color.accentColor.opacity(0.7), lineWidth: 1)
+            }
+        }
         .contentShape(Rectangle())
     }
 }

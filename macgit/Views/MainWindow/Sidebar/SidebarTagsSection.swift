@@ -48,6 +48,7 @@ struct SidebarTagsSection: View {
                             row: row,
                             expandedFolders: expandedFolders,
                             remoteNames: remoteNames,
+                            isDropTargeted: actions.isTagDropTargeted(row.fullPath),
                             actions: actions
                         )
                     }

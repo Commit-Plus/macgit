@@ -27,5 +27,7 @@ struct SidebarTagSectionActions {
     let pushToRemote: (String, String) -> Void
     let delete: (String) -> Void
     let setHeaderDropTargeted: (Bool) -> Void
+    let setTagDropTargeted: (String, Bool) -> Void
+    let isTagDropTargeted: (String) -> Bool
     let drop: SidebarDropActions
 }

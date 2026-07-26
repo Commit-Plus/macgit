@@ -45,6 +45,12 @@ extension MainWindowView {
             Task {
                 await presentTagSheetFromBranchTip(sourceBranch)
             }
+        case .createTagFromCommit(let commit):
+            presentTagSheetFromCommit(commit)
+        case .moveTag(let tagName, let commit):
+            Task {
+                await presentTagMoveConfirmation(tagName: tagName, commit: commit)
+            }
         case .pushBranchToRemote(let branch):
             Task {
                 await presentPushBranchDropConfirmation(branch)

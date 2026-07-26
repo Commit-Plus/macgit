@@ -154,6 +154,7 @@ nonisolated enum GitDragTarget: Equatable, Sendable {
     case localBranch(name: String, isCurrent: Bool)
     case branchesHeader
     case tagsHeader
+    case tag(name: String)
     case remotesHeader
     case stashesHeader
     case fileStatus
@@ -174,6 +175,8 @@ nonisolated enum GitDragDropRequest: Equatable, Sendable {
     case createBranch(startPoint: GitBranchStartPoint)
     case checkoutRemoteBranch(String)
     case createTagFromBranch(String)
+    case createTagFromCommit(GitDraggedCommit)
+    case moveTag(name: String, commit: GitDraggedCommit)
     case pushBranchToRemote(String)
     case branchOperation(source: String, target: String, operation: GitDragBranchOperation)
     case stashFiles(paths: [String])

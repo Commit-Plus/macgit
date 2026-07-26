@@ -52,6 +52,14 @@ struct PendingPushBranchDropConfirmation: Identifiable, Equatable {
     }
 }
 
+struct PendingTagMoveConfirmation: Identifiable, Equatable {
+    let id = UUID()
+    let tagName: String
+    let currentCommit: GitTagDetails
+    let newCommit: GitDraggedCommit
+    let remotes: [String]
+}
+
 struct PendingSubtreeOperation: Identifiable, Equatable {
     let operation: SubtreeOperation
     let entry: GitSubtreeEntry
@@ -61,8 +69,7 @@ struct PendingSubtreeOperation: Identifiable, Equatable {
     }
 }
 
-struct BranchTagStartPoint: Equatable {
-    let branchName: String
+struct TagStartPoint: Equatable {
     let hash: String
     let message: String
 
@@ -93,7 +100,7 @@ struct MainWindowView: View {
     @State var showingTagSheet = false
     @State var showingNewTagSheet = false
     @State var tagNameInput = ""
-    @State var branchTagStartPoint: BranchTagStartPoint?
+    @State var tagStartPoint: TagStartPoint?
     @State var showingMergeSheet = false
     @State var showingStashSheet = false
     @State var showingCheckoutConfirmation = false
@@ -123,6 +130,7 @@ struct MainWindowView: View {
     @State var pendingCommitDropConfirmation: PendingCommitDropConfirmation?
     @State var pendingBranchDropConfirmation: PendingBranchDropConfirmation?
     @State var pendingPushBranchDropConfirmation: PendingPushBranchDropConfirmation?
+    @State var pendingTagMoveConfirmation: PendingTagMoveConfirmation?
     @State private var pendingSubtreeOperation: PendingSubtreeOperation?
     @State private var isPerformingBranchDropOperation = false
     @ObservedObject var operationProgress: RepositoryOperationProgress
@@ -228,6 +236,9 @@ struct MainWindowView: View {
             }
             .sheet(item: $pendingBranchDropConfirmation) { confirmation in
                 branchDropConfirmationSheet(for: confirmation)
+            }
+            .sheet(item: $pendingTagMoveConfirmation) { confirmation in
+                tagMoveConfirmationSheet(for: confirmation)
             }
             .sheet(item: $pendingSubtreeOperation) { pending in
                 SubtreeOperationConfirmationSheet(
@@ -1358,20 +1369,108 @@ struct MainWindowView: View {
 
         await MainActor.run {
             if let commit = commits.first {
-                branchTagStartPoint = BranchTagStartPoint(
-                    branchName: sourceBranch,
-                    hash: commit.hash,
-                    message: commit.message
+                presentTagSheet(
+                    startPoint: TagStartPoint(
+                        hash: commit.hash,
+                        message: commit.message
+                    )
                 )
-                showingTagSheet = true
             } else {
                 syncState.showError("Could not find the last commit for \(sourceBranch).")
             }
         }
     }
 
+    func presentTagSheetFromCommit(_ commit: GitDraggedCommit) {
+        presentTagSheet(
+            startPoint: TagStartPoint(
+                hash: commit.hash,
+                message: commit.message
+            )
+        )
+    }
+
+    private func presentTagSheet(startPoint: TagStartPoint) {
+        tagStartPoint = startPoint
+        Task { @MainActor in
+            await Task.yield()
+            showingTagSheet = true
+        }
+    }
+
+    func presentTagMoveConfirmation(tagName: String, commit: GitDraggedCommit) async {
+        guard !syncState.isAnySyncing else {
+            await MainActor.run {
+                syncState.showInfo("Wait for the current Git operation to finish before moving a tag.")
+            }
+            return
+        }
+
+        do {
+            async let details = GitStatusService.shared.tagDetails(name: tagName, in: repositoryURL)
+            async let remotes = GitStatusService.shared.remotes(in: repositoryURL)
+            let (currentCommit, remoteNames) = try await (details, remotes)
+
+            guard currentCommit.commitHash != commit.hash else {
+                await MainActor.run {
+                    syncState.showInfo("Tag \(tagName) already points to this commit.")
+                }
+                return
+            }
+
+            await MainActor.run {
+                pendingTagMoveConfirmation = PendingTagMoveConfirmation(
+                    tagName: tagName,
+                    currentCommit: currentCommit,
+                    newCommit: commit,
+                    remotes: remoteNames.sorted()
+                )
+            }
+        } catch {
+            await MainActor.run {
+                syncState.showError(error.localizedDescription)
+            }
+        }
+    }
+
+    func performTagMove(
+        _ confirmation: PendingTagMoveConfirmation,
+        forcePushRemote: String?
+    ) async {
+        do {
+            try await GitStatusService.shared.moveTag(
+                name: confirmation.tagName,
+                commit: confirmation.newCommit.hash,
+                in: repositoryURL
+            )
+
+            if let remote = forcePushRemote {
+                _ = try await GitStatusService.shared.push(
+                    options: GitStatusService.PushOptions(
+                        remote: remote,
+                        tags: [confirmation.tagName],
+                        forceTags: true
+                    ),
+                    in: repositoryURL,
+                    credentialResolver: providerAccountController.credentialResolver()
+                )
+            }
+
+            await syncState.refresh(repositoryURL: repositoryURL)
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
+        } catch {
+            await MainActor.run {
+                syncState.showError(error.localizedDescription)
+            }
+        }
+    }
+
     func createTagFromBranch() async {
-        guard let startPoint = branchTagStartPoint else { return }
+        guard let startPoint = tagStartPoint else { return }
         let name = tagNameInput.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
 
@@ -1463,7 +1562,7 @@ struct MainWindowView: View {
 
     private func resetTagSheet() {
         tagNameInput = ""
-        branchTagStartPoint = nil
+        tagStartPoint = nil
     }
 
 }

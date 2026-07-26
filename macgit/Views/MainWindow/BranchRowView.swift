@@ -113,7 +113,7 @@ struct BranchRowContent: View, Equatable {
     }
 }
 
-private struct BranchDropLabel: View {
+struct BranchDropLabel: View {
     let text: String
 
     var body: some View {

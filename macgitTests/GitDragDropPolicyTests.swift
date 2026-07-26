@@ -365,13 +365,53 @@ final class GitDragDropPolicyTests: XCTestCase {
         )
     }
 
-    func testCommitDropOnTagsHeaderIsRejected() {
+    func testSingleCommitCanCreateTagFromTagsHeader() {
+        let commit = GitDraggedCommit(hash: "c1", message: "one", isMerge: false)
+
         XCTAssertEqual(
             decision(
-                commits: [GitDraggedCommit(hash: "c1", message: "one", isMerge: false)],
+                commits: [commit],
                 target: .tagsHeader
             ),
-            .reject("Commits cannot be dropped on Tags. Drop a branch onto Tags to create a tag.")
+            .accept(.createTagFromCommit(commit))
+        )
+    }
+
+    func testMultipleCommitsAreRejectedForTagCreation() {
+        XCTAssertEqual(
+            decision(
+                commits: [
+                    GitDraggedCommit(hash: "c1", message: "one", isMerge: false),
+                    GitDraggedCommit(hash: "c2", message: "two", isMerge: false),
+                ],
+                target: .tagsHeader
+            ),
+            .reject("Select one commit to create a tag.")
+        )
+    }
+
+    func testSingleCommitCanMoveExistingTag() {
+        let commit = GitDraggedCommit(hash: "c2", message: "two", isMerge: false)
+
+        XCTAssertEqual(
+            decision(
+                commits: [commit],
+                target: .tag(name: "v1.0.1")
+            ),
+            .accept(.moveTag(name: "v1.0.1", commit: commit))
+        )
+    }
+
+    func testMultipleCommitsAreRejectedForTagMove() {
+        XCTAssertEqual(
+            decision(
+                commits: [
+                    GitDraggedCommit(hash: "c1", message: "one", isMerge: false),
+                    GitDraggedCommit(hash: "c2", message: "two", isMerge: false),
+                ],
+                target: .tag(name: "v1.0.1")
+            ),
+            .reject("Select one commit to move a tag.")
         )
     }
 
