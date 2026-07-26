@@ -1578,7 +1578,11 @@ struct SidebarView: View {
                     toggleFolder(row.fullPath)
                 }
                 .contextMenu {
-                    folderContextMenu(for: row.fullPath)
+                    SidebarFolderContextMenu(
+                        prefix: row.fullPath,
+                        deletableBranches: branchesUnderPrefix(row.fullPath).filter { $0 != currentBranch },
+                        actions: branchSectionActions
+                    )
                 }
         } else {
             let rowView = content
@@ -1594,7 +1598,15 @@ struct SidebarView: View {
                     }
                 )
                 .contextMenu {
-                    branchContextMenu(for: row.fullPath)
+                    SidebarBranchContextMenu(
+                        branch: row.fullPath,
+                        currentBranch: currentBranch,
+                        syncStatus: branchSyncStatus[row.fullPath],
+                        upstream: upstreamByBranch[row.fullPath],
+                        remoteNames: remoteNames,
+                        branchesByRemote: branchesByRemote,
+                        actions: branchSectionActions
+                    )
                 }
                 .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 8))
                 .onDrag {
@@ -2113,148 +2125,6 @@ struct SidebarView: View {
         let branch = String(parts[1])
         guard !remote.isEmpty, !branch.isEmpty else { return nil }
         return (remote, branch)
-    }
-
-    @ViewBuilder
-    private func branchContextMenu(for branch: String) -> some View {
-        Button("Checkout \(branch)") {
-            onRequestCheckout(branch, false)
-        }
-        .disabled(branch == currentBranch)
-
-        Divider()
-
-        Button("Merge \(branch) into \(currentBranch)") {
-            onRequestMergeBranchIntoCurrent(branch)
-        }
-        .disabled(branch == currentBranch)
-        Button("Rebase current changes onto \(branch)") {
-            onRequestRebaseOnto(branch)
-        }
-        .disabled(branch == currentBranch)
-
-        Divider()
-
-        Button("Fetch \(branch)") {
-            onRequestFetchBranch(branch)
-        }
-        .disabled(!BranchFetchActionPolicy.shouldEnableFetch(for: branchSyncStatus[branch]))
-        let currentUpstream = upstreamByBranch[branch]
-        let pullLabel = currentUpstream.map { "Pull \($0) (tracked)" } ?? "Pull (tracked)"
-        Button(pullLabel) {
-            onRequestPullTracked(branch)
-        }
-        .disabled(!BranchUpstreamActionPolicy.shouldEnablePullFromUpstream(for: currentUpstream))
-        let pushLabel = currentUpstream.map { "Push to \($0) (tracked)" } ?? "Push to (tracked)"
-        Button(pushLabel) {
-            onRequestPushToTracked(branch)
-        }
-        .disabled(!BranchUpstreamActionPolicy.shouldEnablePushToUpstream(for: currentUpstream))
-        Menu("Push to") {
-            if remoteNames.isEmpty {
-                Text("No remotes configured")
-            } else {
-                ForEach(remoteNames, id: \.self) { remote in
-                    Button(remote) {
-                        onRequestPushBranchToRemote(branch, remote)
-                    }
-                }
-            }
-        }
-        .disabled(remoteNames.isEmpty)
-        Menu("Track Remote Branch") {
-            if remoteNames.isEmpty {
-                Text("No remotes configured")
-            } else {
-                let currentUpstream = upstreamByBranch[branch]
-                let hasAnyRemoteBranch = remoteNames.contains { !(branchesByRemote[$0] ?? []).isEmpty }
-                if hasAnyRemoteBranch {
-                    ForEach(remoteNames.sorted(), id: \.self) { remote in
-                        ForEach((branchesByRemote[remote] ?? []).sorted(), id: \.self) { remoteBranch in
-                            let upstreamRef = "\(remote)/\(remoteBranch)"
-                            Button {
-                                onRequestTrackRemoteBranch(branch, upstreamRef)
-                            } label: {
-                                if currentUpstream == upstreamRef {
-                                    Label(upstreamRef, systemImage: "checkmark")
-                                } else {
-                                    Text(upstreamRef)
-                                }
-                            }
-                        }
-                    }
-                    Divider()
-                } else {
-                    Text("No remote branches")
-                    Divider()
-                }
-                Button {
-                    onRequestTrackRemoteBranch(branch, nil)
-                } label: {
-                    if currentUpstream == nil {
-                        Label("(None)", systemImage: "checkmark")
-                    } else {
-                        Text("(None)")
-                    }
-                }
-            }
-        }
-        .disabled(remoteNames.isEmpty)
-
-        Divider()
-
-        Button("Create Branch from '\(branch)'...") {
-            onRequestCreateBranchFromBranch(branch)
-        }
-        Button("Create Tag from '\(branch)'...") {
-            onRequestCreateTagFromBranch(branch)
-        }
-
-        Divider()
-
-        Button("Diff Against Current") {}
-            .disabled(true)
-
-        Divider()
-
-        Button("Rename...") {
-            onRequestRenameBranch(branch)
-        }
-        Button("Delete \(branch)") {
-            deleteConfirmationTarget = .single(branch)
-        }
-        .disabled(branch == currentBranch)
-
-        Divider()
-
-        Button("Copy Branch Name to Clipboard") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(branch, forType: .string)
-        }
-
-        Divider()
-
-        Button("Create Pull Request...") {
-            onRequestCreatePullRequest(branch)
-        }
-        .disabled(!BranchUpstreamActionPolicy.shouldEnableCreatePullRequest(for: currentUpstream))
-    }
-
-    @ViewBuilder
-    private func folderContextMenu(for prefix: String) -> some View {
-        let deletable = branchesUnderPrefix(prefix).filter { $0 != currentBranch }
-
-        Button("Delete All in \u{201C}\(prefix)/\u{201D}\u{2026}") {
-            deleteConfirmationTarget = .prefix(prefix)
-        }
-        .disabled(deletable.isEmpty)
-
-        Divider()
-
-        Button("Copy Folder Name to Clipboard") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(prefix, forType: .string)
-        }
     }
 
     @ViewBuilder
