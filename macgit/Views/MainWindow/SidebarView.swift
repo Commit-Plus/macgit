@@ -26,21 +26,6 @@ import CoreTransferable
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum SidebarBranchSyncBadgeResolver {
-    static func status(
-        for branch: String,
-        currentBranch: String,
-        branchSyncStatus: [String: BranchSyncStatus],
-        currentBranchFallbackSyncStatus: BranchSyncStatus?
-    ) -> BranchSyncStatus? {
-        if branch == currentBranch, let currentBranchFallbackSyncStatus {
-            return currentBranchFallbackSyncStatus
-        }
-
-        return branchSyncStatus[branch]
-    }
-}
-
 private struct WorktreePresentationModifier: ViewModifier {
     @Binding var worktreeToLabel: WorktreeEntry?
     @Binding var worktreeToLock: WorktreeEntry?
