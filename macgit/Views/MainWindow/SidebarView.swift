@@ -717,26 +717,14 @@ struct SidebarView: View {
             actions: remoteSectionActions
         )
 
-        Section {
-            stashesSectionHeaderRow
-
-            if sectionStates.stashesExpanded {
-                if isLoadingStashes && stashEntries.isEmpty {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                } else if stashEntries.isEmpty {
-                    Text("No stashes")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(stashEntries) { stash in
-                        stashRowView(for: stash)
-                    }
-                }
-            }
-        }
+        SidebarStashesSection(
+            stashes: stashEntries,
+            isExpanded: sectionStates.stashesExpanded,
+            isLoading: isLoadingStashes,
+            isHeaderDropTargeted: activeDropTarget == .stashesHeader,
+            activeDropLabel: activeDropTarget == .stashesHeader ? activeDropLabel : nil,
+            actions: stashSectionActions
+        )
 
         if appState.showSubmodules {
             submodulesSection
@@ -876,60 +864,6 @@ struct SidebarView: View {
                 }
             }
         }
-    }
-
-    private var stashesSectionHeaderRow: some View {
-        SidebarSectionHeader(
-            section: .stashes,
-            isExpanded: sectionStates.stashesExpanded,
-            activeDropLabel: activeDropTarget == .stashesHeader ? activeDropLabel : nil,
-            onToggle: { toggleSection(.stashes) }
-        ) {
-            EmptyView()
-        }
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(activeDropTarget == .stashesHeader ? Color.accentColor.opacity(0.12) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay {
-                SidebarBranchDropTarget(
-                    onTap: { toggleSection(.stashes) },
-                    onTargetedChange: updateStashesHeaderDropTarget,
-                    fallbackPayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
-                    canAcceptDrop: { payload in
-                        canAcceptDrop(
-                            payload,
-                            target: .stashesHeader,
-                            optionKeyPressed: false
-                        )
-                    },
-                    dragPayload: { nil },
-                    dragTitle: { "" },
-                    onDragEnded: { _ in },
-                    onDrop: { payload in
-                        activeBranchDragPayload = nil
-                        GitDragPayloadStore.clear(ifMatching: payload)
-                        handleDrop([payload], target: .stashesHeader)
-                        return true
-                    }
-                )
-                .onDrop(of: [.macgitGitDragPayload], isTargeted: nil) { providers in
-                    if let payload = activeBranchDragPayload ?? GitDragPayloadStore.currentPayload(),
-                       !canAcceptDrop(
-                           payload,
-                           target: .stashesHeader,
-                           optionKeyPressed: false
-                       ) {
-                        activeBranchDragPayload = nil
-                        GitDragPayloadStore.clear(ifMatching: payload)
-                        clearDropHover()
-                        return false
-                    }
-                    activeBranchDragPayload = nil
-                    GitDragPayloadStore.clear()
-                    return handleDrop(providers, target: .stashesHeader)
-                }
-            }
     }
 
     @ViewBuilder
@@ -1391,46 +1325,6 @@ struct SidebarView: View {
             }
             .contextMenu {
                 worktreeContextMenu(for: entry)
-            }
-    }
-
-    @ViewBuilder
-    private func stashRowView(for stash: StashEntry) -> some View {
-        let baseView = HStack(spacing: 4) {
-            Image(systemName: "tray")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .frame(width: 16, alignment: .center)
-
-            Text(stash.displayTitle)
-                .font(.system(size: 12))
-                .lineLimit(1)
-
-            Spacer()
-        }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-
-        baseView
-            .tag(SidebarSelection.stash(stash.ref))
-            .onTapGesture {
-                selection = .stash(stash.ref)
-            }
-            .onTapGesture(count: 2) {
-                onRequestApplyStash(stash.ref)
-            }
-            .onDrag {
-                makeStashItemProvider(ref: stash.ref)
-            } preview: {
-                StashDragPreview(title: stash.displayTitle)
-            }
-            .contextMenu {
-                Button("Apply stash") {
-                    onRequestApplyStash(stash.ref)
-                }
-                Button("Delete stash", role: .destructive) {
-                    onRequestDeleteStash(stash.ref)
-                }
             }
     }
 
