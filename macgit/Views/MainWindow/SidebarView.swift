@@ -541,21 +541,7 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var sidebarRows: some View {
-        Section(SidebarSection.workspace.rawValue) {
-            ForEach(SidebarSection.workspace.items) { item in
-                if item == .search {
-                    Label(item.rawValue, systemImage: item.icon)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            onRequestSearch()
-                        }
-                } else {
-                    Label(item.rawValue, systemImage: item.icon)
-                        .tag(SidebarSelection.item(item))
-                }
-            }
-        }
+        SidebarWorkspaceSection(onRequestSearch: onRequestSearch)
 
         Section {
             branchesSectionHeaderRow
