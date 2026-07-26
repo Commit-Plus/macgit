@@ -166,7 +166,7 @@ class SyncState: ObservableObject {
             await MainActor.run {
                 activeSyncBranch = options.branches.count == 1 ? options.branches.first : nil
             }
-            let output = try await GitStatusService.shared.push(
+            _ = try await GitStatusService.shared.push(
                 options: options,
                 in: repositoryURL,
                 credentialResolver: credentialResolver
@@ -188,12 +188,6 @@ class SyncState: ObservableObject {
                     }
                 }
             }
-            let trimmed = output.lowercased()
-            if trimmed.contains("everything up-to-date") || trimmed.contains("everything up to date") {
-                showInfo("Everything up-to-date.")
-            } else {
-                showInfo("Push completed successfully.")
-            }
         } catch {
             showError(error.localizedDescription)
         }
@@ -205,12 +199,10 @@ class SyncState: ObservableObject {
                 try await GitStatusService.shared.setUpstream(upstream: upstream, branch: branch, in: repositoryURL)
                 await refresh(repositoryURL: repositoryURL)
                 notifyRepositoryChanged(repositoryURL)
-                showInfo("Tracking \(upstream) for \(branch).")
             } else {
                 try await GitStatusService.shared.unsetUpstream(branch: branch, in: repositoryURL)
                 await refresh(repositoryURL: repositoryURL)
                 notifyRepositoryChanged(repositoryURL)
-                showInfo("Stopped tracking upstream for \(branch).")
             }
         } catch {
             showError(error.localizedDescription)
@@ -236,7 +228,7 @@ class SyncState: ObservableObject {
         let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
         do {
             await MainActor.run { activeSyncBranch = branch }
-            let output = try await GitStatusService.shared.pull(
+            _ = try await GitStatusService.shared.pull(
                 remote: remote,
                 branch: branch,
                 options: options,
@@ -259,12 +251,6 @@ class SyncState: ObservableObject {
                         )
                     )
                 }
-            }
-            let trimmed = output.lowercased()
-            if trimmed.contains("already up to date") || trimmed.contains("already up-to-date") {
-                showInfo("Already up to date.")
-            } else {
-                showInfo("Pull completed successfully.")
             }
         } catch {
             let message = error.localizedDescription
@@ -293,7 +279,7 @@ class SyncState: ObservableObject {
         let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
         do {
             await MainActor.run { activeSyncBranch = branch }
-            let output = try await GitStatusService.shared.pullBranchFromUpstream(
+            _ = try await GitStatusService.shared.pullBranchFromUpstream(
                 branch: branch,
                 in: repositoryURL,
                 credentialResolver: credentialResolver
@@ -314,12 +300,6 @@ class SyncState: ObservableObject {
                         )
                     )
                 }
-            }
-            let trimmed = output.lowercased()
-            if trimmed.contains("already up to date") || trimmed.contains("already up-to-date") {
-                showInfo("Already up to date.")
-            } else {
-                showInfo("Pull completed successfully.")
             }
         } catch {
             let message = error.localizedDescription
@@ -380,7 +360,6 @@ class SyncState: ObservableObject {
             }
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
-            showInfo("Rebased current branch onto \(branch).")
         } catch {
             let message = error.localizedDescription
             if message.uppercased().contains("CONFLICT") {
@@ -398,21 +377,14 @@ class SyncState: ObservableObject {
     ) async {
         await MainActor.run { isFetching = true }
         defer { Task { @MainActor in isFetching = false } }
-        let before = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
         do {
             try await GitStatusService.shared.fetch(
                 options: options,
                 in: repositoryURL,
                 credentialResolver: credentialResolver
             )
-            let after = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
-            if after.behind > 0 {
-                showInfo("Fetch completed. Current branch is still \(after.behind) commit\(after.behind == 1 ? "" : "s") behind its upstream. Pull to update the local branch.")
-            } else if after.behind <= before.behind {
-                showInfo("No new changes on remote.")
-            }
         } catch {
             showError(error.localizedDescription)
         }
@@ -434,7 +406,6 @@ class SyncState: ObservableObject {
             showError("Could not parse upstream '\(upstream)'.")
             return
         }
-        let before = await GitStatusService.shared.branchSyncStatus(for: branch, in: repositoryURL)
         do {
             try await GitStatusService.shared.fetchBranch(
                 remote: parts[0],
@@ -442,14 +413,8 @@ class SyncState: ObservableObject {
                 in: repositoryURL,
                 credentialResolver: credentialResolver
             )
-            let after = await GitStatusService.shared.branchSyncStatus(for: branch, in: repositoryURL)
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
-            if let after, after.behind > 0 {
-                showInfo("Fetch completed. \(branch) is still \(after.behind) commit\(after.behind == 1 ? "" : "s") behind \(upstream). Pull to update the local branch.")
-            } else if (after?.behind ?? 0) <= (before?.behind ?? 0) {
-                showInfo("No new changes on remote.")
-            }
         } catch {
             showError(error.localizedDescription)
         }
@@ -471,19 +436,13 @@ class SyncState: ObservableObject {
             }
         }
         do {
-            let output = try await GitStatusService.shared.fetchAndFastForwardBranchFromUpstream(
+            _ = try await GitStatusService.shared.fetchAndFastForwardBranchFromUpstream(
                 branch: branch,
                 in: repositoryURL,
                 credentialResolver: credentialResolver
             )
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
-            let trimmed = output.lowercased()
-            if trimmed.contains("already up to date") || trimmed.contains("already up-to-date") {
-                showInfo("Already up to date.")
-            } else {
-                showInfo("Fetched and updated \(branch).")
-            }
         } catch {
             let message = error.localizedDescription
             if message.uppercased().contains("CONFLICT") {
@@ -542,17 +501,9 @@ class SyncState: ObservableObject {
         await MainActor.run { isMerging = true }
         defer { Task { @MainActor in isMerging = false } }
         do {
-            let output = try await GitStatusService.shared.merge(branch: branch, options: options, in: repositoryURL)
+            _ = try await GitStatusService.shared.merge(branch: branch, options: options, in: repositoryURL)
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
-            let trimmed = output.lowercased()
-            if options.squash {
-                showInfo("Squash merge completed. Changes are staged.")
-            } else if trimmed.contains("already up to date") || trimmed.contains("already up-to-date") {
-                showInfo("Already up to date.")
-            } else {
-                showInfo("Merge completed successfully.")
-            }
         } catch {
             let message = error.localizedDescription
             if message.uppercased().contains("CONFLICT") {
@@ -591,7 +542,6 @@ class SyncState: ObservableObject {
             }
             await refresh(repositoryURL: repositoryURL)
             notifyRepositoryChanged(repositoryURL)
-            showInfo("Changes stashed successfully.")
         } catch {
             showError(error.localizedDescription)
         }
