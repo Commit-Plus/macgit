@@ -27,6 +27,7 @@ extension MainWindowView {
     }
 
     func handleToolbarAction(_ action: ToolbarAction) {
+        guard operationProgress.activeOperation == nil else { return }
         let syncing = syncState.isAnySyncing
         switch action {
         case .commit:
@@ -57,6 +58,7 @@ extension MainWindowView {
     }
 
     func handleGitUndoMenuAction(_ action: GitUndoMenuAction) {
+        guard operationProgress.activeOperation == nil else { return }
         guard !syncState.isAnySyncing else {
             syncState.showInfo("Wait for the current Git operation to finish before undoing.")
             return

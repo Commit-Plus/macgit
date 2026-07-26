@@ -28,6 +28,7 @@ struct ContentView: View {
     @State private var showingCloneSheet = false
     @State private var showingKeepCurrentAlert = false
     @State private var pendingAction: FileMenuAction?
+    @StateObject private var operationProgress = RepositoryOperationProgress()
 
     var body: some View {
         Group {
@@ -35,7 +36,8 @@ struct ContentView: View {
                 MainWindowView(
                     repositoryURL: url,
                     providerAccountController: providerAccountController,
-                    onOpenConnections: accountController.presentConnections
+                    onOpenConnections: accountController.presentConnections,
+                    operationProgress: operationProgress
                 )
             } else {
                 RepoPickerView(
@@ -130,6 +132,7 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 AccountToolbarMenu(controller: accountController)
+                    .disabled(operationProgress.activeOperation != nil)
             }
         }
     }
