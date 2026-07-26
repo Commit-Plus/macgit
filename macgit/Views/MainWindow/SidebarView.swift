@@ -406,6 +406,99 @@ struct SidebarView: View {
         }
     }
 
+    var branchSectionActions: SidebarBranchSectionActions {
+        SidebarBranchSectionActions(
+            toggleSection: { toggleSection(.branches) },
+            toggleFolder: toggleFolder,
+            select: { selection = $0 },
+            checkout: { onRequestCheckout($0, false) },
+            fetch: onRequestFetchBranch,
+            pullTracked: onRequestPullTracked,
+            pushTracked: onRequestPushToTracked,
+            rename: onRequestRenameBranch,
+            createPullRequest: onRequestCreatePullRequest,
+            createBranchFrom: onRequestCreateBranchFromBranch,
+            createTagFrom: onRequestCreateTagFromBranch,
+            rebaseOnto: onRequestRebaseOnto,
+            mergeIntoCurrent: onRequestMergeBranchIntoCurrent,
+            pushToRemote: onRequestPushBranchToRemote,
+            trackRemoteBranch: onRequestTrackRemoteBranch,
+            confirmDelete: { deleteConfirmationTarget = $0 },
+            makeItemProvider: makeBranchItemProvider,
+            setHeaderDropTargeted: updateBranchesHeaderDropTarget,
+            setCurrentDropTargeted: updateCurrentBranchDropTarget,
+            currentDropLabel: currentBranchDropLabel,
+            drop: dropActions
+        )
+    }
+
+    var tagSectionActions: SidebarTagSectionActions {
+        SidebarTagSectionActions(
+            toggleSection: { toggleSection(.tags) },
+            toggleFolder: toggleTagFolder,
+            select: { selection = $0 },
+            checkout: { onRequestCheckout($0, true) },
+            showDetails: onRequestTagDetails,
+            diffAgainstCurrent: onRequestDiffTagAgainstCurrent,
+            pushToRemote: onRequestPushTagToRemote,
+            delete: onRequestDeleteTag,
+            setHeaderDropTargeted: updateTagsHeaderDropTarget,
+            drop: dropActions
+        )
+    }
+
+    var remoteSectionActions: SidebarRemoteSectionActions {
+        SidebarRemoteSectionActions(
+            toggleSection: { toggleSection(.remotes) },
+            toggleFolder: toggleRemoteFolder,
+            select: { selection = $0 },
+            checkout: { fullPath in
+                Task {
+                    await checkoutRemoteBranch(fullPath)
+                }
+            },
+            pullIntoCurrent: onRequestPullRemoteBranch,
+            confirmDelete: { remoteBranchDeleteTarget = $0 },
+            createPullRequest: onRequestCreatePullRequestForRemote,
+            makePayload: makeRemoteBranchPayload,
+            finishDrag: finishRemoteBranchDrag,
+            setHeaderDropTargeted: updateRemotesHeaderDropTarget,
+            drop: dropActions
+        )
+    }
+
+    var stashSectionActions: SidebarStashSectionActions {
+        SidebarStashSectionActions(
+            toggleSection: { toggleSection(.stashes) },
+            select: { selection = $0 },
+            apply: onRequestApplyStash,
+            delete: onRequestDeleteStash,
+            makeItemProvider: makeStashItemProvider,
+            setHeaderDropTargeted: updateStashesHeaderDropTarget,
+            drop: dropActions
+        )
+    }
+
+    var dropActions: SidebarDropActions {
+        SidebarDropActions(
+            activePayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
+            canAccept: canAcceptDrop,
+            handlePayload: { payload, target, optionKeyPressed in
+                handleDrop([payload], target: target, optionKeyPressed: optionKeyPressed)
+            },
+            handleProviders: handleDrop,
+            clearPayload: { payload in
+                activeBranchDragPayload = nil
+                if let payload {
+                    GitDragPayloadStore.clear(ifMatching: payload)
+                } else {
+                    GitDragPayloadStore.clear()
+                }
+                clearDropHover()
+            }
+        )
+    }
+
     private var sidebarContent: some View {
         sidebarList
             .alert("Error", isPresented: $showingError) {
