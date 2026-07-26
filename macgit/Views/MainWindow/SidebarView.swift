@@ -676,26 +676,6 @@ struct SidebarView: View {
             )
         }
     }
-
-    private func loadSectionStates() {
-        sectionStates = SidebarSettingsStore.shared.state(for: repositoryURL.path)
-    }
-
-    private func toggleSection(_ section: SidebarSection) {
-        SidebarSettingsStore.shared.toggleSection(section, for: repositoryURL.path)
-        sectionStates = SidebarSettingsStore.shared.state(for: repositoryURL.path)
-        Task {
-            await loadSectionIfNeeded(section)
-        }
-    }
-
-    private func toggleTagFolder(_ path: String) {
-        if expandedTagFolders.contains(path) {
-            expandedTagFolders.remove(path)
-        } else {
-            expandedTagFolders.insert(path)
-        }
-    }
 }
 
 #Preview {
