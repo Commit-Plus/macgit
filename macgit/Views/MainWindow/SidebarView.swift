@@ -115,43 +115,6 @@ private struct WorktreePresentationModifier: ViewModifier {
     }
 }
 
-private struct SubtreePresentationModifier: ViewModifier {
-    @Binding var subtreeToEdit: GitSubtreeEntry?
-    @Binding var subtreeToUnlink: GitSubtreeEntry?
-
-    let editSubtreeSheet: (GitSubtreeEntry) -> AnyView
-    let unlinkSubtree: (GitSubtreeEntry) async -> Void
-    let onRunRepositoryOperation: RepositoryOperationRunner
-
-    func body(content: Content) -> some View {
-        content
-            .sheet(item: $subtreeToEdit) { entry in
-                editSubtreeSheet(entry)
-            }
-            .alert("Unlink Subtree", isPresented: Binding(
-                get: { subtreeToUnlink != nil },
-                set: { isPresented in
-                    if !isPresented {
-                        subtreeToUnlink = nil
-                    }
-                }
-            )) {
-                Button("Cancel", role: .cancel) {
-                    subtreeToUnlink = nil
-                }
-                Button("Unlink", role: .destructive) {
-                    if let entry = subtreeToUnlink {
-                        onRunRepositoryOperation("Unlinking \(entry.path)...") {
-                            await unlinkSubtree(entry)
-                        }
-                    }
-                }
-            } message: {
-                Text("Unlink removes Commit+ metadata only. Files under \(subtreeToUnlink?.path ?? "") remain unchanged.")
-            }
-    }
-}
-
 struct SidebarView: View {
     @EnvironmentObject private var appUpdateController: AppUpdateController
     @EnvironmentObject private var appState: AppState
@@ -499,6 +462,18 @@ struct SidebarView: View {
         )
     }
 
+    var subtreeSectionActions: SidebarSubtreeSectionActions {
+        SidebarSubtreeSectionActions(
+            toggleSection: { toggleSection(.subtrees) },
+            showInFinder: onRequestShowSubtreeInFinder,
+            openInTerminal: onRequestOpenSubtreeInTerminal,
+            pull: onRequestPullSubtree,
+            push: onRequestPushSubtree,
+            edit: { subtreeToEdit = $0 },
+            unlink: { subtreeToUnlink = $0 }
+        )
+    }
+
     var dropActions: SidebarDropActions {
         SidebarDropActions(
             activePayload: { activeBranchDragPayload ?? GitDragPayloadStore.currentPayload() },
@@ -643,19 +618,11 @@ struct SidebarView: View {
     }
 
     private var sidebarSubtreePresentation: some ViewModifier {
-        SubtreePresentationModifier(
+        SidebarSubtreePresentationModifier(
             subtreeToEdit: $subtreeToEdit,
             subtreeToUnlink: $subtreeToUnlink,
-            editSubtreeSheet: { entry in
-                AnyView(
-                    EditSubtreeSheet(
-                        entry: entry,
-                        onSave: { updated in
-                            try await onRequestUpdateSubtreeLink(updated)
-                        },
-                        onRunRepositoryOperation: onRunRepositoryOperation
-                    )
-                )
+            updateSubtree: { updated in
+                try await onRequestUpdateSubtreeLink(updated)
             },
             unlinkSubtree: unlinkSubtree,
             onRunRepositoryOperation: onRunRepositoryOperation
@@ -758,46 +725,15 @@ struct SidebarView: View {
         }
 
         if appState.showSubtrees {
-            subtreesSection
+            SidebarSubtreesSection(
+                repositoryURL: repositoryURL,
+                entries: subtreeEntries,
+                isExpanded: sectionStates.subtreesExpanded,
+                isLoading: isLoadingSubtrees,
+                onAddLinkSubtree: onRequestAddLinkSubtree,
+                actions: subtreeSectionActions
+            )
         }
-    }
-
-    @ViewBuilder
-    private var subtreesSection: some View {
-        Section {
-            sectionHeader(.subtrees, isExpanded: sectionStates.subtreesExpanded)
-
-            if sectionStates.subtreesExpanded {
-                if isLoadingSubtrees && subtreeEntries.isEmpty {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                } else if subtreeEntries.isEmpty {
-                    Text("No subtrees")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(subtreeEntries) { entry in
-                        subtreeRow(entry)
-                    }
-                }
-            }
-        }
-    }
-
-    private func subtreeRow(_ entry: GitSubtreeEntry) -> some View {
-        let path = repositoryURL.appendingPathComponent(entry.path, isDirectory: true)
-        return SidebarSubtreeRow(
-            entry: entry,
-            onShowInFinder: { onRequestShowSubtreeInFinder(path) },
-            onOpenInTerminal: { onRequestOpenSubtreeInTerminal(path) },
-            onPull: { onRequestPullSubtree(entry) },
-            onPush: { onRequestPushSubtree(entry) },
-            onEditLink: { subtreeToEdit = entry },
-            onUnlink: { subtreeToUnlink = entry }
-        )
-        .tag(SidebarSelection.subtree(entry.id))
     }
 
     private func presentDeinitializeSubmoduleConfirmation(_ entry: GitSubmoduleEntry) {
