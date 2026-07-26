@@ -486,8 +486,74 @@ struct SidebarView: View {
             } message: {
                 Text("Delete '\(remoteBranchDeleteTarget?.fullPath ?? "")' from the remote?")
             }
-            .modifier(sidebarWorktreePresentation)
-            .modifier(sidebarSubtreePresentation)
+            .modifier(
+                SidebarWorktreePresentationModifier(
+                    worktreeToLabel: $worktreeToLabel,
+                    worktreeLabelInput: $worktreeLabelInput,
+                    worktreeToLock: $worktreeToLock,
+                    worktreeLockReasonInput: $worktreeLockReasonInput,
+                    isUpdatingWorktreeLock: isUpdatingWorktreeLock,
+                    worktreeToMove: $worktreeToMove,
+                    worktreeMovePathInput: $worktreeMovePathInput,
+                    worktreeMoveErrorMessage: $worktreeMoveErrorMessage,
+                    canMoveWorktree: canMoveWorktree,
+                    isMovingWorktree: isMovingWorktree,
+                    worktreeToCheckout: $worktreeToCheckout,
+                    availableWorktreeCheckoutBranches: $availableWorktreeCheckoutBranches,
+                    selectedWorktreeCheckoutBranch: $selectedWorktreeCheckoutBranch,
+                    worktreeCheckoutErrorMessage: $worktreeCheckoutErrorMessage,
+                    canCheckoutWorktreeBranch: canCheckoutWorktreeBranch,
+                    isCheckingOutWorktreeBranch: isCheckingOutWorktreeBranch,
+                    showingCreateWorktreeSheet: $showingCreateWorktreeSheet,
+                    createWorktreeMode: $createWorktreeMode,
+                    availableWorktreeBranches: availableWorktreeBranches,
+                    selectedExistingWorktreeBranch: $selectedExistingWorktreeBranch,
+                    newWorktreeBranchName: $newWorktreeBranchName,
+                    newWorktreeBaseBranch: $newWorktreeBaseBranch,
+                    worktreePathInput: $worktreePathInput,
+                    worktreeLabelDraft: $worktreeLabelDraft,
+                    openWorktreeAfterCreate: $openWorktreeAfterCreate,
+                    worktreeCreationErrorMessage: worktreeCreationErrorMessage,
+                    canCreateWorktree: canCreateWorktree,
+                    isCreatingWorktree: isCreatingWorktree,
+                    showingWorktreeRemovalConfirmation: $showingWorktreeRemovalConfirmation,
+                    showingMissingWorktreeAlert: $showingMissingWorktreeAlert,
+                    showingWorktreeForceCheckoutConfirmation: $showingWorktreeForceCheckoutConfirmation,
+                    showingPruneWorktreesConfirmation: $showingPruneWorktreesConfirmation,
+                    pendingWorktreeRemoval: $pendingWorktreeRemoval,
+                    pendingWorktreeForceCheckout: $pendingWorktreeForceCheckout,
+                    missingWorktreeEntry: $missingWorktreeEntry,
+                    worktreeRemovalNeedsForce: worktreeRemovalNeedsForce,
+                    worktreeRemovalMessage: worktreeRemovalMessage,
+                    saveWorktreeLabel: saveWorktreeLabel,
+                    lockWorktree: lockWorktree,
+                    moveWorktree: moveWorktree,
+                    checkoutWorktree: checkoutWorktree,
+                    onCreateWorktreeModeChange: { refreshWorktreePathIfNeeded(force: false) },
+                    onSelectedExistingWorktreeBranchChange: { refreshWorktreePathIfNeeded(force: false) },
+                    onNewWorktreeBranchNameChange: { refreshWorktreePathIfNeeded(force: false) },
+                    onWorktreePathChange: { newValue in
+                        customWorktreePath = newValue != defaultWorktreePath().path
+                    },
+                    createWorktree: createWorktree,
+                    chooseReplacementWorktreeFolder: chooseReplacementWorktreeFolder,
+                    deleteMissingWorktree: deleteMissingWorktree,
+                    removeWorktree: removeWorktree,
+                    pruneWorktrees: pruneWorktrees,
+                    onRunRepositoryOperation: onRunRepositoryOperation
+                )
+            )
+            .modifier(
+                SidebarSubtreePresentationModifier(
+                    subtreeToEdit: $subtreeToEdit,
+                    subtreeToUnlink: $subtreeToUnlink,
+                    updateSubtree: { updated in
+                        try await onRequestUpdateSubtreeLink(updated)
+                    },
+                    unlinkSubtree: unlinkSubtree,
+                    onRunRepositoryOperation: onRunRepositoryOperation
+                )
+            )
             .modifier(
                 SubmoduleLifecyclePresentationModifier(
                     submoduleToEdit: $submoduleToEdit,
@@ -533,76 +599,6 @@ struct SidebarView: View {
                 await loadSubtrees(force: false)
             }
         }
-    }
-
-    private var sidebarWorktreePresentation: some ViewModifier {
-        SidebarWorktreePresentationModifier(
-            worktreeToLabel: $worktreeToLabel,
-            worktreeLabelInput: $worktreeLabelInput,
-            worktreeToLock: $worktreeToLock,
-            worktreeLockReasonInput: $worktreeLockReasonInput,
-            isUpdatingWorktreeLock: isUpdatingWorktreeLock,
-            worktreeToMove: $worktreeToMove,
-            worktreeMovePathInput: $worktreeMovePathInput,
-            worktreeMoveErrorMessage: $worktreeMoveErrorMessage,
-            canMoveWorktree: canMoveWorktree,
-            isMovingWorktree: isMovingWorktree,
-            worktreeToCheckout: $worktreeToCheckout,
-            availableWorktreeCheckoutBranches: $availableWorktreeCheckoutBranches,
-            selectedWorktreeCheckoutBranch: $selectedWorktreeCheckoutBranch,
-            worktreeCheckoutErrorMessage: $worktreeCheckoutErrorMessage,
-            canCheckoutWorktreeBranch: canCheckoutWorktreeBranch,
-            isCheckingOutWorktreeBranch: isCheckingOutWorktreeBranch,
-            showingCreateWorktreeSheet: $showingCreateWorktreeSheet,
-            createWorktreeMode: $createWorktreeMode,
-            availableWorktreeBranches: availableWorktreeBranches,
-            selectedExistingWorktreeBranch: $selectedExistingWorktreeBranch,
-            newWorktreeBranchName: $newWorktreeBranchName,
-            newWorktreeBaseBranch: $newWorktreeBaseBranch,
-            worktreePathInput: $worktreePathInput,
-            worktreeLabelDraft: $worktreeLabelDraft,
-            openWorktreeAfterCreate: $openWorktreeAfterCreate,
-            worktreeCreationErrorMessage: worktreeCreationErrorMessage,
-            canCreateWorktree: canCreateWorktree,
-            isCreatingWorktree: isCreatingWorktree,
-            showingWorktreeRemovalConfirmation: $showingWorktreeRemovalConfirmation,
-            showingMissingWorktreeAlert: $showingMissingWorktreeAlert,
-            showingWorktreeForceCheckoutConfirmation: $showingWorktreeForceCheckoutConfirmation,
-            showingPruneWorktreesConfirmation: $showingPruneWorktreesConfirmation,
-            pendingWorktreeRemoval: $pendingWorktreeRemoval,
-            pendingWorktreeForceCheckout: $pendingWorktreeForceCheckout,
-            missingWorktreeEntry: $missingWorktreeEntry,
-            worktreeRemovalNeedsForce: worktreeRemovalNeedsForce,
-            worktreeRemovalMessage: worktreeRemovalMessage,
-            saveWorktreeLabel: saveWorktreeLabel,
-            lockWorktree: lockWorktree,
-            moveWorktree: moveWorktree,
-            checkoutWorktree: checkoutWorktree,
-            onCreateWorktreeModeChange: { refreshWorktreePathIfNeeded(force: false) },
-            onSelectedExistingWorktreeBranchChange: { refreshWorktreePathIfNeeded(force: false) },
-            onNewWorktreeBranchNameChange: { refreshWorktreePathIfNeeded(force: false) },
-            onWorktreePathChange: { newValue in
-                customWorktreePath = newValue != defaultWorktreePath().path
-            },
-            createWorktree: createWorktree,
-            chooseReplacementWorktreeFolder: chooseReplacementWorktreeFolder,
-            deleteMissingWorktree: deleteMissingWorktree,
-            removeWorktree: removeWorktree,
-            pruneWorktrees: pruneWorktrees,
-            onRunRepositoryOperation: onRunRepositoryOperation
-        )
-    }
-
-    private var sidebarSubtreePresentation: some ViewModifier {
-        SidebarSubtreePresentationModifier(
-            subtreeToEdit: $subtreeToEdit,
-            subtreeToUnlink: $subtreeToUnlink,
-            updateSubtree: { updated in
-                try await onRequestUpdateSubtreeLink(updated)
-            },
-            unlinkSubtree: unlinkSubtree,
-            onRunRepositoryOperation: onRunRepositoryOperation
-        )
     }
 
     @ViewBuilder
