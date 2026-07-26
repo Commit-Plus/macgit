@@ -28,7 +28,7 @@ import UniformTypeIdentifiers
 
 struct SidebarView: View {
     @EnvironmentObject private var appUpdateController: AppUpdateController
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject var appState: AppState
 
     let repositoryURL: URL
     @Binding var selection: SidebarSelection?
@@ -80,89 +80,89 @@ struct SidebarView: View {
     let onRequestDragDrop: (GitDragDropRequest) -> Void
     let onRunRepositoryOperation: RepositoryOperationRunner
 
-    @State private var branchNodes: [BranchNode] = []
-    @State private var currentBranch: String = ""
-    @State private var headHash: String = ""
-    @State private var branchSyncStatus: [String: BranchSyncStatus] = [:]
-    @State private var activeBranchSyncLoadID: UUID?
-    @State private var loadedBranchSyncBranches: Set<String> = []
-    @State private var syncingBranchSyncBranches: Set<String> = []
-    @State private var expandedFolders: Set<String> = []
-    @State private var hasLoadedBranches = false
-    @State private var isLoadingBranches = false
-    @State private var tagNodes: [BranchNode] = []
-    @State private var isLoadingTags = false
-    @State private var expandedTagFolders: Set<String> = []
-    @State private var remoteNodes: [BranchNode] = []
-    @State private var remoteNames: [String] = []
-    @State private var branchesByRemote: [String: [String]] = [:]
-    @State private var upstreamByBranch: [String: String] = [:]
-    @State private var isLoadingRemotes = false
-    @State private var expandedRemoteFolders: Set<String> = []
-    @State private var stashEntries: [StashEntry] = []
-    @State private var isLoadingStashes = false
-    @State private var submoduleEntries: [GitSubmoduleEntry] = []
-    @State private var hasLoadedSubmodules = false
-    @State private var isLoadingSubmodules = false
-    @State private var activeSubmoduleLoadID: UUID?
-    @State private var submoduleToEdit: GitSubmoduleEntry?
-    @State private var submoduleToDeinitialize: GitSubmoduleEntry?
-    @State private var submoduleToRemove: GitSubmoduleEntry?
-    @State private var subtreeEntries: [GitSubtreeEntry] = []
-    @State private var hasLoadedSubtrees = false
-    @State private var isLoadingSubtrees = false
-    @State private var subtreeToEdit: GitSubtreeEntry?
-    @State private var subtreeToUnlink: GitSubtreeEntry?
-    @State private var worktreeEntries: [WorktreeEntry] = []
-    @State private var hasLoadedWorktrees = false
-    @State private var isLoadingWorktrees = false
-    @State private var worktreeToLabel: WorktreeEntry?
-    @State private var worktreeLabelInput = ""
-    @State private var worktreeToLock: WorktreeEntry?
-    @State private var worktreeLockReasonInput = ""
-    @State private var isUpdatingWorktreeLock = false
-    @State private var worktreeToMove: WorktreeEntry?
-    @State private var worktreeMovePathInput = ""
-    @State private var worktreeMoveErrorMessage: String?
-    @State private var isMovingWorktree = false
-    @State private var worktreeToCheckout: WorktreeEntry?
-    @State private var availableWorktreeCheckoutBranches: [String] = []
-    @State private var selectedWorktreeCheckoutBranch = ""
-    @State private var worktreeCheckoutErrorMessage: String?
-    @State private var isCheckingOutWorktreeBranch = false
-    @State private var pendingWorktreeForceCheckout: WorktreeEntry?
-    @State private var showingWorktreeForceCheckoutConfirmation = false
-    @State private var missingWorktreeEntry: WorktreeEntry?
-    @State private var showingMissingWorktreeAlert = false
-    @State private var pendingWorktreeRemoval: WorktreeEntry?
-    @State private var showingWorktreeRemovalConfirmation = false
-    @State private var showingPruneWorktreesConfirmation = false
-    @State private var createWorktreeMode: WorktreeCreationMode = .existingBranch
-    @State private var availableWorktreeBranches: [String] = []
-    @State private var currentWorktreeBranch = ""
-    @State private var selectedExistingWorktreeBranch = ""
-    @State private var newWorktreeBranchName = ""
-    @State private var newWorktreeBaseBranch = ""
-    @State private var worktreePathInput = ""
-    @State private var customWorktreePath = false
-    @State private var worktreeLabelDraft = ""
-    @State private var openWorktreeAfterCreate = true
-    @State private var showingCreateWorktreeSheet = false
-    @State private var isCreatingWorktree = false
-    @State private var worktreeCreationErrorMessage: String?
-    @State private var worktreeRootURL: URL?
+    @State var branchNodes: [BranchNode] = []
+    @State var currentBranch: String = ""
+    @State var headHash: String = ""
+    @State var branchSyncStatus: [String: BranchSyncStatus] = [:]
+    @State var activeBranchSyncLoadID: UUID?
+    @State var loadedBranchSyncBranches: Set<String> = []
+    @State var syncingBranchSyncBranches: Set<String> = []
+    @State var expandedFolders: Set<String> = []
+    @State var hasLoadedBranches = false
+    @State var isLoadingBranches = false
+    @State var tagNodes: [BranchNode] = []
+    @State var isLoadingTags = false
+    @State var expandedTagFolders: Set<String> = []
+    @State var remoteNodes: [BranchNode] = []
+    @State var remoteNames: [String] = []
+    @State var branchesByRemote: [String: [String]] = [:]
+    @State var upstreamByBranch: [String: String] = [:]
+    @State var isLoadingRemotes = false
+    @State var expandedRemoteFolders: Set<String> = []
+    @State var stashEntries: [StashEntry] = []
+    @State var isLoadingStashes = false
+    @State var submoduleEntries: [GitSubmoduleEntry] = []
+    @State var hasLoadedSubmodules = false
+    @State var isLoadingSubmodules = false
+    @State var activeSubmoduleLoadID: UUID?
+    @State var submoduleToEdit: GitSubmoduleEntry?
+    @State var submoduleToDeinitialize: GitSubmoduleEntry?
+    @State var submoduleToRemove: GitSubmoduleEntry?
+    @State var subtreeEntries: [GitSubtreeEntry] = []
+    @State var hasLoadedSubtrees = false
+    @State var isLoadingSubtrees = false
+    @State var subtreeToEdit: GitSubtreeEntry?
+    @State var subtreeToUnlink: GitSubtreeEntry?
+    @State var worktreeEntries: [WorktreeEntry] = []
+    @State var hasLoadedWorktrees = false
+    @State var isLoadingWorktrees = false
+    @State var worktreeToLabel: WorktreeEntry?
+    @State var worktreeLabelInput = ""
+    @State var worktreeToLock: WorktreeEntry?
+    @State var worktreeLockReasonInput = ""
+    @State var isUpdatingWorktreeLock = false
+    @State var worktreeToMove: WorktreeEntry?
+    @State var worktreeMovePathInput = ""
+    @State var worktreeMoveErrorMessage: String?
+    @State var isMovingWorktree = false
+    @State var worktreeToCheckout: WorktreeEntry?
+    @State var availableWorktreeCheckoutBranches: [String] = []
+    @State var selectedWorktreeCheckoutBranch = ""
+    @State var worktreeCheckoutErrorMessage: String?
+    @State var isCheckingOutWorktreeBranch = false
+    @State var pendingWorktreeForceCheckout: WorktreeEntry?
+    @State var showingWorktreeForceCheckoutConfirmation = false
+    @State var missingWorktreeEntry: WorktreeEntry?
+    @State var showingMissingWorktreeAlert = false
+    @State var pendingWorktreeRemoval: WorktreeEntry?
+    @State var showingWorktreeRemovalConfirmation = false
+    @State var showingPruneWorktreesConfirmation = false
+    @State var createWorktreeMode: WorktreeCreationMode = .existingBranch
+    @State var availableWorktreeBranches: [String] = []
+    @State var currentWorktreeBranch = ""
+    @State var selectedExistingWorktreeBranch = ""
+    @State var newWorktreeBranchName = ""
+    @State var newWorktreeBaseBranch = ""
+    @State var worktreePathInput = ""
+    @State var customWorktreePath = false
+    @State var worktreeLabelDraft = ""
+    @State var openWorktreeAfterCreate = true
+    @State var showingCreateWorktreeSheet = false
+    @State var isCreatingWorktree = false
+    @State var worktreeCreationErrorMessage: String?
+    @State var worktreeRootURL: URL?
 
-    @State private var sectionStates = SidebarSectionState()
+    @State var sectionStates = SidebarSectionState()
 
-    @State private var errorMessage = ""
-    @State private var showingError = false
-    @State private var deleteConfirmationTarget: DeleteConfirmationTarget?
-    @State private var remoteBranchDeleteTarget: RemoteBranchDeleteTarget?
-    @State private var forceDeleteBranch = false
-    @State private var activeDropTarget: GitDragTarget?
-    @State private var activeDropLabel: String?
-    @State private var isCurrentBranchDropTargeted = false
-    @State private var activeBranchDragPayload: GitDragPayload?
+    @State var errorMessage = ""
+    @State var showingError = false
+    @State var deleteConfirmationTarget: DeleteConfirmationTarget?
+    @State var remoteBranchDeleteTarget: RemoteBranchDeleteTarget?
+    @State var forceDeleteBranch = false
+    @State var activeDropTarget: GitDragTarget?
+    @State var activeDropLabel: String?
+    @State var isCurrentBranchDropTargeted = false
+    @State var activeBranchDragPayload: GitDragPayload?
 
     init(
         repositoryURL: URL,
