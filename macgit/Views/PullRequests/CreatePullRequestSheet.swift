@@ -21,7 +21,11 @@ import SwiftUI
 struct CreatePullRequestSheet: View {
     let seed: PullRequestDraftSeed
     let isSubmitting: Bool
+    let changedFileCount: Int?
+    let isLoadingChanges: Bool
+    let changesErrorMessage: String?
     var onCancel: () -> Void
+    var onBranchesChanged: (String, String) -> Void
     var onCreate: (PullRequestDraft) -> Void
 
     @State private var sourceBranch: String
@@ -33,12 +37,20 @@ struct CreatePullRequestSheet: View {
     init(
         seed: PullRequestDraftSeed,
         isSubmitting: Bool,
+        changedFileCount: Int?,
+        isLoadingChanges: Bool,
+        changesErrorMessage: String?,
         onCancel: @escaping () -> Void,
+        onBranchesChanged: @escaping (String, String) -> Void,
         onCreate: @escaping (PullRequestDraft) -> Void
     ) {
         self.seed = seed
         self.isSubmitting = isSubmitting
+        self.changedFileCount = changedFileCount
+        self.isLoadingChanges = isLoadingChanges
+        self.changesErrorMessage = changesErrorMessage
         self.onCancel = onCancel
+        self.onBranchesChanged = onBranchesChanged
         self.onCreate = onCreate
         _sourceBranch = State(initialValue: seed.sourceBranch)
         _targetBranch = State(initialValue: seed.targetBranch)
@@ -73,6 +85,8 @@ struct CreatePullRequestSheet: View {
                     }
                 }
             }
+
+            changeSummary
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Title")
@@ -114,11 +128,49 @@ struct CreatePullRequestSheet: View {
         }
         .padding(20)
         .frame(minWidth: 520, idealWidth: 560)
+        .onChange(of: sourceBranch) { _, _ in
+            reloadChanges()
+        }
+        .onChange(of: targetBranch) { _, _ in
+            reloadChanges()
+        }
     }
 
     private var canSubmit: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && sourceBranch != targetBranch
+            && changedFileCount.map { $0 > 0 } == true
+            && !isLoadingChanges
+    }
+
+    @ViewBuilder
+    private var changeSummary: some View {
+        HStack(spacing: 8) {
+            if isLoadingChanges {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Checking file changes...")
+            } else if let changesErrorMessage {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text(changesErrorMessage)
+                    .foregroundStyle(.secondary)
+            } else if let changedFileCount {
+                Image(systemName: changedFileCount > 0 ? "doc.on.doc" : "exclamationmark.circle")
+                    .foregroundStyle(changedFileCount > 0 ? Color.secondary : Color.orange)
+                    .accessibilityHidden(true)
+                Text(changedFileCount == 1 ? "1 file changed" : "\(changedFileCount) files changed")
+                    .foregroundStyle(changedFileCount > 0 ? .primary : .secondary)
+            }
+        }
+        .font(.callout)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func reloadChanges() {
+        validationMessage = nil
+        onBranchesChanged(sourceBranch, targetBranch)
     }
 
     private func submit() {

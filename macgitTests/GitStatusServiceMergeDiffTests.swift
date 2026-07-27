@@ -43,6 +43,20 @@ final class GitStatusServiceMergeDiffTests: XCTestCase {
         XCTAssertTrue(addedLines.contains { $0.text == "feature line" }, "Diff should contain the feature addition")
     }
 
+    func testPullRequestChangedFileCountUsesRemoteTargetAndThreeDotDiff() async throws {
+        let repoURL = try makeRepoWithMergeCommit()
+        try runGit(["update-ref", "refs/remotes/origin/main", "main^1"], in: repoURL)
+
+        let count = try await GitStatusService.shared.pullRequestChangedFileCount(
+            sourceBranch: "feature",
+            targetBranch: "main",
+            remoteName: "origin",
+            in: repoURL
+        )
+
+        XCTAssertEqual(count, 1)
+    }
+
     // MARK: - Helpers
 
     private func makeRepoWithMergeCommit() throws -> URL {
