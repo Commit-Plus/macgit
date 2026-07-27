@@ -128,6 +128,54 @@ extension GitStatusService {
         }
     }
 
+    func pullRequestChangedFileCount(
+        sourceBranch: String,
+        targetBranch: String,
+        remoteName: String?,
+        in repositoryURL: URL
+    ) async throws -> Int {
+        let sourceRef = "refs/heads/\(sourceBranch)"
+        guard await gitReferenceExists(sourceRef, in: repositoryURL) else {
+            throw GitError.commandFailed("Could not find source branch '\(sourceBranch)'.")
+        }
+
+        let remoteTargetRef = remoteName.map { "refs/remotes/\($0)/\(targetBranch)" }
+        let localTargetRef = "refs/heads/\(targetBranch)"
+        let targetRef: String
+        if let remoteTargetRef, await gitReferenceExists(remoteTargetRef, in: repositoryURL) {
+            targetRef = remoteTargetRef
+        } else if await gitReferenceExists(localTargetRef, in: repositoryURL) {
+            targetRef = localTargetRef
+        } else {
+            throw GitError.commandFailed("Could not find target branch '\(targetBranch)'.")
+        }
+
+        let output = try await runGitRaw(
+            arguments: [
+                "diff",
+                "--name-only",
+                "-z",
+                "--find-renames",
+                "\(targetRef)...\(sourceRef)",
+                "--",
+            ],
+            in: repositoryURL
+        )
+        return output.split(separator: 0).count
+    }
+
+    private func gitReferenceExists(_ reference: String, in repositoryURL: URL) async -> Bool {
+        do {
+            _ = try await runGit(
+                arguments: ["rev-parse", "--verify", "--quiet", reference],
+                in: repositoryURL
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
     func diff(
         for file: String,
         from baseRef: String,

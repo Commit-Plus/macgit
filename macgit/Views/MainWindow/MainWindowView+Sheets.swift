@@ -343,7 +343,18 @@ extension MainWindowView {
             CreatePullRequestSheet(
                 seed: seed,
                 isSubmitting: pullRequestController.isPerformingAction,
+                changedFileCount: pullRequestController.createDraftChangedFileCount,
+                isLoadingChanges: pullRequestController.isLoadingCreateDraftChanges,
+                changesErrorMessage: pullRequestController.createDraftChangesErrorMessage,
                 onCancel: { pullRequestController.dismissCreatePullRequest() },
+                onBranchesChanged: { sourceBranch, targetBranch in
+                    Task {
+                        await pullRequestController.loadCreateDraftChanges(
+                            sourceBranch: sourceBranch,
+                            targetBranch: targetBranch
+                        )
+                    }
+                },
                 onCreate: { draft in
                     Task { await pullRequestController.createPullRequest(draft) }
                 }

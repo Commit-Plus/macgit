@@ -567,6 +567,77 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(controller.createDraftSeed?.suggestedTitle, "Context Menu Pr")
     }
 
+    func testPresentCreatePullRequestLoadsChangedFileCount() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let repositoryURL = URL(fileURLWithPath: "/tmp/macgit-pr-change-count")
+        var receivedComparison: (source: String, target: String, remote: String?)?
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: FakePullRequestProvider(result: .success([makeSummary()]))],
+            remoteNameProvider: { _ in "origin" },
+            remoteURLProvider: { _, _ in "https://github.com/octocat/Hello-World.git" },
+            currentBranchProvider: { _ in "feature/change-count" },
+            localBranchesProvider: { _ in ["main", "feature/change-count"] },
+            changedFileCountProvider: { _, source, target, remote in
+                receivedComparison = (source, target, remote)
+                return 4
+            }
+        )
+
+        await controller.loadPullRequests(repositoryURL: repositoryURL)
+        await controller.presentCreatePullRequest()
+
+        XCTAssertEqual(controller.createDraftChangedFileCount, 4)
+        XCTAssertFalse(controller.isLoadingCreateDraftChanges)
+        XCTAssertNil(controller.createDraftChangesErrorMessage)
+        XCTAssertEqual(receivedComparison?.source, "feature/change-count")
+        XCTAssertEqual(receivedComparison?.target, "main")
+        XCTAssertEqual(receivedComparison?.remote, "origin")
+    }
+
+    func testCreatePullRequestChangeCountIsZeroWhenBranchesMatch() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        var providerWasCalled = false
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: FakePullRequestProvider()],
+            changedFileCountProvider: { _, _, _, _ in
+                providerWasCalled = true
+                return 1
+            }
+        )
+
+        await controller.loadCreateDraftChanges(sourceBranch: "main", targetBranch: "main")
+
+        XCTAssertEqual(controller.createDraftChangedFileCount, 0)
+        XCTAssertFalse(controller.isLoadingCreateDraftChanges)
+        XCTAssertFalse(providerWasCalled)
+    }
+
     func testCreatePullRequestRequiresValidDraft() async throws {
         let account = makeAccount()
         let token = makeToken()

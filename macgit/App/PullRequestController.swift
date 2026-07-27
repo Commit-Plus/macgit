@@ -72,6 +72,9 @@ final class PullRequestController: ObservableObject {
     @Published private(set) var selectedDetail: PullRequestDetail?
     @Published private(set) var isLoadingDetail = false
     @Published private(set) var createDraftSeed: PullRequestDraftSeed?
+    @Published private(set) var createDraftChangedFileCount: Int?
+    @Published private(set) var isLoadingCreateDraftChanges = false
+    @Published private(set) var createDraftChangesErrorMessage: String?
     @Published private(set) var isPerformingAction = false
     @Published private(set) var accountConnectionHost: GitProviderHost?
 
@@ -82,6 +85,7 @@ final class PullRequestController: ObservableObject {
     private let remoteURLProvider: (URL, String) async -> String?
     private let currentBranchProvider: (URL) async -> String?
     private let localBranchesProvider: (URL) async -> [String]
+    private let changedFileCountProvider: (URL, String, String, String?) async throws -> Int
     private let fetchPullRequestRef: (String, String, String, URL, GitProviderCredentialResolver?) async throws -> Void
     private let checkoutBranch: (String, URL) async throws -> Void
     private let openURL: (URL) -> Bool
@@ -97,6 +101,7 @@ final class PullRequestController: ObservableObject {
     private let commentRefreshDelayNanoseconds: UInt64 = 300_000_000
     private var listCache: [PullRequestListCacheKey: CachedPullRequestListPage] = [:]
     private var detailCache: [PullRequestDetailCacheKey: CachedPullRequestDetail] = [:]
+    private var createDraftChangesLoadID = UUID()
 
     init(
         providerAccountController: GitProviderAccountController,
@@ -115,6 +120,14 @@ final class PullRequestController: ObservableObject {
         },
         localBranchesProvider: @escaping (URL) async -> [String] = { repositoryURL in
             await GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
+        },
+        changedFileCountProvider: @escaping (URL, String, String, String?) async throws -> Int = { repositoryURL, sourceBranch, targetBranch, remoteName in
+            try await GitStatusService.shared.pullRequestChangedFileCount(
+                sourceBranch: sourceBranch,
+                targetBranch: targetBranch,
+                remoteName: remoteName,
+                in: repositoryURL
+            )
         },
         fetchPullRequestRef: @escaping (String, String, String, URL, GitProviderCredentialResolver?) async throws -> Void = { remote, reference, localBranch, repositoryURL, credentialResolver in
             try await GitStatusService.shared.fetchPullRequestRef(
@@ -142,6 +155,7 @@ final class PullRequestController: ObservableObject {
         self.remoteURLProvider = remoteURLProvider
         self.currentBranchProvider = currentBranchProvider
         self.localBranchesProvider = localBranchesProvider
+        self.changedFileCountProvider = changedFileCountProvider
         self.fetchPullRequestRef = fetchPullRequestRef
         self.checkoutBranch = checkoutBranch
         self.openURL = openURL
@@ -416,10 +430,53 @@ final class PullRequestController: ObservableObject {
             targetBranch: defaultTargetBranch,
             suggestedTitle: suggestedTitle(for: sourceBranch)
         )
+        await loadCreateDraftChanges(sourceBranch: sourceBranch, targetBranch: defaultTargetBranch)
+    }
+
+    func loadCreateDraftChanges(sourceBranch: String, targetBranch: String) async {
+        let loadID = UUID()
+        createDraftChangesLoadID = loadID
+        createDraftChangedFileCount = nil
+        createDraftChangesErrorMessage = nil
+
+        guard sourceBranch != targetBranch else {
+            isLoadingCreateDraftChanges = false
+            createDraftChangedFileCount = 0
+            return
+        }
+        guard let repositoryURL = activeRepositoryURL else {
+            isLoadingCreateDraftChanges = false
+            createDraftChangesErrorMessage = "Pull request changes are unavailable."
+            return
+        }
+
+        isLoadingCreateDraftChanges = true
+        do {
+            let count = try await changedFileCountProvider(
+                repositoryURL,
+                sourceBranch,
+                targetBranch,
+                activeRemoteName
+            )
+            guard createDraftChangesLoadID == loadID else { return }
+            createDraftChangedFileCount = count
+            isLoadingCreateDraftChanges = false
+        } catch is CancellationError {
+            guard createDraftChangesLoadID == loadID else { return }
+            isLoadingCreateDraftChanges = false
+        } catch {
+            guard createDraftChangesLoadID == loadID else { return }
+            createDraftChangesErrorMessage = error.localizedDescription
+            isLoadingCreateDraftChanges = false
+        }
     }
 
     func dismissCreatePullRequest() {
+        createDraftChangesLoadID = UUID()
         createDraftSeed = nil
+        createDraftChangedFileCount = nil
+        createDraftChangesErrorMessage = nil
+        isLoadingCreateDraftChanges = false
     }
 
     func createPullRequest(_ draft: PullRequestDraft) async {
