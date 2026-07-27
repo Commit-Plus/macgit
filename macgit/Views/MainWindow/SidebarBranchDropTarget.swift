@@ -159,23 +159,35 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         }
 
         override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-            guard acceptedPayload(from: sender.draggingPasteboard) != nil else {
+            guard let payload = acceptedPayload(from: sender.draggingPasteboard) else {
                 setTargeted(false)
                 return []
             }
 
+            preserveCommitPreviewSize(in: sender, payload: payload)
             setTargeted(true)
             return .copy
         }
 
         override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-            guard acceptedPayload(from: sender.draggingPasteboard) != nil else {
+            guard let payload = acceptedPayload(from: sender.draggingPasteboard) else {
                 setTargeted(false)
                 return []
             }
 
+            preserveCommitPreviewSize(in: sender, payload: payload)
             setTargeted(true)
             return .copy
+        }
+
+        override func updateDraggingItemsForDrag(_ sender: (any NSDraggingInfo)?) {
+            guard let sender,
+                  let payload = acceptedPayload(from: sender.draggingPasteboard)
+            else {
+                return
+            }
+
+            preserveCommitPreviewSize(in: sender, payload: payload)
         }
 
         override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
@@ -256,6 +268,68 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
             }
 
             return try? GitDragPayload.decodeTransferData(data)
+        }
+
+        private func preserveCommitPreviewSize(
+            in sender: NSDraggingInfo,
+            payload: GitDragPayload
+        ) {
+            guard case .commits = payload.content else { return }
+
+            // SwiftUI can hand the native destination a Retina-scaled-down drag item.
+            // Restore both its outer frame and component frames so AppKit keeps the
+            // source preview's point size while the pointer is over the sidebar.
+            sender.draggingFormation = .none
+            sender.enumerateDraggingItems(
+                options: [],
+                for: self,
+                classes: [NSPasteboardItem.self],
+                searchOptions: [:]
+            ) { draggingItem, _, _ in
+                let originalFrame = draggingItem.draggingFrame
+                let targetFrame = Self.commitPreviewFrame(preservingCenterOf: originalFrame)
+                let components = draggingItem.imageComponents?.map { component in
+                    component.frame = Self.scaledComponentFrame(
+                        component.frame,
+                        from: originalFrame.size,
+                        to: targetFrame.size
+                    )
+                    return component
+                }
+
+                draggingItem.draggingFrame = targetFrame
+                if let components {
+                    draggingItem.imageComponentsProvider = { components }
+                }
+            }
+        }
+
+        static func commitPreviewFrame(preservingCenterOf frame: NSRect) -> NSRect {
+            NSRect(
+                x: frame.midX - CommitDragPreview.preferredSize.width / 2,
+                y: frame.midY - CommitDragPreview.preferredSize.height / 2,
+                width: CommitDragPreview.preferredSize.width,
+                height: CommitDragPreview.preferredSize.height
+            )
+        }
+
+        static func scaledComponentFrame(
+            _ frame: NSRect,
+            from sourceSize: NSSize,
+            to targetSize: NSSize
+        ) -> NSRect {
+            guard sourceSize.width > 0, sourceSize.height > 0 else {
+                return NSRect(origin: .zero, size: targetSize)
+            }
+
+            let horizontalScale = targetSize.width / sourceSize.width
+            let verticalScale = targetSize.height / sourceSize.height
+            return NSRect(
+                x: frame.origin.x * horizontalScale,
+                y: frame.origin.y * verticalScale,
+                width: frame.width * horizontalScale,
+                height: frame.height * verticalScale
+            )
         }
 
         static func pasteboardItem(for payload: GitDragPayload) -> NSPasteboardItem? {

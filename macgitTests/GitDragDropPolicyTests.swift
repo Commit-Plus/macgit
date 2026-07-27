@@ -172,6 +172,30 @@ final class GitDragDropPolicyTests: XCTestCase {
         )
     }
 
+    func testNativeBranchDropTargetRestoresCommitPreviewSizeAroundItsCenter() {
+        let shrunkenFrame = NSRect(x: 120, y: 80, width: 332, height: 12)
+
+        let restoredFrame = SidebarBranchDropTarget.DropTargetView.commitPreviewFrame(
+            preservingCenterOf: shrunkenFrame
+        )
+
+        XCTAssertEqual(restoredFrame.size, CommitDragPreview.preferredSize)
+        XCTAssertEqual(restoredFrame.midX, shrunkenFrame.midX)
+        XCTAssertEqual(restoredFrame.midY, shrunkenFrame.midY)
+    }
+
+    func testNativeBranchDropTargetScalesCommitPreviewImageComponents() {
+        let componentFrame = NSRect(x: 2, y: 1, width: 328, height: 10)
+
+        let restoredFrame = SidebarBranchDropTarget.DropTargetView.scaledComponentFrame(
+            componentFrame,
+            from: NSSize(width: 332, height: 12),
+            to: CommitDragPreview.preferredSize
+        )
+
+        XCTAssertEqual(restoredFrame, NSRect(x: 4, y: 2, width: 656, height: 20))
+    }
+
     func testRemoteBranchDragPayloadRoundTripsTransferData() throws {
         let payload = GitDragPayload.remoteBranch("origin/feature", repositoryURL: repoURL)
 

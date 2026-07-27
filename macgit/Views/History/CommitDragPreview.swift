@@ -23,6 +23,8 @@
 import SwiftUI
 
 struct CommitDragPreview: View {
+    nonisolated static let preferredSize = CGSize(width: 664, height: 24)
+
     let presentation: CommitDragPreviewPresentation
     let onDragStateChange: (Bool) -> Void
 
@@ -53,7 +55,7 @@ struct CommitDragPreview: View {
                 .frame(width: 70, alignment: .trailing)
         }
         .padding(.horizontal, 8)
-        .frame(width: 664, height: 24)
+        .frame(width: Self.preferredSize.width, height: Self.preferredSize.height)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay {
