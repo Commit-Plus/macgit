@@ -43,6 +43,8 @@ struct HistoryView: View {
     @State private var fileChanges: [CommitFileChange] = []
     @State private var selectedFile: CommitFileChange? = nil
     @State private var diffHunks: [DiffHunk] = []
+    @State private var commitFilesLoadID = UUID()
+    @State private var diffLoadID = UUID()
     @AppStorage("history.messageWidth") private var messageColumnWidth: Double = 200
     @AppStorage("history.authorWidth") private var authorColumnWidth: Double = 120
     @AppStorage("history.dateWidth") private var dateColumnWidth: Double = 80
@@ -1096,37 +1098,55 @@ struct HistoryView: View {
     }
     
     private func loadFileChanges(for commit: Commit?) async {
+        let loadID = UUID()
+        await MainActor.run {
+            commitFilesLoadID = loadID
+            fileChanges = []
+            selectedFile = nil
+            diffHunks = []
+            diffLoadID = UUID()
+        }
+
         guard let commit = commit else {
-            await MainActor.run {
-                fileChanges = []
-                selectedFile = nil
-                diffHunks = []
-            }
             return
         }
+
         let changes = await GitStatusService.shared.changedFiles(
             in: commit.hash,
             in: repositoryURL
         )
         await MainActor.run {
+            guard commitFilesLoadID == loadID,
+                  selectedCommit?.hash == commit.hash else {
+                return
+            }
             fileChanges = changes
             selectedFile = changes.first
         }
     }
     
     private func loadDiff(for file: CommitFileChange?, in commit: Commit?) async {
+        let loadID = UUID()
+        await MainActor.run {
+            diffLoadID = loadID
+            diffHunks = []
+        }
+
         guard let file = file, let commit = commit else {
-            await MainActor.run {
-                diffHunks = []
-            }
             return
         }
+
         let hunks = await GitStatusService.shared.diff(
             for: file.path,
             in: commit.hash,
             in: repositoryURL
         )
         await MainActor.run {
+            guard diffLoadID == loadID,
+                  selectedCommit?.hash == commit.hash,
+                  selectedFile == file else {
+                return
+            }
             diffHunks = hunks
         }
     }
