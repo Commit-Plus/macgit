@@ -56,6 +56,9 @@ struct HistoryView: View {
     @State private var rowFrames: [String: CGRect] = [:]
     @State private var paging = HistoryPagingState(pageSize: HistoryView.historyPageSize)
     @State private var historyCache: [String: HistorySnapshot] = [:]
+    @State private var historySearchText = ""
+    @State private var debouncedHistorySearchText = ""
+    @State private var historySearchDebounceTask: Task<Void, Never>? = nil
     
     // MARK: - Context menu confirmation / sheet state
     @State private var showingResetConfirmation = false
@@ -104,7 +107,8 @@ struct HistoryView: View {
             BranchFilterBar(
                 repositoryURL: repositoryURL,
                 selectedFilter: $appState.historyBranchFilter,
-                includeRemotes: $appState.historyIncludeRemotes
+                includeRemotes: $appState.historyIncludeRemotes,
+                searchText: $historySearchText
             )
             
             if isLoading && commits.isEmpty {
@@ -113,8 +117,8 @@ struct HistoryView: View {
             } else if commits.isEmpty {
                 EmptyStateView(
                     icon: "clock.arrow.circlepath",
-                    message: "No commits to display",
-                    detail: "Repository may be empty"
+                    message: activeHistorySearchQuery.isEmpty ? "No commits to display" : "No matching commits",
+                    detail: activeHistorySearchQuery.isEmpty ? "Repository may be empty" : "Try author name, email, or commit ID"
                 )
             } else {
                 ZStack(alignment: .top) {
@@ -156,6 +160,12 @@ struct HistoryView: View {
             if appState.historyBranchFilter != .all {
                 appState.historyBranchFilter = newBranch.map(HistoryBranchFilter.branch) ?? .current
             }
+        }
+        .onChange(of: historySearchText) { _, newValue in
+            scheduleHistorySearchDebounce(for: newValue)
+        }
+        .onDisappear {
+            historySearchDebounceTask?.cancel()
         }
         .task(id: historyLoadKey) {
             await loadHistory(reset: true)
@@ -685,7 +695,7 @@ struct HistoryView: View {
                 .frame(minWidth: viewportWidth)
             }
         }
-        .id(appState.historyBranchFilter)
+        .id(historyLoadKey)
     }
     
     // MARK: - Bottom Panel
@@ -910,29 +920,59 @@ struct HistoryView: View {
         }
         let scope = Self.historyScope(branchFilter: appState.historyBranchFilter)
         let skip = await MainActor.run { paging.loadedCount }
+        let searchQuery = activeHistorySearchQuery
         let newCommits: [Commit]
-        switch scope {
-        case .allBranches:
-            newCommits = await GitStatusService.shared.commitHistory(
-                allBranches: true,
-                limit: Self.historyPageSize,
-                skip: skip,
-                in: repositoryURL
-            )
-        case .currentBranch:
-            newCommits = await GitStatusService.shared.commitHistory(
-                allBranches: false,
-                limit: Self.historyPageSize,
-                skip: skip,
-                in: repositoryURL
-            )
-        case .ref(let ref):
-            newCommits = await GitStatusService.shared.commitHistory(
-                branch: ref,
-                limit: Self.historyPageSize,
-                skip: skip,
-                in: repositoryURL
-            )
+        if searchQuery.isEmpty {
+            switch scope {
+            case .allBranches:
+                newCommits = await GitStatusService.shared.commitHistory(
+                    allBranches: true,
+                    limit: Self.historyPageSize,
+                    skip: skip,
+                    in: repositoryURL
+                )
+            case .currentBranch:
+                newCommits = await GitStatusService.shared.commitHistory(
+                    allBranches: false,
+                    limit: Self.historyPageSize,
+                    skip: skip,
+                    in: repositoryURL
+                )
+            case .ref(let ref):
+                newCommits = await GitStatusService.shared.commitHistory(
+                    branch: ref,
+                    limit: Self.historyPageSize,
+                    skip: skip,
+                    in: repositoryURL
+                )
+            }
+        } else {
+            switch scope {
+            case .allBranches:
+                newCommits = await GitStatusService.shared.searchCommitHistory(
+                    allBranches: true,
+                    query: searchQuery,
+                    limit: Self.historyPageSize,
+                    skip: skip,
+                    in: repositoryURL
+                )
+            case .currentBranch:
+                newCommits = await GitStatusService.shared.searchCommitHistory(
+                    allBranches: false,
+                    query: searchQuery,
+                    limit: Self.historyPageSize,
+                    skip: skip,
+                    in: repositoryURL
+                )
+            case .ref(let ref):
+                newCommits = await GitStatusService.shared.searchCommitHistory(
+                    branch: ref,
+                    query: searchQuery,
+                    limit: Self.historyPageSize,
+                    skip: skip,
+                    in: repositoryURL
+                )
+            }
         }
 
         let newSelectedCommit: Commit?
@@ -942,7 +982,8 @@ struct HistoryView: View {
             newSelectedCommit = newCommits.first
             newScrollTarget = newCommits.first?.hash
         case .allBranches:
-            if let selectedBranch,
+            if searchQuery.isEmpty,
+               let selectedBranch,
                let tipHash = await GitStatusService.shared.tipHash(for: selectedBranch, in: repositoryURL),
                let tipCommit = newCommits.first(where: { $0.hash == tipHash }) {
                 newSelectedCommit = tipCommit
@@ -1408,7 +1449,11 @@ struct HistoryView: View {
     }
 
     private var historyLoadKey: String {
-        appState.historyBranchFilter.storageValue
+        "\(appState.historyBranchFilter.storageValue)|\(activeHistorySearchQuery)"
+    }
+
+    private var activeHistorySearchQuery: String {
+        debouncedHistorySearchText
     }
 
     enum HistoryScope {
@@ -1471,6 +1516,36 @@ struct HistoryView: View {
             visibleHashes: commits.map(\.hash)
         )
         return commit(withHash: selection.primaryHash, in: commits)
+    }
+
+    static func normalizedSearchQuery(_ query: String) -> String {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 3 else { return "" }
+        return trimmed
+    }
+
+    private func scheduleHistorySearchDebounce(for query: String) {
+        historySearchDebounceTask?.cancel()
+
+        let normalizedQuery = Self.normalizedSearchQuery(query)
+        guard !normalizedQuery.isEmpty else {
+            debouncedHistorySearchText = ""
+            return
+        }
+
+        historySearchDebounceTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 800_000_000)
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled else { return }
+            let debouncedQuery = Self.normalizedSearchQuery(query)
+            await MainActor.run {
+                debouncedHistorySearchText = debouncedQuery
+            }
+        }
     }
 
     static func resolvedHeadHash(from commits: [Commit]) -> String? {

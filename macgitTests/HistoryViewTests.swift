@@ -56,6 +56,13 @@ final class HistoryViewTests: XCTestCase {
         }
     }
 
+    func testHistorySearchRequiresAtLeastThreeCharacters() {
+        XCTAssertEqual(HistoryView.normalizedSearchQuery("ab"), "")
+        XCTAssertEqual(HistoryView.normalizedSearchQuery("  ab "), "")
+        XCTAssertEqual(HistoryView.normalizedSearchQuery("abc"), "abc")
+        XCTAssertEqual(HistoryView.normalizedSearchQuery("  bob@example.com  "), "bob@example.com")
+    }
+
     func testBranchReloadStartsSelectionAndScrollAtNewBranchTip() {
         XCTAssertEqual(
             HistoryView.reloadTargetHash(

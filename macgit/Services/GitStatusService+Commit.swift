@@ -95,20 +95,49 @@ extension GitStatusService {
     }
 
     func commitHistory(branch: String, limit: Int, skip: Int = 0, in repositoryURL: URL) async -> [Commit] {
-        let arguments = [
-            "log", "--topo-order", branch,
-            "--format=%H%x00%P%x00%s%x00%an%x00%ae%x00%ad%x00%D",
-            "--date=iso-strict",
-            "--max-count", "\(limit)"
-        ]
+        let arguments = commitLogArguments(
+            allBranches: false,
+            branch: branch,
+            limit: limit,
+            skip: skip
+        )
 
-        var pagedArguments = arguments
-        if skip > 0 {
-            pagedArguments.append(contentsOf: ["--skip", "\(skip)"])
-        }
-
-        let output = (try? await runGit(arguments: pagedArguments, in: repositoryURL)) ?? ""
+        let output = (try? await runGit(arguments: arguments, in: repositoryURL)) ?? ""
         return parseCommitLog(output)
+    }
+
+    func searchCommitHistory(
+        allBranches: Bool,
+        query: String,
+        limit: Int,
+        skip: Int = 0,
+        in repositoryURL: URL
+    ) async -> [Commit] {
+        await searchCommitHistory(
+            allBranches: allBranches,
+            branch: nil,
+            query: query,
+            limit: limit,
+            skip: skip,
+            in: repositoryURL
+        )
+    }
+
+    func searchCommitHistory(
+        branch: String,
+        query: String,
+        limit: Int,
+        skip: Int = 0,
+        in repositoryURL: URL
+    ) async -> [Commit] {
+        await searchCommitHistory(
+            allBranches: false,
+            branch: branch,
+            query: query,
+            limit: limit,
+            skip: skip,
+            in: repositoryURL
+        )
     }
 
     func tipHash(for ref: String, in repositoryURL: URL) async -> String? {
@@ -159,5 +188,122 @@ extension GitStatusService {
             commits.append(Commit(hash: hash, parents: parents, message: message, author: author, email: email, date: date, refs: refs))
         }
         return commits
+    }
+
+    private func searchCommitHistory(
+        allBranches: Bool,
+        branch: String?,
+        query: String,
+        limit: Int,
+        skip: Int,
+        in repositoryURL: URL
+    ) async -> [Commit] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuery.isEmpty else { return [] }
+
+        let authorQuery = NSRegularExpression.escapedPattern(for: normalizedQuery)
+        let authorLimit = max(limit + skip + limit, limit)
+
+        let authorOutput = (try? await runGit(
+            arguments: commitLogArguments(
+                allBranches: allBranches,
+                branch: branch,
+                authorQuery: authorQuery,
+                limit: authorLimit,
+                skip: 0
+            ),
+            in: repositoryURL
+        )) ?? ""
+        let authorMatches = parseCommitLog(authorOutput)
+
+        let orderedHashesOutput = (try? await runGit(
+            arguments: orderedCommitHashesArguments(
+                allBranches: allBranches,
+                branch: branch
+            ),
+            in: repositoryURL
+        )) ?? ""
+        let orderedHashes = orderedHashesOutput
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let lowercaseQuery = normalizedQuery.lowercased()
+        let matchingHashes = orderedHashes.filter { $0.lowercased().hasPrefix(lowercaseQuery) }
+        let pageHashes = Array(matchingHashes.prefix(skip + limit + limit))
+
+        let hashOutput: String
+        if pageHashes.isEmpty {
+            hashOutput = ""
+        } else {
+            hashOutput = (try? await runGit(
+                arguments: [
+                    "log", "--no-walk",
+                    "--format=%H%x00%P%x00%s%x00%an%x00%ae%x00%ad%x00%D",
+                    "--date=iso-strict"
+                ] + pageHashes,
+                in: repositoryURL
+            )) ?? ""
+        }
+
+        var commitsByHash: [String: Commit] = [:]
+        for commit in authorMatches {
+            commitsByHash[commit.hash] = commit
+        }
+        for commit in parseCommitLog(hashOutput) {
+            commitsByHash[commit.hash] = commit
+        }
+
+        let orderedMatches = orderedHashes.compactMap { commitsByHash[$0] }
+        return Array(orderedMatches.dropFirst(skip).prefix(limit))
+    }
+
+    private func commitLogArguments(
+        allBranches: Bool,
+        branch: String? = nil,
+        authorQuery: String? = nil,
+        limit: Int,
+        skip: Int = 0
+    ) -> [String] {
+        var arguments = baseCommitLogArguments(allBranches: allBranches, branch: branch)
+        if let authorQuery {
+            arguments.append(contentsOf: ["--author", authorQuery, "-i"])
+        }
+        arguments.append(contentsOf: ["--max-count", "\(limit)"])
+        if skip > 0 {
+            arguments.append(contentsOf: ["--skip", "\(skip)"])
+        }
+        return arguments
+    }
+
+    private func orderedCommitHashesArguments(
+        allBranches: Bool,
+        branch: String? = nil
+    ) -> [String] {
+        var arguments = baseCommitLogArguments(
+            allBranches: allBranches,
+            branch: branch,
+            format: "%H"
+        )
+        arguments.removeAll { $0 == "--date=iso-strict" }
+        return arguments
+    }
+
+    private func baseCommitLogArguments(
+        allBranches: Bool,
+        branch: String? = nil,
+        format: String = "%H%x00%P%x00%s%x00%an%x00%ae%x00%ad%x00%D"
+    ) -> [String] {
+        var arguments = ["log", "--topo-order"]
+        if allBranches {
+            arguments.append("--all")
+        } else if let branch {
+            arguments.append(branch)
+        }
+        arguments.append(contentsOf: [
+            "--format=\(format)",
+            "--date=iso-strict"
+        ])
+        return arguments
     }
 }

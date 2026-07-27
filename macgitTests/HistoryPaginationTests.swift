@@ -93,6 +93,38 @@ final class HistoryPaginationTests: XCTestCase {
         XCTAssertGreaterThan(branchFeatureIndex, branchMainAfterMergeIndex)
     }
 
+    func testSearchCommitHistoryMatchesAuthorEmailOnCurrentBranch() async throws {
+        let repoURL = try makeRepoWithAuthorHistory()
+
+        let matches = await GitStatusService.shared.searchCommitHistory(
+            allBranches: false,
+            query: "bob@example.com",
+            limit: 20,
+            in: repoURL
+        )
+
+        XCTAssertEqual(matches.map(\.message), ["bob main"])
+    }
+
+    func testSearchCommitHistoryMatchesHashPrefix() async throws {
+        let repoURL = try makeRepoWithAuthorHistory()
+        let commits = await GitStatusService.shared.commitHistory(
+            allBranches: false,
+            limit: 20,
+            in: repoURL
+        )
+        let bobCommit = try XCTUnwrap(commits.first(where: { $0.message == "bob main" }))
+
+        let matches = await GitStatusService.shared.searchCommitHistory(
+            allBranches: false,
+            query: String(bobCommit.hash.prefix(7)),
+            limit: 20,
+            in: repoURL
+        )
+
+        XCTAssertEqual(matches.first?.hash, bobCommit.hash)
+    }
+
     func testGraphLayoutStableAcrossPagination() async throws {
         let url = try makeRepoWithFeatureBranch()
         let headHash = await GitStatusService.shared.tipHash(for: "HEAD", in: url)
@@ -217,6 +249,30 @@ final class HistoryPaginationTests: XCTestCase {
         try "after\n".write(to: fileURL, atomically: true, encoding: .utf8)
         try runGit(["add", "tracked.txt"], in: repoURL)
         try runGit(["commit", "-m", "main after merge"], in: repoURL)
+
+        return repoURL
+    }
+
+    private func makeRepoWithAuthorHistory() throws -> URL {
+        let repoURL = try makeTempRepo(named: "macgit-history-search")
+        try runGit(["init", "-b", "main"], in: repoURL)
+        try configureGit(in: repoURL)
+
+        let fileURL = repoURL.appendingPathComponent("tracked.txt")
+
+        try "alice\n".write(to: fileURL, atomically: true, encoding: .utf8)
+        try runGit(["add", "tracked.txt"], in: repoURL)
+        try runGit(
+            ["-c", "user.name=Alice", "-c", "user.email=alice@example.com", "commit", "-m", "alice base"],
+            in: repoURL
+        )
+
+        try "bob\n".write(to: fileURL, atomically: true, encoding: .utf8)
+        try runGit(["add", "tracked.txt"], in: repoURL)
+        try runGit(
+            ["-c", "user.name=Bob", "-c", "user.email=bob@example.com", "commit", "-m", "bob main"],
+            in: repoURL
+        )
 
         return repoURL
     }

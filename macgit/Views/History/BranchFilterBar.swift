@@ -26,6 +26,7 @@ struct BranchFilterBar: View {
     let repositoryURL: URL
     @Binding var selectedFilter: HistoryBranchFilter
     @Binding var includeRemotes: Bool
+    @Binding var searchText: String
 
     @State private var localBranches: [String] = []
     @State private var remoteBranches: [String] = []
@@ -59,7 +60,9 @@ struct BranchFilterBar: View {
             Toggle("Include Remotes", isOn: $includeRemotes)
                 .toggleStyle(.checkbox)
 
-            Spacer()
+            Spacer(minLength: 12)
+
+            HistoryFilterSearchField(searchText: $searchText)
         }
         .padding(.trailing, 16)
         .frame(height: 28)
