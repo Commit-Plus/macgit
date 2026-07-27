@@ -36,6 +36,8 @@ final class AppState: ObservableObject {
     private static let showHeaderRemoteButtonKey = "showHeaderRemoteButton"
     private static let showHeaderFinderButtonKey = "showHeaderFinderButton"
     private static let showHeaderTerminalButtonKey = "showHeaderTerminalButton"
+    private static let historyBranchFilterKey = "historyBranchFilter"
+    private static let historyIncludeRemotesKey = "historyIncludeRemotes"
     private static let settingsSyncEnabledKey = "settingsSyncEnabled"
     private static let searchFilterKey = "searchFilter"
     private static let preferredSearchFileApplicationKey = "preferredSearchFileApplication"
@@ -121,6 +123,22 @@ final class AppState: ObservableObject {
             }
         }
     }
+    @Published var historyBranchFilter: HistoryBranchFilter {
+        didSet {
+            userDefaults.set(historyBranchFilter.storageValue, forKey: Self.historyBranchFilterKey)
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
+        }
+    }
+    @Published var historyIncludeRemotes: Bool {
+        didSet {
+            userDefaults.set(historyIncludeRemotes, forKey: Self.historyIncludeRemotesKey)
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
+        }
+    }
     @Published var syncEnabled: Bool {
         didSet {
             userDefaults.set(syncEnabled, forKey: Self.settingsSyncEnabledKey)
@@ -161,6 +179,9 @@ final class AppState: ObservableObject {
         let showHeaderRemoteButton = userDefaults.object(forKey: Self.showHeaderRemoteButtonKey) as? Bool ?? true
         let showHeaderFinderButton = userDefaults.object(forKey: Self.showHeaderFinderButtonKey) as? Bool ?? true
         let showHeaderTerminalButton = userDefaults.object(forKey: Self.showHeaderTerminalButtonKey) as? Bool ?? true
+        let historyBranchFilter = userDefaults.string(forKey: Self.historyBranchFilterKey)
+            .flatMap(HistoryBranchFilter.init(storageValue:)) ?? .all
+        let historyIncludeRemotes = userDefaults.object(forKey: Self.historyIncludeRemotesKey) as? Bool ?? false
         let syncEnabled = userDefaults.object(forKey: Self.settingsSyncEnabledKey) as? Bool ?? false
         let searchFilter = userDefaults.string(forKey: Self.searchFilterKey)
             .flatMap(SearchFilter.init(rawValue:)) ?? .all
@@ -177,6 +198,8 @@ final class AppState: ObservableObject {
         self.showHeaderRemoteButton = showHeaderRemoteButton
         self.showHeaderFinderButton = showHeaderFinderButton
         self.showHeaderTerminalButton = showHeaderTerminalButton
+        self.historyBranchFilter = historyBranchFilter
+        self.historyIncludeRemotes = historyIncludeRemotes
         self.syncEnabled = syncEnabled
         self.searchFilter = searchFilter
         self.preferredSearchFileApplicationBundleIdentifier = preferredSearchFileApplicationBundleIdentifier
@@ -189,7 +212,9 @@ final class AppState: ObservableObject {
             showHeaderStashButton: showHeaderStashButton,
             showHeaderRemoteButton: showHeaderRemoteButton,
             showHeaderFinderButton: showHeaderFinderButton,
-            showHeaderTerminalButton: showHeaderTerminalButton
+            showHeaderTerminalButton: showHeaderTerminalButton,
+            historyBranchFilter: historyBranchFilter,
+            historyIncludeRemotes: historyIncludeRemotes
         )
     }
 
@@ -203,7 +228,9 @@ final class AppState: ObservableObject {
             showHeaderStashButton: showHeaderStashButton,
             showHeaderRemoteButton: showHeaderRemoteButton,
             showHeaderFinderButton: showHeaderFinderButton,
-            showHeaderTerminalButton: showHeaderTerminalButton
+            showHeaderTerminalButton: showHeaderTerminalButton,
+            historyBranchFilter: historyBranchFilter,
+            historyIncludeRemotes: historyIncludeRemotes
         )
     }
 
@@ -219,6 +246,8 @@ final class AppState: ObservableObject {
         showHeaderRemoteButton = snapshot.showHeaderRemoteButton
         showHeaderFinderButton = snapshot.showHeaderFinderButton
         showHeaderTerminalButton = snapshot.showHeaderTerminalButton
+        historyBranchFilter = snapshot.historyBranchFilter
+        historyIncludeRemotes = snapshot.historyIncludeRemotes
         currentSettingsSnapshot = snapshot
     }
 }

@@ -49,6 +49,8 @@ function validSettings() {
     showHeaderRemoteButton: false,
     showHeaderFinderButton: true,
     showHeaderTerminalButton: false,
+    historyBranchFilter: "branch:origin/feature/login",
+    historyIncludeRemotes: true,
     updatedAt: serverTimestamp(),
   };
 }
@@ -91,6 +93,8 @@ describe("Firestore ownership rules", () => {
       "showHeaderRemoteButton",
       "showHeaderFinderButton",
       "showHeaderTerminalButton",
+      "historyBranchFilter",
+      "historyIncludeRemotes",
     ]);
 
     await assertFails(setDoc(settings("user-a", userA), {
@@ -113,6 +117,8 @@ describe("Firestore ownership rules", () => {
       showToolbarButtonText: "true",
       showSubmodules: "false",
       showSubtrees: 1,
+      historyBranchFilter: 123,
+      historyIncludeRemotes: "true",
       updatedAt: "now",
     };
 
@@ -124,13 +130,13 @@ describe("Firestore ownership rules", () => {
     }
   });
 
-  test("settings accept optional header button fields", async () => {
+  test("settings accept optional settings fields", async () => {
     const userA = environment.authenticatedContext("user-a");
 
     await assertSucceeds(setDoc(settings("user-a", userA), validSettings()));
   });
 
-  test("settings reject wrong type for optional header button fields", async () => {
+  test("settings reject wrong type for optional settings fields", async () => {
     const userA = environment.authenticatedContext("user-a");
 
     for (const key of [
@@ -140,12 +146,22 @@ describe("Firestore ownership rules", () => {
       "showHeaderRemoteButton",
       "showHeaderFinderButton",
       "showHeaderTerminalButton",
+      "historyIncludeRemotes",
     ]) {
       await assertFails(setDoc(settings("user-a", userA), {
         ...validSettings(),
         [key]: "true",
       }));
     }
+
+    await assertFails(setDoc(settings("user-a", userA), {
+      ...validSettings(),
+      historyBranchFilter: 123,
+    }));
+    await assertFails(setDoc(settings("user-a", userA), {
+      ...validSettings(),
+      historyBranchFilter: "branch:",
+    }));
   });
 
   test("settings accept legacy documents without header button fields", async () => {
@@ -158,6 +174,8 @@ describe("Firestore ownership rules", () => {
       "showHeaderRemoteButton",
       "showHeaderFinderButton",
       "showHeaderTerminalButton",
+      "historyBranchFilter",
+      "historyIncludeRemotes",
     ]) {
       delete legacy[key];
     }

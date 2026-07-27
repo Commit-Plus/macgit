@@ -35,6 +35,8 @@ enum CloudSettingsDocument {
             "showHeaderRemoteButton": snapshot.showHeaderRemoteButton,
             "showHeaderFinderButton": snapshot.showHeaderFinderButton,
             "showHeaderTerminalButton": snapshot.showHeaderTerminalButton,
+            "historyBranchFilter": snapshot.historyBranchFilter.storageValue,
+            "historyIncludeRemotes": snapshot.historyIncludeRemotes,
             "updatedAt": updatedAt
         ]
     }
@@ -59,7 +61,10 @@ enum CloudSettingsDocument {
             showHeaderStashButton: data["showHeaderStashButton"] as? Bool ?? true,
             showHeaderRemoteButton: data["showHeaderRemoteButton"] as? Bool ?? true,
             showHeaderFinderButton: data["showHeaderFinderButton"] as? Bool ?? true,
-            showHeaderTerminalButton: data["showHeaderTerminalButton"] as? Bool ?? true
+            showHeaderTerminalButton: data["showHeaderTerminalButton"] as? Bool ?? true,
+            historyBranchFilter: (data["historyBranchFilter"] as? String)
+                .flatMap(HistoryBranchFilter.init(storageValue:)) ?? .all,
+            historyIncludeRemotes: data["historyIncludeRemotes"] as? Bool ?? false
         )
     }
 }

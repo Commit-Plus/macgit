@@ -31,6 +31,7 @@ struct HistoryView: View {
     var syncState: SyncState? = nil
     let onRunRepositoryOperation: RepositoryOperationRunner
     let onRequestCheckout: (String, Bool) -> Void
+    @EnvironmentObject private var appState: AppState
     private static let historyPageSize = 120
     private static let historyScrollSpaceName = "historyScroll"
     
@@ -42,7 +43,6 @@ struct HistoryView: View {
     @State private var fileChanges: [CommitFileChange] = []
     @State private var selectedFile: CommitFileChange? = nil
     @State private var diffHunks: [DiffHunk] = []
-    @State private var showAllBranches = true
     @AppStorage("history.messageWidth") private var messageColumnWidth: Double = 200
     @AppStorage("history.authorWidth") private var authorColumnWidth: Double = 120
     @AppStorage("history.dateWidth") private var dateColumnWidth: Double = 80
@@ -96,15 +96,16 @@ struct HistoryView: View {
         self.syncState = syncState
         self.onRunRepositoryOperation = onRunRepositoryOperation
         self.onRequestCheckout = onRequestCheckout
-        self._showAllBranches = State(initialValue: selectedBranch == nil)
         self._paging = State(initialValue: HistoryPagingState(pageSize: Self.historyPageSize))
     }
     
     var body: some View {
         VStack(spacing: 0) {
             BranchFilterBar(
-                showAllBranches: $showAllBranches
-            ) {}
+                repositoryURL: repositoryURL,
+                selectedFilter: $appState.historyBranchFilter,
+                includeRemotes: $appState.historyIncludeRemotes
+            )
             
             if isLoading && commits.isEmpty {
                 ProgressView("Loading history…")
@@ -149,6 +150,11 @@ struct HistoryView: View {
         .onChange(of: selectedFile) { _, newFile in
             Task {
                 await loadDiff(for: newFile, in: selectedCommit)
+            }
+        }
+        .onChange(of: selectedBranch) { _, newBranch in
+            if appState.historyBranchFilter != .all {
+                appState.historyBranchFilter = newBranch.map(HistoryBranchFilter.branch) ?? .current
             }
         }
         .task(id: historyLoadKey) {
@@ -679,7 +685,7 @@ struct HistoryView: View {
                 .frame(minWidth: viewportWidth)
             }
         }
-        .id(showAllBranches)
+        .id(appState.historyBranchFilter)
     }
     
     // MARK: - Bottom Panel
@@ -902,7 +908,7 @@ struct HistoryView: View {
                 }
             }
         }
-        let scope = Self.historyScope(selectedBranch: selectedBranch, showAllBranches: showAllBranches)
+        let scope = Self.historyScope(branchFilter: appState.historyBranchFilter)
         let skip = await MainActor.run { paging.loadedCount }
         let newCommits: [Commit]
         switch scope {
@@ -965,7 +971,7 @@ struct HistoryView: View {
                 in: repositoryURL
             )
         }
-        let highlighting = Self.highlighting(for: showAllBranches)
+        let highlighting = Self.highlighting(for: appState.historyBranchFilter)
         let newGraphModel = await CommitGraphGenerator.generateAsync(
             commits: loadedCommits,
             highlighting: highlighting,
@@ -1402,9 +1408,7 @@ struct HistoryView: View {
     }
 
     private var historyLoadKey: String {
-        let branchKey = selectedBranch ?? "__current__"
-        let scopeKey = showAllBranches ? "all" : "single"
-        return "\(branchKey)|\(scopeKey)"
+        appState.historyBranchFilter.storageValue
     }
 
     enum HistoryScope {
@@ -1419,12 +1423,15 @@ struct HistoryView: View {
         let selectedCommitHash: String?
     }
 
-    static func historyScope(selectedBranch: String?, showAllBranches: Bool) -> HistoryScope {
-        guard !showAllBranches else { return .allBranches }
-        if let selectedBranch {
-            return .ref(selectedBranch)
+    static func historyScope(branchFilter: HistoryBranchFilter) -> HistoryScope {
+        switch branchFilter {
+        case .all:
+            return .allBranches
+        case .current:
+            return .currentBranch
+        case .branch(let branch):
+            return .ref(branch)
         }
-        return .currentBranch
     }
 
     static func reloadTargetHash(
@@ -1436,9 +1443,9 @@ struct HistoryView: View {
     }
 
     static func highlighting(
-        for showAllBranches: Bool
+        for branchFilter: HistoryBranchFilter
     ) -> CommitGraphHighlighting {
-        showAllBranches ? .all : .currentBranchOnly
+        branchFilter == .all ? .all : .currentBranchOnly
     }
 
     static func selectionModifiers(from flags: NSEvent.ModifierFlags) -> HistoryCommitSelection.Modifiers {

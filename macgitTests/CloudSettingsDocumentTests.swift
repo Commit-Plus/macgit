@@ -30,7 +30,9 @@ final class CloudSettingsDocumentTests: XCTestCase {
         showHeaderStashButton: true,
         showHeaderRemoteButton: false,
         showHeaderFinderButton: true,
-        showHeaderTerminalButton: false
+        showHeaderTerminalButton: false,
+        historyBranchFilter: .branch("origin/feature/login"),
+        historyIncludeRemotes: true
     )
 
     func testEncodingUsesExactDocumentSchema() throws {
@@ -51,6 +53,8 @@ final class CloudSettingsDocumentTests: XCTestCase {
                 "showHeaderRemoteButton",
                 "showHeaderFinderButton",
                 "showHeaderTerminalButton",
+                "historyBranchFilter",
+                "historyIncludeRemotes",
                 "updatedAt"
             ]
         )
@@ -64,6 +68,8 @@ final class CloudSettingsDocumentTests: XCTestCase {
         XCTAssertEqual(document["showHeaderRemoteButton"] as? Bool, false)
         XCTAssertEqual(document["showHeaderFinderButton"] as? Bool, true)
         XCTAssertEqual(document["showHeaderTerminalButton"] as? Bool, false)
+        XCTAssertEqual(document["historyBranchFilter"] as? String, "branch:origin/feature/login")
+        XCTAssertEqual(document["historyIncludeRemotes"] as? Bool, true)
         XCTAssertEqual(document["updatedAt"] as? Timestamp, timestamp)
     }
 
@@ -76,6 +82,17 @@ final class CloudSettingsDocumentTests: XCTestCase {
 
         XCTAssertTrue(decoded.showHeaderBranchButton)
         XCTAssertTrue(decoded.showHeaderRemoteButton)
+    }
+
+    func testDecodingDefaultsMissingHistoryFilterSettings() throws {
+        var document = validDocument()
+        document.removeValue(forKey: "historyBranchFilter")
+        document.removeValue(forKey: "historyIncludeRemotes")
+
+        let decoded = try CloudSettingsDocument.decode(document)
+
+        XCTAssertEqual(decoded.historyBranchFilter, .all)
+        XCTAssertFalse(decoded.historyIncludeRemotes)
     }
 
     func testDecodingValidDocumentReturnsCompleteSnapshot() throws {

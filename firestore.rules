@@ -24,6 +24,8 @@ service cloud.firestore {
           'showHeaderRemoteButton',
           'showHeaderFinderButton',
           'showHeaderTerminalButton',
+          'historyBranchFilter',
+          'historyIncludeRemotes',
           'updatedAt'
         ])
         && request.resource.data.keys().hasAll([
@@ -44,6 +46,10 @@ service cloud.firestore {
         && (!('showHeaderRemoteButton' in request.resource.data) || request.resource.data.showHeaderRemoteButton is bool)
         && (!('showHeaderFinderButton' in request.resource.data) || request.resource.data.showHeaderFinderButton is bool)
         && (!('showHeaderTerminalButton' in request.resource.data) || request.resource.data.showHeaderTerminalButton is bool)
+        && (!('historyBranchFilter' in request.resource.data)
+          || (request.resource.data.historyBranchFilter is string
+            && request.resource.data.historyBranchFilter.matches('^(all|current|branch:.+)$')))
+        && (!('historyIncludeRemotes' in request.resource.data) || request.resource.data.historyIncludeRemotes is bool)
         && request.resource.data.updatedAt is timestamp;
     }
 

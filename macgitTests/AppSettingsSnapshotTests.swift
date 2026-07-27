@@ -31,7 +31,9 @@ final class AppSettingsSnapshotTests: XCTestCase {
             showHeaderStashButton: false,
             showHeaderRemoteButton: true,
             showHeaderFinderButton: false,
-            showHeaderTerminalButton: true
+            showHeaderTerminalButton: true,
+            historyBranchFilter: .branch("origin/feature/login"),
+            historyIncludeRemotes: true
         )
 
         let data = try JSONEncoder().encode(value)
@@ -51,7 +53,9 @@ final class AppSettingsSnapshotTests: XCTestCase {
                 "showHeaderStashButton",
                 "showHeaderRemoteButton",
                 "showHeaderFinderButton",
-                "showHeaderTerminalButton"
+                "showHeaderTerminalButton",
+                "historyBranchFilter",
+                "historyIncludeRemotes"
             ]
         )
     }
@@ -170,6 +174,23 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertFalse(reloaded.showHeaderRemoteButton)
         XCTAssertFalse(reloaded.showHeaderFinderButton)
         XCTAssertFalse(reloaded.showHeaderTerminalButton)
+    }
+
+    func testHistoryFilterDefaultsAndPersistence() {
+        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let state = AppState(userDefaults: defaults)
+        XCTAssertEqual(state.historyBranchFilter, .all)
+        XCTAssertFalse(state.historyIncludeRemotes)
+
+        state.historyBranchFilter = .branch("origin/feature/login")
+        state.historyIncludeRemotes = true
+
+        let reloaded = AppState(userDefaults: defaults)
+        XCTAssertEqual(reloaded.historyBranchFilter, .branch("origin/feature/login"))
+        XCTAssertTrue(reloaded.historyIncludeRemotes)
     }
 
     func testSettingsSnapshotPublisherDoesNotEmitOnDeviceLocalSettings() {

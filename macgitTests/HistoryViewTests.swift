@@ -21,23 +21,23 @@ import XCTest
 
 @MainActor
 final class HistoryViewTests: XCTestCase {
-    func testShowAllBranchesMapsToGraphHighlighting() {
-        XCTAssertEqual(HistoryView.highlighting(for: true), .all)
-        XCTAssertEqual(HistoryView.highlighting(for: false), .currentBranchOnly)
+    func testBranchFilterMapsToGraphHighlighting() {
+        XCTAssertEqual(HistoryView.highlighting(for: .all), .all)
+        XCTAssertEqual(HistoryView.highlighting(for: .branch("feature/login")), .currentBranchOnly)
     }
 
-    func testHistoryScopeUsesSelectedBranchWhenShowingSingleBranch() {
-        let scope = HistoryView.historyScope(selectedBranch: "feature/login", showAllBranches: false)
+    func testBranchFilterUsesSelectedBranch() {
+        let scope = HistoryView.historyScope(branchFilter: .branch("origin/feature/login"))
 
         if case .ref(let branch) = scope {
-            XCTAssertEqual(branch, "feature/login")
+            XCTAssertEqual(branch, "origin/feature/login")
         } else {
             XCTFail("Expected selected branch scope")
         }
     }
 
-    func testHistoryScopeUsesAllBranchesWhenToggleIsEnabled() {
-        let scope = HistoryView.historyScope(selectedBranch: "feature/login", showAllBranches: true)
+    func testAllBranchFilterUsesAllBranches() {
+        let scope = HistoryView.historyScope(branchFilter: .all)
 
         if case .allBranches = scope {
             XCTAssertTrue(true)
@@ -46,8 +46,8 @@ final class HistoryViewTests: XCTestCase {
         }
     }
 
-    func testHistoryScopeUsesAllBranchesWhenNoBranchIsSelected() {
-        let scope = HistoryView.historyScope(selectedBranch: nil, showAllBranches: false)
+    func testCurrentBranchFilterUsesCurrentBranch() {
+        let scope = HistoryView.historyScope(branchFilter: .current)
 
         if case .currentBranch = scope {
             XCTAssertTrue(true)

@@ -23,19 +23,41 @@
 import SwiftUI
 
 struct BranchFilterBar: View {
-    @Binding var showAllBranches: Bool
-    let onChange: () -> Void
+    let repositoryURL: URL
+    @Binding var selectedFilter: HistoryBranchFilter
+    @Binding var includeRemotes: Bool
+
+    @State private var localBranches: [String] = []
+    @State private var remoteBranches: [String] = []
+    @State private var isShowingBranchList = false
+    @State private var isLoadingLocalBranches = false
+    @State private var isLoadingRemoteBranches = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            Picker("Branch Filter", selection: $showAllBranches) {
-                Text("All Branches").tag(true)
-                Text("Current Branch").tag(false)
+        HStack(spacing: 10) {
+            Button(action: toggleBranchList) {
+                HStack(spacing: 6) {
+                    Text(selectedFilterTitle)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Spacer(minLength: 4)
+
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .frame(width: 160)
+            .buttonStyle(.bordered)
+            .frame(width: 220)
             .padding(.leading, 8)
+            .popover(isPresented: $isShowingBranchList, arrowEdge: .bottom) {
+                branchList
+            }
+
+            Toggle("Include Remotes", isOn: $includeRemotes)
+                .toggleStyle(.checkbox)
 
             Spacer()
         }
@@ -47,8 +69,249 @@ struct BranchFilterBar: View {
                 .fill(.separator)
                 .frame(height: 0.5)
         }
-        .onChange(of: showAllBranches) { _, _ in
-            onChange()
+        .task(id: repositoryURL.standardizedFileURL) {
+            await loadLocalBranches()
+        }
+        .task(id: isShowingBranchList) {
+            guard isShowingBranchList else { return }
+            await loadLocalBranches()
+        }
+        .task(id: remoteLoadKey) {
+            guard includeRemotes else { return }
+            await loadRemoteBranches()
+        }
+        .onChange(of: includeRemotes) { _, isIncluded in
+            guard !isIncluded else { return }
+
+            if case .branch(let branch) = selectedFilter,
+               remoteBranches.contains(branch),
+               !localBranches.contains(branch) {
+                selectedFilter = .current
+            }
+
+            Task {
+                await loadLocalBranches()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { notification in
+            guard let url = notification.userInfo?["repositoryURL"] as? URL,
+                  url == repositoryURL else {
+                return
+            }
+            Task {
+                await reloadBranches()
+            }
+        }
+    }
+
+    private var branchList: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    branchButton(
+                        title: "All Branches",
+                        systemImage: "arrow.triangle.branch",
+                        filter: .all
+                    )
+
+                    branchButton(
+                        title: "Current Branch",
+                        systemImage: "arrow.triangle.branch",
+                        filter: .current
+                    )
+
+                    Divider()
+                        .padding(.vertical, 4)
+
+                    branchSectionTitle("Local Branches")
+
+                    if isLoadingLocalBranches && localBranches.isEmpty {
+                        loadingRow("Loading local branches…")
+                    } else if localBranches.isEmpty {
+                        Text("No local branches")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                    } else {
+                        ForEach(localBranches, id: \.self) { branch in
+                            branchButton(
+                                title: branch,
+                                systemImage: "arrow.triangle.branch",
+                                filter: .branch(branch)
+                            )
+                        }
+                    }
+
+                    if includeRemotes {
+                        Divider()
+                            .padding(.vertical, 4)
+
+                        branchSectionTitle("Remote Branches")
+
+                        if isLoadingRemoteBranches && remoteBranches.isEmpty {
+                            loadingRow("Loading remote branches…")
+                        } else if remoteBranches.isEmpty {
+                            Text("No remote branches")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                        } else {
+                            ForEach(remoteBranches, id: \.self) { branch in
+                                branchButton(
+                                    title: branch,
+                                    systemImage: "cloud",
+                                    filter: .branch(branch)
+                                )
+                            }
+                        }
+                    }
+                }
+                .padding(6)
+            }
+            .frame(width: 300, height: 340)
+        }
+    }
+
+    private func branchSectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+    }
+
+    private func branchButton(
+        title: String,
+        systemImage: String,
+        filter: HistoryBranchFilter
+    ) -> some View {
+        Button {
+            selectedFilter = filter
+            isShowingBranchList = false
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 14)
+
+                Text(title)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Spacer(minLength: 8)
+
+                if selectedFilter == filter {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func loadingRow(_ title: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+    }
+
+    private var remoteLoadKey: String {
+        "\(repositoryURL.standardizedFileURL.path)|\(includeRemotes)"
+    }
+
+    private var selectedFilterTitle: String {
+        switch selectedFilter {
+        case .all:
+            return "All Branches"
+        case .current:
+            return "Current Branch"
+        case .branch(let branch):
+            return branch
+        }
+    }
+
+    private func toggleBranchList() {
+        isShowingBranchList.toggle()
+    }
+
+    private func loadLocalBranches() async {
+        isLoadingLocalBranches = true
+        defer {
+            isLoadingLocalBranches = false
+            validateSelectedBranch()
+        }
+
+        let branches = await GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
+        localBranches = branches.sorted(by: Self.compareBranchNames)
+    }
+
+    private func loadRemoteBranches() async {
+        isLoadingRemoteBranches = true
+        defer {
+            isLoadingRemoteBranches = false
+            validateSelectedBranch()
+        }
+
+        let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
+        let branches = await withTaskGroup(of: [String].self, returning: [String].self) { group in
+            for remote in remotes {
+                group.addTask {
+                    let branches = await GitStatusService.shared.cachedRemoteBranches(
+                        remote: remote,
+                        in: repositoryURL
+                    )
+                    return branches.compactMap { branch in
+                        guard branch != "HEAD", !branch.hasPrefix("HEAD -> ") else {
+                            return nil
+                        }
+                        return "\(remote)/\(branch)"
+                    }
+                }
+            }
+
+            var result: [String] = []
+            for await branches in group {
+                result.append(contentsOf: branches)
+            }
+            return result
+        }
+
+        guard includeRemotes else { return }
+        remoteBranches = Array(Set(branches)).sorted(by: Self.compareBranchNames)
+    }
+
+    private func reloadBranches() async {
+        async let localLoad: Void = loadLocalBranches()
+        async let remoteLoad: Void = includeRemotes ? loadRemoteBranches() : ()
+        _ = await (localLoad, remoteLoad)
+    }
+
+    private static func compareBranchNames(_ lhs: String, _ rhs: String) -> Bool {
+        lhs.localizedStandardCompare(rhs) == .orderedAscending
+    }
+
+    private func validateSelectedBranch() {
+        guard !isLoadingLocalBranches,
+              !includeRemotes || !isLoadingRemoteBranches else {
+            return
+        }
+        guard case .branch(let branch) = selectedFilter else { return }
+        let isAvailable = localBranches.contains(branch)
+            || (includeRemotes && remoteBranches.contains(branch))
+        if !isAvailable {
+            selectedFilter = .current
         }
     }
 }
