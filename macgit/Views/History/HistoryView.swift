@@ -21,10 +21,22 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 import CoreTransferable
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
+@MainActor
+private final class HistorySelectionStore: ObservableObject {
+    @Published var selectedCommits: [Commit] = []
+}
+
 struct HistoryView: View {
+    private struct SquashSheetPresentation: Identifiable {
+        let id = UUID()
+        let commits: [Commit]
+        let message: String
+    }
+
     let repositoryURL: URL
     let selectedBranch: String?
     let undoManager: GitUndoManager?
@@ -38,6 +50,7 @@ struct HistoryView: View {
     @State private var commits: [Commit] = []
     @State private var graphModel: CommitGraphModel? = nil
     @State private var commitSelection = HistoryCommitSelection()
+    @StateObject private var historySelectionStore = HistorySelectionStore()
     @State private var activeDragCommitHashes: Set<String> = []
     @State private var selectedCommit: Commit? = nil
     @State private var fileChanges: [CommitFileChange] = []
@@ -84,6 +97,8 @@ struct HistoryView: View {
     @State private var showingRebaseConfirmation = false
     @State private var mergeCommitImmediately = true
     @State private var mergeIncludeMessages = true
+    @State private var squashSheetPresentation: SquashSheetPresentation?
+    @State private var currentHeadHash: String?
     
     init(
         repositoryURL: URL,
@@ -210,6 +225,21 @@ struct HistoryView: View {
         }
         .sheet(isPresented: $showingRebaseConfirmation) {
             rebaseConfirmationSheet
+        }
+        .sheet(item: $squashSheetPresentation) { presentation in
+            SquashCommitsSheet(
+                commits: presentation.commits,
+                initialMessage: presentation.message,
+                onCancel: {
+                    squashSheetPresentation = nil
+                },
+                onConfirm: { message in
+                    let commits = presentation.commits
+                    onRunRepositoryOperation("Squashing \(commits.count) commits...") {
+                        await performSquash(commits: commits, message: message)
+                    }
+                }
+            )
         }
         .sheet(isPresented: $showingCheckoutConfirmation) {
             checkoutConfirmationSheet
@@ -418,7 +448,7 @@ struct HistoryView: View {
         .padding(24)
         .frame(minWidth: 360, idealWidth: 420)
     }
-    
+
     private var checkoutConfirmationSheet: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Confirm change working copy")
@@ -606,6 +636,7 @@ struct HistoryView: View {
                                                         commits: commits,
                                                         selection: &commitSelection
                                                     )
+                                                    syncSelectedCommitSnapshot()
                                                 },
                                                 onDoubleClick: {
                                                     handleCommitDoubleClick(commit)
@@ -631,6 +662,7 @@ struct HistoryView: View {
                                                         commits: commits,
                                                         selection: &commitSelection
                                                     )
+                                                    syncSelectedCommitSnapshot()
                                                 }
                                                 return makeCommitItemProvider(payload: draggedPayload)
                                             } preview: {
@@ -844,6 +876,17 @@ struct HistoryView: View {
                 pendingCommit = commit
                 showingRebaseConfirmation = true
             }
+
+            Divider()
+
+            Button("Squash Commits") {
+                let selected = squashableCommits
+                squashSheetPresentation = SquashSheetPresentation(
+                    commits: selected,
+                    message: selected.map(\.message).joined(separator: "\n")
+                )
+            }
+            .disabled(!canSquashSelectedCommits)
             
             Divider()
             
@@ -1014,6 +1057,9 @@ struct HistoryView: View {
                 in: repositoryURL
             )
         }
+        await MainActor.run {
+            currentHeadHash = headHash
+        }
         let highlightRootHash = await Self.highlightRootHash(
             for: appState.historyBranchFilter,
             commits: loadedCommits,
@@ -1046,6 +1092,7 @@ struct HistoryView: View {
                 )
             }
             selectedCommit = Self.commit(withHash: commitSelection.primaryHash, in: loadedCommits)
+            syncSelectedCommitSnapshot(from: loadedCommits)
             if skip == 0 {
                 scrollTarget = Self.reloadTargetHash(
                     reset: true,
@@ -1064,12 +1111,48 @@ struct HistoryView: View {
         }
     }
 
+    private var squashableCommits: [Commit] {
+        historySelectionStore.selectedCommits
+    }
+
+    private var canSquashSelectedCommits: Bool {
+        Self.canSquashCommits(
+            squashableCommits,
+            selectedHashes: squashableCommits.map(\.hash),
+            headHash: currentHeadHash
+        )
+    }
+
+    private func syncSelectedCommitSnapshot(from visibleCommits: [Commit]? = nil) {
+        let source = visibleCommits ?? commits
+        let commitsByHash = Dictionary(uniqueKeysWithValues: source.map { ($0.hash, $0) })
+        historySelectionStore.selectedCommits = commitSelection.selectedHashes.compactMap { commitsByHash[$0] }
+    }
+
+    static func canSquashCommits(
+        _ selectedCommits: [Commit],
+        selectedHashes: [String],
+        headHash: String?
+    ) -> Bool {
+        guard selectedCommits.count >= 2,
+              selectedCommits.count == selectedHashes.count,
+              selectedCommits.first?.hash == headHash,
+              selectedCommits.allSatisfy({ !$0.isMerge }) else {
+            return false
+        }
+
+        return zip(selectedCommits, selectedCommits.dropFirst()).allSatisfy { newer, older in
+            newer.parents.first == older.hash
+        }
+    }
+
     private func applyCachedSnapshot(_ snapshot: HistorySnapshot) {
         cancelHistoryRefreshIndicator()
         paging.reset()
         paging.finishLoadingMore(loaded: snapshot.commits.count)
         scrollTarget = snapshot.selectedCommitHash
         rowFrames = [:]
+        currentHeadHash = Self.resolvedHeadHash(from: snapshot.commits)
 
         commits = snapshot.commits
         graphModel = snapshot.graphModel
@@ -1083,6 +1166,7 @@ struct HistoryView: View {
             commitSelection.select(first.hash, modifiers: [], visibleHashes: visibleHashes)
         }
         selectedCommit = Self.commit(withHash: commitSelection.primaryHash, in: snapshot.commits)
+        syncSelectedCommitSnapshot(from: snapshot.commits)
 
         isLoading = false
         isRefreshingHistory = false
@@ -1401,6 +1485,48 @@ struct HistoryView: View {
                 object: nil,
                 userInfo: ["repositoryURL": repositoryURL]
             )
+        }
+    }
+
+    private func performSquash(commits: [Commit], message: String) async {
+        guard Self.canSquashCommits(commits, selectedHashes: commits.map(\.hash), headHash: currentHeadHash) else {
+            return
+        }
+
+        do {
+            let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
+            try await GitStatusService.shared.squashCommits(
+                commits.map(\.hash),
+                message: message,
+                in: repositoryURL
+            )
+            if let oldHead,
+               let newHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL),
+               oldHead != newHead {
+                await MainActor.run {
+                    undoManager?.register(
+                        GitUndoEntry(
+                            repositoryURL: repositoryURL,
+                            label: "Squash \(commits.count) commits",
+                            undoOperation: .resetHead(target: oldHead, mode: .soft, expectedHead: newHead),
+                            redoOperation: .commit(message: message, noVerify: false, signOff: false)
+                        )
+                    )
+                }
+            }
+            await MainActor.run {
+                squashSheetPresentation = nil
+                NotificationCenter.default.post(
+                    name: .repositoryDidChange,
+                    object: nil,
+                    userInfo: ["repositoryURL": repositoryURL]
+                )
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
         }
     }
 

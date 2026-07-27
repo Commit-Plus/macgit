@@ -78,6 +78,48 @@ final class HistoryViewTests: XCTestCase {
         XCTAssertEqual(HistoryView.normalizedSearchQuery("  bob@example.com  "), "bob@example.com")
     }
 
+    func testSquashRequiresHeadContiguousNonMergeCommits() {
+        let commits = [
+            makeCommit(hash: "head", parents: ["middle"]),
+            makeCommit(hash: "middle", parents: ["base"])
+        ]
+
+        XCTAssertTrue(
+            HistoryView.canSquashCommits(
+                commits,
+                selectedHashes: commits.map(\.hash),
+                headHash: "head"
+            )
+        )
+        XCTAssertFalse(
+            HistoryView.canSquashCommits(
+                [commits[1], commits[0]],
+                selectedHashes: commits.map(\.hash),
+                headHash: "head"
+            )
+        )
+    }
+
+    func testSquashRejectsMergeCommitsAndNonHeadSelection() {
+        let merge = makeCommit(hash: "merge", parents: ["left", "right"])
+        let regular = makeCommit(hash: "regular", parents: ["base"])
+
+        XCTAssertFalse(
+            HistoryView.canSquashCommits(
+                [merge, regular],
+                selectedHashes: ["merge", "regular"],
+                headHash: "merge"
+            )
+        )
+        XCTAssertFalse(
+            HistoryView.canSquashCommits(
+                [regular],
+                selectedHashes: ["regular"],
+                headHash: "head"
+            )
+        )
+    }
+
     func testBranchReloadStartsSelectionAndScrollAtNewBranchTip() {
         XCTAssertEqual(
             HistoryView.reloadTargetHash(

@@ -139,7 +139,7 @@ extension SidebarView {
         let currentBranchFolders = SidebarTreeBuilder.expandedFolderPaths(revealing: current)
             .intersection(allFolders)
         let expandedFoldersForLoad = hadLoadedBranches
-            ? expandedFolders.union(currentBranchFolders).intersection(allFolders)
+            ? expandedFolders.intersection(allFolders)
             : currentBranchFolders
         activeBranchSyncLoadID = loadID
 
@@ -151,14 +151,9 @@ extension SidebarView {
             branchSyncStatus = [:]
             loadedBranchSyncBranches = []
             syncingBranchSyncBranches = []
-            if hadLoadedBranches {
-                // Subsequent reloads: preserve user-expanded folders, reveal the
-                // current branch, and drop folders that no longer exist.
-                expandedFolders = expandedFoldersForLoad
-            } else {
-                // First load: reveal the current branch.
-                expandedFolders = expandedFoldersForLoad
-            }
+            // Reveal the current branch only on the initial load. Refreshes
+            // preserve the user's tree state while dropping removed folders.
+            expandedFolders = expandedFoldersForLoad
             hasLoadedBranches = true
         }
 

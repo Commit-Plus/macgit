@@ -23,6 +23,25 @@
 import Foundation
 
 extension GitStatusService {
+    func squashCommits(_ commits: [String], message: String, in repositoryURL: URL) async throws {
+        guard commits.count >= 2, let oldestCommit = commits.last else {
+            throw GitError.commandFailed("Select at least two commits to squash.")
+        }
+
+        let parent = try await runGit(
+            arguments: ["rev-parse", "\(oldestCommit)^"],
+            in: repositoryURL
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !parent.isEmpty else {
+            throw GitError.commandFailed("The selected commits do not have a parent commit.")
+        }
+
+        _ = try await runGit(arguments: ["reset", "--soft", parent], in: repositoryURL)
+        try await commit(message: message, in: repositoryURL)
+    }
+
     func commit(message: String, in repositoryURL: URL, amend: Bool = false, noVerify: Bool = false, signOff: Bool = false) async throws {
         var arguments = ["commit"]
         if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
