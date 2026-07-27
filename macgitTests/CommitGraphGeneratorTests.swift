@@ -49,7 +49,8 @@ final class CommitGraphGeneratorTests: XCTestCase {
         let model = CommitGraphGenerator.generate(
             commits: [c, b, a],
             highlighting: .all,
-            headHash: "c"
+            headHash: "c",
+            highlightRootHash: nil
         )
 
         XCTAssertEqual(model.dots.count, 3)
@@ -69,7 +70,8 @@ final class CommitGraphGeneratorTests: XCTestCase {
         let model = CommitGraphGenerator.generate(
             commits: [m, f, c, b, a],
             highlighting: .all,
-            headHash: "m"
+            headHash: "m",
+            highlightRootHash: nil
         )
 
         XCTAssertEqual(model.dots.count, 5)
@@ -87,7 +89,8 @@ final class CommitGraphGeneratorTests: XCTestCase {
         let model = CommitGraphGenerator.generate(
             commits: [m, b, c, d, a],
             highlighting: .all,
-            headHash: "m"
+            headHash: "m",
+            highlightRootHash: nil
         )
 
         XCTAssertEqual(model.links.count, 2)
@@ -104,7 +107,8 @@ final class CommitGraphGeneratorTests: XCTestCase {
         let model = CommitGraphGenerator.generate(
             commits: [m, f, c, b, a],
             highlighting: .currentBranchOnly,
-            headHash: "c"
+            headHash: "c",
+            highlightRootHash: "c"
         )
 
         let highlightedDots = model.dots.filter(\.isHighlighted)
@@ -120,7 +124,8 @@ final class CommitGraphGeneratorTests: XCTestCase {
         let model = CommitGraphGenerator.generate(
             commits: [a],
             highlighting: .all,
-            headHash: "a"
+            headHash: "a",
+            highlightRootHash: nil
         )
 
         XCTAssertEqual(model.dots.count, 1)
@@ -137,7 +142,8 @@ final class CommitGraphGeneratorTests: XCTestCase {
         let model = CommitGraphGenerator.generate(
             commits: [c, b, a],
             highlighting: .all,
-            headHash: "c"
+            headHash: "c",
+            highlightRootHash: nil
         )
 
         XCTAssertGreaterThanOrEqual(model.laneCount, 2)
@@ -152,7 +158,8 @@ final class CommitGraphGeneratorTests: XCTestCase {
         let model = CommitGraphGenerator.generate(
             commits: [m, b, c, a],
             highlighting: .all,
-            headHash: "m"
+            headHash: "m",
+            highlightRootHash: nil
         )
 
         XCTAssertEqual(model.dots.first?.type, .head)
@@ -163,12 +170,34 @@ final class CommitGraphGeneratorTests: XCTestCase {
         let model = CommitGraphGenerator.generate(
             commits: [],
             highlighting: .all,
-            headHash: nil
+            headHash: nil,
+            highlightRootHash: nil
         )
 
         XCTAssertTrue(model.paths.isEmpty)
         XCTAssertTrue(model.links.isEmpty)
         XCTAssertTrue(model.dots.isEmpty)
         XCTAssertEqual(model.laneCount, 1)
+    }
+
+    func testSelectedBranchHighlightUsesSeparateRootFromHead() {
+        let a = makeCommit(hash: "a")
+        let b = makeCommit(hash: "b", parents: ["a"])
+        let c = makeCommit(hash: "c", parents: ["b"], refs: ["main"])
+        let f = makeCommit(hash: "f", parents: ["b"], refs: ["feature"])
+
+        let model = CommitGraphGenerator.generate(
+            commits: [c, f, b, a],
+            highlighting: .currentBranchOnly,
+            headHash: "c",
+            highlightRootHash: "f"
+        )
+
+        XCTAssertEqual(model.dots.first?.type, .head)
+        XCTAssertEqual(
+            model.commitMetadata.filter(\.value.isHighlighted).map(\.key).sorted(),
+            ["a", "b", "f"]
+        )
+        XCTAssertFalse(model.commitMetadata["c"]?.isHighlighted ?? true)
     }
 }

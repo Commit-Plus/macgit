@@ -1012,11 +1012,17 @@ struct HistoryView: View {
                 in: repositoryURL
             )
         }
+        let highlightRootHash = await Self.highlightRootHash(
+            for: appState.historyBranchFilter,
+            commits: loadedCommits,
+            repositoryURL: repositoryURL
+        )
         let highlighting = Self.highlighting(for: appState.historyBranchFilter)
         let newGraphModel = await CommitGraphGenerator.generateAsync(
             commits: loadedCommits,
             highlighting: highlighting,
-            headHash: headHash
+            headHash: headHash,
+            highlightRootHash: highlightRootHash
         )
 
         await MainActor.run {
@@ -1491,6 +1497,27 @@ struct HistoryView: View {
         for branchFilter: HistoryBranchFilter
     ) -> CommitGraphHighlighting {
         branchFilter == .all ? .all : .currentBranchOnly
+    }
+
+    static func highlightRootHash(
+        for branchFilter: HistoryBranchFilter,
+        commits: [Commit],
+        repositoryURL: URL
+    ) async -> String? {
+        switch branchFilter {
+        case .all:
+            return nil
+        case .current:
+            if let decoratedHead = resolvedHeadHash(from: commits) {
+                return decoratedHead
+            }
+            return await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
+        case .branch(let branch):
+            if let tipCommit = commits.first {
+                return tipCommit.hash
+            }
+            return await GitStatusService.shared.tipHash(for: branch, in: repositoryURL)
+        }
     }
 
     static func selectionModifiers(from flags: NSEvent.ModifierFlags) -> HistoryCommitSelection.Modifiers {

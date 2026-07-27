@@ -34,19 +34,22 @@ nonisolated enum CommitGraphGenerator {
     static func generateAsync(
         commits: [Commit],
         highlighting: CommitGraphHighlighting,
-        headHash: String?
+        headHash: String?,
+        highlightRootHash: String?
     ) async -> CommitGraphModel {
         generate(
             commits: commits,
             highlighting: highlighting,
-            headHash: headHash
+            headHash: headHash,
+            highlightRootHash: highlightRootHash
         )
     }
 
     static func generate(
         commits: [Commit],
         highlighting: CommitGraphHighlighting,
-        headHash: String?
+        headHash: String?,
+        highlightRootHash: String?
     ) -> CommitGraphModel {
         guard !commits.isEmpty else {
             return CommitGraphModel(
@@ -61,8 +64,8 @@ nonisolated enum CommitGraphGenerator {
         let rowByHash = Dictionary(
             uniqueKeysWithValues: commits.enumerated().map { ($0.element.hash, $0.offset) }
         )
-        let currentBranchCommits = reachableCommits(
-            from: headHash,
+        let highlightedCommits = reachableCommits(
+            from: highlightRootHash,
             commits: commits,
             rowByHash: rowByHash
         )
@@ -124,7 +127,7 @@ nonisolated enum CommitGraphGenerator {
                 case .all:
                     isHighlighted = true
                 case .currentBranchOnly:
-                    isHighlighted = currentBranchCommits.contains(commit.hash)
+                    isHighlighted = highlightedCommits.contains(commit.hash)
                 }
             }
 

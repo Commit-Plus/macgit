@@ -26,6 +26,21 @@ final class HistoryViewTests: XCTestCase {
         XCTAssertEqual(HistoryView.highlighting(for: .branch("feature/login")), .currentBranchOnly)
     }
 
+    func testHighlightRootHashUsesSelectedBranchTipFromLoadedCommits() async {
+        let commits = [
+            makeCommit(hash: "feature-tip"),
+            makeCommit(hash: "base")
+        ]
+
+        let rootHash = await HistoryView.highlightRootHash(
+            for: .branch("feature/login"),
+            commits: commits,
+            repositoryURL: URL(fileURLWithPath: "/tmp/repo")
+        )
+
+        XCTAssertEqual(rootHash, "feature-tip")
+    }
+
     func testBranchFilterUsesSelectedBranch() {
         let scope = HistoryView.historyScope(branchFilter: .branch("origin/feature/login"))
 
