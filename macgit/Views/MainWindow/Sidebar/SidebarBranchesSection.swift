@@ -81,6 +81,7 @@ struct SidebarBranchesSection: View {
                             Spacer()
                         }
                         .padding(.vertical, 2)
+                        .padding(.leading, 6)
                         .contentShape(Rectangle())
                         .tag(SidebarSelection.head(headHash))
                         .onTapGesture {
@@ -105,6 +106,7 @@ struct SidebarBranchesSection: View {
                             finishBranchDrag: finishBranchDrag,
                             actions: actions
                         )
+                        .padding(.leading, 6)
                     }
                 }
             }
@@ -137,6 +139,7 @@ struct SidebarBranchesSection: View {
                 : Color.clear
         )
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         .overlay {
             SidebarBranchDropTarget(
                 onTap: actions.toggleSection,

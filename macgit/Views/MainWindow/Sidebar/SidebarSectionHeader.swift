@@ -27,9 +27,17 @@ struct SidebarSectionHeader<Trailing: View>: View {
 
     var body: some View {
         HStack {
-            Text(section.rawValue)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Image(systemName: section.icon)
+                    .font(.system(size: 11, weight: .semibold))
+
+                Text(section.rawValue)
+                    .font(.system(size: 11))
+                    .bold()
+            }
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+
             Spacer()
             if let activeDropLabel {
                 Text(activeDropLabel)

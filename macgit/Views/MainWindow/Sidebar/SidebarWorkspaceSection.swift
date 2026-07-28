@@ -22,10 +22,28 @@ struct SidebarWorkspaceSection: View {
     let onRequestSearch: () -> Void
 
     var body: some View {
-        Section(SidebarSection.workspace.rawValue) {
+        Section {
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: SidebarSection.workspace.icon)
+                        .font(.system(size: 11, weight: .semibold))
+
+                    Text(SidebarSection.workspace.rawValue)
+                        .font(.system(size: 11))
+                        .bold()
+                }
+                .foregroundStyle(.secondary)
+                .accessibilityElement(children: .combine)
+
+                Spacer()
+            }
+            .padding(.vertical, 2)
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+
             ForEach(SidebarSection.workspace.items) { item in
                 if item == .search {
                     Label(item.rawValue, systemImage: item.icon)
+                        .padding(.leading, 6)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -33,6 +51,7 @@ struct SidebarWorkspaceSection: View {
                         }
                 } else {
                     Label(item.rawValue, systemImage: item.icon)
+                        .padding(.leading, 6)
                         .tag(SidebarSelection.item(item))
                 }
             }

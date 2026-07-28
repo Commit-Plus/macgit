@@ -51,6 +51,7 @@ struct SidebarTagsSection: View {
                             isDropTargeted: actions.isTagDropTargeted(row.fullPath),
                             actions: actions
                         )
+                        .padding(.leading, 6)
                     }
                 }
             }
@@ -70,6 +71,7 @@ struct SidebarTagsSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(isHeaderDropTargeted ? Color.accentColor.opacity(0.12) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         .overlay {
             SidebarBranchDropTarget(
                 onTap: actions.toggleSection,

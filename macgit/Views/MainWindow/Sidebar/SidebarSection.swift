@@ -26,6 +26,27 @@ enum SidebarSection: String, CaseIterable {
     case submodules = "SUBMODULES"
     case subtrees = "SUBTREES"
 
+    var icon: String {
+        switch self {
+        case .workspace:
+            return "square.grid.2x2"
+        case .branches:
+            return "arrow.triangle.branch"
+        case .worktrees:
+            return "rectangle.3.group"
+        case .tags:
+            return "tag"
+        case .remotes:
+            return "cloud"
+        case .stashes:
+            return "archivebox"
+        case .submodules:
+            return "shippingbox"
+        case .subtrees:
+            return "square.stack.3d.up"
+        }
+    }
+
     var items: [SidebarItem] {
         switch self {
         case .workspace:
