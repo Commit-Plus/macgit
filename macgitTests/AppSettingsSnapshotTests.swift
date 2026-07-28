@@ -23,6 +23,7 @@ import XCTest
 final class AppSettingsSnapshotTests: XCTestCase {
     func testSnapshotRoundTripsOnlyApprovedSettings() throws {
         let value = AppSettingsSnapshot(
+            appearance: .dark,
             showToolbarButtonText: false,
             showSubmodules: true,
             showSubtrees: true,
@@ -45,6 +46,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
             Set(try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any]).keys),
             [
                 "schemaVersion",
+                "appearance",
                 "showToolbarButtonText",
                 "showSubmodules",
                 "showSubtrees",
@@ -70,6 +72,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
 
         state.apply(
             AppSettingsSnapshot(
+                appearance: .dark,
                 showToolbarButtonText: false,
                 showSubmodules: true,
                 showSubtrees: true,
@@ -85,6 +88,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertEqual(
             state.snapshot,
             AppSettingsSnapshot(
+                appearance: .dark,
                 showToolbarButtonText: false,
                 showSubmodules: true,
                 showSubtrees: true,
@@ -96,6 +100,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
                 showHeaderTerminalButton: true
             )
         )
+        XCTAssertEqual(state.appearance, .dark)
         XCTAssertTrue(state.hasOpenRepository)
         XCTAssertEqual(state.newWindowRepoURL, URL(fileURLWithPath: "/tmp/repository"))
     }
@@ -222,11 +227,11 @@ final class AppSettingsSnapshotTests: XCTestCase {
             .sink { emissions.append($0) }
             .store(in: &cancellables)
 
-        state.showHeaderBranchButton = false
+        state.appearance = .dark
 
         XCTAssertEqual(emissions.count, 2)
-        XCTAssertEqual(emissions.last?.showHeaderBranchButton, false)
-        XCTAssertEqual(emissions.last?.showHeaderMergeButton, true)
+        XCTAssertEqual(emissions.last?.appearance, .dark)
+        XCTAssertEqual(AppState(userDefaults: defaults).appearance, .dark)
     }
 
     func testApplyEmitsSingleSnapshot() {
@@ -241,6 +246,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
             .store(in: &cancellables)
 
         let expected = AppSettingsSnapshot(
+            appearance: .light,
             showToolbarButtonText: false,
             showSubmodules: true,
             showSubtrees: true,

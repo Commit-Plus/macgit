@@ -40,6 +40,7 @@ function gitProviderAccount(uid, connectionID, context) {
 function validSettings() {
   return {
     schemaVersion: 1,
+    appearance: "dark",
     showToolbarButtonText: true,
     showSubmodules: false,
     showSubtrees: true,
@@ -87,6 +88,7 @@ describe("Firestore ownership rules", () => {
   test("settings reject missing and unknown fields", async () => {
     const userA = environment.authenticatedContext("user-a");
     const optionalFields = new Set([
+      "appearance",
       "showHeaderBranchButton",
       "showHeaderMergeButton",
       "showHeaderStashButton",
@@ -114,6 +116,7 @@ describe("Firestore ownership rules", () => {
     const userA = environment.authenticatedContext("user-a");
     const invalidValues = {
       schemaVersion: 2,
+      appearance: true,
       showToolbarButtonText: "true",
       showSubmodules: "false",
       showSubtrees: 1,
@@ -162,12 +165,17 @@ describe("Firestore ownership rules", () => {
       ...validSettings(),
       historyBranchFilter: "branch:",
     }));
+    await assertFails(setDoc(settings("user-a", userA), {
+      ...validSettings(),
+      appearance: "sepia",
+    }));
   });
 
   test("settings accept legacy documents without header button fields", async () => {
     const userA = environment.authenticatedContext("user-a");
     const legacy = validSettings();
     for (const key of [
+      "appearance",
       "showHeaderBranchButton",
       "showHeaderMergeButton",
       "showHeaderStashButton",

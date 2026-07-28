@@ -192,6 +192,7 @@ struct SettingsSyncConflictSheet: View {
     private func settingsGroup(title: String, snapshot: AppSettingsSnapshot) -> some View {
         GroupBox(title) {
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+                settingValueRow("Appearance", value: snapshot.appearance.title)
                 settingRow("Toolbar button text", enabled: snapshot.showToolbarButtonText)
                 settingRow("Submodules", enabled: snapshot.showSubmodules)
                 settingRow("Subtrees", enabled: snapshot.showSubtrees)
@@ -206,6 +207,14 @@ struct SettingsSyncConflictSheet: View {
             .padding(.vertical, 4)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func settingValueRow(_ label: String, value: String) -> some View {
+        GridRow {
+            Text(label)
+            Text(value)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func settingRow(_ label: String, enabled: Bool) -> some View {

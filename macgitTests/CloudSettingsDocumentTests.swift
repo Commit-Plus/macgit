@@ -22,6 +22,7 @@ import XCTest
 
 final class CloudSettingsDocumentTests: XCTestCase {
     private let snapshot = AppSettingsSnapshot(
+        appearance: .dark,
         showToolbarButtonText: false,
         showSubmodules: true,
         showSubtrees: false,
@@ -44,6 +45,7 @@ final class CloudSettingsDocumentTests: XCTestCase {
             Set(document.keys),
             [
                 "schemaVersion",
+                "appearance",
                 "showToolbarButtonText",
                 "showSubmodules",
                 "showSubtrees",
@@ -59,6 +61,7 @@ final class CloudSettingsDocumentTests: XCTestCase {
             ]
         )
         XCTAssertEqual(document["schemaVersion"] as? Int, 1)
+        XCTAssertEqual(document["appearance"] as? String, "dark")
         XCTAssertEqual(document["showToolbarButtonText"] as? Bool, false)
         XCTAssertEqual(document["showSubmodules"] as? Bool, true)
         XCTAssertEqual(document["showSubtrees"] as? Bool, false)
@@ -93,6 +96,25 @@ final class CloudSettingsDocumentTests: XCTestCase {
 
         XCTAssertEqual(decoded.historyBranchFilter, .all)
         XCTAssertFalse(decoded.historyIncludeRemotes)
+    }
+
+    func testDecodingDefaultsMissingAppearanceToSystem() throws {
+        var document = validDocument()
+        document.removeValue(forKey: "appearance")
+
+        let decoded = try CloudSettingsDocument.decode(document)
+
+        XCTAssertEqual(decoded.appearance, .system)
+    }
+
+    func testDecodingRejectsInvalidAppearance() {
+        var unsupported = validDocument()
+        unsupported["appearance"] = "sepia"
+        var wrongType = validDocument()
+        wrongType["appearance"] = true
+
+        XCTAssertThrowsError(try CloudSettingsDocument.decode(unsupported))
+        XCTAssertThrowsError(try CloudSettingsDocument.decode(wrongType))
     }
 
     func testDecodingValidDocumentReturnsCompleteSnapshot() throws {

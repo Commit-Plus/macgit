@@ -25,16 +25,6 @@ struct GeneralSettingsView: View {
         Form {
             Section {
                 SettingsToggleRow(
-                    title: "Show button text",
-                    detail: "Display labels alongside icons in the main repository toolbar.",
-                    isOn: $appState.showToolbarButtonText
-                )
-            } header: {
-                Label("Toolbar", systemImage: "macwindow")
-            }
-
-            Section {
-                SettingsToggleRow(
                     title: "Show submodules",
                     detail: "Include Git submodules as a dedicated section in the repository sidebar.",
                     isOn: $appState.showSubmodules
@@ -72,7 +62,7 @@ struct GeneralSettingsView: View {
             Button("Restore Defaults", role: .destructive, action: restoreDefaults)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Toolbar, sidebar, and History preferences on this page will be reset.")
+            Text("Sidebar and History preferences on this page will be reset.")
         }
     }
 
@@ -81,7 +71,6 @@ struct GeneralSettingsView: View {
     }
 
     private func restoreDefaults() {
-        appState.showToolbarButtonText = true
         appState.showSubmodules = false
         appState.showSubtrees = false
         appState.historyIncludeRemotes = false

@@ -20,6 +20,7 @@ import Foundation
 
 struct AppSettingsSnapshot: Codable, Equatable, Sendable {
     let schemaVersion: Int
+    var appearance: AppAppearance
     var showToolbarButtonText: Bool
     var showSubmodules: Bool
     var showSubtrees: Bool
@@ -33,6 +34,7 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
     var historyIncludeRemotes: Bool
 
     init(
+        appearance: AppAppearance = .system,
         showToolbarButtonText: Bool,
         showSubmodules: Bool,
         showSubtrees: Bool,
@@ -46,6 +48,7 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
         historyIncludeRemotes: Bool = false
     ) {
         schemaVersion = 1
+        self.appearance = appearance
         self.showToolbarButtonText = showToolbarButtonText
         self.showSubmodules = showSubmodules
         self.showSubtrees = showSubtrees

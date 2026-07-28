@@ -27,6 +27,7 @@ enum FileMenuAction: Equatable {
 
 final class AppState: ObservableObject {
     static let shared = AppState()
+    private static let appearanceKey = "appearance"
     private static let showToolbarButtonTextKey = "showToolbarButtonText"
     private static let showSubmodulesKey = "showSubmodules"
     private static let showSubtreesKey = "showSubtrees"
@@ -51,6 +52,14 @@ final class AppState: ObservableObject {
     @Published var openWindowWithCloneSheet = false
     @Published var newWindowRepoURL: URL?
     @Published var hasOpenRepository = false
+    @Published var appearance: AppAppearance {
+        didSet {
+            userDefaults.set(appearance.rawValue, forKey: Self.appearanceKey)
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
+        }
+    }
     @Published var showToolbarButtonText: Bool {
         didSet {
             userDefaults.set(showToolbarButtonText, forKey: Self.showToolbarButtonTextKey)
@@ -170,6 +179,8 @@ final class AppState: ObservableObject {
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
+        let appearance = userDefaults.string(forKey: Self.appearanceKey)
+            .flatMap(AppAppearance.init(rawValue:)) ?? .system
         let showToolbarButtonText = userDefaults.object(forKey: Self.showToolbarButtonTextKey) as? Bool ?? true
         let showSubmodules = userDefaults.object(forKey: Self.showSubmodulesKey) as? Bool ?? false
         let showSubtrees = userDefaults.object(forKey: Self.showSubtreesKey) as? Bool ?? false
@@ -189,6 +200,7 @@ final class AppState: ObservableObject {
             forKey: Self.preferredSearchFileApplicationKey
         )
 
+        self.appearance = appearance
         self.showToolbarButtonText = showToolbarButtonText
         self.showSubmodules = showSubmodules
         self.showSubtrees = showSubtrees
@@ -204,6 +216,7 @@ final class AppState: ObservableObject {
         self.searchFilter = searchFilter
         self.preferredSearchFileApplicationBundleIdentifier = preferredSearchFileApplicationBundleIdentifier
         currentSettingsSnapshot = AppSettingsSnapshot(
+            appearance: appearance,
             showToolbarButtonText: showToolbarButtonText,
             showSubmodules: showSubmodules,
             showSubtrees: showSubtrees,
@@ -220,6 +233,7 @@ final class AppState: ObservableObject {
 
     var snapshot: AppSettingsSnapshot {
         AppSettingsSnapshot(
+            appearance: appearance,
             showToolbarButtonText: showToolbarButtonText,
             showSubmodules: showSubmodules,
             showSubtrees: showSubtrees,
@@ -237,6 +251,7 @@ final class AppState: ObservableObject {
     func apply(_ snapshot: AppSettingsSnapshot) {
         isApplyingSnapshot = true
         defer { isApplyingSnapshot = false }
+        appearance = snapshot.appearance
         showToolbarButtonText = snapshot.showToolbarButtonText
         showSubmodules = snapshot.showSubmodules
         showSubtrees = snapshot.showSubtrees

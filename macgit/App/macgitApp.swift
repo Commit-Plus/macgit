@@ -70,6 +70,7 @@ struct macgitApp: App {
             )
                 .environmentObject(appState)
                 .environmentObject(appUpdateController)
+                .preferredColorScheme(appState.appearance.colorScheme)
                 .onOpenURL { url in
                     Task { @MainActor in
                         if await providerAccountController.handleProviderOAuthCallback(url) {
@@ -83,6 +84,7 @@ struct macgitApp: App {
                 }
                 .sheet(isPresented: $showingAppSettings) {
                     AppSettingsView(appState: appState)
+                        .preferredColorScheme(appState.appearance.colorScheme)
                 }
         }
         .commands {

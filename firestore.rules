@@ -15,6 +15,7 @@ service cloud.firestore {
     function validAppSettings() {
       return request.resource.data.keys().hasOnly([
           'schemaVersion',
+          'appearance',
           'showToolbarButtonText',
           'showSubmodules',
           'showSubtrees',
@@ -37,6 +38,8 @@ service cloud.firestore {
         ])
         && request.resource.data.schemaVersion is int
         && request.resource.data.schemaVersion == 1
+        && (!('appearance' in request.resource.data)
+          || request.resource.data.appearance in ['system', 'light', 'dark'])
         && request.resource.data.showToolbarButtonText is bool
         && request.resource.data.showSubmodules is bool
         && request.resource.data.showSubtrees is bool

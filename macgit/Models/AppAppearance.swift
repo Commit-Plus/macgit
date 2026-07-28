@@ -17,18 +17,34 @@
 //
 import SwiftUI
 
-struct AppSettingsDetailView: View {
-    let section: AppSettingsSection
-    @ObservedObject var appState: AppState
+enum AppAppearance: String, CaseIterable, Codable, Identifiable, Sendable {
+    case system
+    case light
+    case dark
 
-    var body: some View {
-        switch section {
-        case .general:
-            GeneralSettingsView(appState: appState)
-        case .appearance:
-            AppearanceSettingsView(appState: appState)
-        default:
-            AppSettingsPlaceholderView(section: section)
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .system: "circle.lefthalf.filled"
+        case .light: "sun.max"
+        case .dark: "moon"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
         }
     }
 }

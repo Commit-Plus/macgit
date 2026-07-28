@@ -26,6 +26,7 @@ enum CloudSettingsDocument {
     ) -> [String: Any] {
         [
             "schemaVersion": snapshot.schemaVersion,
+            "appearance": snapshot.appearance.rawValue,
             "showToolbarButtonText": snapshot.showToolbarButtonText,
             "showSubmodules": snapshot.showSubmodules,
             "showSubtrees": snapshot.showSubtrees,
@@ -52,7 +53,20 @@ enum CloudSettingsDocument {
             throw CloudSettingsError.invalidDocument
         }
 
+        let appearance: AppAppearance
+        if let rawAppearance = data["appearance"] as? String {
+            guard let decodedAppearance = AppAppearance(rawValue: rawAppearance) else {
+                throw CloudSettingsError.invalidDocument
+            }
+            appearance = decodedAppearance
+        } else if data["appearance"] != nil {
+            throw CloudSettingsError.invalidDocument
+        } else {
+            appearance = .system
+        }
+
         return AppSettingsSnapshot(
+            appearance: appearance,
             showToolbarButtonText: showToolbarButtonText,
             showSubmodules: showSubmodules,
             showSubtrees: showSubtrees,

@@ -33,6 +33,7 @@ final class SettingsSyncServiceTests: XCTestCase {
         showHeaderTerminalButton: true
     )
     private let cloud = AppSettingsSnapshot(
+        appearance: .dark,
         showToolbarButtonText: false,
         showSubmodules: true,
         showSubtrees: true,
@@ -149,6 +150,7 @@ final class SettingsSyncServiceTests: XCTestCase {
         let harness = makeHarness(cloud: local)
         await harness.service.updateEligibility(uid: "u1", enabled: true)
         let first = AppSettingsSnapshot(
+            appearance: .light,
             showToolbarButtonText: false,
             showSubmodules: false,
             showSubtrees: false,
