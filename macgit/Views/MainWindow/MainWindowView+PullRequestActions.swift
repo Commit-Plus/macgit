@@ -148,7 +148,7 @@ extension MainWindowView {
         _ = try await GitStatusService.shared.push(
             options: options,
             in: repositoryURL,
-            credentialResolver: providerAccountController.credentialResolver()
+            credentialResolver: providerCredentialResolver
         )
         if setUpstream {
             try await GitStatusService.shared.setUpstream(

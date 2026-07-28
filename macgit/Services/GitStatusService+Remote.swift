@@ -170,10 +170,33 @@ extension GitStatusService {
         credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector(),
         sshCredentialInjector: GitSSHCredentialInjecting = TemporaryGitSSHCredentialInjector()
     ) async throws {
-        var arguments = ["fetch"]
         if options.fetchAllRemotes {
-            arguments.append("--all")
+            let remoteNames = await remotes(in: repositoryURL)
+            for remote in remoteNames {
+                var arguments = ["fetch", remote]
+                if options.prune {
+                    arguments.append("--prune")
+                }
+                if options.fetchTags {
+                    arguments.append("--tags")
+                }
+                do {
+                    let injection = try await credentialInjection(
+                        for: remote,
+                        in: repositoryURL,
+                        credentialResolver: credentialResolver,
+                        credentialInjector: credentialInjector,
+                        sshCredentialInjector: sshCredentialInjector
+                    )
+                    defer { injection?.cleanup() }
+                    _ = try await runRemoteGit(arguments: arguments, in: repositoryURL, injection: injection)
+                }
+            }
+            await branchListCache.invalidateRemotes(repositoryURL: repositoryURL)
+            return
         }
+
+        var arguments = ["fetch"]
         if options.prune {
             arguments.append("--prune")
         }

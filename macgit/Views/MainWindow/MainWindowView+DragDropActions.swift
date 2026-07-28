@@ -145,7 +145,7 @@ extension MainWindowView {
             try await GitStatusService.shared.initializeSubmodule(
                 path: path,
                 in: repositoryURL,
-                credentialResolver: providerAccountController.credentialResolver()
+                credentialResolver: providerCredentialResolver
             )
         } catch {
             await MainActor.run {
@@ -160,7 +160,7 @@ extension MainWindowView {
                 path: path,
                 mode: mode,
                 in: repositoryURL,
-                credentialResolver: providerAccountController.credentialResolver()
+                credentialResolver: providerCredentialResolver
             )
         } catch {
             await MainActor.run {
@@ -208,7 +208,7 @@ extension MainWindowView {
             options: options,
             repositoryURL: repositoryURL,
             undoManager: undoManager,
-            credentialResolver: providerAccountController.credentialResolver()
+            credentialResolver: providerCredentialResolver
         )
     }
 }

@@ -188,8 +188,15 @@ final class GitProviderAccountController: ObservableObject {
         return true
     }
 
-    func credentialResolver() -> GitProviderCredentialResolver {
-        GitProviderCredentialResolver(accounts: accounts, tokenVault: tokenVault, sshKeyStore: sshKeyStore)
+    func credentialResolver(
+        preferredAccountIDsByRemoteIdentity: [String: String] = [:]
+    ) -> GitProviderCredentialResolver {
+        GitProviderCredentialResolver(
+            accounts: accounts,
+            tokenVault: tokenVault,
+            sshKeyStore: sshKeyStore,
+            preferredAccountIDsByRemoteIdentity: preferredAccountIDsByRemoteIdentity
+        )
     }
 
     func sshKey(for account: GitProviderAccount) throws -> GitProviderSSHKey? {

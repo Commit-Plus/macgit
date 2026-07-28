@@ -30,13 +30,13 @@ extension MainWindowView {
             try await GitStatusService.shared.pullSubtree(
                 pending.entry,
                 in: repositoryURL,
-                credentialResolver: providerAccountController.credentialResolver()
+                credentialResolver: providerCredentialResolver
             )
         case .push:
             try await GitStatusService.shared.pushSubtree(
                 pending.entry,
                 in: repositoryURL,
-                credentialResolver: providerAccountController.credentialResolver()
+                credentialResolver: providerCredentialResolver
             )
         }
     }

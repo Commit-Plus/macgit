@@ -106,6 +106,27 @@ final class GitProviderCredentialResolverTests: XCTestCase {
         }
     }
 
+    func testSavedRemotePreferenceChoosesMatchingAccount() throws {
+        let first = makeProviderAccount(id: "connection-1", username: "octocat")
+        let second = makeProviderAccount(id: "connection-2", username: "monalisa")
+        let remoteURL = "https://github.com/octocat/Hello-World.git"
+        let identity = try XCTUnwrap(GitRemoteIdentityResolver.identity(from: remoteURL))
+        let resolver = GitProviderCredentialResolver(
+            accounts: [first, second],
+            tokenVault: FakeCredentialTokenVault(tokensByAccountID: [
+                first.id: makeToken("first-token"),
+                second.id: makeToken("second-token"),
+            ]),
+            preferredAccountIDsByRemoteIdentity: [
+                GitProviderAccountPreferenceKey.make(for: identity): second.id,
+            ]
+        )
+
+        let credential = try resolver.credential(for: remoteURL)
+
+        XCTAssertEqual(credential, GitCredential(username: "monalisa", token: "second-token"))
+    }
+
     func testMissingTokenReturnsUserFacingAuthenticationError() {
         let account = makeProviderAccount()
         let resolver = GitProviderCredentialResolver(
