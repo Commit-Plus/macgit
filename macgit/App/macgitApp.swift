@@ -25,6 +25,7 @@ struct macgitApp: App {
     @StateObject private var appUpdateController = AppUpdateController(updater: SparkleAppUpdater())
     @StateObject private var accountController: AccountSessionController
     @StateObject private var providerAccountController: GitProviderAccountController
+    @State private var showingAppSettings = false
 
     init() {
         let firebaseStatus = FirebaseBootstrap.configure()
@@ -80,12 +81,20 @@ struct macgitApp: App {
                 .task {
                     appUpdateController.start()
                 }
+                .sheet(isPresented: $showingAppSettings) {
+                    AppSettingsView()
+                }
         }
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates...") {
                     appUpdateController.checkForUpdates()
                 }
+
+                Button("Settings...") {
+                    showingAppSettings = true
+                }
+                .keyboardShortcut(",", modifiers: .command)
             }
 
             CommandGroup(replacing: .newItem) {
