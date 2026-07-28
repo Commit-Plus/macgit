@@ -58,14 +58,35 @@ struct TagSheetView: View {
     @State private var source: TagCommitSource = .workingCopyParent
     @State private var commitOptions: [BranchCommitInfo] = []
     @State private var selectedCommit = ""
+    @State private var commitIDInput = ""
+    @State private var resolvedCommit: BranchCommitInfo?
+    @State private var hasResolvedCommitID = false
+    @State private var commitIDError: String?
+    @State private var isResolvingCommitID = false
+    @State private var commitValidationTask: Task<Void, Never>?
     @State private var pushTag = false
     @State private var remotes: [String] = []
     @State private var selectedRemote = ""
     @State private var errorMessage = ""
     @State private var showingError = false
+    @FocusState private var isCommitIDFocused: Bool
 
     private var canSubmit: Bool {
-        TagCreationPolicy.canSubmit(name: tagName, source: source)
+        TagCreationPolicy.canSubmit(name: tagName, source: source) && hasValidSelectedCommit
+    }
+
+    private var hasValidSelectedCommit: Bool {
+        guard case .specified(let commit) = source else { return true }
+        return commitIDError == nil &&
+            !commitIDInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            commitIDInput.trimmingCharacters(in: .whitespacesAndNewlines) == commit
+    }
+
+    private var visibleCommitOptions: [BranchCommitInfo] {
+        if hasResolvedCommitID, let resolvedCommit {
+            return [resolvedCommit]
+        }
+        return commitOptions
     }
 
     var body: some View {
@@ -90,24 +111,73 @@ struct TagSheetView: View {
                     Text("Specified commit:").tag(TagCommitSource.specified(selectedCommit))
                 }
                 .pickerStyle(.radioGroup)
-                .onChange(of: selectedCommit) { _, newValue in
-                    if case .specified = source {
-                        source = .specified(newValue)
-                    }
-                }
 
                 if case .specified = source {
-                    Picker("", selection: $selectedCommit) {
-                        Text("Select a commit...").tag("")
-                        ForEach(commitOptions) { commit in
-                            Text(commit.display)
-                                .tag(commit.hash)
-                                .lineLimit(1)
+                    HStack(alignment: .top, spacing: 8) {
+                        TextField("Commit ID", text: $commitIDInput)
+                            .textFieldStyle(.roundedBorder)
+                            .focused($isCommitIDFocused)
+                            .onChange(of: commitIDInput) { _, _ in
+                                commitValidationTask?.cancel()
+                                resolvedCommit = nil
+                                hasResolvedCommitID = false
+                                commitIDError = nil
+                                commitValidationTask = Task {
+                                    try? await Task.sleep(for: .milliseconds(250))
+                                    guard !Task.isCancelled else { return }
+                                    await resolveCommitID()
+                                }
+                            }
+                            .onChange(of: isCommitIDFocused) { _, isFocused in
+                                guard !isFocused else { return }
+                                commitValidationTask?.cancel()
+                                commitValidationTask = Task {
+                                    await resolveCommitID()
+                                }
+                            }
+                            .onSubmit {
+                                commitValidationTask?.cancel()
+                                commitValidationTask = Task {
+                                    await resolveCommitID()
+                                }
+                            }
+
+                        Picker("", selection: $selectedCommit) {
+                            Text("Select a commit...").tag("")
+                            ForEach(visibleCommitOptions) { commit in
+                                Text(commit.display)
+                                    .tag(commit.hash)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(minWidth: 300, alignment: .leading)
+                        .onChange(of: selectedCommit) { _, newValue in
+                            if let matchingCommit = visibleCommitOptions.first(where: { $0.hash == newValue }) {
+                                source = .specified(matchingCommit.hash)
+                                if !hasResolvedCommitID {
+                                    commitIDInput = matchingCommit.hash
+                                    resolvedCommit = matchingCommit
+                                    commitIDError = nil
+                                }
+                            }
                         }
                     }
-                    .pickerStyle(.menu)
-                    .frame(minWidth: 300, alignment: .leading)
-                    .padding(.leading, 20)
+                    if isResolvingCommitID {
+                        ProgressView()
+                            .controlSize(.small)
+                            .padding(.leading, 20)
+                    } else if let commitIDError {
+                        Text(commitIDError)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.red)
+                            .padding(.leading, 20)
+                    } else if resolvedCommit != nil {
+                        Text("Commit found")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 20)
+                    }
                 }
             }
 
@@ -169,8 +239,40 @@ struct TagSheetView: View {
         await MainActor.run {
             commitOptions = recent.map { BranchCommitInfo(hash: $0.hash, message: $0.message) }
             selectedCommit = commitOptions.first?.hash ?? ""
+            commitIDInput = selectedCommit
+            resolvedCommit = commitOptions.first
             remotes = remoteNames
             selectedRemote = remoteNames.first ?? ""
+        }
+    }
+
+    private func resolveCommitID() async {
+        let input = commitIDInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        await MainActor.run {
+            isResolvingCommitID = true
+            resolvedCommit = nil
+            hasResolvedCommitID = false
+            commitIDError = nil
+        }
+
+        let resolved = await GitStatusService.shared.commitInfoIncludingRemotes(for: input, in: repositoryURL)
+        await MainActor.run {
+            guard commitIDInput.trimmingCharacters(in: .whitespacesAndNewlines) == input else {
+                return
+            }
+            isResolvingCommitID = false
+            guard let resolved else {
+                selectedCommit = ""
+                source = .specified("")
+                commitIDError = input.isEmpty ? "Enter a commit ID." : "Commit not found."
+                return
+            }
+
+            let commit = BranchCommitInfo(hash: resolved.hash, message: resolved.message)
+            resolvedCommit = commit
+            hasResolvedCommitID = true
+            selectedCommit = commit.hash
+            source = .specified(commit.hash)
         }
     }
 

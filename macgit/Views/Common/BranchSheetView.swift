@@ -72,6 +72,12 @@ struct BranchSheetView: View {
     @State private var useWorkingCopyParent = true
     @State private var selectedStartPoint: GitBranchStartPoint? = nil
     @State private var selectedStartReference: String = ""
+    @State private var startPointCommitIDInput: String = ""
+    @State private var resolvedStartPointCommit: BranchCommitInfo?
+    @State private var hasResolvedStartPointCommitID = false
+    @State private var startPointCommitIDError: String?
+    @State private var isResolvingStartPointCommit = false
+    @State private var startPointCommitValidationTask: Task<Void, Never>?
     @State private var recentCommits: [BranchCommitInfo] = []
     @State private var checkoutNewBranch = true
     @State private var hasAppliedInitialCreateState = false
@@ -83,6 +89,7 @@ struct BranchSheetView: View {
     // Confirmation overlay
     @State private var showingDeleteConfirmation = false
     @State private var isDeleting = false
+    @FocusState private var isStartPointCommitIDFocused: Bool
 
     // Alerts
     @State private var errorMessage: String = ""
@@ -105,7 +112,19 @@ struct BranchSheetView: View {
     }
 
     private var canCreate: Bool {
-        !sanitizedName.isEmpty
+        !sanitizedName.isEmpty &&
+        (useWorkingCopyParent || isBranchStartPoint || (hasValidSelectedCommitInput && startPointCommitIDError == nil))
+    }
+
+    private var isBranchStartPoint: Bool {
+        if case .branch = selectedStartPoint { return true }
+        return false
+    }
+
+    private var hasValidSelectedCommitInput: Bool {
+        guard case .commit(let hash, _) = selectedStartPoint else { return false }
+        return !startPointCommitIDInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            startPointCommitIDInput.trimmingCharacters(in: .whitespacesAndNewlines) == hash
     }
 
     private var selectedBranches: [BranchDeleteItem] {
@@ -117,7 +136,10 @@ struct BranchSheetView: View {
     }
 
     private var commitPickerOptions: [BranchCommitInfo] {
-        Self.commitPickerOptions(
+        if hasResolvedStartPointCommitID, let resolvedStartPointCommit {
+            return [resolvedStartPointCommit]
+        }
+        return Self.commitPickerOptions(
             selectedStartPoint: selectedStartPoint,
             recentCommits: recentCommits
         )
@@ -315,6 +337,12 @@ struct BranchSheetView: View {
                             message: matchingCommit.message
                         )
                     }
+                    if let matchingCommit = recentCommits.first(where: { $0.hash == selectedStartReference }) {
+                        startPointCommitIDInput = matchingCommit.hash
+                        resolvedStartPointCommit = matchingCommit
+                        hasResolvedStartPointCommitID = false
+                        startPointCommitIDError = nil
+                    }
                 }
 
                 if !useWorkingCopyParent {
@@ -332,28 +360,77 @@ struct BranchSheetView: View {
                         }
                         .padding(.leading, 16)
                     } else {
-                        Picker("", selection: $selectedStartReference) {
-                            Text("Select a commit...").tag("")
-                            ForEach(commitPickerOptions) { commit in
-                                Text(commit.display)
-                                    .tag(commit.hash)
-                                    .lineLimit(1)
+                        HStack(alignment: .top, spacing: 8) {
+                            TextField("Commit ID", text: $startPointCommitIDInput)
+                                .textFieldStyle(.roundedBorder)
+                                .focused($isStartPointCommitIDFocused)
+                                .onChange(of: startPointCommitIDInput) { _, _ in
+                                    startPointCommitValidationTask?.cancel()
+                                    resolvedStartPointCommit = nil
+                                    hasResolvedStartPointCommitID = false
+                                    startPointCommitIDError = nil
+                                    startPointCommitValidationTask = Task {
+                                        try? await Task.sleep(for: .milliseconds(250))
+                                        guard !Task.isCancelled else { return }
+                                        await resolveStartPointCommitID()
+                                    }
+                                }
+                                .onChange(of: isStartPointCommitIDFocused) { _, isFocused in
+                                    guard !isFocused else { return }
+                                    startPointCommitValidationTask?.cancel()
+                                    startPointCommitValidationTask = Task {
+                                        await resolveStartPointCommitID()
+                                    }
+                                }
+                                .onSubmit {
+                                    startPointCommitValidationTask?.cancel()
+                                    startPointCommitValidationTask = Task {
+                                        await resolveStartPointCommitID()
+                                    }
+                                }
+
+                            Picker("", selection: $selectedStartReference) {
+                                Text("Select a commit...").tag("")
+                                ForEach(commitPickerOptions) { commit in
+                                    Text(commit.display)
+                                        .tag(commit.hash)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .frame(minWidth: 280, alignment: .leading)
+                            .onChange(of: selectedStartReference) { _, newValue in
+                                guard !newValue.isEmpty else {
+                                    selectedStartPoint = nil
+                                    return
+                                }
+                                if let matchingCommit = commitPickerOptions.first(where: { $0.hash == newValue }) {
+                                    selectedStartPoint = .commit(
+                                        hash: matchingCommit.hash,
+                                        message: matchingCommit.message
+                                    )
+                                    startPointCommitIDInput = matchingCommit.hash
+                                    resolvedStartPointCommit = matchingCommit
+                                    hasResolvedStartPointCommitID = false
+                                    startPointCommitIDError = nil
+                                }
                             }
                         }
-                        .pickerStyle(.menu)
-                        .frame(minWidth: 280, alignment: .leading)
                         .padding(.leading, 16)
-                        .onChange(of: selectedStartReference) { _, newValue in
-                            guard !newValue.isEmpty else {
-                                selectedStartPoint = nil
-                                return
-                            }
-                            if let matchingCommit = commitPickerOptions.first(where: { $0.hash == newValue }) {
-                                selectedStartPoint = .commit(
-                                    hash: matchingCommit.hash,
-                                    message: matchingCommit.message
-                                )
-                            }
+                        if isResolvingStartPointCommit {
+                            ProgressView()
+                                .controlSize(.small)
+                                .padding(.leading, 16)
+                        } else if let startPointCommitIDError {
+                            Text(startPointCommitIDError)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.red)
+                                .padding(.leading, 16)
+                        } else if resolvedStartPointCommit != nil {
+                            Text("Commit found")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .padding(.leading, 16)
                         }
                     }
                 }
@@ -545,6 +622,12 @@ struct BranchSheetView: View {
                 useWorkingCopyParent = state.useWorkingCopyParent
                 selectedStartPoint = state.selectedStartPoint
                 selectedStartReference = state.selectedStartReference
+                if case .commit(let hash, let message) = state.selectedStartPoint {
+                    let selectedCommit = BranchCommitInfo(hash: hash, message: message)
+                    startPointCommitIDInput = hash
+                    resolvedStartPointCommit = selectedCommit
+                    hasResolvedStartPointCommitID = false
+                }
                 hasAppliedInitialCreateState = true
             } else if selectedStartReference.isEmpty {
                 selectedStartReference = recentCommits.first?.hash ?? ""
@@ -625,6 +708,38 @@ struct BranchSheetView: View {
                 return recentCommits
             }
             return [BranchCommitInfo(hash: name, message: "Branch")] + recentCommits
+        }
+    }
+
+    private func resolveStartPointCommitID() async {
+        let input = startPointCommitIDInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        await MainActor.run {
+            isResolvingStartPointCommit = true
+            resolvedStartPointCommit = nil
+            hasResolvedStartPointCommitID = false
+            startPointCommitIDError = nil
+        }
+
+        let resolved = await GitStatusService.shared.commitInfoIncludingRemotes(for: input, in: repositoryURL)
+        await MainActor.run {
+            guard startPointCommitIDInput.trimmingCharacters(in: .whitespacesAndNewlines) == input else {
+                return
+            }
+            isResolvingStartPointCommit = false
+            guard let resolved else {
+                selectedStartPoint = nil
+                selectedStartReference = ""
+                startPointCommitIDError = input.isEmpty
+                    ? "Enter a commit ID."
+                    : "Commit not found."
+                return
+            }
+
+            let commit = BranchCommitInfo(hash: resolved.hash, message: resolved.message)
+            resolvedStartPointCommit = commit
+            hasResolvedStartPointCommitID = true
+            selectedStartReference = commit.hash
+            selectedStartPoint = .commit(hash: commit.hash, message: commit.message)
         }
     }
 

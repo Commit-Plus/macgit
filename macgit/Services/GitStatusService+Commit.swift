@@ -86,6 +86,50 @@ extension GitStatusService {
         }
     }
 
+    func commitInfo(for identifier: String, in repositoryURL: URL) async -> (hash: String, message: String)? {
+        let trimmedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedIdentifier.isEmpty,
+              trimmedIdentifier.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: "0123456789abcdefABCDEF").contains($0) }),
+              trimmedIdentifier.count <= 40 else {
+            return nil
+        }
+
+        let resolvedHash = (try? await runGit(
+            arguments: ["rev-parse", "--verify", "\(trimmedIdentifier)^{commit}"],
+            in: repositoryURL
+        ))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let resolvedHash, !resolvedHash.isEmpty else {
+            return nil
+        }
+
+        guard let output = try? await runGit(
+            arguments: ["show", "-s", "--format=%H%x1f%s", resolvedHash],
+            in: repositoryURL
+        ),
+        let separator = output.firstIndex(of: "\u{1F}") else {
+            return nil
+        }
+
+        let hash = output[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !hash.isEmpty else { return nil }
+
+        let messageStart = output.index(after: separator)
+        let message = output[messageStart...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return (hash: String(hash), message: String(message))
+    }
+
+    func commitInfoIncludingRemotes(for identifier: String, in repositoryURL: URL) async -> (hash: String, message: String)? {
+        if let localCommit = await commitInfo(for: identifier, in: repositoryURL) {
+            return localCommit
+        }
+
+        let trimmedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedIdentifier.count >= 7 else { return nil }
+
+        _ = try? await runGit(arguments: ["fetch", "--all", "--quiet"], in: repositoryURL)
+        return await commitInfo(for: trimmedIdentifier, in: repositoryURL)
+    }
+
     // MARK: - Commit History
 
     func commitHistory(allBranches: Bool, in repositoryURL: URL) async -> [Commit] {
