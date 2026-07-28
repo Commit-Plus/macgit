@@ -625,6 +625,7 @@ struct HistoryView: View {
                                                 graphWidth: graphWidth,
                                                 isSelected: commitSelection.selectedHashes.contains(commit.hash),
                                                 isDragActive: activeDragCommitHashes.contains(commit.hash),
+                                                graphColorIndex: graphModel?.commitMetadata[commit.hash]?.colorIndex,
                                                 messageWidth: effectiveMessageWidth,
                                                 authorWidth: CGFloat(authorColumnWidth),
                                                 dateWidth: CGFloat(dateColumnWidth),

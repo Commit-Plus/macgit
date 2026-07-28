@@ -27,6 +27,7 @@ struct CommitRowView: View {
     let graphWidth: CGFloat
     let isSelected: Bool
     let isDragActive: Bool
+    let graphColorIndex: Int?
     let messageWidth: CGFloat
     let authorWidth: CGFloat
     let dateWidth: CGFloat
@@ -45,20 +46,23 @@ struct CommitRowView: View {
                 .frame(width: graphWidth, height: 24)
                 .fixedSize()
 
-            // Message + ref labels (share the message column width)
+            // Ref labels stay on one line at the start of the message column;
+            // the commit message uses the remaining space and truncates at the end.
             HStack(spacing: 4) {
+                if !commit.refs.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(commit.refs.prefix(3), id: \.self) { ref in
+                            RefLabel(text: ref, graphColorIndex: graphColorIndex)
+                        }
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+
                 Text(commit.message)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.tail)
-
-                if !commit.refs.isEmpty {
-                    HStack(spacing: 4) {
-                        ForEach(commit.refs.prefix(3), id: \.self) { ref in
-                            RefLabel(text: ref)
-                        }
-                    }
-                }
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(width: messageWidth, alignment: .leading)
 
@@ -113,6 +117,12 @@ struct CommitRowView: View {
 
 struct RefLabel: View {
     let text: String
+    let graphColorIndex: Int?
+
+    init(text: String, graphColorIndex: Int? = nil) {
+        self.text = text
+        self.graphColorIndex = graphColorIndex
+    }
 
     var displayText: String {
         if text.hasPrefix("HEAD -> ") {
@@ -129,19 +139,37 @@ struct RefLabel: View {
     }
 
     var backgroundColor: Color {
-        isTag ? Color(nsColor: .systemPurple).opacity(0.15) : Color.accentColor.opacity(0.15)
+        if isTag {
+            return Color(nsColor: .systemPurple).opacity(0.15)
+        }
+        if let graphColorIndex {
+            return GraphPalette.color(for: graphColorIndex).opacity(0.2)
+        }
+        return Color.accentColor.opacity(0.15)
     }
 
     var textColor: Color {
-        isTag ? Color(nsColor: .systemPurple) : .accentColor
+        if isTag {
+            return Color(nsColor: .systemPurple)
+        }
+        if let graphColorIndex {
+            return GraphPalette.color(for: graphColorIndex)
+        }
+        return .accentColor
     }
 
     var body: some View {
-        Text(displayText)
-            .font(.system(size: 9, weight: .semibold))
+        HStack(spacing: 3) {
+            Image(systemName: isTag ? "tag" : "arrow.triangle.branch")
+                .font(.system(size: 8, weight: .semibold))
+
+            Text(displayText)
+                .font(.system(size: 9, weight: .semibold))
+        }
+            .lineLimit(1)
             .foregroundStyle(textColor)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
             .background(backgroundColor)
             .clipShape(Capsule())
     }

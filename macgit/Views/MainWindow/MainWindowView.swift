@@ -931,7 +931,7 @@ struct MainWindowView: View {
         let showText = appState.showToolbarButtonText
         if windowWidth > 1000 {
             HStack(spacing: 2) {
-                BadgeToolbarButton(icon: "checkmark", label: "Commit", badgeCount: syncState.commitBadgeCount, isLoading: syncState.isCommitting, disabled: operationInProgress, showText: showText, action: { showCommitSheetIfNoConflicts() })
+                BadgeToolbarButton(icon: "plus", label: "Commit", badgeCount: syncState.commitBadgeCount, isLoading: syncState.isCommitting, disabled: operationInProgress, showText: showText, action: { showCommitSheetIfNoConflicts() })
                 BadgeToolbarButton(icon: "arrow.down.to.line", label: "Pull", badgeCount: syncState.pullBadgeCount, isLoading: syncState.isPulling, disabled: syncing || operationInProgress, showText: showText, action: { showingPullSheet = true })
                 BadgeToolbarButton(icon: "arrow.up.to.line", label: "Push", badgeCount: syncState.pushBadgeCount, isLoading: syncState.isPushing, disabled: syncing || operationInProgress, showText: showText, action: { showingPushSheet = true })
                 toolbarButton(icon: "arrow.down.circle", label: "Fetch", showText: showText, isLoading: syncState.isFetching, disabled: syncing || operationInProgress, action: { showingFetchSheet = true })
