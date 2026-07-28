@@ -45,12 +45,12 @@ struct UpdateBannerView: View {
                     .controlSize(.small)
             }
 
-            Button(model.title, action: action)
+            Button(action: action) {
+                Label(model.title, systemImage: "arrow.down.to.line")
+            }
                 .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
                 .disabled(!model.isEnabled)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
     }
 }

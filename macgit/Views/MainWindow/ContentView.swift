@@ -37,6 +37,7 @@ struct ContentView: View {
                     repositoryURL: url,
                     providerAccountController: providerAccountController,
                     onOpenConnections: accountController.presentConnections,
+                    onManageAccount: accountController.presentManageAccount,
                     operationProgress: operationProgress
                 )
             } else {

@@ -82,6 +82,7 @@ struct MainWindowView: View {
     let repositoryURL: URL
     @ObservedObject var providerAccountController: GitProviderAccountController
     let onOpenConnections: () -> Void
+    let onManageAccount: () -> Void
     @EnvironmentObject var appState: AppState
     @Environment(\.openWindow) private var openWindow
     let repoSettingsStore = RepoSettingsStore.shared
@@ -143,11 +144,13 @@ struct MainWindowView: View {
         repositoryURL: URL,
         providerAccountController: GitProviderAccountController,
         onOpenConnections: @escaping () -> Void = {},
+        onManageAccount: @escaping () -> Void = {},
         operationProgress: RepositoryOperationProgress
     ) {
         self.repositoryURL = repositoryURL
         self.providerAccountController = providerAccountController
         self.onOpenConnections = onOpenConnections
+        self.onManageAccount = onManageAccount
         self.operationProgress = operationProgress
         _pullRequestController = StateObject(wrappedValue: PullRequestController(
             providerAccountController: providerAccountController,
@@ -676,6 +679,7 @@ struct MainWindowView: View {
             onRequestCreateTag: {
                 showingNewTagSheet = true
             },
+            onRequestManageAccount: onManageAccount,
             onRequestShowSubtreeInFinder: { path in
                 NSWorkspace.shared.activateFileViewerSelecting([path])
             },
@@ -870,34 +874,28 @@ struct MainWindowView: View {
         }
 
         ToolbarItem(placement: .automatic) {
-            toolbarButton(
-                icon: "arrow.uturn.backward",
-                label: "Undo",
-                showText: appState.showToolbarButtonText,
-                disabled: GitUndoToolbarPolicy.isUndoDisabled(
-                    isSyncing: syncState.isAnySyncing,
-                    canUndo: undoManager.canUndo
-                ) || operationProgress.activeOperation != nil,
-                action: { handleGitUndoMenuAction(.undo) }
-            )
-        }
-        if appState.showHeaderRemoteButton {
-            ToolbarItem(placement: .automatic) {
-                toolbarButton(icon: "network", label: "Remote", showText: appState.showToolbarButtonText, disabled: remoteURLString.isEmpty || operationProgress.activeOperation != nil, action: { openRemoteURL() })
+            HStack(spacing: 2) {
+                toolbarButton(
+                    icon: "arrow.uturn.backward",
+                    label: "Undo",
+                    showText: appState.showToolbarButtonText,
+                    disabled: GitUndoToolbarPolicy.isUndoDisabled(
+                        isSyncing: syncState.isAnySyncing,
+                        canUndo: undoManager.canUndo
+                    ) || operationProgress.activeOperation != nil,
+                    action: { handleGitUndoMenuAction(.undo) }
+                )
+                if appState.showHeaderRemoteButton {
+                    toolbarButton(icon: "network", label: "Remote", showText: appState.showToolbarButtonText, disabled: remoteURLString.isEmpty || operationProgress.activeOperation != nil, action: { openRemoteURL() })
+                }
+                if appState.showHeaderFinderButton {
+                    toolbarButton(icon: "folder", label: "Finder", showText: appState.showToolbarButtonText, disabled: operationProgress.activeOperation != nil, action: showInFinder)
+                }
+                if appState.showHeaderTerminalButton {
+                    toolbarButton(icon: "terminal", label: "Terminal", showText: appState.showToolbarButtonText, disabled: operationProgress.activeOperation != nil, action: openTerminal)
+                }
+                toolbarButton(icon: "gear", label: "Settings", showText: appState.showToolbarButtonText, disabled: operationProgress.activeOperation != nil, action: { showingRepositorySettings = true })
             }
-        }
-        if appState.showHeaderFinderButton {
-            ToolbarItem(placement: .automatic) {
-                toolbarButton(icon: "folder", label: "Finder", showText: appState.showToolbarButtonText, disabled: operationProgress.activeOperation != nil, action: showInFinder)
-            }
-        }
-        if appState.showHeaderTerminalButton {
-            ToolbarItem(placement: .automatic) {
-                toolbarButton(icon: "terminal", label: "Terminal", showText: appState.showToolbarButtonText, disabled: operationProgress.activeOperation != nil, action: openTerminal)
-            }
-        }
-        ToolbarItem(placement: .automatic) {
-            toolbarButton(icon: "gear", label: "Settings", showText: appState.showToolbarButtonText, disabled: operationProgress.activeOperation != nil, action: { showingRepositorySettings = true })
         }
     }
 

@@ -62,6 +62,7 @@ struct SidebarView: View {
     let onRequestAddLinkSubtree: () -> Void
     let onRequestCreateBranch: () -> Void
     let onRequestCreateTag: () -> Void
+    let onRequestManageAccount: () -> Void
     let onRequestShowSubtreeInFinder: (URL) -> Void
     let onRequestOpenSubtreeInTerminal: (URL) -> Void
     let onRequestPullSubtree: (GitSubtreeEntry) -> Void
@@ -197,6 +198,7 @@ struct SidebarView: View {
         onRequestAddLinkSubtree: @escaping () -> Void = {},
         onRequestCreateBranch: @escaping () -> Void = {},
         onRequestCreateTag: @escaping () -> Void = {},
+        onRequestManageAccount: @escaping () -> Void = {},
         onRequestShowSubtreeInFinder: @escaping (URL) -> Void = { _ in },
         onRequestOpenSubtreeInTerminal: @escaping (URL) -> Void = { _ in },
         onRequestPullSubtree: @escaping (GitSubtreeEntry) -> Void = { _ in },
@@ -249,6 +251,7 @@ struct SidebarView: View {
         self.onRequestAddLinkSubtree = onRequestAddLinkSubtree
         self.onRequestCreateBranch = onRequestCreateBranch
         self.onRequestCreateTag = onRequestCreateTag
+        self.onRequestManageAccount = onRequestManageAccount
         self.onRequestShowSubtreeInFinder = onRequestShowSubtreeInFinder
         self.onRequestOpenSubtreeInTerminal = onRequestOpenSubtreeInTerminal
         self.onRequestPullSubtree = onRequestPullSubtree
@@ -268,13 +271,27 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let model = UpdateBannerView.Model.make(for: appUpdateController.state) {
-                UpdateBannerView(model: model) {
-                    appUpdateController.openUpdateWindow()
+            sidebarContent
+
+            Divider()
+            HStack {
+                Menu {
+                    sidebarPlusMenu
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .menuStyle(.borderlessButton)
+                .help("Create or add to repository")
+
+                Spacer()
+
+                if let model = UpdateBannerView.Model.make(for: appUpdateController.displayState) {
+                    UpdateBannerView(model: model) {
+                        appUpdateController.openUpdateWindow()
+                    }
                 }
             }
-
-            sidebarContent
+            .padding(8)
         }
     }
 
@@ -532,11 +549,7 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .contextMenu {
-            Button("Add Submodule...", systemImage: "plus", action: onRequestAddSubmodule)
-            Button("Add/Link Subtree...", systemImage: "plus", action: onRequestAddLinkSubtree)
-            Divider()
-            Button("New Branch...", systemImage: "arrow.triangle.branch", action: onRequestCreateBranch)
-            Button("New Tag...", systemImage: "tag", action: onRequestCreateTag)
+            sidebarCreationMenu
         }
         .task(id: "\(repositoryURL.path)|\(appState.showSubmodules)") {
             loadSectionStates()
@@ -556,6 +569,22 @@ struct SidebarView: View {
                 await loadSubtrees(force: false)
             }
         }
+    }
+
+    @ViewBuilder
+    private var sidebarCreationMenu: some View {
+        Button("Add Submodule...", systemImage: "plus", action: onRequestAddSubmodule)
+        Button("Add/Link Subtree...", systemImage: "plus", action: onRequestAddLinkSubtree)
+        Divider()
+        Button("New Branch...", systemImage: "arrow.triangle.branch", action: onRequestCreateBranch)
+        Button("New Tag...", systemImage: "tag", action: onRequestCreateTag)
+    }
+
+    @ViewBuilder
+    private var sidebarPlusMenu: some View {
+        sidebarCreationMenu
+        Divider()
+        Button("Manage Account...", systemImage: "person.crop.circle", action: onRequestManageAccount)
     }
 
     @ViewBuilder

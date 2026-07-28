@@ -22,6 +22,15 @@ import Combine
 final class AppUpdateController: ObservableObject {
     @Published private(set) var state: AppUpdateState = .idle
 
+    var displayState: AppUpdateState {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-macgit-show-update-button") {
+            return .available
+        }
+#endif
+        return state
+    }
+
     private let updater: AppUpdaterProtocol
     private var hasStarted = false
 
