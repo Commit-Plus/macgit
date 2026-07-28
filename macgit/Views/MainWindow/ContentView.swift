@@ -53,7 +53,6 @@ struct ContentView: View {
             RepoPickerView(
                 showCloneSheetInitially: false,
                 onRepositoryOpened: { url in
-                    showingRepoPickerSheet = false
                     repositoryURL = url
                 }
             )

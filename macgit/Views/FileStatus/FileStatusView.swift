@@ -425,6 +425,7 @@ struct FileStatusView: View {
                 .frame(width: 3)
         }
         .onTapGesture {
+            guard selectedFileKey != selectionKey else { return }
             selectedFile = file
             selectedFileKey = selectionKey
             diffHunks = []

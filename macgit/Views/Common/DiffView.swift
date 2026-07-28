@@ -291,6 +291,7 @@ struct HunkView: View {
     @Binding var lastSelectedLineID: UUID?
     let onRefresh: () -> Void
     let onError: (String) -> Void
+    @State private var availableWidth: CGFloat = 0
 
     private var isStaged: Bool {
         guard let file = file else { return false }
@@ -364,6 +365,7 @@ struct HunkView: View {
                             line: line,
                             isSelected: selectedLineIDs.contains(line.id)
                         )
+                        .frame(minWidth: availableWidth, alignment: .leading)
                         .onTapGesture {
                             handleLineTap(at: index)
                         }
@@ -372,10 +374,22 @@ struct HunkView: View {
                         }
                     }
                 }
-                .background(.background)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                GeometryReader { geometry in
+                    Color.clear
+                        .onAppear {
+                            availableWidth = geometry.size.width
+                        }
+                        .onChange(of: geometry.size.width) { _, newWidth in
+                            availableWidth = newWidth
+                        }
+                }
             }
         }
-        .background(.background)
+        .background(.secondary.opacity(0.06))
+        .frame(maxWidth: .infinity, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
