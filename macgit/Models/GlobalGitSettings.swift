@@ -15,22 +15,26 @@
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-import SwiftUI
+import Foundation
 
-struct AppSettingsDetailView: View {
-    let section: AppSettingsSection
-    @ObservedObject var appState: AppState
+struct GlobalGitSettings: Equatable, Sendable {
+    var executablePath: String
+    var version: String
+    var userName: String
+    var userEmail: String
+    var defaultBranchName: String
+    var pruneOnFetch: Bool
+    var autoSetupRemote: Bool
+    var excludesFilePath: String
 
-    var body: some View {
-        switch section {
-        case .general:
-            GeneralSettingsView(appState: appState)
-        case .appearance:
-            AppearanceSettingsView(appState: appState)
-        case .git:
-            GitSettingsView()
-        default:
-            AppSettingsPlaceholderView(section: section)
-        }
-    }
+    static let empty = GlobalGitSettings(
+        executablePath: "",
+        version: "",
+        userName: "",
+        userEmail: "",
+        defaultBranchName: "main",
+        pruneOnFetch: false,
+        autoSetupRemote: false,
+        excludesFilePath: "~/.config/git/ignore"
+    )
 }

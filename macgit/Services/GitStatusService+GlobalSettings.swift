@@ -1,0 +1,100 @@
+//
+//  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
+//  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
+//
+//  This program is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Affero General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  This program is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU Affero General Public License for more details.
+//
+//  You should have received a copy of the GNU Affero General Public License
+//  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+import Foundation
+
+extension GitStatusService {
+    func loadGlobalGitSettings() async throws -> GlobalGitSettings {
+        let directory = FileManager.default.homeDirectoryForCurrentUser
+        let version = try await runGit(arguments: ["--version"], in: directory)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return GlobalGitSettings(
+            executablePath: gitExecutable(),
+            version: version,
+            userName: await globalConfigValue("user.name", in: directory) ?? "",
+            userEmail: await globalConfigValue("user.email", in: directory) ?? "",
+            defaultBranchName: await globalConfigValue("init.defaultBranch", in: directory) ?? "main",
+            pruneOnFetch: await globalConfigBool("fetch.prune", in: directory),
+            autoSetupRemote: await globalConfigBool("push.autoSetupRemote", in: directory),
+            excludesFilePath: await globalConfigValue("core.excludesFile", in: directory)
+                ?? "~/.config/git/ignore"
+        )
+    }
+
+    func updateGlobalGitSettings(_ settings: GlobalGitSettings) async throws {
+        let directory = FileManager.default.homeDirectoryForCurrentUser
+        let name = settings.userName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = settings.userEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let branch = settings.defaultBranchName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let excludesFile = settings.excludesFilePath.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !name.isEmpty else {
+            throw GitError.commandFailed("Global Git author name is required.")
+        }
+        guard email.contains("@"), !email.contains(where: \.isWhitespace) else {
+            throw GitError.commandFailed("Enter a valid email address for your global Git author.")
+        }
+        guard !branch.isEmpty else {
+            throw GitError.commandFailed("Default branch name is required.")
+        }
+
+        _ = try await runGit(arguments: ["check-ref-format", "--branch", branch], in: directory)
+        try await setGlobalConfig("user.name", value: name, in: directory)
+        try await setGlobalConfig("user.email", value: email, in: directory)
+        try await setGlobalConfig("init.defaultBranch", value: branch, in: directory)
+        try await setGlobalConfig("fetch.prune", value: settings.pruneOnFetch ? "true" : "false", in: directory)
+        try await setGlobalConfig(
+            "push.autoSetupRemote",
+            value: settings.autoSetupRemote ? "true" : "false",
+            in: directory
+        )
+
+        if excludesFile.isEmpty {
+            _ = try? await runGit(
+                arguments: ["config", "--global", "--unset-all", "core.excludesFile"],
+                in: directory
+            )
+        } else {
+            try await setGlobalConfig("core.excludesFile", value: excludesFile, in: directory)
+        }
+    }
+
+    private func globalConfigValue(_ key: String, in directory: URL) async -> String? {
+        let value = try? await runGit(
+            arguments: ["config", "--global", "--get", key],
+            in: directory
+        )
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+    private func globalConfigBool(_ key: String, in directory: URL) async -> Bool {
+        guard let value = await globalConfigValue(key, in: directory)?.lowercased() else {
+            return false
+        }
+        return ["true", "yes", "on", "1"].contains(value)
+    }
+
+    private func setGlobalConfig(_ key: String, value: String, in directory: URL) async throws {
+        _ = try await runGit(
+            arguments: ["config", "--global", key, value],
+            in: directory
+        )
+    }
+}
