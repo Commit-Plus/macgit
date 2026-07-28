@@ -37,6 +37,9 @@ struct RepositorySettingsDraft: Equatable {
     var refreshOnAppActive: Bool
     var confirmDetachedHeadCheckout: Bool
     var confirmDestructiveStashActions: Bool
+    var useGlobalUserSettings: Bool
+    var userName: String
+    var userEmail: String
     let remotes: [String]
     let branches: [String]
 
@@ -72,6 +75,9 @@ struct RepositorySettingsDraft: Equatable {
         refreshOnAppActive = settings.refreshOnAppActive
         confirmDetachedHeadCheckout = settings.confirmDetachedHeadCheckout
         confirmDestructiveStashActions = settings.confirmDestructiveStashActions
+        useGlobalUserSettings = settings.useGlobalUserSettings
+        userName = settings.userName
+        userEmail = settings.userEmail
     }
 
     var resolvedSettings: RepoSettings {
@@ -82,7 +88,10 @@ struct RepositorySettingsDraft: Equatable {
             autoFetchEnabled: autoFetchEnabled,
             refreshOnAppActive: refreshOnAppActive,
             confirmDetachedHeadCheckout: confirmDetachedHeadCheckout,
-            confirmDestructiveStashActions: confirmDestructiveStashActions
+            confirmDestructiveStashActions: confirmDestructiveStashActions,
+            useGlobalUserSettings: useGlobalUserSettings,
+            userName: userName,
+            userEmail: userEmail
         )
     }
 

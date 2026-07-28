@@ -313,6 +313,14 @@ extension MainWindowView {
             onSave: { newSettings in
                 repoSettings = newSettings
                 repoSettingsStore.update(for: repositoryURL.path, settings: newSettings)
+                Task {
+                    try? await GitStatusService.shared.updateGitUserConfiguration(
+                        useGlobalSettings: newSettings.useGlobalUserSettings,
+                        name: newSettings.userName,
+                        email: newSettings.userEmail,
+                        in: repositoryURL
+                    )
+                }
                 syncState.startBackgroundSync(repositoryURL: repositoryURL, settings: newSettings)
                 Task {
                     await refreshRemotePresentation(for: newSettings.defaultRemoteName)

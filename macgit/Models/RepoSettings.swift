@@ -35,6 +35,9 @@ struct RepoSettings: Codable, Equatable {
     var refreshOnAppActive: Bool
     var confirmDetachedHeadCheckout: Bool
     var confirmDestructiveStashActions: Bool
+    var useGlobalUserSettings: Bool
+    var userName: String
+    var userEmail: String
 
     init(
         defaultRemoteName: String? = nil,
@@ -43,7 +46,10 @@ struct RepoSettings: Codable, Equatable {
         autoFetchEnabled: Bool = false,
         refreshOnAppActive: Bool = true,
         confirmDetachedHeadCheckout: Bool = true,
-        confirmDestructiveStashActions: Bool = true
+        confirmDestructiveStashActions: Bool = true,
+        useGlobalUserSettings: Bool = true,
+        userName: String = "",
+        userEmail: String = ""
     ) {
         self.defaultRemoteName = defaultRemoteName
         self.defaultPullBranch = defaultPullBranch
@@ -52,6 +58,9 @@ struct RepoSettings: Codable, Equatable {
         self.refreshOnAppActive = refreshOnAppActive
         self.confirmDetachedHeadCheckout = confirmDetachedHeadCheckout
         self.confirmDestructiveStashActions = confirmDestructiveStashActions
+        self.useGlobalUserSettings = useGlobalUserSettings
+        self.userName = userName
+        self.userEmail = userEmail
     }
 
     init(from decoder: Decoder) throws {
@@ -63,6 +72,9 @@ struct RepoSettings: Codable, Equatable {
         refreshOnAppActive = try container.decodeIfPresent(Bool.self, forKey: .refreshOnAppActive) ?? true
         confirmDetachedHeadCheckout = try container.decodeIfPresent(Bool.self, forKey: .confirmDetachedHeadCheckout) ?? true
         confirmDestructiveStashActions = try container.decodeIfPresent(Bool.self, forKey: .confirmDestructiveStashActions) ?? true
+        useGlobalUserSettings = try container.decodeIfPresent(Bool.self, forKey: .useGlobalUserSettings) ?? true
+        userName = try container.decodeIfPresent(String.self, forKey: .userName) ?? ""
+        userEmail = try container.decodeIfPresent(String.self, forKey: .userEmail) ?? ""
     }
 
     static func defaults(currentBranch: String?, remotes: [String]) -> RepoSettings {

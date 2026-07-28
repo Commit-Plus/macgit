@@ -25,7 +25,7 @@ import SwiftUI
 private enum RepositorySettingsTab: String, CaseIterable, Identifiable {
     case remote = "Remote"
     case pullFetch = "Pull & Fetch"
-    case safetyFiles = "Safety & Files"
+    case advanced = "Advanced"
 
     var id: String { rawValue }
 }
@@ -54,7 +54,7 @@ struct RepositorySettingsSheetView: View {
     @State private var selectedRemoteName: String = ""
     @State private var showingRemoteEditSheet = false
     @State private var remoteEditMode: RemoteEditMode = .add
-    private let settingsContentWidth: CGFloat = 420
+    private let settingsContentWidth: CGFloat = 500
 
     var body: some View {
         VStack(spacing: 0) {
@@ -71,11 +71,11 @@ struct RepositorySettingsSheetView: View {
                             remoteTab(draft)
                         case .pullFetch:
                             pullFetchTab
-                        case .safetyFiles:
-                            safetyFilesTab
+                        case .advanced:
+                            advancedTab
                         }
                     }
-                    .padding(24)
+                    .padding(16)
                     .frame(maxWidth: settingsContentWidth, alignment: .center)
                     .frame(maxWidth: .infinity, alignment: .center)
                 } else {
@@ -147,7 +147,7 @@ struct RepositorySettingsSheetView: View {
 
     @ViewBuilder
     private func remoteTab(_ draft: RepositorySettingsDraft) -> some View {
-        VStack(alignment: .center, spacing: 16) {
+        VStack(alignment: .leading, spacing: 16) {
             // Remote table
             VStack(alignment: .leading, spacing: 8) {
                 Text("Remote repository paths:")
@@ -160,7 +160,7 @@ struct RepositorySettingsSheetView: View {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("Default remote")
                     .font(.system(size: 13))
-                    .frame(width: 130, alignment: .trailing)
+                    .frame(width: 130, alignment: .leading)
 
                 Picker("", selection: binding(\.selectedRemoteName)) {
                     ForEach(remoteOptions(for: draft), id: \.self) { remote in
@@ -176,33 +176,42 @@ struct RepositorySettingsSheetView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // Default pull branch
-            HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Default pull branch")
                     .font(.system(size: 13))
-                    .frame(width: 130, alignment: .trailing)
 
-                VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center, spacing: 12) {
                     Picker("", selection: binding(\.selectedBranchMode)) {
-                        Text("Detected Branch").tag(SelectedBranchMode.detected)
-                        Text("Manual Entry").tag(SelectedBranchMode.manual)
+                        Text("Detected branch").tag(SelectedBranchMode.detected)
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.radioGroup)
+                    .font(.system(size: 13))
 
-                    if draft.selectedBranchMode == .detected {
-                        Picker("", selection: binding(\.selectedDetectedBranch)) {
-                            Text("Select a branch").tag("")
-                            ForEach(branchOptions(for: draft), id: \.self) { branch in
-                                Text(branch).tag(branch)
-                            }
+                    Picker("", selection: binding(\.selectedDetectedBranch)) {
+                        Text("Select a branch").tag("")
+                        ForEach(branchOptions(for: draft), id: \.self) { branch in
+                            Text(branch).tag(branch)
                         }
-                        .pickerStyle(.menu)
-                    } else {
-                        TextField("release/hotfix", text: binding(\.manualBranchName))
-                            .textFieldStyle(.roundedBorder)
                     }
+                    .pickerStyle(.menu)
+                    .disabled(draft.selectedBranchMode != .detected || branchOptions(for: draft).isEmpty)
+
+                    Spacer()
                 }
 
-                Spacer()
+                HStack(alignment: .center, spacing: 12) {
+                    Picker("", selection: binding(\.selectedBranchMode)) {
+                        Text("Manual entry").tag(SelectedBranchMode.manual)
+                    }
+                    .pickerStyle(.radioGroup)
+                    .font(.system(size: 13))
+
+                    TextField("release/hotfix", text: binding(\.manualBranchName))
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(draft.selectedBranchMode != .manual)
+
+                    Spacer()
+                }
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -348,7 +357,7 @@ struct RepositorySettingsSheetView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var safetyFilesTab: some View {
+    private var advancedTab: some View {
         VStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("Confirm detached HEAD checkout", isOn: binding(\.confirmDetachedHeadCheckout))
@@ -364,6 +373,8 @@ struct RepositorySettingsSheetView: View {
             .background(.quaternary.opacity(0.3))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
+            userInformationSection
+
             HStack(spacing: 8) {
                 Spacer()
 
@@ -377,6 +388,39 @@ struct RepositorySettingsSheetView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var userInformationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("User information")
+                .font(.system(size: 16, weight: .medium))
+
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("Use global user settings", isOn: binding(\.useGlobalUserSettings))
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 13))
+
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("Full Name:")
+                        .frame(width: 100, alignment: .trailing)
+                    TextField("Full Name", text: binding(\.userName))
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(draft?.useGlobalUserSettings == true)
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("Email address:")
+                        .frame(width: 100, alignment: .trailing)
+                    TextField("Email address", text: binding(\.userEmail))
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(draft?.useGlobalUserSettings == true)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.quaternary.opacity(0.3))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
     }
 
     private func loadOptions() async {
@@ -398,13 +442,20 @@ struct RepositorySettingsSheetView: View {
             }
         }
 
+        let localUser = await GitStatusService.shared.gitUserConfiguration(in: repositoryURL, scope: .local)
+        let globalUser = await GitStatusService.shared.gitUserConfiguration(in: repositoryURL, scope: .global)
+        var settings = initialSettings
+        settings.useGlobalUserSettings = localUser == nil
+        settings.userName = (settings.useGlobalUserSettings ? globalUser?.name : localUser?.name) ?? ""
+        settings.userEmail = (settings.useGlobalUserSettings ? globalUser?.email : localUser?.email) ?? ""
+
         await MainActor.run {
             remotes = loadedRemotesValue
             branches = loadedBranchesValue
             remoteURLs = urls
             selectedRemoteName = loadedRemotesValue.first ?? ""
             draft = RepositorySettingsDraft(
-                settings: initialSettings,
+                settings: settings,
                 remotes: loadedRemotesValue,
                 branches: loadedBranchesValue,
                 currentBranch: currentBranch

@@ -23,6 +23,47 @@
 import Foundation
 
 extension GitStatusService {
+    enum GitUserScope: Equatable {
+        case local
+        case global
+    }
+
+    struct GitUserConfiguration: Equatable, Sendable {
+        let name: String
+        let email: String
+    }
+
+    func gitUserConfiguration(in repositoryURL: URL, scope: GitUserScope) async -> GitUserConfiguration? {
+        let scopeArgument = scope == .local ? "--local" : "--global"
+        let name = (try? await runGit(arguments: ["config", scopeArgument, "--get", "user.name"], in: repositoryURL))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = (try? await runGit(arguments: ["config", scopeArgument, "--get", "user.email"], in: repositoryURL))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let name, !name.isEmpty, let email, !email.isEmpty else { return nil }
+        return GitUserConfiguration(name: name, email: email)
+    }
+
+    func updateGitUserConfiguration(
+        useGlobalSettings: Bool,
+        name: String,
+        email: String,
+        in repositoryURL: URL
+    ) async throws {
+        if useGlobalSettings {
+            _ = try? await runGit(arguments: ["config", "--local", "--unset-all", "user.name"], in: repositoryURL)
+            _ = try? await runGit(arguments: ["config", "--local", "--unset-all", "user.email"], in: repositoryURL)
+            return
+        }
+
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, !trimmedEmail.isEmpty else {
+            throw GitError.commandFailed("User name and email are required when global user settings are disabled.")
+        }
+        _ = try await runGit(arguments: ["config", "--local", "user.name", trimmedName], in: repositoryURL)
+        _ = try await runGit(arguments: ["config", "--local", "user.email", trimmedEmail], in: repositoryURL)
+    }
+
     func squashCommits(_ commits: [String], message: String, in repositoryURL: URL) async throws {
         guard commits.count >= 2, let oldestCommit = commits.last else {
             throw GitError.commandFailed("Select at least two commits to squash.")
