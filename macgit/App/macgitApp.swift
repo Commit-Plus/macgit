@@ -82,7 +82,7 @@ struct macgitApp: App {
                     appUpdateController.start()
                 }
                 .sheet(isPresented: $showingAppSettings) {
-                    AppSettingsView()
+                    AppSettingsView(appState: appState)
                 }
         }
         .commands {

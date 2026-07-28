@@ -19,6 +19,7 @@ import SwiftUI
 
 struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject var appState: AppState
     @State private var selectedSection: AppSettingsSection = .general
 
     var body: some View {
@@ -31,7 +32,10 @@ struct AppSettingsView: View {
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
         } detail: {
             VStack(spacing: 0) {
-                AppSettingsPlaceholderView(section: selectedSection)
+                AppSettingsDetailView(
+                    section: selectedSection,
+                    appState: appState
+                )
 
                 Divider()
 
