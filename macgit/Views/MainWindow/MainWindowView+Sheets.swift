@@ -34,14 +34,14 @@ extension MainWindowView {
             preselectedBranch: resolvedPullPreselectedBranch(),
             defaultPullStrategy: repoSettings.pullStrategy
         ) { remote, branch, options in
-            runRepositoryOperation("Pulling \(remote)/\(branch)...") {
+            runRemoteOperation("Pulling \(remote)/\(branch)...", remotes: [remote]) { credentialResolver in
                 await syncState.performPull(
                     remote: remote,
                     branch: branch,
                     options: options,
                     repositoryURL: repositoryURL,
                     undoManager: undoManager,
-                    credentialResolver: providerAccountController.credentialResolver()
+                    credentialResolver: credentialResolver
                 )
             }
         }
@@ -50,12 +50,12 @@ extension MainWindowView {
     @ViewBuilder
     var pushSheet: some View {
         PushSheetView(repositoryURL: repositoryURL) { options in
-            runRepositoryOperation("Pushing branches...") {
+            runRemoteOperation("Pushing branches...", remotes: [options.remote]) { credentialResolver in
                 await syncState.performPush(
                     options: options,
                     repositoryURL: repositoryURL,
                     undoManager: undoManager,
-                    credentialResolver: providerAccountController.credentialResolver()
+                    credentialResolver: credentialResolver
                 )
             }
         }
@@ -64,12 +64,15 @@ extension MainWindowView {
     @ViewBuilder
     var fetchSheet: some View {
         FetchSheetView(repositoryURL: repositoryURL) { options in
-            runRepositoryOperation("Fetching remotes...") {
-                await syncState.performFetch(
-                    options: options,
-                    repositoryURL: repositoryURL,
-                    credentialResolver: providerAccountController.credentialResolver()
-                )
+            Task {
+                guard let credentialResolver = await credentialResolverForFetch(options: options) else { return }
+                runRepositoryOperation("Fetching remotes...") {
+                    await syncState.performFetch(
+                        options: options,
+                        repositoryURL: repositoryURL,
+                        credentialResolver: credentialResolver
+                    )
+                }
             }
         }
     }
@@ -82,7 +85,7 @@ extension MainWindowView {
                 try await GitStatusService.shared.addSubmodule(
                     request,
                     in: repositoryURL,
-                    credentialResolver: providerAccountController.credentialResolver()
+                    credentialResolver: providerCredentialResolver
                 )
             },
             onCompleted: { request in
@@ -101,7 +104,7 @@ extension MainWindowView {
                 try await GitStatusService.shared.addSubtree(
                     request,
                     in: repositoryURL,
-                    credentialResolver: providerAccountController.credentialResolver()
+                    credentialResolver: providerCredentialResolver
                 )
             },
             onLink: { request in
@@ -310,6 +313,10 @@ extension MainWindowView {
         RepositorySettingsSheetView(
             repositoryURL: repositoryURL,
             initialSettings: repoSettings,
+            providerAccountResolver: providerAccountController.credentialResolver(
+                preferredAccountIDsByRemoteIdentity: providerAccountPreferenceStore.preferences
+            ),
+            providerAccountPreferences: providerAccountPreferenceStore.preferences,
             onSave: { newSettings in
                 repoSettings = newSettings
                 repoSettingsStore.update(for: repositoryURL.path, settings: newSettings)
@@ -324,6 +331,14 @@ extension MainWindowView {
                 syncState.startBackgroundSync(repositoryURL: repositoryURL, settings: newSettings)
                 Task {
                     await refreshRemotePresentation(for: newSettings.defaultRemoteName)
+                }
+            },
+            onSaveProviderAccountPreferences: { preferences in
+                for (preferenceKey, accountID) in preferences {
+                    providerAccountPreferenceStore.update(
+                        accountID: accountID,
+                        forPreferenceKey: preferenceKey
+                    )
                 }
             },
             onOpenGitIgnore: openGitIgnoreFile,

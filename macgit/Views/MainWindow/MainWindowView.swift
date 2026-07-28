@@ -86,6 +86,7 @@ struct MainWindowView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.openWindow) private var openWindow
     let repoSettingsStore = RepoSettingsStore.shared
+    let providerAccountPreferenceStore = GitProviderAccountPreferenceStore.shared
     private let fileService = RepositorySettingsFileService()
     let undoExecutor = GitUndoExecutor()
     @State var selectedItem: SidebarSelection? = .item(.fileStatus)
@@ -116,6 +117,8 @@ struct MainWindowView: View {
     @State var pendingStashRef: String?
     @State var pendingStashAction: StashAction?
     @State var pendingStashPaths: [String] = []
+    @State var pendingProviderAccountSelection: PendingGitProviderAccountSelection?
+    @State var providerAccountSelectionContinuation: CheckedContinuation<String?, Never>?
     @StateObject var syncState = SyncState()
     @StateObject var undoManager = GitUndoManager()
     @StateObject var pullRequestController: PullRequestController
@@ -227,6 +230,17 @@ struct MainWindowView: View {
             .sheet(isPresented: $showingMergeSheet) { mergeSheet }
             .sheet(isPresented: $showingStashSheet) { stashSheet }
             .sheet(isPresented: $showingRepositorySettings) { repositorySettingsSheet }
+            .sheet(item: $pendingProviderAccountSelection) { selection in
+                GitProviderAccountSelectionSheet(
+                    selection: selection,
+                    onSelect: { accountID in
+                        completeProviderAccountSelection(with: accountID)
+                    },
+                    onCancel: {
+                        completeProviderAccountSelection(with: nil)
+                    }
+                )
+            }
             .sheet(isPresented: createPullRequestSheetPresented) { createPullRequestSheet }
             .sheet(item: $pendingSearchFileOpenRequest) { request in
                 SearchFileOpenSheet(request: request) { application, rememberChoice in
@@ -514,43 +528,53 @@ struct MainWindowView: View {
                 }
             },
             onRequestFetchBranch: { branch in
-                runRepositoryOperation("Fetching \(branch)...") {
-                    await syncState.performFetchAndFastForwardBranch(
-                        branch: branch,
-                        repositoryURL: repositoryURL,
-                        credentialResolver: providerAccountController.credentialResolver()
-                    )
+                Task {
+                    let remote = await trackedRemote(for: branch)
+                    runRemoteOperation("Fetching \(branch)...", remotes: remote.map { [$0] } ?? []) { credentialResolver in
+                        await syncState.performFetchAndFastForwardBranch(
+                            branch: branch,
+                            repositoryURL: repositoryURL,
+                            credentialResolver: credentialResolver
+                        )
+                    }
                 }
             },
             onRequestPullRemoteBranch: { remote, branch in
-                runRepositoryOperation("Pulling \(remote)/\(branch)...") {
+                runRemoteOperation("Pulling \(remote)/\(branch)...", remotes: [remote]) { credentialResolver in
                     await syncState.performPull(
                         remote: remote,
                         branch: branch,
                         options: GitStatusService.PullOptions(),
                         repositoryURL: repositoryURL,
                         undoManager: undoManager,
-                        credentialResolver: providerAccountController.credentialResolver()
+                        credentialResolver: credentialResolver
                     )
                 }
             },
             onRequestPullTracked: { branch in
-                runRepositoryOperation("Pulling \(branch)...") {
-                    await syncState.performPullBranch(
-                        branch: branch,
-                        repositoryURL: repositoryURL,
-                        undoManager: undoManager,
-                        credentialResolver: providerAccountController.credentialResolver()
-                    )
+                Task {
+                    let remote = await trackedRemote(for: branch)
+                    runRemoteOperation("Pulling \(branch)...", remotes: remote.map { [$0] } ?? []) { credentialResolver in
+                        await syncState.performPullBranch(
+                            branch: branch,
+                            repositoryURL: repositoryURL,
+                            undoManager: undoManager,
+                            credentialResolver: credentialResolver
+                        )
+                    }
                 }
             },
             onRequestPushToTracked: { branch in
-                runRepositoryOperation("Pushing \(branch)...") {
-                    await syncState.performPushToTracked(
-                        branch: branch,
-                        repositoryURL: repositoryURL,
-                        undoManager: undoManager
-                    )
+                Task {
+                    let remote = await trackedRemote(for: branch)
+                    runRemoteOperation("Pushing \(branch)...", remotes: remote.map { [$0] } ?? []) { credentialResolver in
+                        await syncState.performPushToTracked(
+                            branch: branch,
+                            repositoryURL: repositoryURL,
+                            undoManager: undoManager,
+                            credentialResolver: credentialResolver
+                        )
+                    }
                 }
             },
             onRequestRenameBranch: { branch in
@@ -583,7 +607,7 @@ struct MainWindowView: View {
                 selectedItem = .item(.history)
             },
             onRequestPushTagToRemote: { tag, remote in
-                runRepositoryOperation("Pushing \(tag) to \(remote)...") {
+                runRemoteOperation("Pushing \(tag) to \(remote)...", remotes: [remote]) { credentialResolver in
                     let options = GitStatusService.PushOptions(
                         remote: remote,
                         tags: [tag]
@@ -592,7 +616,7 @@ struct MainWindowView: View {
                         options: options,
                         repositoryURL: repositoryURL,
                         undoManager: undoManager,
-                        credentialResolver: providerAccountController.credentialResolver()
+                        credentialResolver: credentialResolver
                     )
                 }
             },
@@ -618,7 +642,7 @@ struct MainWindowView: View {
                 }
             },
             onRequestPushBranchToRemote: { branch, remote in
-                runRepositoryOperation("Pushing \(branch) to \(remote)...") {
+                runRemoteOperation("Pushing \(branch) to \(remote)...", remotes: [remote]) { credentialResolver in
                     let options = GitStatusService.PushOptions(
                         remote: remote,
                         branches: [branch],
@@ -628,7 +652,7 @@ struct MainWindowView: View {
                         options: options,
                         repositoryURL: repositoryURL,
                         undoManager: undoManager,
-                        credentialResolver: providerAccountController.credentialResolver()
+                        credentialResolver: credentialResolver
                     )
                 }
             },
@@ -1491,7 +1515,7 @@ struct MainWindowView: View {
                         forceTags: true
                     ),
                     in: repositoryURL,
-                    credentialResolver: providerAccountController.credentialResolver()
+                    credentialResolver: providerCredentialResolver
                 )
             }
 
@@ -1550,7 +1574,7 @@ struct MainWindowView: View {
             _ = try await GitStatusService.shared.push(
                 options: GitStatusService.PushOptions(remote: remote, tags: [request.name]),
                 in: repositoryURL,
-                credentialResolver: providerAccountController.credentialResolver()
+                credentialResolver: providerCredentialResolver
             )
         }
 

@@ -36,12 +36,25 @@ struct RemoteInfo: Identifiable, Equatable {
     let url: String
 }
 
+struct ProviderRemoteAccountOption: Identifiable {
+    let remoteName: String
+    let identity: GitRemoteIdentity
+    let accounts: [GitProviderAccount]
+
+    var id: String {
+        GitProviderAccountPreferenceKey.make(for: identity)
+    }
+}
+
 struct RepositorySettingsSheetView: View {
     @Environment(\.dismiss) private var dismiss
 
     let repositoryURL: URL
     let initialSettings: RepoSettings
+    let providerAccountResolver: GitProviderCredentialResolver
+    let providerAccountPreferences: [String: String]
     let onSave: (RepoSettings) -> Void
+    let onSaveProviderAccountPreferences: ([String: String?]) -> Void
     let onOpenGitIgnore: () -> Void
     let onOpenGitConfig: () -> Void
     let onOpenRemoteURL: (String) -> Void
@@ -54,6 +67,7 @@ struct RepositorySettingsSheetView: View {
     @State private var selectedRemoteName: String = ""
     @State private var showingRemoteEditSheet = false
     @State private var remoteEditMode: RemoteEditMode = .add
+    @State private var selectedProviderAccountIDs: [String: String] = [:]
     private let settingsContentWidth: CGFloat = 500
 
     var body: some View {
@@ -137,6 +151,7 @@ struct RepositorySettingsSheetView: View {
             Button("Save") {
                 guard let draft else { return }
                 onSave(draft.resolvedSettings)
+                onSaveProviderAccountPreferences(providerAccountPreferenceChanges)
                 dismiss()
             }
             .keyboardShortcut(.defaultAction)
@@ -375,6 +390,8 @@ struct RepositorySettingsSheetView: View {
 
             userInformationSection
 
+            providerAccountSection
+
             HStack(spacing: 8) {
                 Spacer()
 
@@ -423,6 +440,51 @@ struct RepositorySettingsSheetView: View {
         }
     }
 
+    @ViewBuilder
+    private var providerAccountSection: some View {
+        let options = providerRemoteAccountOptions
+        if !options.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Git provider accounts")
+                    .font(.headline)
+
+                Text("Choose which connected account this remote uses. Automatic uses the only matching account and asks before a remote operation when more than one account matches.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                ForEach(options) { option in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(option.remoteName)
+                                .font(.subheadline)
+                            Text(option.identity.canonicalHTTPSURL.absoluteString)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .frame(minWidth: 140, idealWidth: 190, maxWidth: 240, alignment: .leading)
+
+                        Picker("Account for \(option.remoteName)", selection: providerAccountSelectionBinding(for: option)) {
+                            Text("Automatic").tag("")
+                            ForEach(option.accounts) { account in
+                                Text(accountDisplayName(account)).tag(account.id)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.quaternary.opacity(0.3))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+
     private func loadOptions() async {
         async let loadedRemotes = GitStatusService.shared.remotes(in: repositoryURL)
         async let loadedBranches = GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
@@ -460,7 +522,61 @@ struct RepositorySettingsSheetView: View {
                 branches: loadedBranchesValue,
                 currentBranch: currentBranch
             )
+            selectedProviderAccountIDs = validProviderAccountPreferences
         }
+    }
+
+    private var providerRemoteAccountOptions: [ProviderRemoteAccountOption] {
+        remotes.compactMap { remoteName in
+            guard let remoteURL = remoteURLs[remoteName],
+                  let identity = providerAccountResolver.remoteIdentity(for: remoteURL) else {
+                return nil
+            }
+            let accounts = providerAccountResolver.matchingAccounts(for: remoteURL)
+            guard !accounts.isEmpty else { return nil }
+            return ProviderRemoteAccountOption(
+                remoteName: remoteName,
+                identity: identity,
+                accounts: accounts
+            )
+        }
+    }
+
+    private var validProviderAccountPreferences: [String: String] {
+        providerRemoteAccountOptions.reduce(into: providerAccountPreferences) { preferences, option in
+            guard let accountID = preferences[option.id],
+                  !option.accounts.contains(where: { $0.id == accountID }) else {
+                return
+            }
+            preferences.removeValue(forKey: option.id)
+        }
+    }
+
+    private var providerAccountPreferenceChanges: [String: String?] {
+        providerRemoteAccountOptions.reduce(into: [String: String?]()) { changes, option in
+            let selectedAccountID = selectedProviderAccountIDs[option.id]
+            changes[option.id] = selectedAccountID?.isEmpty == false ? selectedAccountID : nil
+        }
+    }
+
+    private func providerAccountSelectionBinding(
+        for option: ProviderRemoteAccountOption
+    ) -> Binding<String> {
+        Binding(
+            get: { selectedProviderAccountIDs[option.id] ?? "" },
+            set: { accountID in
+                if accountID.isEmpty {
+                    selectedProviderAccountIDs.removeValue(forKey: option.id)
+                } else {
+                    selectedProviderAccountIDs[option.id] = accountID
+                }
+            }
+        )
+    }
+
+    private func accountDisplayName(_ account: GitProviderAccount) -> String {
+        let host = account.hostURL.host(percentEncoded: false) ?? account.hostURL.absoluteString
+        return "\(account.provider.displayName) · \(account.username) · \(host)"
     }
 
     private func handleRemoteSave(name: String, url: String) async {

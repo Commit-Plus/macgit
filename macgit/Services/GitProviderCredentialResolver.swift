@@ -48,15 +48,18 @@ struct GitProviderCredentialResolver {
     var accounts: [GitProviderAccount]
     var tokenVault: GitProviderTokenVault
     var sshKeyStore: GitProviderSSHKeyStore?
+    var preferredAccountIDsByRemoteIdentity: [String: String]
 
     init(
         accounts: [GitProviderAccount],
         tokenVault: GitProviderTokenVault,
-        sshKeyStore: GitProviderSSHKeyStore? = nil
+        sshKeyStore: GitProviderSSHKeyStore? = nil,
+        preferredAccountIDsByRemoteIdentity: [String: String] = [:]
     ) {
         self.accounts = accounts
         self.tokenVault = tokenVault
         self.sshKeyStore = sshKeyStore
+        self.preferredAccountIDsByRemoteIdentity = preferredAccountIDsByRemoteIdentity
     }
 
     func credential(for remoteURLString: String, preferredAccountID: String? = nil) throws -> GitCredential? {
@@ -68,13 +71,11 @@ struct GitProviderCredentialResolver {
             return nil
         }
 
-        let matchingAccounts = accounts.filter { account in
-            account.provider == identity.provider && normalizedHost(account.hostURL) == normalizedHost(identity.hostURL)
-        }
+        let matchingAccounts = matchingAccounts(for: identity, requiresSSH: false)
         guard !matchingAccounts.isEmpty else { return nil }
 
         let account: GitProviderAccount
-        if let preferredAccountID {
+        if let preferredAccountID = preferredAccountID ?? storedPreferredAccountID(for: identity, matching: matchingAccounts) {
             guard let preferred = matchingAccounts.first(where: { $0.id == preferredAccountID }) else {
                 throw GitProviderCredentialError.noConnectedAccount(host: normalizedHost(identity.hostURL))
             }
@@ -101,15 +102,11 @@ struct GitProviderCredentialResolver {
             return nil
         }
 
-        let matchingAccounts = accounts.filter { account in
-            account.provider == identity.provider
-                && account.transportProtocol == .ssh
-                && normalizedHost(account.hostURL) == normalizedHost(identity.hostURL)
-        }
+        let matchingAccounts = matchingAccounts(for: identity, requiresSSH: true)
         guard !matchingAccounts.isEmpty else { return nil }
 
         let account: GitProviderAccount
-        if let preferredAccountID {
+        if let preferredAccountID = preferredAccountID ?? storedPreferredAccountID(for: identity, matching: matchingAccounts) {
             guard let preferred = matchingAccounts.first(where: { $0.id == preferredAccountID }) else {
                 throw GitProviderCredentialError.noConnectedAccount(host: normalizedHost(identity.hostURL))
             }
@@ -126,6 +123,46 @@ struct GitProviderCredentialResolver {
         }
 
         return GitSSHCredential(username: sshUsername(from: remoteURLString), keyPath: key.path)
+    }
+
+    func matchingAccounts(for remoteURLString: String) -> [GitProviderAccount] {
+        guard let identity = remoteIdentity(for: remoteURLString) else { return [] }
+        return matchingAccounts(for: identity, requiresSSH: isSSHRemote(remoteURLString))
+    }
+
+    func remoteIdentity(for remoteURLString: String) -> GitRemoteIdentity? {
+        GitRemoteIdentityResolver.identity(
+            from: remoteURLString,
+            knownGitLabHosts: connectedGitLabHosts
+        )
+    }
+
+    func preferredAccountID(for remoteURLString: String) -> String? {
+        guard let identity = remoteIdentity(for: remoteURLString) else { return nil }
+        return storedPreferredAccountID(for: identity, matching: matchingAccounts(for: remoteURLString))
+    }
+
+    private func storedPreferredAccountID(
+        for identity: GitRemoteIdentity,
+        matching accounts: [GitProviderAccount]
+    ) -> String? {
+        let preferenceKey = GitProviderAccountPreferenceKey.make(for: identity)
+        guard let accountID = preferredAccountIDsByRemoteIdentity[preferenceKey],
+              accounts.contains(where: { $0.id == accountID }) else {
+            return nil
+        }
+        return accountID
+    }
+
+    private func matchingAccounts(
+        for identity: GitRemoteIdentity,
+        requiresSSH: Bool
+    ) -> [GitProviderAccount] {
+        accounts.filter { account in
+            account.provider == identity.provider
+                && normalizedHost(account.hostURL) == normalizedHost(identity.hostURL)
+                && (!requiresSSH || account.transportProtocol == .ssh)
+        }
     }
 
     private func isHTTPSRemote(_ remoteURLString: String) -> Bool {
