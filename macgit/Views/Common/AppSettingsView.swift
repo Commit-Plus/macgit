@@ -48,7 +48,7 @@ struct AppSettingsView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .frame(minWidth: 760, minHeight: 500)
+        .frame(minWidth: 760, minHeight: 460, idealHeight: 540, maxHeight: 600)
         .navigationTitle("Settings")
     }
 }

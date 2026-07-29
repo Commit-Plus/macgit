@@ -66,6 +66,40 @@ final class GitSettingsViewModel {
         )
     }
 
+    var visibleRuntime: GitRuntimeInstallation? {
+        switch selectedRuntimePreference {
+        case .automatic:
+            return activeRuntime
+        case .system:
+            return systemRuntime
+        case .embedded:
+            return embeddedRuntime
+        }
+    }
+
+    var visibleRuntimeTitle: String {
+        switch selectedRuntimePreference {
+        case .system:
+            return "System Git"
+        case .embedded:
+            return "Embedded Git"
+        case .automatic:
+            return activeRuntime?.executableURL == embeddedRuntime?.executableURL
+                ? "Embedded Git"
+                : "System Git"
+        }
+    }
+
+    var visibleRuntimeSystemImage: String {
+        visibleRuntimeTitle == "Embedded Git" ? "shippingbox" : "desktopcomputer"
+    }
+
+    var shouldOfferEmbeddedDownload: Bool {
+        embeddedRuntime == nil
+            && selectedRuntimePreference != .system
+            && (selectedRuntimePreference == .embedded || activeRuntime == nil)
+    }
+
     func load() async {
         isLoading = true
         statusMessage = nil

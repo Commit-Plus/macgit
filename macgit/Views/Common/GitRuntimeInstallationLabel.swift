@@ -23,8 +23,7 @@ struct GitRuntimeInstallationLabel: View {
     var body: some View {
         if let runtime {
             VStack(alignment: .trailing) {
-                Label(runtime.version, systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                Text(runtime.version)
                 Text(runtime.executableURL.path)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)

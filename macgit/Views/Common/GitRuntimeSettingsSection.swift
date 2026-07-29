@@ -28,24 +28,21 @@ struct GitRuntimeSettingsSection: View {
                 }
             }
             .pickerStyle(.segmented)
+            .disabled(viewModel.isBusy)
             .onChange(of: viewModel.selectedRuntimePreference) { _, preference in
                 Task { await viewModel.selectRuntimePreference(preference) }
             }
 
-            Text("Automatic prefers System Git and uses Embedded Git when System Git is unavailable.")
-                .foregroundStyle(.secondary)
-
-            LabeledContent {
-                GitRuntimeInstallationLabel(runtime: viewModel.systemRuntime)
-            } label: {
-                Label("System Git", systemImage: "desktopcomputer")
+            if viewModel.selectedRuntimePreference == .automatic {
+                Text("Uses System Git when available, otherwise Embedded Git.")
+                    .foregroundStyle(.secondary)
             }
 
             LabeledContent {
                 VStack(alignment: .trailing) {
-                    GitRuntimeInstallationLabel(runtime: viewModel.embeddedRuntime)
+                    GitRuntimeInstallationLabel(runtime: viewModel.visibleRuntime)
 
-                    if viewModel.embeddedRuntime == nil {
+                    if viewModel.shouldOfferEmbeddedDownload {
                         if viewModel.isDownloadingEmbeddedGit {
                             HStack {
                                 ProgressView()
@@ -62,15 +59,10 @@ struct GitRuntimeSettingsSection: View {
                     }
                 }
             } label: {
-                Label("Embedded Git", systemImage: "shippingbox")
-            }
-
-            if let activeRuntime = viewModel.activeRuntime {
-                LabeledContent("Active Executable") {
-                    Text(activeRuntime.executableURL.path)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
+                Label(
+                    viewModel.visibleRuntimeTitle,
+                    systemImage: viewModel.visibleRuntimeSystemImage
+                )
             }
 
             Button(
