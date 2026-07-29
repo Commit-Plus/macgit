@@ -51,42 +51,49 @@ struct AppearanceSettingsView: View {
                 SettingsToggleRow(
                     title: "Branch",
                     detail: "Show the Branch action in the repository header.",
+                    systemImage: "arrow.triangle.branch",
                     isOn: $appState.showHeaderBranchButton
                 )
 
                 SettingsToggleRow(
                     title: "Merge",
                     detail: "Show the Merge action in the repository header.",
+                    systemImage: "arrow.triangle.merge",
                     isOn: $appState.showHeaderMergeButton
                 )
 
                 SettingsToggleRow(
                     title: "Stash",
                     detail: "Show the Stash action in the repository header.",
+                    systemImage: "archivebox",
                     isOn: $appState.showHeaderStashButton
                 )
 
                 SettingsToggleRow(
                     title: "Remote",
                     detail: "Show the remote repository shortcut in the header.",
+                    systemImage: "network",
                     isOn: $appState.showHeaderRemoteButton
                 )
 
                 SettingsToggleRow(
                     title: "Finder",
                     detail: "Show the repository folder shortcut in the header.",
+                    systemImage: "folder",
                     isOn: $appState.showHeaderFinderButton
                 )
 
                 SettingsToggleRow(
                     title: "External Editor",
                     detail: "Show the shortcut that opens the repository in your preferred editor.",
+                    systemImage: "chevron.left.forwardslash.chevron.right",
                     isOn: $appState.showHeaderEditorButton
                 )
 
                 SettingsToggleRow(
                     title: "Terminal",
                     detail: "Show the terminal shortcut in the repository header.",
+                    systemImage: "terminal",
                     isOn: $appState.showHeaderTerminalButton
                 )
             } header: {

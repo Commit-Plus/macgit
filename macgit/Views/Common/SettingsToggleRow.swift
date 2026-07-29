@@ -20,16 +20,26 @@ import SwiftUI
 struct SettingsToggleRow: View {
     let title: String
     let detail: String
+    var systemImage: String?
     @Binding var isOn: Bool
 
     var body: some View {
         Toggle(isOn: $isOn) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                Text(detail)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .frame(width: 20)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .toggleStyle(.switch)
