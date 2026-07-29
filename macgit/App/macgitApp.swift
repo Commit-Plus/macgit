@@ -235,6 +235,7 @@ struct macgitApp: App {
                     Toggle("Stash", isOn: $appState.showHeaderStashButton)
                     Toggle("Remote", isOn: $appState.showHeaderRemoteButton)
                     Toggle("Finder", isOn: $appState.showHeaderFinderButton)
+                    Toggle("External Editor", isOn: $appState.showHeaderEditorButton)
                     Toggle("Terminal", isOn: $appState.showHeaderTerminalButton)
                 }
             }

@@ -201,6 +201,7 @@ struct SettingsSyncConflictSheet: View {
                 settingRow("Header: Stash", enabled: snapshot.showHeaderStashButton)
                 settingRow("Header: Remote", enabled: snapshot.showHeaderRemoteButton)
                 settingRow("Header: Finder", enabled: snapshot.showHeaderFinderButton)
+                settingRow("Header: External Editor", enabled: snapshot.showHeaderEditorButton)
                 settingRow("Header: Terminal", enabled: snapshot.showHeaderTerminalButton)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

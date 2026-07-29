@@ -54,7 +54,7 @@ struct IntegrationsSettingsView: View {
             } header: {
                 Label("External Editor", systemImage: "chevron.left.forwardslash.chevron.right")
             } footer: {
-                Text("Used when opening files from Search. Ask Every Time keeps the existing application chooser.")
+                Text("Used by the repository toolbar and when opening files from Search. Ask Every Time shows the installed-editor chooser.")
             }
 
             Section {

@@ -29,6 +29,7 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
     var showHeaderStashButton: Bool
     var showHeaderRemoteButton: Bool
     var showHeaderFinderButton: Bool
+    var showHeaderEditorButton: Bool
     var showHeaderTerminalButton: Bool
     var historyBranchFilter: HistoryBranchFilter
     var historyIncludeRemotes: Bool
@@ -43,6 +44,7 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
         showHeaderStashButton: Bool = true,
         showHeaderRemoteButton: Bool = true,
         showHeaderFinderButton: Bool = true,
+        showHeaderEditorButton: Bool = true,
         showHeaderTerminalButton: Bool = true,
         historyBranchFilter: HistoryBranchFilter = .all,
         historyIncludeRemotes: Bool = false
@@ -57,6 +59,7 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
         self.showHeaderStashButton = showHeaderStashButton
         self.showHeaderRemoteButton = showHeaderRemoteButton
         self.showHeaderFinderButton = showHeaderFinderButton
+        self.showHeaderEditorButton = showHeaderEditorButton
         self.showHeaderTerminalButton = showHeaderTerminalButton
         self.historyBranchFilter = historyBranchFilter
         self.historyIncludeRemotes = historyIncludeRemotes

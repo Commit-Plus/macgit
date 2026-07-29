@@ -31,6 +31,7 @@ final class CloudSettingsDocumentTests: XCTestCase {
         showHeaderStashButton: true,
         showHeaderRemoteButton: false,
         showHeaderFinderButton: true,
+        showHeaderEditorButton: false,
         showHeaderTerminalButton: false,
         historyBranchFilter: .branch("origin/feature/login"),
         historyIncludeRemotes: true
@@ -54,6 +55,7 @@ final class CloudSettingsDocumentTests: XCTestCase {
                 "showHeaderStashButton",
                 "showHeaderRemoteButton",
                 "showHeaderFinderButton",
+                "showHeaderEditorButton",
                 "showHeaderTerminalButton",
                 "historyBranchFilter",
                 "historyIncludeRemotes",
@@ -70,6 +72,7 @@ final class CloudSettingsDocumentTests: XCTestCase {
         XCTAssertEqual(document["showHeaderStashButton"] as? Bool, true)
         XCTAssertEqual(document["showHeaderRemoteButton"] as? Bool, false)
         XCTAssertEqual(document["showHeaderFinderButton"] as? Bool, true)
+        XCTAssertEqual(document["showHeaderEditorButton"] as? Bool, false)
         XCTAssertEqual(document["showHeaderTerminalButton"] as? Bool, false)
         XCTAssertEqual(document["historyBranchFilter"] as? String, "branch:origin/feature/login")
         XCTAssertEqual(document["historyIncludeRemotes"] as? Bool, true)
@@ -80,11 +83,13 @@ final class CloudSettingsDocumentTests: XCTestCase {
         var document = validDocument()
         document.removeValue(forKey: "showHeaderBranchButton")
         document.removeValue(forKey: "showHeaderRemoteButton")
+        document.removeValue(forKey: "showHeaderEditorButton")
 
         let decoded = try CloudSettingsDocument.decode(document)
 
         XCTAssertTrue(decoded.showHeaderBranchButton)
         XCTAssertTrue(decoded.showHeaderRemoteButton)
+        XCTAssertTrue(decoded.showHeaderEditorButton)
     }
 
     func testDecodingDefaultsMissingHistoryFilterSettings() throws {

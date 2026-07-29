@@ -36,6 +36,7 @@ final class AppState: ObservableObject {
     private static let showHeaderStashButtonKey = "showHeaderStashButton"
     private static let showHeaderRemoteButtonKey = "showHeaderRemoteButton"
     private static let showHeaderFinderButtonKey = "showHeaderFinderButton"
+    private static let showHeaderEditorButtonKey = "showHeaderEditorButton"
     private static let showHeaderTerminalButtonKey = "showHeaderTerminalButton"
     private static let historyBranchFilterKey = "historyBranchFilter"
     private static let historyIncludeRemotesKey = "historyIncludeRemotes"
@@ -124,6 +125,14 @@ final class AppState: ObservableObject {
             }
         }
     }
+    @Published var showHeaderEditorButton: Bool {
+        didSet {
+            userDefaults.set(showHeaderEditorButton, forKey: Self.showHeaderEditorButtonKey)
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
+        }
+    }
     @Published var showHeaderTerminalButton: Bool {
         didSet {
             userDefaults.set(showHeaderTerminalButton, forKey: Self.showHeaderTerminalButtonKey)
@@ -189,6 +198,7 @@ final class AppState: ObservableObject {
         let showHeaderStashButton = userDefaults.object(forKey: Self.showHeaderStashButtonKey) as? Bool ?? true
         let showHeaderRemoteButton = userDefaults.object(forKey: Self.showHeaderRemoteButtonKey) as? Bool ?? true
         let showHeaderFinderButton = userDefaults.object(forKey: Self.showHeaderFinderButtonKey) as? Bool ?? true
+        let showHeaderEditorButton = userDefaults.object(forKey: Self.showHeaderEditorButtonKey) as? Bool ?? true
         let showHeaderTerminalButton = userDefaults.object(forKey: Self.showHeaderTerminalButtonKey) as? Bool ?? true
         let historyBranchFilter = userDefaults.string(forKey: Self.historyBranchFilterKey)
             .flatMap(HistoryBranchFilter.init(storageValue:)) ?? .all
@@ -209,6 +219,7 @@ final class AppState: ObservableObject {
         self.showHeaderStashButton = showHeaderStashButton
         self.showHeaderRemoteButton = showHeaderRemoteButton
         self.showHeaderFinderButton = showHeaderFinderButton
+        self.showHeaderEditorButton = showHeaderEditorButton
         self.showHeaderTerminalButton = showHeaderTerminalButton
         self.historyBranchFilter = historyBranchFilter
         self.historyIncludeRemotes = historyIncludeRemotes
@@ -225,6 +236,7 @@ final class AppState: ObservableObject {
             showHeaderStashButton: showHeaderStashButton,
             showHeaderRemoteButton: showHeaderRemoteButton,
             showHeaderFinderButton: showHeaderFinderButton,
+            showHeaderEditorButton: showHeaderEditorButton,
             showHeaderTerminalButton: showHeaderTerminalButton,
             historyBranchFilter: historyBranchFilter,
             historyIncludeRemotes: historyIncludeRemotes
@@ -242,6 +254,7 @@ final class AppState: ObservableObject {
             showHeaderStashButton: showHeaderStashButton,
             showHeaderRemoteButton: showHeaderRemoteButton,
             showHeaderFinderButton: showHeaderFinderButton,
+            showHeaderEditorButton: showHeaderEditorButton,
             showHeaderTerminalButton: showHeaderTerminalButton,
             historyBranchFilter: historyBranchFilter,
             historyIncludeRemotes: historyIncludeRemotes
@@ -260,6 +273,7 @@ final class AppState: ObservableObject {
         showHeaderStashButton = snapshot.showHeaderStashButton
         showHeaderRemoteButton = snapshot.showHeaderRemoteButton
         showHeaderFinderButton = snapshot.showHeaderFinderButton
+        showHeaderEditorButton = snapshot.showHeaderEditorButton
         showHeaderTerminalButton = snapshot.showHeaderTerminalButton
         historyBranchFilter = snapshot.historyBranchFilter
         historyIncludeRemotes = snapshot.historyIncludeRemotes

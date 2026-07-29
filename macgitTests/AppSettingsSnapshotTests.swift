@@ -32,6 +32,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
             showHeaderStashButton: false,
             showHeaderRemoteButton: true,
             showHeaderFinderButton: false,
+            showHeaderEditorButton: false,
             showHeaderTerminalButton: true,
             historyBranchFilter: .branch("origin/feature/login"),
             historyIncludeRemotes: true
@@ -55,6 +56,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
                 "showHeaderStashButton",
                 "showHeaderRemoteButton",
                 "showHeaderFinderButton",
+                "showHeaderEditorButton",
                 "showHeaderTerminalButton",
                 "historyBranchFilter",
                 "historyIncludeRemotes"
@@ -163,6 +165,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertTrue(state.showHeaderStashButton)
         XCTAssertTrue(state.showHeaderRemoteButton)
         XCTAssertTrue(state.showHeaderFinderButton)
+        XCTAssertTrue(state.showHeaderEditorButton)
         XCTAssertTrue(state.showHeaderTerminalButton)
 
         state.showHeaderBranchButton = false
@@ -170,6 +173,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
         state.showHeaderStashButton = false
         state.showHeaderRemoteButton = false
         state.showHeaderFinderButton = false
+        state.showHeaderEditorButton = false
         state.showHeaderTerminalButton = false
 
         let reloaded = AppState(userDefaults: defaults)
@@ -178,6 +182,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertFalse(reloaded.showHeaderStashButton)
         XCTAssertFalse(reloaded.showHeaderRemoteButton)
         XCTAssertFalse(reloaded.showHeaderFinderButton)
+        XCTAssertFalse(reloaded.showHeaderEditorButton)
         XCTAssertFalse(reloaded.showHeaderTerminalButton)
     }
 

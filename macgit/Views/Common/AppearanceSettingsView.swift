@@ -79,6 +79,12 @@ struct AppearanceSettingsView: View {
                 )
 
                 SettingsToggleRow(
+                    title: "External Editor",
+                    detail: "Show the shortcut that opens the repository in your preferred editor.",
+                    isOn: $appState.showHeaderEditorButton
+                )
+
+                SettingsToggleRow(
                     title: "Terminal",
                     detail: "Show the terminal shortcut in the repository header.",
                     isOn: $appState.showHeaderTerminalButton
@@ -116,6 +122,7 @@ struct AppearanceSettingsView: View {
         appState.showHeaderStashButton = true
         appState.showHeaderRemoteButton = true
         appState.showHeaderFinderButton = true
+        appState.showHeaderEditorButton = true
         appState.showHeaderTerminalButton = true
     }
 }

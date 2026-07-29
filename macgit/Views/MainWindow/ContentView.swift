@@ -37,9 +37,9 @@ struct ContentView: View {
                     repositoryURL: url,
                     providerAccountController: providerAccountController,
                     onOpenConnections: accountController.presentConnections,
-                    onManageAccount: accountController.presentManageAccount,
                     operationProgress: operationProgress
                 )
+                .environmentObject(accountController)
             } else {
                 RepoPickerView(
                     showCloneSheetInitially: false,
@@ -129,12 +129,6 @@ struct ContentView: View {
         .overlay(
             WindowCloseButtonModifier(isVisible: repositoryURL == nil)
         )
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                AccountToolbarMenu(controller: accountController)
-                    .disabled(operationProgress.activeOperation != nil)
-            }
-        }
     }
 
     private func handlePendingWindowFlags() {

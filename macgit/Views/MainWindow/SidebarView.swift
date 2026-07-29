@@ -26,12 +26,14 @@ import SwiftUI
 
 struct SidebarView: View {
     @EnvironmentObject private var appUpdateController: AppUpdateController
+    @EnvironmentObject private var accountController: AccountSessionController
     @EnvironmentObject var appState: AppState
 
     let repositoryURL: URL
     @Binding var selection: SidebarSelection?
     let undoManager: GitUndoManager?
     let currentBranchFallbackSyncStatus: BranchSyncStatus?
+    let isAccountMenuDisabled: Bool
     let isBranchSyncing: (String) -> Bool
     let onRequestCheckout: (String, Bool) -> Void
     let onRequestFetchBranch: (String) -> Void
@@ -62,7 +64,6 @@ struct SidebarView: View {
     let onRequestAddLinkSubtree: () -> Void
     let onRequestCreateBranch: () -> Void
     let onRequestCreateTag: () -> Void
-    let onRequestManageAccount: () -> Void
     let onRequestShowSubtreeInFinder: (URL) -> Void
     let onRequestOpenSubtreeInTerminal: (URL) -> Void
     let onRequestPullSubtree: (GitSubtreeEntry) -> Void
@@ -168,6 +169,7 @@ struct SidebarView: View {
         selection: Binding<SidebarSelection?>,
         undoManager: GitUndoManager? = nil,
         currentBranchFallbackSyncStatus: BranchSyncStatus? = nil,
+        isAccountMenuDisabled: Bool = false,
         isBranchSyncing: @escaping (String) -> Bool = { _ in false },
         onRequestCheckout: @escaping (String, Bool) -> Void,
         onRequestFetchBranch: @escaping (String) -> Void,
@@ -198,7 +200,6 @@ struct SidebarView: View {
         onRequestAddLinkSubtree: @escaping () -> Void = {},
         onRequestCreateBranch: @escaping () -> Void = {},
         onRequestCreateTag: @escaping () -> Void = {},
-        onRequestManageAccount: @escaping () -> Void = {},
         onRequestShowSubtreeInFinder: @escaping (URL) -> Void = { _ in },
         onRequestOpenSubtreeInTerminal: @escaping (URL) -> Void = { _ in },
         onRequestPullSubtree: @escaping (GitSubtreeEntry) -> Void = { _ in },
@@ -221,6 +222,7 @@ struct SidebarView: View {
         self._selection = selection
         self.undoManager = undoManager
         self.currentBranchFallbackSyncStatus = currentBranchFallbackSyncStatus
+        self.isAccountMenuDisabled = isAccountMenuDisabled
         self.isBranchSyncing = isBranchSyncing
         self.onRequestCheckout = onRequestCheckout
         self.onRequestFetchBranch = onRequestFetchBranch
@@ -251,7 +253,6 @@ struct SidebarView: View {
         self.onRequestAddLinkSubtree = onRequestAddLinkSubtree
         self.onRequestCreateBranch = onRequestCreateBranch
         self.onRequestCreateTag = onRequestCreateTag
-        self.onRequestManageAccount = onRequestManageAccount
         self.onRequestShowSubtreeInFinder = onRequestShowSubtreeInFinder
         self.onRequestOpenSubtreeInTerminal = onRequestOpenSubtreeInTerminal
         self.onRequestPullSubtree = onRequestPullSubtree
@@ -275,8 +276,13 @@ struct SidebarView: View {
 
             Divider()
             HStack {
+                AccountToolbarMenu(controller: accountController)
+                    .labelStyle(.iconOnly)
+                    .menuStyle(.borderlessButton)
+                    .disabled(isAccountMenuDisabled)
+
                 Menu {
-                    sidebarPlusMenu
+                    sidebarCreationMenu
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -578,13 +584,6 @@ struct SidebarView: View {
         Divider()
         Button("New Branch...", systemImage: "arrow.triangle.branch", action: onRequestCreateBranch)
         Button("New Tag...", systemImage: "tag", action: onRequestCreateTag)
-    }
-
-    @ViewBuilder
-    private var sidebarPlusMenu: some View {
-        sidebarCreationMenu
-        Divider()
-        Button("Manage Account...", systemImage: "person.crop.circle", action: onRequestManageAccount)
     }
 
     @ViewBuilder

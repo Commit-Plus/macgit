@@ -82,7 +82,6 @@ struct MainWindowView: View {
     let repositoryURL: URL
     @ObservedObject var providerAccountController: GitProviderAccountController
     let onOpenConnections: () -> Void
-    let onManageAccount: () -> Void
     @EnvironmentObject var appState: AppState
     @Environment(\.openWindow) private var openWindow
     let repoSettingsStore = RepoSettingsStore.shared
@@ -141,19 +140,19 @@ struct MainWindowView: View {
     @State var pendingTagMoveConfirmation: PendingTagMoveConfirmation?
     @State private var pendingSubtreeOperation: PendingSubtreeOperation?
     @State private var isPerformingBranchDropOperation = false
+    @State private var showingExternalEditorChooser = false
+    @State private var externalEditorApplications: [IntegrationApplication] = []
     @ObservedObject var operationProgress: RepositoryOperationProgress
 
     init(
         repositoryURL: URL,
         providerAccountController: GitProviderAccountController,
         onOpenConnections: @escaping () -> Void = {},
-        onManageAccount: @escaping () -> Void = {},
         operationProgress: RepositoryOperationProgress
     ) {
         self.repositoryURL = repositoryURL
         self.providerAccountController = providerAccountController
         self.onOpenConnections = onOpenConnections
-        self.onManageAccount = onManageAccount
         self.operationProgress = operationProgress
         _pullRequestController = StateObject(wrappedValue: PullRequestController(
             providerAccountController: providerAccountController,
@@ -180,6 +179,19 @@ struct MainWindowView: View {
             }, message: {
                 Text(syncState.infoMessage ?? "")
             })
+            .confirmationDialog(
+                "Open Repository in Editor",
+                isPresented: $showingExternalEditorChooser
+            ) {
+                ForEach(externalEditorApplications) { application in
+                    Button(application.displayName) {
+                        launchRepository(in: application)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Choose an installed editor for this repository.")
+            }
             .confirmationDialog(
                 pendingConfirmedUndo?.action == .redo ? "Confirm Git Redo" : "Confirm Git Undo",
                 isPresented: Binding(
@@ -504,6 +516,7 @@ struct MainWindowView: View {
             selection: $selectedItem,
             undoManager: undoManager,
             currentBranchFallbackSyncStatus: currentBranchFallbackSyncStatus,
+            isAccountMenuDisabled: operationProgress.activeOperation != nil,
             isBranchSyncing: { branch in
                 BranchSyncBadgePolicy.shouldShowLoading(
                     for: branch,
@@ -703,7 +716,6 @@ struct MainWindowView: View {
             onRequestCreateTag: {
                 showingNewTagSheet = true
             },
-            onRequestManageAccount: onManageAccount,
             onRequestShowSubtreeInFinder: { path in
                 NSWorkspace.shared.activateFileViewerSelecting([path])
             },
@@ -914,6 +926,15 @@ struct MainWindowView: View {
                 }
                 if appState.showHeaderFinderButton {
                     toolbarButton(icon: "folder", label: "Finder", showText: appState.showToolbarButtonText, disabled: operationProgress.activeOperation != nil, action: showInFinder)
+                }
+                if appState.showHeaderEditorButton {
+                    toolbarButton(
+                        icon: "chevron.left.forwardslash.chevron.right",
+                        label: "Editor",
+                        showText: appState.showToolbarButtonText,
+                        disabled: operationProgress.activeOperation != nil,
+                        action: openRepositoryInExternalEditor
+                    )
                 }
                 if appState.showHeaderTerminalButton {
                     toolbarButton(icon: "terminal", label: "Terminal", showText: appState.showToolbarButtonText, disabled: operationProgress.activeOperation != nil, action: openTerminal)
@@ -1352,6 +1373,44 @@ struct MainWindowView: View {
 
     private func showInFinder() {
         NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: repositoryURL.path)
+    }
+
+    private func openRepositoryInExternalEditor() {
+        let applications = IntegrationApplicationCatalog.availableApplications(for: .editor)
+
+        if let preferredBundleIdentifier =
+                appState.preferredSearchFileApplicationBundleIdentifier,
+           let preferredApplication = applications.first(where: {
+               $0.bundleIdentifier == preferredBundleIdentifier
+           }) {
+            launchRepository(in: preferredApplication)
+            return
+        }
+
+        if appState.preferredSearchFileApplicationBundleIdentifier != nil {
+            appState.preferredSearchFileApplicationBundleIdentifier = nil
+        }
+
+        guard !applications.isEmpty else {
+            syncState.showError("No supported external editor is installed.")
+            return
+        }
+
+        externalEditorApplications = applications
+        showingExternalEditorChooser = true
+    }
+
+    private func launchRepository(in application: IntegrationApplication) {
+        Task { @MainActor in
+            do {
+                try await IntegrationApplicationLauncher.launch(
+                    application,
+                    opening: repositoryURL
+                )
+            } catch {
+                syncState.showError(error.localizedDescription)
+            }
+        }
     }
 
     private func openTerminal() {
