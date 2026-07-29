@@ -24,7 +24,7 @@ extension GitStatusService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         return GlobalGitSettings(
-            executablePath: gitExecutable(),
+            executablePath: try await gitExecutable(),
             version: version,
             userName: await globalConfigValue("user.name", in: directory) ?? "",
             userEmail: await globalConfigValue("user.email", in: directory) ?? "",

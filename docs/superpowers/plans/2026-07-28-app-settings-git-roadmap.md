@@ -5,6 +5,7 @@
 ## Phases
 
 - [completed] [Phase 1: Global Git Settings](2026-07-28-app-settings-git-phase-1.md)
+- [completed] [Phase 2: Selectable Git Runtime](2026-07-29-app-settings-git-runtime-phase-2.md)
 
 ## Boundaries
 

@@ -142,12 +142,12 @@ extension GitStatusService {
         if reverse { arguments.append("--reverse") }
         arguments.append("-")
 
-        let executable = gitExecutable()
+        let context = try await gitExecutionContext()
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: executable)
+        task.executableURL = URL(fileURLWithPath: context.executable)
         task.arguments = arguments
         task.currentDirectoryURL = repositoryURL
-        task.environment = ProcessInfo.processInfo.environment
+        task.environment = context.environment
 
         let stdin = Pipe()
         let stdout = Pipe()

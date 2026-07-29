@@ -23,32 +23,55 @@ import Observation
 @Observable
 final class GitSettingsViewModel {
     var settings = GlobalGitSettings.empty
+    var selectedRuntimePreference = GitRuntimePreference.automatic
     private(set) var isLoading = false
     private(set) var isSaving = false
+    private(set) var isDownloadingEmbeddedGit = false
     private(set) var savedSettings = GlobalGitSettings.empty
     private(set) var statusMessage: String?
+    private(set) var systemRuntime: GitRuntimeInstallation?
+    private(set) var embeddedRuntime: GitRuntimeInstallation?
+    private(set) var activeRuntime: GitRuntimeInstallation?
+    private(set) var embeddedVersion = ""
+    private(set) var embeddedDownloadSize = 0
     var errorMessage: String?
     var showingError = false
 
     @ObservationIgnored private let service: GitStatusService
+    @ObservationIgnored private let runtimeManager: GitRuntimeManager
     @ObservationIgnored private let fileManager: FileManager
 
     init(
         service: GitStatusService = .shared,
+        runtimeManager: GitRuntimeManager = .shared,
         fileManager: FileManager = .default
     ) {
         self.service = service
+        self.runtimeManager = runtimeManager
         self.fileManager = fileManager
     }
 
     var canSave: Bool {
-        settings != savedSettings && !isLoading && !isSaving
+        settings != savedSettings && !isBusy
+    }
+
+    var isBusy: Bool {
+        isLoading || isSaving || isDownloadingEmbeddedGit
+    }
+
+    var embeddedDownloadSizeDescription: String {
+        ByteCountFormatter.string(
+            fromByteCount: Int64(embeddedDownloadSize),
+            countStyle: .file
+        )
     }
 
     func load() async {
         isLoading = true
         statusMessage = nil
         defer { isLoading = false }
+
+        await refreshRuntimeStatus()
 
         do {
             let loaded = try await service.loadGlobalGitSettings()
@@ -70,6 +93,43 @@ final class GitSettingsViewModel {
             savedSettings = settings
             statusMessage = "Global Git settings saved."
         } catch {
+            present(error)
+        }
+    }
+
+    func selectRuntimePreference(_ preference: GitRuntimePreference) async {
+        statusMessage = nil
+
+        if preference == .embedded, embeddedRuntime == nil {
+            statusMessage = "Download Embedded Git to use this option."
+            return
+        }
+
+        do {
+            try await runtimeManager.setPreference(preference)
+            await refreshRuntimeStatus()
+            applyActiveRuntimeToSettings()
+            statusMessage = "\(preference.title) is now active."
+        } catch {
+            await refreshRuntimeStatus()
+            present(error)
+        }
+    }
+
+    func downloadEmbeddedGit() async {
+        guard !isDownloadingEmbeddedGit else { return }
+        isDownloadingEmbeddedGit = true
+        statusMessage = nil
+        defer { isDownloadingEmbeddedGit = false }
+
+        do {
+            try await runtimeManager.installEmbeddedRuntime()
+            try await runtimeManager.setPreference(.embedded)
+            await refreshRuntimeStatus()
+            applyActiveRuntimeToSettings()
+            statusMessage = "Embedded Git \(embeddedVersion) installed and selected."
+        } catch {
+            await refreshRuntimeStatus()
             present(error)
         }
     }
@@ -139,5 +199,20 @@ final class GitSettingsViewModel {
     private func present(_ error: Error) {
         errorMessage = error.localizedDescription
         showingError = true
+    }
+
+    private func refreshRuntimeStatus() async {
+        let status = await runtimeManager.status()
+        selectedRuntimePreference = status.preference
+        systemRuntime = status.systemRuntime
+        embeddedRuntime = status.embeddedRuntime
+        activeRuntime = status.activeRuntime
+        embeddedVersion = status.embeddedVersion
+        embeddedDownloadSize = status.embeddedDownloadSize
+    }
+
+    private func applyActiveRuntimeToSettings() {
+        settings.executablePath = activeRuntime?.executableURL.path ?? ""
+        settings.version = activeRuntime?.version ?? ""
     }
 }

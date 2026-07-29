@@ -174,31 +174,30 @@ actor GitStatusService {
     static let shared = GitStatusService()
 
     private let runner: (any GitCommandRunning)?
+    let runtimeManager: GitRuntimeManager
     let branchListCache = BranchListCache()
 
-    init(runner: (any GitCommandRunning)? = nil) {
+    init(
+        runner: (any GitCommandRunning)? = nil,
+        runtimeManager: GitRuntimeManager = .shared
+    ) {
         self.runner = runner
+        self.runtimeManager = runtimeManager
     }
 
-    func gitExecutable() -> String {
-        // Prefer system git, fallback to /usr/bin/git
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        task.arguments = ["git"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        do {
-            try task.run()
-            task.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !path.isEmpty {
-                return path
-            }
-        } catch {
-            // fallthrough
-        }
-        return "/usr/bin/git"
+    func gitExecutable() async throws -> String {
+        try await runtimeManager.executableURL().path
+    }
+
+    func gitExecutionContext(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) async throws -> (executable: String, environment: [String: String]) {
+        let executableURL = try await runtimeManager.executableURL()
+        let resolvedEnvironment = await runtimeManager.environment(
+            for: executableURL,
+            inheriting: environment
+        )
+        return (executableURL.path, resolvedEnvironment)
     }
 
     func runGit(arguments: [String], in directory: URL) async throws -> String {
@@ -226,20 +225,35 @@ actor GitStatusService {
     }
 
     func runGitRaw(arguments: [String], in directory: URL, environment: [String: String]) async throws -> Data {
-        try await GitProcessExecution(
-            executable: gitExecutable(),
+        let context = try await gitExecutionContext(environment: environment)
+        return try await GitProcessExecution(
+            executable: context.executable,
             arguments: arguments,
             directory: directory,
-            environment: environment
+            environment: context.environment
         ).run()
     }
 
     func runProcessRaw(executableURL: URL, arguments: [String], in directory: URL) async throws -> Data {
+        try await runProcessRaw(
+            executableURL: executableURL,
+            arguments: arguments,
+            in: directory,
+            environment: ProcessInfo.processInfo.environment
+        )
+    }
+
+    func runProcessRaw(
+        executableURL: URL,
+        arguments: [String],
+        in directory: URL,
+        environment: [String: String]
+    ) async throws -> Data {
         try await GitProcessExecution(
             executable: executableURL.path,
             arguments: arguments,
             directory: directory,
-            environment: ProcessInfo.processInfo.environment
+            environment: environment
         ).run()
     }
 

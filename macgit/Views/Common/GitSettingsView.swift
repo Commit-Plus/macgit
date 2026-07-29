@@ -24,24 +24,7 @@ struct GitSettingsView: View {
         @Bindable var viewModel = viewModel
 
         Form {
-            Section {
-                LabeledContent("Executable") {
-                    Text(viewModel.settings.executablePath)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-                LabeledContent("Version") {
-                    Text(viewModel.settings.version)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-                Button("Refresh Git Information", systemImage: "arrow.clockwise") {
-                    Task { await viewModel.load() }
-                }
-                .disabled(viewModel.isLoading || viewModel.isSaving)
-            } header: {
-                Label("Git Installation", systemImage: "terminal")
-            }
+            GitRuntimeSettingsSection(viewModel: viewModel)
 
             Section {
                 TextField("Full Name", text: $viewModel.settings.userName)

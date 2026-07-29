@@ -25,10 +25,12 @@ import Foundation
 extension GitStatusService {
     func uncommittedChangeCount(in repositoryURL: URL) async -> Int {
         let script = "\"$1\" status --porcelain -uall | /usr/bin/wc -l"
+        guard let context = try? await gitExecutionContext() else { return 0 }
         let output = try? await runProcessRaw(
             executableURL: URL(fileURLWithPath: "/bin/zsh"),
-            arguments: ["-o", "pipefail", "-c", script, "macgit-status-count", gitExecutable()],
-            in: repositoryURL
+            arguments: ["-o", "pipefail", "-c", script, "macgit-status-count", context.executable],
+            in: repositoryURL,
+            environment: context.environment
         )
         let text = output.flatMap { String(data: $0, encoding: .utf8) }?
             .trimmingCharacters(in: .whitespacesAndNewlines)
