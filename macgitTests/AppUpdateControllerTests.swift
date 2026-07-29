@@ -37,19 +37,35 @@ final class AppUpdateControllerTests: XCTestCase {
         let controller = AppUpdateController(updater: updater)
 
         controller.start()
-        updater.emit(.updateAvailable)
+        updater.emit(.updateAvailable(version: "2.0"))
 
         XCTAssertEqual(controller.state, .available)
+        XCTAssertEqual(controller.latestVersion, "2.0")
     }
 
     func testNoUpdateFoundReturnsToIdleState() {
         let updater = FakeAppUpdater()
-        let controller = AppUpdateController(updater: updater)
+        let controller = AppUpdateController(updater: updater, currentVersion: "1.5")
 
         controller.start()
-        updater.emit(.noUpdateFound)
+        updater.emit(.noUpdateFound(latestVersion: "1.5"))
 
         XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(controller.latestVersion, "1.5")
+    }
+
+    func testFailedCheckReturnsToIdleAndKeepsError() {
+        let updater = FakeAppUpdater()
+        let controller = AppUpdateController(updater: updater)
+
+        controller.refreshLatestVersion()
+        updater.emit(.checkFailed(message: "The Internet connection appears to be offline."))
+
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(
+            controller.latestVersionCheckError,
+            "The Internet connection appears to be offline."
+        )
     }
 
     func testDownloadStartedTransitionsToDownloadingState() {
@@ -57,7 +73,7 @@ final class AppUpdateControllerTests: XCTestCase {
         let controller = AppUpdateController(updater: updater)
 
         controller.start()
-        updater.emit(.updateAvailable)
+        updater.emit(.updateAvailable(version: "2.0"))
         updater.emit(.downloadStarted)
 
         XCTAssertEqual(controller.state, .downloading)
@@ -68,7 +84,7 @@ final class AppUpdateControllerTests: XCTestCase {
         let controller = AppUpdateController(updater: updater)
 
         controller.start()
-        updater.emit(.updateAvailable)
+        updater.emit(.updateAvailable(version: "2.0"))
         updater.emit(.sessionDismissed)
 
         XCTAssertEqual(controller.state, .available)
@@ -90,6 +106,16 @@ final class AppUpdateControllerTests: XCTestCase {
         controller.checkForUpdates()
 
         XCTAssertEqual(updater.userInitiatedCheckCallCount, 1)
+    }
+
+    func testRefreshLatestVersionPerformsBackgroundCheck() {
+        let updater = FakeAppUpdater()
+        let controller = AppUpdateController(updater: updater)
+
+        controller.refreshLatestVersion()
+
+        XCTAssertEqual(controller.state, .checking)
+        XCTAssertEqual(updater.backgroundCheckCallCount, 1)
     }
 
     func testSparkleConfigurationRequiresFeedURLAndPublicKey() {

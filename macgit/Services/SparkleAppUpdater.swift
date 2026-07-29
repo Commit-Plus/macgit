@@ -53,7 +53,7 @@ final class SparkleAppUpdater: NSObject, AppUpdaterProtocol {
 
     func start() {
         guard isEnabled, let updaterController else {
-            eventHandler?(.noUpdateFound)
+            eventHandler?(.checkFailed(message: "The update feed is not configured."))
             return
         }
         updaterController.startUpdater()
@@ -78,7 +78,7 @@ final class SparkleAppUpdater: NSObject, AppUpdaterProtocol {
 
 extension SparkleAppUpdater: SPUUpdaterDelegate {
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
-        eventHandler?(.updateAvailable)
+        eventHandler?(.updateAvailable(version: item.displayVersionString))
     }
 
     func updater(_ updater: SPUUpdater, willDownloadUpdate item: SUAppcastItem, with request: NSMutableURLRequest) {
@@ -86,7 +86,15 @@ extension SparkleAppUpdater: SPUUpdaterDelegate {
     }
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
-        eventHandler?(.noUpdateFound)
+        let error = error as NSError
+        guard error.domain == SUSparkleErrorDomain,
+              error.code == SUError.noUpdateError.rawValue else {
+            eventHandler?(.checkFailed(message: error.localizedDescription))
+            return
+        }
+
+        let latestItem = error.userInfo[SPULatestAppcastItemFoundKey] as? SUAppcastItem
+        eventHandler?(.noUpdateFound(latestVersion: latestItem?.displayVersionString))
     }
 
     func updater(_ updater: SPUUpdater, userDidMake userChoice: SPUUserUpdateChoice, forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {

@@ -18,8 +18,9 @@
 import Foundation
 
 enum AppUpdaterEvent {
-    case updateAvailable
-    case noUpdateFound
+    case updateAvailable(version: String)
+    case noUpdateFound(latestVersion: String?)
+    case checkFailed(message: String)
     case downloadStarted
     case sessionDismissed
 }

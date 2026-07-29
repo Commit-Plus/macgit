@@ -86,7 +86,8 @@ struct macgitApp: App {
                     AppSettingsView(
                         appState: appState,
                         accountController: accountController,
-                        providerAccountController: providerAccountController
+                        providerAccountController: providerAccountController,
+                        appUpdateController: appUpdateController
                     )
                         .preferredColorScheme(appState.appearance.colorScheme)
                 }

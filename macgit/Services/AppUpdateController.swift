@@ -21,6 +21,11 @@ import Combine
 @MainActor
 final class AppUpdateController: ObservableObject {
     @Published private(set) var state: AppUpdateState = .idle
+    @Published private(set) var latestVersion: String?
+    @Published private(set) var latestVersionCheckError: String?
+
+    let currentVersion: String
+    let currentBuild: String?
 
     var displayState: AppUpdateState {
 #if DEBUG
@@ -34,8 +39,18 @@ final class AppUpdateController: ObservableObject {
     private let updater: AppUpdaterProtocol
     private var hasStarted = false
 
-    init(updater: AppUpdaterProtocol) {
+    init(
+        updater: AppUpdaterProtocol,
+        currentVersion: String = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "Unknown",
+        currentBuild: String? = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleVersion"
+        ) as? String
+    ) {
         self.updater = updater
+        self.currentVersion = currentVersion
+        self.currentBuild = currentBuild
         updater.setEventHandler { [weak self] event in
             self?.handle(event)
         }
@@ -46,6 +61,7 @@ final class AppUpdateController: ObservableObject {
 
         hasStarted = true
         state = .checking
+        latestVersionCheckError = nil
         updater.start()
         updater.checkForUpdatesInBackground()
     }
@@ -58,11 +74,26 @@ final class AppUpdateController: ObservableObject {
         updater.checkForUpdates()
     }
 
+    func refreshLatestVersion() {
+        guard state != .downloading else { return }
+
+        state = .checking
+        latestVersionCheckError = nil
+        updater.checkForUpdatesInBackground()
+    }
+
     private func handle(_ event: AppUpdaterEvent) {
         switch event {
-        case .updateAvailable:
+        case let .updateAvailable(version):
+            latestVersion = version
+            latestVersionCheckError = nil
             state = .available
-        case .noUpdateFound:
+        case let .noUpdateFound(latestVersion):
+            self.latestVersion = latestVersion ?? currentVersion
+            latestVersionCheckError = nil
+            state = .idle
+        case let .checkFailed(message):
+            latestVersionCheckError = message
             state = .idle
         case .downloadStarted:
             state = .downloading

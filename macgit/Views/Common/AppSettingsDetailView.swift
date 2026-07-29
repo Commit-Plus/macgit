@@ -22,6 +22,7 @@ struct AppSettingsDetailView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var accountController: AccountSessionController
     @ObservedObject var providerAccountController: GitProviderAccountController
+    @ObservedObject var appUpdateController: AppUpdateController
 
     var body: some View {
         switch section {
@@ -38,14 +39,14 @@ struct AppSettingsDetailView: View {
             )
         case .integrations:
             IntegrationsSettingsView(appState: appState)
+        case .update:
+            UpdateSettingsView(updateController: appUpdateController)
         case .advanced:
             AdvancedSettingsView(
                 appState: appState,
                 accountController: accountController,
                 providerAccountController: providerAccountController
             )
-        default:
-            AppSettingsPlaceholderView(section: section)
         }
     }
 }

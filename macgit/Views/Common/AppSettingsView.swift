@@ -22,6 +22,7 @@ struct AppSettingsView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var accountController: AccountSessionController
     @ObservedObject var providerAccountController: GitProviderAccountController
+    @ObservedObject var appUpdateController: AppUpdateController
     @State private var selectedSection: AppSettingsSection = .general
 
     var body: some View {
@@ -38,7 +39,8 @@ struct AppSettingsView: View {
                     section: selectedSection,
                     appState: appState,
                     accountController: accountController,
-                    providerAccountController: providerAccountController
+                    providerAccountController: providerAccountController,
+                    appUpdateController: appUpdateController
                 )
 
                 Divider()
