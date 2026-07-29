@@ -282,7 +282,7 @@ final class HistoryViewTests: XCTestCase {
 
     private func makeCommit(
         hash: String,
-        message: String,
+        message: String = "",
         parents: [String] = []
     ) -> Commit {
         Commit(

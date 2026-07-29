@@ -33,10 +33,11 @@ final class GitRuntimeManagerTests: XCTestCase {
         )
 
         let status = await manager.status()
+        let executableURL = try await manager.executableURL()
 
         XCTAssertEqual(status.preference, .automatic)
         XCTAssertEqual(status.activeRuntime?.executableURL, fixture.systemGitURL)
-        XCTAssertEqual(try await manager.executableURL(), fixture.systemGitURL)
+        XCTAssertEqual(executableURL, fixture.systemGitURL)
     }
 
     func testEmbeddedPreferenceOverridesAvailableSystemGit() async throws {
@@ -53,9 +54,11 @@ final class GitRuntimeManagerTests: XCTestCase {
         )
 
         try await manager.setPreference(.embedded)
+        let executableURL = try await manager.executableURL()
+        let status = await manager.status()
 
-        XCTAssertEqual(try await manager.executableURL(), fixture.embeddedGitURL)
-        XCTAssertEqual(await manager.status().preference, .embedded)
+        XCTAssertEqual(executableURL, fixture.embeddedGitURL)
+        XCTAssertEqual(status.preference, .embedded)
     }
 
     func testCannotSelectEmbeddedGitBeforeItIsInstalled() async throws {
@@ -74,7 +77,8 @@ final class GitRuntimeManagerTests: XCTestCase {
             XCTAssertEqual(error, .missingEmbeddedGit)
         }
 
-        XCTAssertEqual(await manager.status().preference, .automatic)
+        let status = await manager.status()
+        XCTAssertEqual(status.preference, .automatic)
     }
 
     func testInstallRejectsArchiveWithWrongChecksum() async throws {

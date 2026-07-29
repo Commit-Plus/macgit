@@ -134,7 +134,8 @@ final class HistoryPaginationTests: XCTestCase {
         let model1 = CommitGraphGenerator.generate(
             commits: page1,
             highlighting: .all,
-            headHash: headHash
+            headHash: headHash,
+            highlightRootHash: nil
         )
 
         let page2 = await GitStatusService.shared.commitHistory(allBranches: true, limit: 3, skip: 3, in: url)
@@ -142,7 +143,8 @@ final class HistoryPaginationTests: XCTestCase {
         let model2 = CommitGraphGenerator.generate(
             commits: combined,
             highlighting: .all,
-            headHash: headHash
+            headHash: headHash,
+            highlightRootHash: nil
         )
 
         XCTAssertEqual(model1.dots.count, 3)
