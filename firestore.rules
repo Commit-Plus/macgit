@@ -12,6 +12,11 @@ service cloud.firestore {
       allow create, update: if signedInAs(uid) && validGitProviderAccount();
     }
 
+    match /users/{uid}/repositoryBookmarks/{bookmarkID} {
+      allow read, delete: if signedInAs(uid);
+      allow create, update: if signedInAs(uid) && validRepositoryBookmark();
+    }
+
     function validAppSettings() {
       return request.resource.data.keys().hasOnly([
           'schemaVersion',
@@ -102,6 +107,45 @@ service cloud.firestore {
         ]
         && request.resource.data.connectedAt is timestamp
         && (!('lastValidatedAt' in request.resource.data) || request.resource.data.lastValidatedAt is timestamp);
+    }
+
+    function validRepositoryBookmark() {
+      return request.resource.data.keys().hasOnly([
+          'schemaVersion',
+          'canonicalKey',
+          'name',
+          'provider',
+          'host',
+          'ownerPath',
+          'remoteURL',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'schemaVersion',
+          'canonicalKey',
+          'name',
+          'provider',
+          'host',
+          'ownerPath',
+          'remoteURL',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.canonicalKey is string
+        && request.resource.data.canonicalKey.size() > 0
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.provider in ['github', 'gitlab', 'bitbucket', 'generic']
+        && request.resource.data.host is string
+        && request.resource.data.host.size() > 0
+        && request.resource.data.ownerPath is string
+        && request.resource.data.ownerPath.size() > 0
+        && request.resource.data.remoteURL is string
+        && request.resource.data.remoteURL.matches('^https://.+')
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
     }
 
     match /entitlements/{uid} {

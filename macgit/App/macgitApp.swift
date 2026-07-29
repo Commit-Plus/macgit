@@ -25,6 +25,7 @@ struct macgitApp: App {
     @StateObject private var appUpdateController = AppUpdateController(updater: SparkleAppUpdater())
     @StateObject private var accountController: AccountSessionController
     @StateObject private var providerAccountController: GitProviderAccountController
+    @StateObject private var repositoryBookmarkController: RepositoryBookmarkController
     @State private var showingAppSettings = false
 
     init() {
@@ -60,6 +61,13 @@ struct macgitApp: App {
                 openURL: NSWorkspace.shared.open
             )
         )
+        _repositoryBookmarkController = StateObject(
+            wrappedValue: RepositoryBookmarkController(
+                cloudStore: firebaseStatus == .configured
+                    ? FirestoreRepositoryBookmarkStore()
+                    : nil
+            )
+        )
     }
 
     var body: some Scene {
@@ -70,6 +78,7 @@ struct macgitApp: App {
             )
                 .environmentObject(appState)
                 .environmentObject(appUpdateController)
+                .environmentObject(repositoryBookmarkController)
                 .preferredColorScheme(appState.appearance.colorScheme)
                 .onOpenURL { url in
                     Task { @MainActor in

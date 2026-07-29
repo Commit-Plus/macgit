@@ -19,6 +19,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var repositoryBookmarkController: RepositoryBookmarkController
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var accountController: AccountSessionController
     @ObservedObject var providerAccountController: GitProviderAccountController
@@ -125,6 +126,7 @@ struct ContentView: View {
         }
         .task(id: accountController.account?.uid) {
             await providerAccountController.updateMacgitAccount(accountController.account)
+            await repositoryBookmarkController.updateAccount(accountController.account)
         }
         .overlay(
             WindowCloseButtonModifier(isVisible: repositoryURL == nil)

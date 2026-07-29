@@ -37,6 +37,10 @@ function gitProviderAccount(uid, connectionID, context) {
   return doc(context.firestore(), `users/${uid}/gitProviderAccounts/${connectionID}`);
 }
 
+function repositoryBookmark(uid, bookmarkID, context) {
+  return doc(context.firestore(), `users/${uid}/repositoryBookmarks/${bookmarkID}`);
+}
+
 function validSettings() {
   return {
     schemaVersion: 1,
@@ -71,6 +75,20 @@ function validGitProviderAccount() {
     transportProtocol: "https",
     connectedAt: serverTimestamp(),
     lastValidatedAt: serverTimestamp(),
+  };
+}
+
+function validRepositoryBookmark() {
+  return {
+    schemaVersion: 1,
+    canonicalKey: "github.com/openai/codex",
+    name: "codex",
+    provider: "github",
+    host: "github.com",
+    ownerPath: "openai",
+    remoteURL: "https://github.com/openai/codex.git",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   };
 }
 
@@ -251,6 +269,36 @@ describe("Firestore ownership rules", () => {
         transportProtocol: "ssh",
       },
     ));
+  });
+
+  test("a user can read and write only their own repository bookmarks", async () => {
+    const userA = environment.authenticatedContext("user-a");
+    const userB = environment.authenticatedContext("user-b");
+    const ownBookmark = repositoryBookmark("user-a", "bookmark-1", userA);
+
+    await assertSucceeds(setDoc(ownBookmark, validRepositoryBookmark()));
+    await assertSucceeds(getDoc(ownBookmark));
+    await assertFails(getDoc(repositoryBookmark("user-a", "bookmark-1", userB)));
+    await assertFails(setDoc(
+      repositoryBookmark("user-a", "bookmark-1", userB),
+      validRepositoryBookmark(),
+    ));
+    await assertSucceeds(deleteDoc(ownBookmark));
+  });
+
+  test("repository bookmarks reject local paths, secrets, and malformed metadata", async () => {
+    const userA = environment.authenticatedContext("user-a");
+    const bookmark = repositoryBookmark("user-a", "bookmark-1", userA);
+
+    for (const invalid of [
+      { ...validRepositoryBookmark(), localPath: "/Users/test/Project/codex" },
+      { ...validRepositoryBookmark(), accessToken: "must-not-be-stored" },
+      { ...validRepositoryBookmark(), provider: "unknown" },
+      { ...validRepositoryBookmark(), remoteURL: "file:///Users/test/codex" },
+      { ...validRepositoryBookmark(), name: "" },
+    ]) {
+      await assertFails(setDoc(bookmark, invalid));
+    }
   });
 
   test("Git provider metadata rejects unsupported transport protocols", async () => {
