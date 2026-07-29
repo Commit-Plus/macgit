@@ -68,6 +68,11 @@ final class RecentRepositoriesStore: ObservableObject {
         save()
     }
 
+    func removeAll() {
+        repositories.removeAll()
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
     private func load() {
         guard let data = UserDefaults.standard.data(forKey: key),
               let decoded = try? JSONDecoder().decode([RecentRepository].self, from: data) else {

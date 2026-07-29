@@ -49,6 +49,7 @@ struct GitFileUndoSnapshotStore {
         let snapshot = GitFileUndoSnapshot(id: snapshotID, items: items)
         let data = try JSONEncoder().encode(snapshot)
         try data.write(to: manifestURL(snapshotID, in: repositoryURL), options: .atomic)
+        GitUndoSnapshotRegistry.shared.register(snapshotID)
         return snapshot
     }
 
@@ -76,6 +77,7 @@ struct GitFileUndoSnapshotStore {
         if fileManager.fileExists(atPath: directory.path) {
             try fileManager.removeItem(at: directory)
         }
+        GitUndoSnapshotRegistry.shared.unregister(snapshotID)
     }
 
     private func undoRoot(in repositoryURL: URL) -> URL {

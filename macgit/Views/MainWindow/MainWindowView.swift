@@ -386,6 +386,9 @@ struct MainWindowView: View {
                     operationProgress.requestCancel(id)
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .advancedClearSessionCaches)) { _ in
+                pullRequestController.clearSessionCaches()
+            }
     }
 
     private var mainContent: some View {

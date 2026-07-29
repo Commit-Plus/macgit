@@ -38,6 +38,12 @@ struct AppSettingsDetailView: View {
             )
         case .integrations:
             IntegrationsSettingsView(appState: appState)
+        case .advanced:
+            AdvancedSettingsView(
+                appState: appState,
+                accountController: accountController,
+                providerAccountController: providerAccountController
+            )
         default:
             AppSettingsPlaceholderView(section: section)
         }

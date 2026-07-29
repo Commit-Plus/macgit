@@ -202,7 +202,25 @@ actor GitStatusService {
 
     func runGit(arguments: [String], in directory: URL) async throws -> String {
         if let runner {
-            return try await runner.runGit(arguments: arguments, in: directory)
+            let startedAt = Date()
+            do {
+                let output = try await runner.runGit(arguments: arguments, in: directory)
+                await GitCommandLogStore.shared.record(
+                    arguments: arguments,
+                    directory: directory,
+                    duration: Date().timeIntervalSince(startedAt),
+                    error: nil
+                )
+                return output
+            } catch {
+                await GitCommandLogStore.shared.record(
+                    arguments: arguments,
+                    directory: directory,
+                    duration: Date().timeIntervalSince(startedAt),
+                    error: error
+                )
+                throw error
+            }
         }
         let data = try await runGitRaw(arguments: arguments, in: directory)
         return String(data: data, encoding: .utf8) ?? ""
@@ -210,7 +228,29 @@ actor GitStatusService {
 
     func runGit(arguments: [String], in directory: URL, environment: [String: String]) async throws -> String {
         if let runner {
-            return try await runner.runGit(arguments: arguments, in: directory, environment: environment)
+            let startedAt = Date()
+            do {
+                let output = try await runner.runGit(
+                    arguments: arguments,
+                    in: directory,
+                    environment: environment
+                )
+                await GitCommandLogStore.shared.record(
+                    arguments: arguments,
+                    directory: directory,
+                    duration: Date().timeIntervalSince(startedAt),
+                    error: nil
+                )
+                return output
+            } catch {
+                await GitCommandLogStore.shared.record(
+                    arguments: arguments,
+                    directory: directory,
+                    duration: Date().timeIntervalSince(startedAt),
+                    error: error
+                )
+                throw error
+            }
         }
         let data = try await runGitRaw(arguments: arguments, in: directory, environment: environment)
         return String(data: data, encoding: .utf8) ?? ""
@@ -225,13 +265,35 @@ actor GitStatusService {
     }
 
     func runGitRaw(arguments: [String], in directory: URL, environment: [String: String]) async throws -> Data {
-        let context = try await gitExecutionContext(environment: environment)
-        return try await GitProcessExecution(
-            executable: context.executable,
-            arguments: arguments,
-            directory: directory,
-            environment: context.environment
-        ).run()
+        let startedAt = Date()
+        do {
+            let context = try await gitExecutionContext(environment: environment)
+            let data = try await GitProcessExecution(
+                executable: context.executable,
+                arguments: arguments,
+                directory: directory,
+                environment: context.environment
+            ).run()
+            await GitCommandLogStore.shared.record(
+                arguments: arguments,
+                directory: directory,
+                duration: Date().timeIntervalSince(startedAt),
+                error: nil
+            )
+            return data
+        } catch {
+            await GitCommandLogStore.shared.record(
+                arguments: arguments,
+                directory: directory,
+                duration: Date().timeIntervalSince(startedAt),
+                error: error
+            )
+            throw error
+        }
+    }
+
+    func clearSessionCaches() async {
+        await branchListCache.removeAll()
     }
 
     func runProcessRaw(executableURL: URL, arguments: [String], in directory: URL) async throws -> Data {

@@ -624,6 +624,11 @@ final class PullRequestController: ObservableObject {
         detailCache = detailCache.filter { $0.key.number != number }
     }
 
+    func clearSessionCaches() {
+        invalidateListCache()
+        invalidateDetailCache()
+    }
+
     private func apiCredential(for accounts: [GitProviderAccount]) -> (
         account: GitProviderAccount,
         token: GitProviderToken

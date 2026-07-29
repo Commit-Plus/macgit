@@ -1,0 +1,44 @@
+//
+//  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
+//  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
+//
+//  This program is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Affero General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  This program is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU Affero General Public License for more details.
+//
+//  You should have received a copy of the GNU Affero General Public License
+//  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
+import Foundation
+
+final class GitUndoSnapshotRegistry: @unchecked Sendable {
+    static let shared = GitUndoSnapshotRegistry()
+
+    private let lock = NSLock()
+    private var activeSnapshotIDs: Set<UUID> = []
+
+    func register(_ id: UUID) {
+        lock.withLock {
+            activeSnapshotIDs.insert(id)
+        }
+    }
+
+    func unregister(_ id: UUID) {
+        lock.withLock {
+            activeSnapshotIDs.remove(id)
+        }
+    }
+
+    func contains(_ id: UUID) -> Bool {
+        lock.withLock {
+            activeSnapshotIDs.contains(id)
+        }
+    }
+}

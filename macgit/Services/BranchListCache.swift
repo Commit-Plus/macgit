@@ -97,6 +97,13 @@ actor BranchListCache {
         }
     }
 
+    func removeAll() {
+        let keys = Set(entries.keys).union(inFlight.keys)
+        for key in keys {
+            invalidate(key)
+        }
+    }
+
     private func invalidate(_ key: Key) {
         entries[key] = nil
         generations[key, default: 0] += 1

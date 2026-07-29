@@ -279,4 +279,9 @@ final class AppState: ObservableObject {
         historyIncludeRemotes = snapshot.historyIncludeRemotes
         currentSettingsSnapshot = snapshot
     }
+
+    func restoreLocalOnlyPreferences() {
+        searchFilter = .all
+        preferredSearchFileApplicationBundleIdentifier = nil
+    }
 }

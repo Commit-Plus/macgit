@@ -44,7 +44,6 @@ struct HistoryView: View {
     let onRunRepositoryOperation: RepositoryOperationRunner
     let onRequestCheckout: (String, Bool) -> Void
     @EnvironmentObject private var appState: AppState
-    private static let historyPageSize = 120
     private static let historyScrollSpaceName = "historyScroll"
     
     @State private var commits: [Commit] = []
@@ -62,6 +61,7 @@ struct HistoryView: View {
     @AppStorage("history.authorWidth") private var authorColumnWidth: Double = 120
     @AppStorage("history.dateWidth") private var dateColumnWidth: Double = 80
     @AppStorage("history.commitWidth") private var commitColumnWidth: Double = 70
+    @AppStorage("advanced.historyLoadSize") private var historyLoadSizeRaw = 120
     @State private var isLoading = false
     @State private var isRefreshingHistory = false
     @State private var refreshIndicatorTask: Task<Void, Never>? = nil
@@ -69,7 +69,7 @@ struct HistoryView: View {
     @State private var showingError = false
     @State private var scrollTarget: String? = nil
     @State private var rowFrames: [String: CGRect] = [:]
-    @State private var paging = HistoryPagingState(pageSize: HistoryView.historyPageSize)
+    @State private var paging = HistoryPagingState(pageSize: 120)
     @State private var historyCache: [String: HistorySnapshot] = [:]
     @State private var historySearchText = ""
     @State private var debouncedHistorySearchText = ""
@@ -116,7 +116,13 @@ struct HistoryView: View {
         self.syncState = syncState
         self.onRunRepositoryOperation = onRunRepositoryOperation
         self.onRequestCheckout = onRequestCheckout
-        self._paging = State(initialValue: HistoryPagingState(pageSize: Self.historyPageSize))
+        let storedPageSize = UserDefaults.standard.integer(forKey: "advanced.historyLoadSize")
+        self._paging = State(
+            initialValue: HistoryPagingState(
+                pageSize: HistoryLoadSize(rawValue: storedPageSize)?.rawValue
+                    ?? HistoryLoadSize.balanced.rawValue
+            )
+        )
     }
     
     var body: some View {
@@ -181,6 +187,12 @@ struct HistoryView: View {
         .onChange(of: historySearchText) { _, newValue in
             scheduleHistorySearchDebounce(for: newValue)
         }
+        .onChange(of: historyLoadSizeRaw) { _, newValue in
+            let pageSize = HistoryLoadSize(rawValue: newValue)?.rawValue
+                ?? HistoryLoadSize.balanced.rawValue
+            paging = HistoryPagingState(pageSize: pageSize)
+            historyCache.removeAll()
+        }
         .onDisappear {
             historySearchDebounceTask?.cancel()
         }
@@ -194,6 +206,12 @@ struct HistoryView: View {
                 Task {
                     await loadHistory(reset: true)
                 }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .advancedClearSessionCaches)) { _ in
+            historyCache.removeAll()
+            Task {
+                await loadHistory(reset: true)
             }
         }
         .alert("Error", isPresented: $showingError, actions: {
@@ -966,6 +984,7 @@ struct HistoryView: View {
         }
         let scope = Self.historyScope(branchFilter: appState.historyBranchFilter)
         let skip = await MainActor.run { paging.loadedCount }
+        let pageSize = await MainActor.run { paging.pageSize }
         let searchQuery = activeHistorySearchQuery
         let newCommits: [Commit]
         if searchQuery.isEmpty {
@@ -973,21 +992,21 @@ struct HistoryView: View {
             case .allBranches:
                 newCommits = await GitStatusService.shared.commitHistory(
                     allBranches: true,
-                    limit: Self.historyPageSize,
+                    limit: pageSize,
                     skip: skip,
                     in: repositoryURL
                 )
             case .currentBranch:
                 newCommits = await GitStatusService.shared.commitHistory(
                     allBranches: false,
-                    limit: Self.historyPageSize,
+                    limit: pageSize,
                     skip: skip,
                     in: repositoryURL
                 )
             case .ref(let ref):
                 newCommits = await GitStatusService.shared.commitHistory(
                     branch: ref,
-                    limit: Self.historyPageSize,
+                    limit: pageSize,
                     skip: skip,
                     in: repositoryURL
                 )
@@ -998,7 +1017,7 @@ struct HistoryView: View {
                 newCommits = await GitStatusService.shared.searchCommitHistory(
                     allBranches: true,
                     query: searchQuery,
-                    limit: Self.historyPageSize,
+                    limit: pageSize,
                     skip: skip,
                     in: repositoryURL
                 )
@@ -1006,7 +1025,7 @@ struct HistoryView: View {
                 newCommits = await GitStatusService.shared.searchCommitHistory(
                     allBranches: false,
                     query: searchQuery,
-                    limit: Self.historyPageSize,
+                    limit: pageSize,
                     skip: skip,
                     in: repositoryURL
                 )
@@ -1014,7 +1033,7 @@ struct HistoryView: View {
                 newCommits = await GitStatusService.shared.searchCommitHistory(
                     branch: ref,
                     query: searchQuery,
-                    limit: Self.historyPageSize,
+                    limit: pageSize,
                     skip: skip,
                     in: repositoryURL
                 )
@@ -1602,7 +1621,7 @@ struct HistoryView: View {
     }
 
     private var historyLoadKey: String {
-        "\(appState.historyBranchFilter.storageValue)|\(activeHistorySearchQuery)"
+        "\(appState.historyBranchFilter.storageValue)|\(activeHistorySearchQuery)|\(historyLoadSizeRaw)"
     }
 
     private var activeHistorySearchQuery: String {

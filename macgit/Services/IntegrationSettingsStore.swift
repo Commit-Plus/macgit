@@ -95,6 +95,13 @@ final class IntegrationSettingsStore: ObservableObject {
         try await IntegrationApplicationLauncher.launch(application)
     }
 
+    func restoreDefaults() {
+        preferredTerminalBundleIdentifier = nil
+        preferredDiffBundleIdentifier = nil
+        preferredMergeBundleIdentifier = nil
+        refreshApplications()
+    }
+
     private func selection(for role: IntegrationRole) -> String? {
         switch role {
         case .editor:
