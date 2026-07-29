@@ -76,6 +76,10 @@ extension GitStatusService {
         try await runGitRaw(arguments: ["show", "\(ref):\(path)"], in: repositoryURL)
     }
 
+    func indexFile(at path: String, in repositoryURL: URL) async throws -> Data {
+        try await runGitRaw(arguments: ["show", ":\(path)"], in: repositoryURL)
+    }
+
     func changedFiles(in commit: String, in repositoryURL: URL) async -> [CommitFileChange] {
         let output = (try? await runGit(arguments: ["show", "--name-status", "--first-parent", "--format=", commit], in: repositoryURL)) ?? ""
         var changes: [CommitFileChange] = []

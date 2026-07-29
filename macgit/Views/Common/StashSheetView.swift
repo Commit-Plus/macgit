@@ -58,8 +58,9 @@ struct StashSheetView: View {
                     Text("Stash \(paths.count) selected files (including untracked).")
                         .font(.system(size: 13))
                 } else {
-                    Text("This will stash all the changes in your working copy and return it to a clean state.")
+                    Text("This will stash all the changes in your working copy\nand return it to a clean state.")
                         .font(.system(size: 13))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 HStack(spacing: 8) {

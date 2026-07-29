@@ -90,12 +90,13 @@ extension GitStatusService {
                              (indexStatus == "D" && worktreeStatus == "D")
 
             if isConflict {
-                if indexStatus != " " && indexStatus != "." {
-                    staged.append(StatusFile(path: path, status: .conflict, originalPath: originalPath))
-                }
-                if worktreeStatus != " " && worktreeStatus != "." && worktreeStatus != "?" {
-                    unstaged.append(StatusFile(path: path, status: .conflict, originalPath: originalPath))
-                }
+                let conflict = StatusFile(
+                    path: path,
+                    status: .conflict,
+                    originalPath: originalPath
+                )
+                staged.append(conflict)
+                unstaged.append(conflict)
                 continue
             }
 
@@ -270,10 +271,22 @@ extension GitStatusService {
         )
     }
 
-    func resolveConflict(file: StatusFile, in repositoryURL: URL, with document: ConflictResolutionDocument) async throws {
+    func resolveConflict(
+        file: StatusFile,
+        in repositoryURL: URL,
+        with document: ConflictResolutionDocument
+    ) async throws {
         let fileURL = repositoryURL.appendingPathComponent(file.path)
         try document.resolvedText.write(to: fileURL, atomically: true, encoding: .utf8)
         _ = try await runGit(arguments: ["add", "--", file.path], in: repositoryURL)
+    }
+
+    func conflictStageFile(
+        at path: String,
+        stage: Int,
+        in repositoryURL: URL
+    ) async throws -> Data {
+        try await runGitRaw(arguments: ["show", ":\(stage):\(path)"], in: repositoryURL)
     }
 
     func resetToCommit(file: StatusFile, commit: String, in repositoryURL: URL) async throws {

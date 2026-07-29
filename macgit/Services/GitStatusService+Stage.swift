@@ -79,6 +79,11 @@ extension GitStatusService {
         _ = try await runGit(arguments: arguments, in: repositoryURL)
     }
 
+    func stopTracking(file: StatusFile, in repositoryURL: URL) async throws {
+        let trackedPath = file.originalPath ?? file.path
+        _ = try await runGit(arguments: ["rm", "--cached", "--", trackedPath], in: repositoryURL)
+    }
+
     private func stageRename(file: StatusFile, originalPath: String, in repositoryURL: URL) async throws {
         // `git add <newpath>` alone leaves the old path untouched in the
         // index, which Git reads as "added new + missing tracked" rather

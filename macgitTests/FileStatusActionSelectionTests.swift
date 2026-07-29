@@ -20,6 +20,16 @@ import XCTest
 
 @MainActor
 final class FileStatusActionSelectionTests: XCTestCase {
+    func testSelectionKeyChangesWhenConflictBecomesStaged() {
+        let conflict = file("Sources/App.swift", status: .conflict)
+        let resolved = file("Sources/App.swift", status: .staged)
+
+        XCTAssertNotEqual(
+            FileStatusSelectionKey(file: conflict, isStaged: true),
+            FileStatusSelectionKey(file: resolved, isStaged: true)
+        )
+    }
+
     func testSectionTitlesUseAllWhenNothingIsSelected() {
         let policy = FileStatusActionSelection(
             selectedKeys: [],

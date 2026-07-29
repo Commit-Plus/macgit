@@ -88,6 +88,32 @@ final class IntegrationSettingsStore: ObservableObject {
         try await IntegrationApplicationLauncher.launch(terminal, opening: directoryURL)
     }
 
+    func openDiff(for file: StatusFile, in repositoryURL: URL) async throws {
+        guard let application = selectedApplication(for: .diff) else {
+            throw IntegrationLaunchError.noApplicationAvailable("external diff")
+        }
+        let files = try await ExternalDiffFileService.prepare(file: file, in: repositoryURL)
+        try IntegrationApplicationLauncher.launchDiff(
+            application,
+            beforeURL: files.beforeURL,
+            afterURL: files.afterURL
+        )
+    }
+
+    func openExternalMerge(for file: StatusFile, in repositoryURL: URL) async throws {
+        guard let application = selectedApplication(for: .merge) else {
+            throw IntegrationLaunchError.noApplicationAvailable("external merge")
+        }
+        let files = try await ExternalMergeFileService.prepare(file: file, in: repositoryURL)
+        try await IntegrationApplicationLauncher.launchMerge(
+            application,
+            baseURL: files.baseURL,
+            currentURL: files.currentURL,
+            incomingURL: files.incomingURL,
+            outputURL: files.outputURL
+        )
+    }
+
     func test(role: IntegrationRole) async throws {
         guard let application = selectedApplication(for: role) else {
             throw IntegrationLaunchError.noApplicationAvailable(role.rawValue)

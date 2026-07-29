@@ -19,6 +19,19 @@ import XCTest
 @testable import macgit
 
 final class ConflictResolutionServiceTests: XCTestCase {
+    func testConflictedFileAppearsInBothStatusSections() async throws {
+        let repoURL = try makeConflictedRepository()
+
+        let status = try await GitStatusService.shared.status(for: repoURL)
+
+        XCTAssertTrue(status.staged.contains {
+            $0.path == "tracked.txt" && $0.status == .conflict
+        })
+        XCTAssertTrue(status.unstaged.contains {
+            $0.path == "tracked.txt" && $0.status == .conflict
+        })
+    }
+
     func testLoadConflictDocumentReadsCurrentAndIncomingStages() async throws {
         let repoURL = try makeConflictedRepository()
 
@@ -41,14 +54,22 @@ final class ConflictResolutionServiceTests: XCTestCase {
         let conflictIndex = try XCTUnwrap(document.sections.firstIndex(where: { $0.isConflict }))
         document.sections[conflictIndex].manualResult = "main change\nfeature change\n"
 
-        try await GitStatusService.shared.resolveConflict(file: file, in: repoURL, with: document)
+        try await GitStatusService.shared.resolveConflict(
+            file: file,
+            in: repoURL,
+            with: document
+        )
 
         let fileText = try String(contentsOf: repoURL.appendingPathComponent(file.path), encoding: .utf8)
         XCTAssertEqual(fileText, "main change\nfeature change\n")
 
         let refreshed = try await GitStatusService.shared.status(for: repoURL)
-        XCTAssertFalse(refreshed.staged.contains(where: { $0.path == file.path && $0.status == .conflict }))
-        XCTAssertFalse(refreshed.unstaged.contains(where: { $0.path == file.path && $0.status == .conflict }))
+        XCTAssertFalse(refreshed.staged.contains(where: {
+            $0.path == file.path && $0.status == .conflict
+        }))
+        XCTAssertFalse(refreshed.unstaged.contains(where: {
+            $0.path == file.path && $0.status == .conflict
+        }))
         XCTAssertTrue(refreshed.staged.contains(where: { $0.path == file.path }))
     }
 

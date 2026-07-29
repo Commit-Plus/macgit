@@ -20,11 +20,23 @@ import Foundation
 
 enum IntegrationLaunchError: LocalizedError {
     case noApplicationAvailable(String)
+    case unsupportedDiffApplication(String)
+    case unsupportedMergeApplication(String)
+    case missingCommandLineTool(String)
+    case externalToolFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .noApplicationAvailable(let role):
             "No installed application is available for \(role)."
+        case .unsupportedDiffApplication(let application):
+            "\(application) is not supported as an external diff tool."
+        case .unsupportedMergeApplication(let application):
+            "\(application) is not supported as an external merge tool."
+        case .missingCommandLineTool(let application):
+            "The command-line tool for \(application) could not be found."
+        case .externalToolFailed(let application):
+            "\(application) did not complete the merge."
         }
     }
 }

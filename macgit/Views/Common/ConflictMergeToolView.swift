@@ -497,7 +497,11 @@ struct ConflictMergeToolView: View {
         defer { isSaving = false }
 
         do {
-            try await GitStatusService.shared.resolveConflict(file: selectedFile, in: repositoryURL, with: document)
+            try await GitStatusService.shared.resolveConflict(
+                file: selectedFile,
+                in: repositoryURL,
+                with: document
+            )
             await MainActor.run {
                 hasUnsavedChanges = false
                 

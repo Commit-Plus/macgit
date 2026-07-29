@@ -29,6 +29,7 @@ struct FileStatusView: View {
     var undoManager: GitUndoManager? = nil
     var onRequestApplyStash: (String) -> Void = { _ in }
 
+    @ObservedObject private var integrationSettings = IntegrationSettingsStore.shared
     @State private var gitStatus: GitStatus = GitStatus(staged: [], unstaged: [], untracked: [])
     @State private var changedFiles: [StatusFile] = []
     @State private var visibleStagedFileCount = 100
@@ -63,6 +64,14 @@ struct FileStatusView: View {
 
     private var visibleChangedFiles: ArraySlice<StatusFile> {
         changedFiles.prefix(visibleChangedFileCount)
+    }
+
+    private var visibleStagedRows: [FileStatusRowItem] {
+        visibleStagedFiles.map { FileStatusRowItem(file: $0, isStaged: true) }
+    }
+
+    private var visibleChangedRows: [FileStatusRowItem] {
+        visibleChangedFiles.map { FileStatusRowItem(file: $0, isStaged: false) }
     }
 
     private var hasChanges: Bool {
@@ -260,8 +269,8 @@ struct FileStatusView: View {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                 if !gitStatus.staged.isEmpty {
                     Section {
-                        ForEach(visibleStagedFiles) { file in
-                            fileRow(file: file, isStaged: true)
+                        ForEach(visibleStagedRows) { row in
+                            fileRow(file: row.file, isStaged: row.isStaged)
                         }
                         if visibleStagedFileCount < gitStatus.staged.count {
                             filePageLoader {
@@ -304,8 +313,8 @@ struct FileStatusView: View {
 
                 if !changedFiles.isEmpty {
                     Section {
-                        ForEach(visibleChangedFiles) { file in
-                            fileRow(file: file, isStaged: false)
+                        ForEach(visibleChangedRows) { row in
+                            fileRow(file: row.file, isStaged: row.isStaged)
                         }
                         if visibleChangedFileCount < changedFiles.count {
                             filePageLoader {
@@ -556,9 +565,14 @@ struct FileStatusView: View {
                         Button("Use Incoming Version") {
                             Task { await resolveConflict(file: file, using: .theirs) }
                         }
+                        Divider()
                         Button("Resolve Manually…") {
                             openConflictResolverWindow(for: file)
                         }
+                        Button("Resolve with External Tool") {
+                            Task { await resolveConflictWithExternalTool(file: file) }
+                        }
+                        .disabled(integrationSettings.selectedApplication(for: .merge) == nil)
                     }
                     .disabled(selection.isSingleFileActionDisabled)
                 }
@@ -582,6 +596,17 @@ struct FileStatusView: View {
             .disabled(selection.isSingleFileActionDisabled)
         Button("Show in Finder") { showInFinder(file: file) }
             .disabled(selection.isSingleFileActionDisabled)
+        Button("External Diff") {
+            Task {
+                await openExternalDiff(file: file)
+            }
+        }
+        .disabled(
+            isStaged
+                || !supportsExternalDiff(file)
+                || integrationSettings.selectedApplication(for: .diff) == nil
+                || selection.isSingleFileActionDisabled
+        )
         Divider()
 
         if isStaged {
@@ -617,6 +642,13 @@ struct FileStatusView: View {
             }
         }
 
+        Button("Stop Tracking") {
+            Task {
+                await stopTracking(file: file)
+            }
+        }
+        .disabled(isStaged || file.status == .untracked || selection.isSingleFileActionDisabled)
+
         Divider()
 
         if !isStaged {
@@ -642,9 +674,14 @@ struct FileStatusView: View {
                     Button("Use Incoming Version") {
                         Task { await resolveConflict(file: file, using: .theirs) }
                     }
+                    Divider()
                     Button("Resolve Manually…") {
                         openConflictResolverWindow(for: file)
                     }
+                    Button("Resolve with External Tool") {
+                        Task { await resolveConflictWithExternalTool(file: file) }
+                    }
+                    .disabled(integrationSettings.selectedApplication(for: .merge) == nil)
                 }
                 .disabled(selection.isSingleFileActionDisabled)
             }
@@ -698,7 +735,7 @@ struct FileStatusView: View {
                             undoManager: undoManager,
                             onRefresh: {
                                 Task {
-                                    await loadStatus()
+                                    await reloadRepositoryState()
                                 }
                             },
                             onError: { message in
@@ -909,10 +946,7 @@ struct FileStatusView: View {
                     isCommitBarExpanded = false
                 }
             }
-            await loadStatus()
-            if let syncState = syncState {
-                await syncState.refresh(repositoryURL: repositoryURL)
-            }
+            await reloadRepositoryState()
         } catch {
             await MainActor.run {
                 errorMessage = error.localizedDescription
@@ -1013,6 +1047,11 @@ struct FileStatusView: View {
         }
     }
 
+    private func reloadRepositoryState() async {
+        await loadStatus()
+        await syncState?.refresh(repositoryURL: repositoryURL)
+    }
+
     private func restoreSelectedFileAfterStatusRefresh() {
         if let selectedFileKey {
             let files = selectedFileKey.isStaged ? gitStatus.staged : changedFiles
@@ -1060,8 +1099,7 @@ struct FileStatusView: View {
             case .revert:
                 try await GitStatusService.shared.continueRevert(in: repositoryURL)
             }
-            await loadStatus()
-            await syncState?.refresh(repositoryURL: repositoryURL)
+            await reloadRepositoryState()
             NotificationCenter.default.post(
                 name: .repositoryDidChange,
                 object: nil,
@@ -1083,8 +1121,7 @@ struct FileStatusView: View {
             case .revert:
                 try await GitStatusService.shared.skipRevert(in: repositoryURL)
             }
-            await loadStatus()
-            await syncState?.refresh(repositoryURL: repositoryURL)
+            await reloadRepositoryState()
             NotificationCenter.default.post(
                 name: .repositoryDidChange,
                 object: nil,
@@ -1106,8 +1143,7 @@ struct FileStatusView: View {
             case .revert:
                 try await GitStatusService.shared.abortRevert(in: repositoryURL)
             }
-            await loadStatus()
-            await syncState?.refresh(repositoryURL: repositoryURL)
+            await reloadRepositoryState()
             NotificationCenter.default.post(
                 name: .repositoryDidChange,
                 object: nil,
@@ -1138,8 +1174,7 @@ struct FileStatusView: View {
                     )
                 )
             }
-            await loadStatus()
-            await syncState?.refresh(repositoryURL: repositoryURL)
+            await reloadRepositoryState()
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -1163,8 +1198,7 @@ struct FileStatusView: View {
                     )
                 )
             }
-            await loadStatus()
-            await syncState?.refresh(repositoryURL: repositoryURL)
+            await reloadRepositoryState()
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -1190,7 +1224,7 @@ struct FileStatusView: View {
                     )
                 }
             }
-            await loadStatus()
+            await reloadRepositoryState()
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -1232,7 +1266,7 @@ struct FileStatusView: View {
                     )
                 )
             }
-            await loadStatus()
+            await reloadRepositoryState()
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -1272,7 +1306,7 @@ struct FileStatusView: View {
                     )
                 )
             }
-            await loadStatus()
+            await reloadRepositoryState()
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -1283,11 +1317,33 @@ struct FileStatusView: View {
         await remove(files: [file])
     }
 
+    private func stopTracking(file: StatusFile) async {
+        do {
+            try await GitStatusService.shared.stopTracking(file: file, in: repositoryURL)
+            await reloadRepositoryState()
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+
+    private func supportsExternalDiff(_ file: StatusFile) -> Bool {
+        file.status == .modified || file.status == .deleted || file.status == .renamed
+    }
+
+    private func openExternalDiff(file: StatusFile) async {
+        do {
+            try await integrationSettings.openDiff(for: file, in: repositoryURL)
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+
     private func confirmIgnore(file: StatusFile, pattern: String) async {
         do {
             try await GitStatusService.shared.ignore(file: file, pattern: pattern, in: repositoryURL)
-            await syncState?.refresh(repositoryURL: repositoryURL)
-            await loadStatus()
+            await reloadRepositoryState()
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -1297,7 +1353,20 @@ struct FileStatusView: View {
     private func resolveConflict(file: StatusFile, using: GitStatusService.ConflictResolution) async {
         do {
             try await GitStatusService.shared.resolveConflict(file: file, in: repositoryURL, using: using)
-            await loadStatus()
+            await reloadRepositoryState()
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+
+    private func resolveConflictWithExternalTool(file: StatusFile) async {
+        do {
+            try await integrationSettings.openExternalMerge(
+                for: file,
+                in: repositoryURL
+            )
+            await reloadRepositoryState()
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -1307,7 +1376,7 @@ struct FileStatusView: View {
     private func resetToCommit(file: StatusFile, commit: String) async {
         do {
             try await GitStatusService.shared.resetToCommit(file: file, commit: commit, in: repositoryURL)
-            await loadStatus()
+            await reloadRepositoryState()
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -1341,8 +1410,7 @@ struct FileStatusView: View {
             repositoryURL: repositoryURL,
             onResolved: { [repositoryURL] in
                 Task {
-                    await loadStatus()
-                    await syncState?.refresh(repositoryURL: repositoryURL)
+                    await reloadRepositoryState()
                 }
             },
             onClose: { [weak window] in

@@ -1318,15 +1318,16 @@ struct MainWindowView: View {
                     )
                 }
             }
-            await syncState.refresh(repositoryURL: repositoryURL)
-            NotificationCenter.default.post(
-                name: .repositoryDidChange,
-                object: nil,
-                userInfo: ["repositoryURL": repositoryURL]
-            )
         } catch {
             syncState.showError(error.localizedDescription)
         }
+
+        await syncState.refresh(repositoryURL: repositoryURL)
+        NotificationCenter.default.post(
+            name: .repositoryDidChange,
+            object: nil,
+            userInfo: ["repositoryURL": repositoryURL]
+        )
 
         await MainActor.run {
             clearPendingStashAction()
