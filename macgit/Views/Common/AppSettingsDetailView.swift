@@ -36,6 +36,8 @@ struct AppSettingsDetailView: View {
                 accountController: accountController,
                 providerAccountController: providerAccountController
             )
+        case .integrations:
+            IntegrationsSettingsView(appState: appState)
         default:
             AppSettingsPlaceholderView(section: section)
         }

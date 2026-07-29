@@ -1355,14 +1355,7 @@ struct MainWindowView: View {
     }
 
     private func openTerminal() {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = ["-a", "Terminal", repositoryURL.path]
-        do {
-            try process.run()
-        } catch {
-            print("Failed to open Terminal: \(error)")
-        }
+        openTerminal(at: repositoryURL)
     }
 
     private func openWorktreeInNewWindow(at path: URL) {
@@ -1371,13 +1364,16 @@ struct MainWindowView: View {
     }
 
     private func openWorktreeInTerminal(at path: URL) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = ["-a", "Terminal", path.path]
-        do {
-            try process.run()
-        } catch {
-            print("Failed to open Terminal for worktree: \(error)")
+        openTerminal(at: path)
+    }
+
+    private func openTerminal(at directoryURL: URL) {
+        Task { @MainActor in
+            do {
+                try await IntegrationSettingsStore.shared.openTerminal(at: directoryURL)
+            } catch {
+                syncState.showError(error.localizedDescription)
+            }
         }
     }
 
