@@ -32,7 +32,7 @@ enum AppSettingsSection: String, CaseIterable, Identifiable {
         case .general: "General"
         case .appearance: "Appearance"
         case .git: "Git"
-        case .accounts: "Accounts"
+        case .accounts: "Account"
         case .integrations: "Integrations"
         case .advanced: "Advanced"
         }

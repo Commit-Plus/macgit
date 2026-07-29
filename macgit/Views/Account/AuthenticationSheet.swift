@@ -19,6 +19,7 @@
 import SwiftUI
 
 struct AuthenticationSheet: View {
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject var controller: AccountSessionController
     @State private var mode: AuthenticationMode
     @State private var email = ""
@@ -140,6 +141,11 @@ struct AuthenticationSheet: View {
         .onChange(of: controller.pendingLinkEmail) {
             populatePendingLinkEmail()
         }
+        .onChange(of: controller.account?.uid) { _, accountUID in
+            if accountUID != nil {
+                dismiss()
+            }
+        }
     }
 
     private var title: String {
@@ -193,6 +199,7 @@ struct AuthenticationSheet: View {
 
     private func cancel() {
         controller.presentedSheet = nil
+        dismiss()
     }
 
     private func populatePendingLinkEmail() {

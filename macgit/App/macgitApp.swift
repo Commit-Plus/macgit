@@ -83,7 +83,11 @@ struct macgitApp: App {
                     appUpdateController.start()
                 }
                 .sheet(isPresented: $showingAppSettings) {
-                    AppSettingsView(appState: appState)
+                    AppSettingsView(
+                        appState: appState,
+                        accountController: accountController,
+                        providerAccountController: providerAccountController
+                    )
                         .preferredColorScheme(appState.appearance.colorScheme)
                 }
         }

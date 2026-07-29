@@ -20,6 +20,8 @@ import SwiftUI
 struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var appState: AppState
+    @ObservedObject var accountController: AccountSessionController
+    @ObservedObject var providerAccountController: GitProviderAccountController
     @State private var selectedSection: AppSettingsSection = .general
 
     var body: some View {
@@ -34,7 +36,9 @@ struct AppSettingsView: View {
             VStack(spacing: 0) {
                 AppSettingsDetailView(
                     section: selectedSection,
-                    appState: appState
+                    appState: appState,
+                    accountController: accountController,
+                    providerAccountController: providerAccountController
                 )
 
                 Divider()

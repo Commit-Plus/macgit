@@ -20,6 +20,8 @@ import SwiftUI
 struct AppSettingsDetailView: View {
     let section: AppSettingsSection
     @ObservedObject var appState: AppState
+    @ObservedObject var accountController: AccountSessionController
+    @ObservedObject var providerAccountController: GitProviderAccountController
 
     var body: some View {
         switch section {
@@ -29,6 +31,11 @@ struct AppSettingsDetailView: View {
             AppearanceSettingsView(appState: appState)
         case .git:
             GitSettingsView()
+        case .accounts:
+            AccountSettingsView(
+                accountController: accountController,
+                providerAccountController: providerAccountController
+            )
         default:
             AppSettingsPlaceholderView(section: section)
         }

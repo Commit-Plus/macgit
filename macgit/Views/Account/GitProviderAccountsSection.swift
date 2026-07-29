@@ -23,16 +23,19 @@ struct GitProviderAccountsSection: View {
     @ObservedObject var controller: GitProviderAccountController
     let isSignedIn: Bool
     let onSignIn: () -> Void
+    var showsTitle = true
     @State private var connectionTask: Task<Void, Never>?
     @State private var showingAddAccountSheet = false
     @State private var editingAccount: GitProviderAccount?
 
     var body: some View {
         VStack(alignment: isSignedIn ? .leading : .center, spacing: 12) {
-            Text("Git Provider Accounts")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity, alignment: isSignedIn ? .leading : .center)
+            if showsTitle {
+                Text("Git Provider Accounts")
+                    .font(.headline)
+                    .bold()
+                    .frame(maxWidth: .infinity, alignment: isSignedIn ? .leading : .center)
+            }
 
             if isSignedIn {
                 if controller.accounts.isEmpty {
