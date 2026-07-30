@@ -22,6 +22,7 @@
 //
 import SwiftUI
 import Combine
+import Network
 
 extension Notification.Name {
     static let repositoryDidChange = Notification.Name("macgit.repositoryDidChange")
@@ -53,7 +54,19 @@ class SyncState: ObservableObject {
     }
 
     private var backgroundTask: Task<Void, Never>? = nil
+    private let networkMonitor = NWPathMonitor()
+    private let networkMonitorQueue = DispatchQueue(label: "dev.thanhtran.macgit.sync-state.network")
     private var refreshGeneration = 0
+    private static let backgroundRefreshInterval: Duration = .seconds(5)
+    private static let autoFetchInterval: TimeInterval = 60
+
+    init() {
+        networkMonitor.start(queue: networkMonitorQueue)
+    }
+
+    deinit {
+        networkMonitor.cancel()
+    }
 
     func refresh(repositoryURL: URL) async {
         let generation = await MainActor.run { () -> Int in
@@ -86,15 +99,19 @@ class SyncState: ObservableObject {
     func startBackgroundSync(repositoryURL: URL, settings: RepoSettings) {
         stopBackgroundSync()
         backgroundTask = Task {
+            var lastAutoFetchDate = Date.distantPast
             while !Task.isCancelled {
-                if settings.autoFetchEnabled {
+                if settings.autoFetchEnabled,
+                   networkMonitor.currentPath.status == .satisfied,
+                   Date.now.timeIntervalSince(lastAutoFetchDate) >= Self.autoFetchInterval {
                     try? await GitStatusService.shared.fetch(
                         options: GitStatusService.FetchOptions(),
                         in: repositoryURL
                     )
+                    lastAutoFetchDate = Date.now
                 }
                 await refresh(repositoryURL: repositoryURL)
-                try? await Task.sleep(nanoseconds: 60_000_000_000) // 60 seconds
+                try? await Task.sleep(for: Self.backgroundRefreshInterval)
             }
         }
     }

@@ -52,6 +52,16 @@ extension MainWindowView {
             if !syncing && syncState.stashableCount > 0 {
                 showingStashSheet = true
             }
+        case .remote:
+            openRemoteURL()
+        case .finder:
+            showInFinder()
+        case .editor:
+            openRepositoryInExternalEditor()
+        case .terminal:
+            openTerminal()
+        case .repositorySettings:
+            showingRepositorySettings = true
         case .search:
             showingSearchModal = true
         }

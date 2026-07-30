@@ -227,6 +227,33 @@ struct macgitApp: App {
 
                 Divider()
 
+                Button("Remote") {
+                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.remote])
+                }
+                .disabled(!appState.hasOpenRepository)
+
+                Button("Show in Finder") {
+                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.finder])
+                }
+                .disabled(!appState.hasOpenRepository)
+
+                Button("Open in External Editor") {
+                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.editor])
+                }
+                .disabled(!appState.hasOpenRepository)
+
+                Button("Open in Terminal") {
+                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.terminal])
+                }
+                .disabled(!appState.hasOpenRepository)
+
+                Button("Repository Settings...") {
+                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.repositorySettings])
+                }
+                .disabled(!appState.hasOpenRepository)
+
+                Divider()
+
                 Button("Search...") {
                     NotificationCenter.default.post(name: .showSearchModal, object: nil)
                 }
