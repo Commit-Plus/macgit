@@ -51,6 +51,9 @@ struct HistoryView: View {
     @State private var commitSelection = HistoryCommitSelection()
     @StateObject private var historySelectionStore = HistorySelectionStore()
     @State private var activeDragCommitHashes: Set<String> = []
+    @State private var activeCommitDragPayload: GitDragPayload?
+    @State private var suppressedCommitClickHash: String?
+    @State private var dragClickSuppressionTask: Task<Void, Never>?
     @State private var selectedCommit: Commit? = nil
     @State private var fileChanges: [CommitFileChange] = []
     @State private var selectedFile: CommitFileChange? = nil
@@ -195,6 +198,7 @@ struct HistoryView: View {
         }
         .onDisappear {
             historySearchDebounceTask?.cancel()
+            dragClickSuppressionTask?.cancel()
         }
         .task(id: historyLoadKey) {
             await loadHistory(reset: true)
@@ -649,6 +653,7 @@ struct HistoryView: View {
                                                 dateWidth: CGFloat(dateColumnWidth),
                                                 commitWidth: CGFloat(commitColumnWidth),
                                                 onClick: {
+                                                    guard !consumeSuppressedCommitClick(commit.hash) else { return }
                                                     selectedCommit = Self.selectCommitFromNativeTap(
                                                         commit.hash,
                                                         modifierFlags: NSEvent.modifierFlags,
@@ -674,6 +679,19 @@ struct HistoryView: View {
                                                 commitContextMenu(for: commit)
                                             }
                                             .onDrag {
+                                                let liveDraggedCommits = Self.draggedCommits(
+                                                    startingAt: commit.hash,
+                                                    commits: commits,
+                                                    selection: commitSelection
+                                                )
+                                                let livePayload = GitDragPayload.commits(
+                                                    liveDraggedCommits,
+                                                    repositoryURL: repositoryURL
+                                                )
+                                                beginCommitDrag(
+                                                    startingAt: commit.hash,
+                                                    payload: livePayload
+                                                )
                                                 if !commitSelection.selectedHashes.contains(commit.hash) {
                                                     selectedCommit = Self.selectCommitFromNativeTap(
                                                         commit.hash,
@@ -683,12 +701,13 @@ struct HistoryView: View {
                                                     )
                                                     syncSelectedCommitSnapshot()
                                                 }
-                                                return makeCommitItemProvider(payload: draggedPayload)
+                                                return makeCommitItemProvider(payload: livePayload)
                                             } preview: {
                                                 CommitDragPreview(
                                                     presentation: CommitDragPreviewPresentation(
                                                         commit: commit,
-                                                        commitCount: draggedCommits.count
+                                                        commitCount: activeCommitDragPayload?.commits.count
+                                                            ?? draggedCommits.count
                                                     ),
                                                     onDragStateChange: { isActive in
                                                         updateCommitDragState(
@@ -871,60 +890,96 @@ struct HistoryView: View {
     // MARK: - Context Menu
     
     private func commitContextMenu(for commit: Commit) -> some View {
-        Group {
+        let contextCommits = Self.contextMenuCommits(
+            startingAt: commit.hash,
+            commits: commits,
+            selection: commitSelection
+        )
+        let singleCommit = contextCommits.count == 1 ? contextCommits[0] : nil
+        let cherryPickCommits = Self.cherryPickCommits(from: contextCommits)
+        let canCherryPick = !cherryPickCommits.isEmpty
+            && cherryPickCommits.allSatisfy { !$0.isMerge }
+        let squashCommits = commitSelection.selectedHashes.contains(commit.hash)
+            ? squashableCommits
+            : contextCommits
+        let canSquashCommits = Self.canSquashCommits(
+            squashCommits,
+            selectedHashes: squashCommits.map(\.hash),
+            headHash: currentHeadHash
+        )
+
+        return Group {
             Button("Checkout Commit") {
-                pendingCommit = commit
+                guard let singleCommit else { return }
+                pendingCommit = singleCommit
                 discardLocalChanges = false
                 showingCheckoutConfirmation = true
             }
-            Button("Cherry Pick") {
-                onRunRepositoryOperation("Cherry-picking \(commit.hash.prefix(7))...") {
-                    await cherryPickCommit(commit)
+            .disabled(singleCommit == nil)
+
+            Button(contextCommits.count > 1 ? "Cherry Pick \(contextCommits.count) Commits" : "Cherry Pick") {
+                onRunRepositoryOperation(
+                    cherryPickCommits.count == 1
+                        ? "Cherry-picking \(cherryPickCommits[0].hash.prefix(7))..."
+                        : "Cherry-picking \(cherryPickCommits.count) commits..."
+                ) {
+                    await performCherryPick(cherryPickCommits)
                 }
             }
+            .disabled(!canCherryPick)
             
             Divider()
             
             Button("Merge...") {
-                pendingCommit = commit
+                guard let singleCommit else { return }
+                pendingCommit = singleCommit
                 mergeCommitImmediately = true
                 mergeIncludeMessages = true
                 showingMergeConfirmation = true
             }
+            .disabled(singleCommit == nil)
+
             Button("Rebase...") {
-                pendingCommit = commit
+                guard let singleCommit else { return }
+                pendingCommit = singleCommit
                 showingRebaseConfirmation = true
             }
+            .disabled(singleCommit == nil)
 
             Divider()
 
             Button("Squash Commits") {
-                let selected = squashableCommits
                 squashSheetPresentation = SquashSheetPresentation(
-                    commits: selected,
-                    message: selected.map(\.message).joined(separator: "\n")
+                    commits: squashCommits,
+                    message: squashCommits.map(\.message).joined(separator: "\n")
                 )
             }
-            .disabled(!canSquashSelectedCommits)
+            .disabled(!canSquashCommits)
             
             Divider()
             
             Button("Tag...") {
-                pendingCommit = commit
+                guard let singleCommit else { return }
+                pendingCommit = singleCommit
                 tagNameInput = ""
                 showingTagSheet = true
             }
+            .disabled(singleCommit == nil)
+
             Button("Branch...") {
-                pendingCommit = commit
+                guard let singleCommit else { return }
+                pendingCommit = singleCommit
                 branchNameInput = ""
                 checkoutNewBranch = true
                 showingBranchSheet = true
             }
+            .disabled(singleCommit == nil)
             
             Divider()
             
             Button("Reset to this commit") {
-                pendingCommit = commit
+                guard let singleCommit else { return }
+                pendingCommit = singleCommit
                 resetMode = .mixed
                 Task {
                     let branch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
@@ -934,21 +989,34 @@ struct HistoryView: View {
                     }
                 }
             }
+            .disabled(singleCommit == nil)
+
             Button("Reverse commit...") {
-                pendingCommit = commit
+                guard let singleCommit else { return }
+                pendingCommit = singleCommit
                 showingRevertConfirmation = true
             }
+            .disabled(singleCommit == nil)
             
             Divider()
             
-            Button("Copy Hash") {
+            Button(contextCommits.count > 1 ? "Copy Hashes" : "Copy Hash") {
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(commit.hash, forType: .string)
+                NSPasteboard.general.setString(
+                    contextCommits.map(\.hash).joined(separator: "\n"),
+                    forType: .string
+                )
             }
-            Button("Copy Message") {
+            .disabled(contextCommits.isEmpty)
+
+            Button(contextCommits.count > 1 ? "Copy Messages" : "Copy Message") {
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(commit.message, forType: .string)
+                NSPasteboard.general.setString(
+                    contextCommits.map(\.message).joined(separator: "\n"),
+                    forType: .string
+                )
             }
+            .disabled(contextCommits.isEmpty)
         }
     }
     
@@ -1135,14 +1203,6 @@ struct HistoryView: View {
         historySelectionStore.selectedCommits
     }
 
-    private var canSquashSelectedCommits: Bool {
-        Self.canSquashCommits(
-            squashableCommits,
-            selectedHashes: squashableCommits.map(\.hash),
-            headHash: currentHeadHash
-        )
-    }
-
     private func syncSelectedCommitSnapshot(from visibleCommits: [Commit]? = nil) {
         let source = visibleCommits ?? commits
         let commitsByHash = Dictionary(uniqueKeysWithValues: source.map { ($0.hash, $0) })
@@ -1322,14 +1382,21 @@ struct HistoryView: View {
         }
     }
     
-    private func cherryPickCommit(_ commit: Commit) async {
+    private func performCherryPick(_ commits: [Commit]) async {
+        guard !commits.isEmpty else { return }
+        let hashes = commits.map(\.hash)
+
         do {
             let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
-            try await GitStatusService.shared.cherryPickCommit(commit.hash, in: repositoryURL)
+            try await GitStatusService.shared.cherryPickCommits(hashes, in: repositoryURL)
             await registerHeadChangingUndo(
-                label: "Cherry-pick \(commit.hash.prefix(7))",
+                label: commits.count == 1
+                    ? "Cherry-pick \(commits[0].hash.prefix(7))"
+                    : "Cherry-pick \(commits.count) commits",
                 oldHead: oldHead,
-                redoOperation: .cherryPick(commit: commit.hash)
+                redoOperation: commits.count == 1
+                    ? .cherryPick(commit: commits[0].hash)
+                    : .cherryPickCommits(commits: hashes)
             )
             await MainActor.run {
                 NotificationCenter.default.post(
@@ -1767,6 +1834,24 @@ struct HistoryView: View {
         return commits.first { $0.hash == hash }
     }
 
+    static func contextMenuCommits(
+        startingAt hash: String,
+        commits: [Commit],
+        selection: HistoryCommitSelection
+    ) -> [Commit] {
+        guard let clickedCommit = commit(withHash: hash, in: commits) else { return [] }
+        guard selection.selectedHashes.contains(hash) else { return [clickedCommit] }
+
+        let commitsByHash = Dictionary(uniqueKeysWithValues: commits.map { ($0.hash, $0) })
+        let selectedCommits = selection.selectedHashes.compactMap { commitsByHash[$0] }
+        guard selectedCommits.count == selection.selectedHashes.count else { return [] }
+        return selectedCommits
+    }
+
+    static func cherryPickCommits(from contextMenuCommits: [Commit]) -> [Commit] {
+        Array(contextMenuCommits.reversed())
+    }
+
     static func draggedCommits(
         startingAt hash: String,
         commits: [Commit],
@@ -1807,11 +1892,39 @@ struct HistoryView: View {
         hashes: Set<String>,
         payload: GitDragPayload
     ) {
+        let effectivePayload = activeCommitDragPayload ?? payload
+        let payloadHashes = Set(effectivePayload.commits.map(\.hash))
+        let effectiveHashes = payloadHashes.isEmpty ? hashes : payloadHashes
+
         if isActive {
-            activeDragCommitHashes = hashes
-        } else if activeDragCommitHashes == hashes {
+            activeDragCommitHashes = effectiveHashes
+        } else if activeDragCommitHashes == effectiveHashes || activeDragCommitHashes == hashes {
             activeDragCommitHashes.removeAll()
-            GitDragPayloadStore.clear(ifMatching: payload)
+            GitDragPayloadStore.clear(ifMatching: effectivePayload)
+            activeCommitDragPayload = nil
+            scheduleCommitClickSuppressionClear()
+        }
+    }
+
+    private func beginCommitDrag(startingAt hash: String, payload: GitDragPayload) {
+        dragClickSuppressionTask?.cancel()
+        suppressedCommitClickHash = hash
+        activeCommitDragPayload = payload
+    }
+
+    private func consumeSuppressedCommitClick(_ hash: String) -> Bool {
+        guard suppressedCommitClickHash == hash else { return false }
+        dragClickSuppressionTask?.cancel()
+        suppressedCommitClickHash = nil
+        return true
+    }
+
+    private func scheduleCommitClickSuppressionClear() {
+        dragClickSuppressionTask?.cancel()
+        dragClickSuppressionTask = Task {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            suppressedCommitClickHash = nil
         }
     }
 

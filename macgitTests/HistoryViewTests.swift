@@ -204,6 +204,31 @@ final class HistoryViewTests: XCTestCase {
         )
     }
 
+    func testMultiCommitDragPayloadContainsEverySelectedCommit() {
+        let commits = [
+            makeCommit(hash: "newest", message: "Newest"),
+            makeCommit(hash: "middle", message: "Middle"),
+            makeCommit(hash: "oldest", message: "Oldest")
+        ]
+        let selection = HistoryCommitSelection(
+            selectedHashes: commits.map(\.hash),
+            primaryHash: "oldest",
+            anchorHash: "newest"
+        )
+
+        let draggedCommits = HistoryView.draggedCommits(
+            startingAt: "middle",
+            commits: commits,
+            selection: selection
+        )
+        let payload = GitDragPayload.commits(
+            draggedCommits,
+            repositoryURL: URL(fileURLWithPath: "/tmp/repo")
+        )
+
+        XCTAssertEqual(payload.commits.map(\.hash), ["oldest", "middle", "newest"])
+    }
+
     func testDraggedCommitsFallBackToDraggedRowWhenRowIsNotSelected() {
         let commits = [
             makeCommit(hash: "newest", message: "Newest"),
@@ -247,6 +272,63 @@ final class HistoryViewTests: XCTestCase {
         XCTAssertEqual(selection.selectedHashes, ["newest", "oldest"])
         XCTAssertEqual(selection.primaryHash, "oldest")
         XCTAssertEqual(selectedCommit?.hash, "oldest")
+    }
+
+    func testContextMenuUsesAllSelectedCommitsWhenClickedRowIsSelected() {
+        let commits = [
+            makeCommit(hash: "newest", message: "Newest"),
+            makeCommit(hash: "middle", message: "Middle"),
+            makeCommit(hash: "oldest", message: "Oldest")
+        ]
+        let selection = HistoryCommitSelection(
+            selectedHashes: commits.map(\.hash),
+            primaryHash: "oldest",
+            anchorHash: "newest"
+        )
+
+        XCTAssertEqual(
+            HistoryView.contextMenuCommits(
+                startingAt: "middle",
+                commits: commits,
+                selection: selection
+            ).map(\.hash),
+            ["newest", "middle", "oldest"]
+        )
+    }
+
+    func testContextMenuUsesOnlyClickedCommitWhenRowIsOutsideSelection() {
+        let commits = [
+            makeCommit(hash: "newest"),
+            makeCommit(hash: "middle"),
+            makeCommit(hash: "oldest")
+        ]
+        let selection = HistoryCommitSelection(
+            selectedHashes: ["newest", "middle"],
+            primaryHash: "middle",
+            anchorHash: "newest"
+        )
+
+        XCTAssertEqual(
+            HistoryView.contextMenuCommits(
+                startingAt: "oldest",
+                commits: commits,
+                selection: selection
+            ).map(\.hash),
+            ["oldest"]
+        )
+    }
+
+    func testCherryPickOrdersSelectedCommitsFromOldestToNewest() {
+        let selectedCommits = [
+            makeCommit(hash: "newest"),
+            makeCommit(hash: "middle"),
+            makeCommit(hash: "oldest")
+        ]
+
+        XCTAssertEqual(
+            HistoryView.cherryPickCommits(from: selectedCommits).map(\.hash),
+            ["oldest", "middle", "newest"]
+        )
     }
 
     func testSingleCommitDragPreviewIncludesCommitMetadata() {
