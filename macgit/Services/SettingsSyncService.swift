@@ -88,6 +88,7 @@ final class SettingsSyncService: ObservableObject {
     private var activeUID: String?
     private var pendingCloudSnapshot: AppSettingsSnapshot?
     private var lastKnownCloudSnapshot: AppSettingsSnapshot?
+    private var pendingLocalSnapshot: AppSettingsSnapshot?
     private var isApplyingRemote = false
     private var generation = 0
 
@@ -185,9 +186,9 @@ final class SettingsSyncService: ObservableObject {
     func localSettingsDidChange(_ snapshot: AppSettingsSnapshot) {
         guard let uid = activeUID,
               observation != nil,
-              !isApplyingRemote,
-              snapshot != lastKnownCloudSnapshot else { return }
+              !isApplyingRemote else { return }
 
+        pendingLocalSnapshot = snapshot
         pendingDebounce?.cancel()
         let currentGeneration = generation
         pendingDebounce = debounceScheduler.schedule { [weak self] in
@@ -207,6 +208,9 @@ final class SettingsSyncService: ObservableObject {
             try await store.save(snapshot, uid: uid)
             guard isCurrent(uid: uid, generation: currentGeneration) else { return }
             lastKnownCloudSnapshot = snapshot
+            if pendingLocalSnapshot == snapshot {
+                pendingLocalSnapshot = nil
+            }
             status = .syncing
         } catch {
             guard isCurrent(uid: uid, generation: currentGeneration) else { return }
@@ -232,6 +236,12 @@ final class SettingsSyncService: ObservableObject {
         guard isCurrent(uid: uid, generation: currentGeneration) else { return }
         switch result {
         case .success(let snapshot):
+            guard pendingLocalSnapshot == nil else {
+                // Local settings remain authoritative until their upload succeeds.
+                // Firestore can emit an older server snapshot when a pending write
+                // is offline or rejected; applying it would undo the user's edit.
+                return
+            }
             lastKnownCloudSnapshot = snapshot
             if currentSnapshot() != snapshot {
                 applyRemote(snapshot)
@@ -258,6 +268,7 @@ final class SettingsSyncService: ObservableObject {
         activeUID = nil
         pendingCloudSnapshot = nil
         lastKnownCloudSnapshot = nil
+        pendingLocalSnapshot = nil
         isApplyingRemote = false
         status = newStatus
     }

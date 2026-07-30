@@ -29,6 +29,7 @@ service cloud.firestore {
           'showHeaderStashButton',
           'showHeaderRemoteButton',
           'showHeaderFinderButton',
+          'showHeaderEditorButton',
           'showHeaderTerminalButton',
           'historyBranchFilter',
           'historyIncludeRemotes',
@@ -53,6 +54,7 @@ service cloud.firestore {
         && (!('showHeaderStashButton' in request.resource.data) || request.resource.data.showHeaderStashButton is bool)
         && (!('showHeaderRemoteButton' in request.resource.data) || request.resource.data.showHeaderRemoteButton is bool)
         && (!('showHeaderFinderButton' in request.resource.data) || request.resource.data.showHeaderFinderButton is bool)
+        && (!('showHeaderEditorButton' in request.resource.data) || request.resource.data.showHeaderEditorButton is bool)
         && (!('showHeaderTerminalButton' in request.resource.data) || request.resource.data.showHeaderTerminalButton is bool)
         && (!('historyBranchFilter' in request.resource.data)
           || (request.resource.data.historyBranchFilter is string

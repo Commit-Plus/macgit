@@ -169,6 +169,55 @@ final class SettingsSyncServiceTests: XCTestCase {
         XCTAssertEqual(harness.store.saves, [.init(uid: "u1", snapshot: cloud)])
     }
 
+    func testRemoteRollbackDoesNotOverrideLocalWhenUploadFails() async {
+        let harness = makeHarness(cloud: local)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
+        var edited = local
+        edited.showToolbarButtonText = false
+        harness.local.value = edited
+        harness.store.saveError = TestSettingsSyncError.saveFailed
+
+        harness.service.localSettingsDidChange(edited)
+        harness.store.send(local)
+        XCTAssertEqual(harness.local.value, edited)
+
+        await harness.scheduler.fireAll()
+        harness.store.send(local)
+
+        XCTAssertEqual(harness.local.value, edited)
+        XCTAssertEqual(harness.service.status, .failed("Settings save failed."))
+    }
+
+    func testRemoteChangesResumeAfterLocalUploadSucceeds() async {
+        let harness = makeHarness(cloud: local)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
+        var edited = local
+        edited.showHeaderMergeButton = false
+        harness.local.value = edited
+
+        harness.service.localSettingsDidChange(edited)
+        harness.store.send(local)
+        XCTAssertEqual(harness.local.value, edited)
+
+        await harness.scheduler.fireAll()
+        harness.store.send(cloud)
+
+        XCTAssertEqual(harness.local.value, cloud)
+    }
+
+    func testRevertingLocalEditBeforeUploadKeepsLatestLocalValue() async {
+        let harness = makeHarness(cloud: local)
+        await harness.service.updateEligibility(uid: "u1", enabled: true)
+        var edited = local
+        edited.showToolbarButtonText = false
+
+        harness.service.localSettingsDidChange(edited)
+        harness.service.localSettingsDidChange(local)
+        await harness.scheduler.fireAll()
+
+        XCTAssertEqual(harness.store.saves, [.init(uid: "u1", snapshot: local)])
+    }
+
     func testSignOutAndDisableCancelObservationAndPendingUpload() async {
         let harness = makeHarness(cloud: local)
         await harness.service.updateEligibility(uid: "u1", enabled: true)
@@ -278,6 +327,7 @@ private final class FakeCloudSettingsStore: CloudSettingsStore {
     var saves: [Save] = []
     var tokens: [SyncFakeObservationToken] = []
     var shouldSuspendLoads = false
+    var saveError: Error?
     private var onChange: ((Result<AppSettingsSnapshot, Error>) -> Void)?
     private var suspendedLoadContinuations: [CheckedContinuation<AppSettingsSnapshot?, Never>] = []
 
@@ -305,6 +355,9 @@ private final class FakeCloudSettingsStore: CloudSettingsStore {
 
     func save(_ snapshot: AppSettingsSnapshot, uid: String) async throws {
         saves.append(.init(uid: uid, snapshot: snapshot))
+        if let saveError {
+            throw saveError
+        }
         cloud = snapshot
     }
 
@@ -322,6 +375,14 @@ private final class FakeCloudSettingsStore: CloudSettingsStore {
     func send(_ snapshot: AppSettingsSnapshot) {
         cloud = snapshot
         onChange?(.success(snapshot))
+    }
+}
+
+private enum TestSettingsSyncError: LocalizedError {
+    case saveFailed
+
+    var errorDescription: String? {
+        "Settings save failed."
     }
 }
 
