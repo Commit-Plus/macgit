@@ -30,11 +30,25 @@ struct CommitDragPreview: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            if let countBadgeText = presentation.countBadgeText {
+                Text(countBadgeText)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor, in: Capsule())
+                    .frame(width: 72, alignment: .leading)
+            }
+
             Text(presentation.subject)
                 .font(.system(size: 12, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(width: 300, alignment: .leading)
+                .frame(
+                    width: presentation.showsStack ? 228 : 300,
+                    alignment: .leading
+                )
 
             Text(presentation.author)
                 .font(.system(size: 11))
