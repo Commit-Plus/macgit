@@ -54,6 +54,7 @@ struct HistoryView: View {
     @State private var activeCommitDragPayload: GitDragPayload?
     @State private var suppressedCommitClickHash: String?
     @State private var dragClickSuppressionTask: Task<Void, Never>?
+    @State private var dragCompletionMonitorTask: Task<Void, Never>?
     @State private var selectedCommit: Commit? = nil
     @State private var fileChanges: [CommitFileChange] = []
     @State private var selectedFile: CommitFileChange? = nil
@@ -199,6 +200,8 @@ struct HistoryView: View {
         .onDisappear {
             historySearchDebounceTask?.cancel()
             dragClickSuppressionTask?.cancel()
+            dragCompletionMonitorTask?.cancel()
+            activeDragCommitHashes.removeAll()
         }
         .task(id: historyLoadKey) {
             await loadHistory(reset: true)
@@ -1896,20 +1899,42 @@ struct HistoryView: View {
         let payloadHashes = Set(effectivePayload.commits.map(\.hash))
         let effectiveHashes = payloadHashes.isEmpty ? hashes : payloadHashes
 
-        if isActive {
+        if isActive, activeCommitDragPayload != nil {
             activeDragCommitHashes = effectiveHashes
         } else if activeDragCommitHashes == effectiveHashes || activeDragCommitHashes == hashes {
-            activeDragCommitHashes.removeAll()
-            GitDragPayloadStore.clear(ifMatching: effectivePayload)
-            activeCommitDragPayload = nil
-            scheduleCommitClickSuppressionClear()
+            finishCommitDrag(payload: effectivePayload, clearsPayload: true)
         }
     }
 
     private func beginCommitDrag(startingAt hash: String, payload: GitDragPayload) {
         dragClickSuppressionTask?.cancel()
+        dragCompletionMonitorTask?.cancel()
         suppressedCommitClickHash = hash
         activeCommitDragPayload = payload
+        dragCompletionMonitorTask = Task {
+            while NSEvent.pressedMouseButtons & 1 != 0 {
+                do {
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                } catch {
+                    return
+                }
+            }
+            guard !Task.isCancelled else { return }
+            finishCommitDrag(payload: payload, clearsPayload: false)
+        }
+    }
+
+    private func finishCommitDrag(payload: GitDragPayload, clearsPayload: Bool) {
+        dragCompletionMonitorTask?.cancel()
+        dragCompletionMonitorTask = nil
+        activeDragCommitHashes.removeAll()
+        if clearsPayload {
+            GitDragPayloadStore.clear(ifMatching: payload)
+        }
+        if activeCommitDragPayload == payload {
+            activeCommitDragPayload = nil
+        }
+        scheduleCommitClickSuppressionClear()
     }
 
     private func consumeSuppressedCommitClick(_ hash: String) -> Bool {
