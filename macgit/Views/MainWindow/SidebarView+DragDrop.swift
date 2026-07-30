@@ -254,6 +254,9 @@ extension SidebarView {
         if case .branch = activePayload?.content {
             return NSEvent.modifierFlags.contains(.option) ? "Rebase" : "Merge"
         }
+        if case .stash = activePayload?.content {
+            return "Apply stash"
+        }
 
         if NSEvent.modifierFlags.contains(.option) {
             return "Rebase or Cherry-pick"

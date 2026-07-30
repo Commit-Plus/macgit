@@ -492,6 +492,26 @@ final class GitDragDropPolicyTests: XCTestCase {
         )
     }
 
+    func testStashCanBeAppliedFromCurrentBranch() {
+        XCTAssertEqual(
+            decision(
+                payload: .stash("stash@{0}", repositoryURL: repoURL),
+                target: .localBranch(name: "main", isCurrent: true)
+            ),
+            .accept(.applyStash(ref: "stash@{0}"))
+        )
+    }
+
+    func testStashCannotDropOnNonCurrentBranch() {
+        XCTAssertEqual(
+            decision(
+                payload: .stash("stash@{0}", repositoryURL: repoURL),
+                target: .localBranch(name: "feature", isCurrent: false)
+            ),
+            .reject("Drop stashes onto the current branch or File status to apply them.")
+        )
+    }
+
     func testFilesCannotDropOnFileStatus() {
         XCTAssertEqual(
             decision(
@@ -508,7 +528,7 @@ final class GitDragDropPolicyTests: XCTestCase {
                 payload: .stash("stash@{0}", repositoryURL: repoURL),
                 target: .stashesHeader
             ),
-            .reject("Drop stashes onto File status to apply them.")
+            .reject("Drop stashes onto the current branch or File status to apply them.")
         )
     }
 

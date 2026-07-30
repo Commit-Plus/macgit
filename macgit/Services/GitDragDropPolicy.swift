@@ -162,11 +162,12 @@ enum GitDragDropPolicy {
         ref: String,
         target: GitDragTarget
     ) -> GitDragDropDecision {
-        guard target == .fileStatus else {
-            return .reject("Drop stashes onto File status to apply them.")
+        switch target {
+        case .fileStatus, .localBranch(_, isCurrent: true):
+            return .accept(.applyStash(ref: ref))
+        default:
+            return .reject("Drop stashes onto the current branch or File status to apply them.")
         }
-
-        return .accept(.applyStash(ref: ref))
     }
 
     nonisolated private static func uniqueNonEmptyValues(_ values: [String]) -> [String] {
