@@ -25,8 +25,8 @@ final class RepositorySettingsDraftTests: XCTestCase {
                 defaultRemoteName: "origin",
                 defaultPullBranch: "main",
                 pullStrategy: .merge,
-                autoFetchEnabled: false,
-                refreshOnAppActive: true,
+                autoFetchOverride: false,
+                refreshOnAppActiveOverride: true,
                 confirmDetachedHeadCheckout: true,
                 confirmDestructiveStashActions: true
             ),
@@ -43,8 +43,8 @@ final class RepositorySettingsDraftTests: XCTestCase {
             defaultRemoteName: "origin",
             defaultPullBranch: "release",
             pullStrategy: .merge,
-            autoFetchEnabled: false,
-            refreshOnAppActive: true,
+            autoFetchOverride: false,
+            refreshOnAppActiveOverride: true,
             confirmDetachedHeadCheckout: true,
             confirmDestructiveStashActions: true
         )
@@ -68,8 +68,8 @@ final class RepositorySettingsDraftTests: XCTestCase {
                 defaultRemoteName: "origin",
                 defaultPullBranch: "release/hotfix",
                 pullStrategy: .merge,
-                autoFetchEnabled: false,
-                refreshOnAppActive: true,
+                autoFetchOverride: false,
+                refreshOnAppActiveOverride: true,
                 confirmDetachedHeadCheckout: true,
                 confirmDestructiveStashActions: true
             ),
@@ -89,8 +89,8 @@ final class RepositorySettingsDraftTests: XCTestCase {
                 defaultRemoteName: "origin",
                 defaultPullBranch: "release/hotfix",
                 pullStrategy: .rebase,
-                autoFetchEnabled: true,
-                refreshOnAppActive: false,
+                autoFetchOverride: true,
+                refreshOnAppActiveOverride: false,
                 confirmDetachedHeadCheckout: false,
                 confirmDestructiveStashActions: false
             ),
@@ -103,6 +103,8 @@ final class RepositorySettingsDraftTests: XCTestCase {
         XCTAssertEqual(draft.manualBranchName, "release/hotfix")
         XCTAssertEqual(draft.resolvedSettings.defaultPullBranch, "release/hotfix")
         XCTAssertEqual(draft.resolvedSettings.pullStrategy, .rebase)
+        XCTAssertEqual(draft.resolvedSettings.autoFetchOverride, true)
+        XCTAssertEqual(draft.resolvedSettings.refreshOnAppActiveOverride, false)
     }
 
     func testDraftTrimsManualBranchNameOnSave() {
@@ -116,5 +118,19 @@ final class RepositorySettingsDraftTests: XCTestCase {
         draft.manualBranchName = "  release/v2  "
 
         XCTAssertEqual(draft.resolvedSettings.defaultPullBranch, "release/v2")
+    }
+
+    func testDraftPreservesGlobalPullFetchInheritance() {
+        let draft = RepositorySettingsDraft(
+            settings: RepoSettings.defaults(currentBranch: "main", remotes: ["origin"]),
+            remotes: ["origin"],
+            branches: ["main"],
+            currentBranch: "main"
+        )
+
+        XCTAssertNil(draft.autoFetchOverride)
+        XCTAssertNil(draft.refreshOnAppActiveOverride)
+        XCTAssertNil(draft.resolvedSettings.autoFetchOverride)
+        XCTAssertNil(draft.resolvedSettings.refreshOnAppActiveOverride)
     }
 }

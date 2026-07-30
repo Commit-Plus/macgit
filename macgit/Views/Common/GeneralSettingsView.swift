@@ -50,6 +50,22 @@ struct GeneralSettingsView: View {
             }
 
             Section {
+                SettingsToggleRow(
+                    title: "Auto fetch",
+                    detail: "Periodically fetch repositories that use the global setting.",
+                    isOn: $appState.autoFetchEnabled
+                )
+
+                SettingsToggleRow(
+                    title: "Refresh when app becomes active",
+                    detail: "Refresh repositories that use the global setting when Commit+ becomes active.",
+                    isOn: $appState.refreshOnAppActive
+                )
+            } header: {
+                Label("Pull & Fetch", systemImage: "arrow.triangle.2.circlepath")
+            }
+
+            Section {
                 Button("Restore General Defaults…", action: showResetConfirmation)
             }
         }
@@ -62,7 +78,7 @@ struct GeneralSettingsView: View {
             Button("Restore Defaults", role: .destructive, action: restoreDefaults)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Sidebar and History preferences on this page will be reset.")
+            Text("Sidebar, History, and Pull & Fetch preferences on this page will be reset.")
         }
     }
 
@@ -74,5 +90,7 @@ struct GeneralSettingsView: View {
         appState.showSubmodules = false
         appState.showSubtrees = false
         appState.historyIncludeRemotes = false
+        appState.autoFetchEnabled = false
+        appState.refreshOnAppActive = true
     }
 }

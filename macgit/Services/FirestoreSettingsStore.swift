@@ -39,6 +39,8 @@ enum CloudSettingsDocument {
             "showHeaderTerminalButton": snapshot.showHeaderTerminalButton,
             "historyBranchFilter": snapshot.historyBranchFilter.storageValue,
             "historyIncludeRemotes": snapshot.historyIncludeRemotes,
+            "autoFetchEnabled": snapshot.autoFetchEnabled,
+            "refreshOnAppActive": snapshot.refreshOnAppActive,
             "updatedAt": updatedAt
         ]
     }
@@ -80,7 +82,9 @@ enum CloudSettingsDocument {
             showHeaderTerminalButton: data["showHeaderTerminalButton"] as? Bool ?? true,
             historyBranchFilter: (data["historyBranchFilter"] as? String)
                 .flatMap(HistoryBranchFilter.init(storageValue:)) ?? .all,
-            historyIncludeRemotes: data["historyIncludeRemotes"] as? Bool ?? false
+            historyIncludeRemotes: data["historyIncludeRemotes"] as? Bool ?? false,
+            autoFetchEnabled: data["autoFetchEnabled"] as? Bool ?? false,
+            refreshOnAppActive: data["refreshOnAppActive"] as? Bool ?? true
         )
     }
 }

@@ -35,7 +35,9 @@ final class AppSettingsSnapshotTests: XCTestCase {
             showHeaderEditorButton: false,
             showHeaderTerminalButton: true,
             historyBranchFilter: .branch("origin/feature/login"),
-            historyIncludeRemotes: true
+            historyIncludeRemotes: true,
+            autoFetchEnabled: true,
+            refreshOnAppActive: false
         )
 
         let data = try JSONEncoder().encode(value)
@@ -59,7 +61,9 @@ final class AppSettingsSnapshotTests: XCTestCase {
                 "showHeaderEditorButton",
                 "showHeaderTerminalButton",
                 "historyBranchFilter",
-                "historyIncludeRemotes"
+                "historyIncludeRemotes",
+                "autoFetchEnabled",
+                "refreshOnAppActive"
             ]
         )
     }
@@ -103,6 +107,8 @@ final class AppSettingsSnapshotTests: XCTestCase {
             )
         )
         XCTAssertEqual(state.appearance, .dark)
+        XCTAssertFalse(state.autoFetchEnabled)
+        XCTAssertTrue(state.refreshOnAppActive)
         XCTAssertTrue(state.hasOpenRepository)
         XCTAssertEqual(state.newWindowRepoURL, URL(fileURLWithPath: "/tmp/repository"))
     }
@@ -203,6 +209,23 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertTrue(reloaded.historyIncludeRemotes)
     }
 
+    func testPullFetchDefaultsAndPersistence() {
+        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let state = AppState(userDefaults: defaults)
+        XCTAssertFalse(state.autoFetchEnabled)
+        XCTAssertTrue(state.refreshOnAppActive)
+
+        state.autoFetchEnabled = true
+        state.refreshOnAppActive = false
+
+        let reloaded = AppState(userDefaults: defaults)
+        XCTAssertTrue(reloaded.autoFetchEnabled)
+        XCTAssertFalse(reloaded.refreshOnAppActive)
+    }
+
     func testSettingsSnapshotPublisherDoesNotEmitOnDeviceLocalSettings() {
         let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -232,11 +255,11 @@ final class AppSettingsSnapshotTests: XCTestCase {
             .sink { emissions.append($0) }
             .store(in: &cancellables)
 
-        state.appearance = .dark
+        state.autoFetchEnabled = true
 
         XCTAssertEqual(emissions.count, 2)
-        XCTAssertEqual(emissions.last?.appearance, .dark)
-        XCTAssertEqual(AppState(userDefaults: defaults).appearance, .dark)
+        XCTAssertEqual(emissions.last?.autoFetchEnabled, true)
+        XCTAssertEqual(AppState(userDefaults: defaults).autoFetchEnabled, true)
     }
 
     func testApplyEmitsSingleSnapshot() {

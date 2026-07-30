@@ -48,6 +48,7 @@ struct ProviderRemoteAccountOption: Identifiable {
 
 struct RepositorySettingsSheetView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appState: AppState
 
     let repositoryURL: URL
     let initialSettings: RepoSettings
@@ -356,13 +357,38 @@ struct RepositorySettingsSheetView: View {
                     Spacer()
                 }
 
-                Toggle("Auto fetch", isOn: binding(\.autoFetchEnabled))
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: 13))
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("Auto fetch")
+                        .font(.system(size: 13))
+                        .frame(width: 240, alignment: .leading)
 
-                Toggle("Refresh when app becomes active", isOn: binding(\.refreshOnAppActive))
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: 13))
+                    Picker("Auto fetch", selection: binding(\.autoFetchOverride)) {
+                        Text(globalOptionTitle(value: appState.autoFetchEnabled))
+                            .tag(Bool?.none)
+                        Text("On").tag(Bool?.some(true))
+                        Text("Off").tag(Bool?.some(false))
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("Refresh when app becomes active")
+                        .font(.system(size: 13))
+                        .frame(width: 240, alignment: .leading)
+
+                    Picker(
+                        "Refresh when app becomes active",
+                        selection: binding(\.refreshOnAppActiveOverride)
+                    ) {
+                        Text(globalOptionTitle(value: appState.refreshOnAppActive))
+                            .tag(Bool?.none)
+                        Text("On").tag(Bool?.some(true))
+                        Text("Off").tag(Bool?.some(false))
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                }
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -618,6 +644,10 @@ struct RepositorySettingsSheetView: View {
                 draft![keyPath: keyPath] = newValue
             }
         )
+    }
+
+    private func globalOptionTitle(value: Bool) -> String {
+        "Use Global (\(value ? "On" : "Off"))"
     }
 
     private func remoteOptions(for draft: RepositorySettingsDraft) -> [String] {

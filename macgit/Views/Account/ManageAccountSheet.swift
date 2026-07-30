@@ -203,6 +203,11 @@ struct SettingsSyncConflictSheet: View {
                 settingRow("Header: Finder", enabled: snapshot.showHeaderFinderButton)
                 settingRow("Header: External Editor", enabled: snapshot.showHeaderEditorButton)
                 settingRow("Header: Terminal", enabled: snapshot.showHeaderTerminalButton)
+                enabledSettingRow("Auto fetch", enabled: snapshot.autoFetchEnabled)
+                enabledSettingRow(
+                    "Refresh when app becomes active",
+                    enabled: snapshot.refreshOnAppActive
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
@@ -222,6 +227,14 @@ struct SettingsSyncConflictSheet: View {
         GridRow {
             Text(label)
             Label(enabled ? "Shown" : "Hidden", systemImage: enabled ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(enabled ? .primary : .secondary)
+        }
+    }
+
+    private func enabledSettingRow(_ label: String, enabled: Bool) -> some View {
+        GridRow {
+            Text(label)
+            Label(enabled ? "Enabled" : "Disabled", systemImage: enabled ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(enabled ? .primary : .secondary)
         }
     }

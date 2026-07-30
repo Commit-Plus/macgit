@@ -34,7 +34,9 @@ final class CloudSettingsDocumentTests: XCTestCase {
         showHeaderEditorButton: false,
         showHeaderTerminalButton: false,
         historyBranchFilter: .branch("origin/feature/login"),
-        historyIncludeRemotes: true
+        historyIncludeRemotes: true,
+        autoFetchEnabled: true,
+        refreshOnAppActive: false
     )
 
     func testEncodingUsesExactDocumentSchema() throws {
@@ -59,6 +61,8 @@ final class CloudSettingsDocumentTests: XCTestCase {
                 "showHeaderTerminalButton",
                 "historyBranchFilter",
                 "historyIncludeRemotes",
+                "autoFetchEnabled",
+                "refreshOnAppActive",
                 "updatedAt"
             ]
         )
@@ -76,6 +80,8 @@ final class CloudSettingsDocumentTests: XCTestCase {
         XCTAssertEqual(document["showHeaderTerminalButton"] as? Bool, false)
         XCTAssertEqual(document["historyBranchFilter"] as? String, "branch:origin/feature/login")
         XCTAssertEqual(document["historyIncludeRemotes"] as? Bool, true)
+        XCTAssertEqual(document["autoFetchEnabled"] as? Bool, true)
+        XCTAssertEqual(document["refreshOnAppActive"] as? Bool, false)
         XCTAssertEqual(document["updatedAt"] as? Timestamp, timestamp)
     }
 
@@ -101,6 +107,17 @@ final class CloudSettingsDocumentTests: XCTestCase {
 
         XCTAssertEqual(decoded.historyBranchFilter, .all)
         XCTAssertFalse(decoded.historyIncludeRemotes)
+    }
+
+    func testDecodingDefaultsMissingPullFetchSettings() throws {
+        var document = validDocument()
+        document.removeValue(forKey: "autoFetchEnabled")
+        document.removeValue(forKey: "refreshOnAppActive")
+
+        let decoded = try CloudSettingsDocument.decode(document)
+
+        XCTAssertFalse(decoded.autoFetchEnabled)
+        XCTAssertTrue(decoded.refreshOnAppActive)
     }
 
     func testDecodingDefaultsMissingAppearanceToSystem() throws {

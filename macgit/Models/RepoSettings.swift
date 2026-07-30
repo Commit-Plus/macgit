@@ -31,8 +31,8 @@ struct RepoSettings: Codable, Equatable {
     var defaultRemoteName: String?
     var defaultPullBranch: String
     var pullStrategy: PullStrategy
-    var autoFetchEnabled: Bool
-    var refreshOnAppActive: Bool
+    var autoFetchOverride: Bool?
+    var refreshOnAppActiveOverride: Bool?
     var confirmDetachedHeadCheckout: Bool
     var confirmDestructiveStashActions: Bool
     var useGlobalUserSettings: Bool
@@ -43,8 +43,8 @@ struct RepoSettings: Codable, Equatable {
         defaultRemoteName: String? = nil,
         defaultPullBranch: String,
         pullStrategy: PullStrategy = .merge,
-        autoFetchEnabled: Bool = false,
-        refreshOnAppActive: Bool = true,
+        autoFetchOverride: Bool? = nil,
+        refreshOnAppActiveOverride: Bool? = nil,
         confirmDetachedHeadCheckout: Bool = true,
         confirmDestructiveStashActions: Bool = true,
         useGlobalUserSettings: Bool = true,
@@ -54,8 +54,8 @@ struct RepoSettings: Codable, Equatable {
         self.defaultRemoteName = defaultRemoteName
         self.defaultPullBranch = defaultPullBranch
         self.pullStrategy = pullStrategy
-        self.autoFetchEnabled = autoFetchEnabled
-        self.refreshOnAppActive = refreshOnAppActive
+        self.autoFetchOverride = autoFetchOverride
+        self.refreshOnAppActiveOverride = refreshOnAppActiveOverride
         self.confirmDetachedHeadCheckout = confirmDetachedHeadCheckout
         self.confirmDestructiveStashActions = confirmDestructiveStashActions
         self.useGlobalUserSettings = useGlobalUserSettings
@@ -68,8 +68,8 @@ struct RepoSettings: Codable, Equatable {
         defaultRemoteName = try container.decodeIfPresent(String.self, forKey: .defaultRemoteName)
         defaultPullBranch = try container.decodeIfPresent(String.self, forKey: .defaultPullBranch) ?? ""
         pullStrategy = try container.decodeIfPresent(PullStrategy.self, forKey: .pullStrategy) ?? .merge
-        autoFetchEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoFetchEnabled) ?? false
-        refreshOnAppActive = try container.decodeIfPresent(Bool.self, forKey: .refreshOnAppActive) ?? true
+        autoFetchOverride = try container.decodeIfPresent(Bool.self, forKey: .autoFetchOverride)
+        refreshOnAppActiveOverride = try container.decodeIfPresent(Bool.self, forKey: .refreshOnAppActiveOverride)
         confirmDetachedHeadCheckout = try container.decodeIfPresent(Bool.self, forKey: .confirmDetachedHeadCheckout) ?? true
         confirmDestructiveStashActions = try container.decodeIfPresent(Bool.self, forKey: .confirmDestructiveStashActions) ?? true
         useGlobalUserSettings = try container.decodeIfPresent(Bool.self, forKey: .useGlobalUserSettings) ?? true
@@ -82,5 +82,26 @@ struct RepoSettings: Codable, Equatable {
             defaultRemoteName: remotes.first,
             defaultPullBranch: currentBranch ?? ""
         )
+    }
+
+    func resolvedAutoFetchEnabled(globalValue: Bool) -> Bool {
+        autoFetchOverride ?? globalValue
+    }
+
+    func resolvedRefreshOnAppActive(globalValue: Bool) -> Bool {
+        refreshOnAppActiveOverride ?? globalValue
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case defaultRemoteName
+        case defaultPullBranch
+        case pullStrategy
+        case autoFetchOverride = "autoFetchEnabled"
+        case refreshOnAppActiveOverride = "refreshOnAppActive"
+        case confirmDetachedHeadCheckout
+        case confirmDestructiveStashActions
+        case useGlobalUserSettings
+        case userName
+        case userEmail
     }
 }

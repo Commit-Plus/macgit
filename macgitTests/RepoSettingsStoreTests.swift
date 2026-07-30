@@ -27,8 +27,8 @@ final class RepoSettingsStoreTests: XCTestCase {
         XCTAssertEqual(decoded.defaultRemoteName, "origin")
         XCTAssertEqual(decoded.defaultPullBranch, "main")
         XCTAssertEqual(decoded.pullStrategy, .merge)
-        XCTAssertFalse(decoded.autoFetchEnabled)
-        XCTAssertTrue(decoded.refreshOnAppActive)
+        XCTAssertNil(decoded.autoFetchOverride)
+        XCTAssertNil(decoded.refreshOnAppActiveOverride)
         XCTAssertTrue(decoded.confirmDetachedHeadCheckout)
         XCTAssertTrue(decoded.confirmDestructiveStashActions)
     }
@@ -45,7 +45,8 @@ final class RepoSettingsStoreTests: XCTestCase {
 
         var repoASettings = RepoSettings.defaults(currentBranch: "main", remotes: ["origin"])
         repoASettings.pullStrategy = .rebase
-        repoASettings.autoFetchEnabled = true
+        repoASettings.autoFetchOverride = true
+        repoASettings.refreshOnAppActiveOverride = false
         store.update(for: repoA, settings: repoASettings)
 
         let freshStore = RepoSettingsStore(userDefaults: defaults, key: defaultsKey)
@@ -56,9 +57,33 @@ final class RepoSettingsStoreTests: XCTestCase {
         XCTAssertEqual(loadedB.defaultRemoteName, "upstream")
         XCTAssertEqual(loadedB.defaultPullBranch, "")
         XCTAssertEqual(loadedB.pullStrategy, .merge)
-        XCTAssertFalse(loadedB.autoFetchEnabled)
-        XCTAssertTrue(loadedB.refreshOnAppActive)
+        XCTAssertNil(loadedB.autoFetchOverride)
+        XCTAssertNil(loadedB.refreshOnAppActiveOverride)
         XCTAssertTrue(loadedB.confirmDetachedHeadCheckout)
         XCTAssertTrue(loadedB.confirmDestructiveStashActions)
+    }
+
+    func testRepoSettingsDecodesLegacyPullFetchValuesAsOverrides() throws {
+        let data = """
+        {
+          "defaultPullBranch": "main",
+          "autoFetchEnabled": true,
+          "refreshOnAppActive": false
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(RepoSettings.self, from: data)
+
+        XCTAssertEqual(decoded.autoFetchOverride, true)
+        XCTAssertEqual(decoded.refreshOnAppActiveOverride, false)
+        XCTAssertTrue(decoded.resolvedAutoFetchEnabled(globalValue: false))
+        XCTAssertFalse(decoded.resolvedRefreshOnAppActive(globalValue: true))
+    }
+
+    func testRepoSettingsWithoutOverridesUsesGlobalValues() {
+        let settings = RepoSettings.defaults(currentBranch: "main", remotes: ["origin"])
+
+        XCTAssertTrue(settings.resolvedAutoFetchEnabled(globalValue: true))
+        XCTAssertFalse(settings.resolvedRefreshOnAppActive(globalValue: false))
     }
 }

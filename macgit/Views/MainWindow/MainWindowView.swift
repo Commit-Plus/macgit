@@ -353,7 +353,9 @@ struct MainWindowView: View {
                 Text("Delete local tag '\(tagPendingDeletion ?? "")'?")
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                guard repoSettings.refreshOnAppActive else { return }
+                guard repoSettings.resolvedRefreshOnAppActive(
+                    globalValue: appState.refreshOnAppActive
+                ) else { return }
                 Task {
                     await syncState.refresh(repositoryURL: repositoryURL)
                 }
@@ -447,6 +449,13 @@ struct MainWindowView: View {
         ))
         .frame(minWidth: 900, minHeight: 600)
         .task { await performInitialLoad() }
+        .onChange(of: appState.autoFetchEnabled) { _, globalAutoFetchEnabled in
+            syncState.startBackgroundSync(
+                repositoryURL: repositoryURL,
+                settings: repoSettings,
+                globalAutoFetchEnabled: globalAutoFetchEnabled
+            )
+        }
         .onChange(of: selectedItem) { _, newItem in
             if case .branch(let name) = newItem {
                 selectedBranchName = name
@@ -997,7 +1006,11 @@ struct MainWindowView: View {
             repoSettings = loadedSettings
         }
         await syncState.refresh(repositoryURL: repositoryURL)
-        syncState.startBackgroundSync(repositoryURL: repositoryURL, settings: loadedSettings)
+        syncState.startBackgroundSync(
+            repositoryURL: repositoryURL,
+            settings: loadedSettings,
+            globalAutoFetchEnabled: appState.autoFetchEnabled
+        )
         await refreshRemotePresentation(for: loadedSettings.defaultRemoteName)
 
         await MainActor.run {

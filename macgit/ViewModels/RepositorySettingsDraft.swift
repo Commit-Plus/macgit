@@ -33,8 +33,8 @@ struct RepositorySettingsDraft: Equatable {
     var selectedDetectedBranch: String
     var manualBranchName: String
     var pullStrategy: PullStrategy
-    var autoFetchEnabled: Bool
-    var refreshOnAppActive: Bool
+    var autoFetchOverride: Bool?
+    var refreshOnAppActiveOverride: Bool?
     var confirmDetachedHeadCheckout: Bool
     var confirmDestructiveStashActions: Bool
     var useGlobalUserSettings: Bool
@@ -71,8 +71,8 @@ struct RepositorySettingsDraft: Equatable {
         }
 
         pullStrategy = settings.pullStrategy
-        autoFetchEnabled = settings.autoFetchEnabled
-        refreshOnAppActive = settings.refreshOnAppActive
+        autoFetchOverride = settings.autoFetchOverride
+        refreshOnAppActiveOverride = settings.refreshOnAppActiveOverride
         confirmDetachedHeadCheckout = settings.confirmDetachedHeadCheckout
         confirmDestructiveStashActions = settings.confirmDestructiveStashActions
         useGlobalUserSettings = settings.useGlobalUserSettings
@@ -85,8 +85,8 @@ struct RepositorySettingsDraft: Equatable {
             defaultRemoteName: selectedRemoteName.isEmpty ? nil : selectedRemoteName,
             defaultPullBranch: resolvedPullBranch(),
             pullStrategy: pullStrategy,
-            autoFetchEnabled: autoFetchEnabled,
-            refreshOnAppActive: refreshOnAppActive,
+            autoFetchOverride: autoFetchOverride,
+            refreshOnAppActiveOverride: refreshOnAppActiveOverride,
             confirmDetachedHeadCheckout: confirmDetachedHeadCheckout,
             confirmDestructiveStashActions: confirmDestructiveStashActions,
             useGlobalUserSettings: useGlobalUserSettings,

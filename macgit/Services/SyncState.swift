@@ -96,12 +96,17 @@ class SyncState: ObservableObject {
         }
     }
 
-    func startBackgroundSync(repositoryURL: URL, settings: RepoSettings) {
+    func startBackgroundSync(
+        repositoryURL: URL,
+        settings: RepoSettings,
+        globalAutoFetchEnabled: Bool
+    ) {
         stopBackgroundSync()
+        let autoFetchEnabled = settings.resolvedAutoFetchEnabled(globalValue: globalAutoFetchEnabled)
         backgroundTask = Task {
             var lastAutoFetchDate = Date.distantPast
             while !Task.isCancelled {
-                if settings.autoFetchEnabled,
+                if autoFetchEnabled,
                    networkMonitor.currentPath.status == .satisfied,
                    Date.now.timeIntervalSince(lastAutoFetchDate) >= Self.autoFetchInterval {
                     try? await GitStatusService.shared.fetch(

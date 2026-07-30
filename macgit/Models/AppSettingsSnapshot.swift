@@ -33,6 +33,8 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
     var showHeaderTerminalButton: Bool
     var historyBranchFilter: HistoryBranchFilter
     var historyIncludeRemotes: Bool
+    var autoFetchEnabled: Bool
+    var refreshOnAppActive: Bool
 
     init(
         appearance: AppAppearance = .system,
@@ -47,7 +49,9 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
         showHeaderEditorButton: Bool = true,
         showHeaderTerminalButton: Bool = true,
         historyBranchFilter: HistoryBranchFilter = .all,
-        historyIncludeRemotes: Bool = false
+        historyIncludeRemotes: Bool = false,
+        autoFetchEnabled: Bool = false,
+        refreshOnAppActive: Bool = true
     ) {
         schemaVersion = 1
         self.appearance = appearance
@@ -63,5 +67,7 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
         self.showHeaderTerminalButton = showHeaderTerminalButton
         self.historyBranchFilter = historyBranchFilter
         self.historyIncludeRemotes = historyIncludeRemotes
+        self.autoFetchEnabled = autoFetchEnabled
+        self.refreshOnAppActive = refreshOnAppActive
     }
 }

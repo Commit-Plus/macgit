@@ -328,7 +328,11 @@ extension MainWindowView {
                         in: repositoryURL
                     )
                 }
-                syncState.startBackgroundSync(repositoryURL: repositoryURL, settings: newSettings)
+                syncState.startBackgroundSync(
+                    repositoryURL: repositoryURL,
+                    settings: newSettings,
+                    globalAutoFetchEnabled: appState.autoFetchEnabled
+                )
                 Task {
                     await refreshRemotePresentation(for: newSettings.defaultRemoteName)
                 }

@@ -57,6 +57,8 @@ function validSettings() {
     showHeaderTerminalButton: false,
     historyBranchFilter: "branch:origin/feature/login",
     historyIncludeRemotes: true,
+    autoFetchEnabled: true,
+    refreshOnAppActive: false,
     updatedAt: serverTimestamp(),
   };
 }
@@ -117,6 +119,8 @@ describe("Firestore ownership rules", () => {
       "showHeaderTerminalButton",
       "historyBranchFilter",
       "historyIncludeRemotes",
+      "autoFetchEnabled",
+      "refreshOnAppActive",
     ]);
 
     await assertFails(setDoc(settings("user-a", userA), {
@@ -171,6 +175,8 @@ describe("Firestore ownership rules", () => {
       "showHeaderEditorButton",
       "showHeaderTerminalButton",
       "historyIncludeRemotes",
+      "autoFetchEnabled",
+      "refreshOnAppActive",
     ]) {
       await assertFails(setDoc(settings("user-a", userA), {
         ...validSettings(),
@@ -206,6 +212,8 @@ describe("Firestore ownership rules", () => {
       "showHeaderTerminalButton",
       "historyBranchFilter",
       "historyIncludeRemotes",
+      "autoFetchEnabled",
+      "refreshOnAppActive",
     ]) {
       delete legacy[key];
     }
