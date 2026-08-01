@@ -76,7 +76,7 @@ final class EntitlementGateTests: XCTestCase {
         XCTAssertEqual(controller.entitlement, .free)
     }
 
-    func testListenerFailureNeverGrantsAccess() {
+    func testListenerFailureKeepsLatestSessionEntitlement() {
         let provider = FakeEntitlementProvider()
         let controller = AccountSessionController(
             auth: EntitlementFakeAuth(current: account),
@@ -87,8 +87,73 @@ final class EntitlementGateTests: XCTestCase {
 
         provider.fail("Firestore unavailable")
 
-        XCTAssertEqual(controller.entitlement, .free)
+        XCTAssertEqual(controller.entitlement, .pro)
+        XCTAssertTrue(controller.isUsingCachedEntitlement)
         XCTAssertEqual(controller.entitlementError, "Firestore unavailable")
+    }
+
+    func testCachedEntitlementLoadsBeforeFirestoreAndSurvivesListenerFailure() {
+        let provider = FakeEntitlementProvider()
+        let cachedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let cache = FakeEntitlementCache(
+            values: ["u1": CachedAccountEntitlement(entitlement: .pro, updatedAt: cachedAt)]
+        )
+        let controller = AccountSessionController(
+            auth: EntitlementFakeAuth(current: account),
+            bootstrapStatus: .configured,
+            entitlementProvider: provider,
+            entitlementCache: cache
+        )
+
+        XCTAssertEqual(controller.entitlement, .pro)
+        XCTAssertEqual(controller.entitlementLastUpdatedAt, cachedAt)
+        XCTAssertTrue(controller.isUsingCachedEntitlement)
+
+        provider.fail("Firestore unavailable")
+
+        XCTAssertEqual(controller.entitlement, .pro)
+        XCTAssertTrue(controller.isUsingCachedEntitlement)
+        XCTAssertEqual(controller.entitlementError, "Firestore unavailable")
+    }
+
+    func testFirestoreUpdateReplacesAndPersistsCachedEntitlement() {
+        let provider = FakeEntitlementProvider()
+        let cache = FakeEntitlementCache()
+        let controller = AccountSessionController(
+            auth: EntitlementFakeAuth(current: account),
+            bootstrapStatus: .configured,
+            entitlementProvider: provider,
+            entitlementCache: cache
+        )
+
+        provider.send(.pro)
+
+        XCTAssertEqual(cache.values["u1"]?.entitlement, .pro)
+        XCTAssertEqual(controller.entitlement, .pro)
+        XCTAssertFalse(controller.isUsingCachedEntitlement)
+        XCTAssertNotNil(controller.entitlementLastUpdatedAt)
+    }
+
+    func testSuccessfulAccountDeletionRemovesCachedEntitlement() async {
+        let provider = FakeEntitlementProvider()
+        let cache = FakeEntitlementCache(
+            values: [
+                "u1": CachedAccountEntitlement(
+                    entitlement: .pro,
+                    updatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+                )
+            ]
+        )
+        let controller = AccountSessionController(
+            auth: EntitlementFakeAuth(current: account),
+            bootstrapStatus: .configured,
+            entitlementProvider: provider,
+            entitlementCache: cache
+        )
+
+        await controller.deleteAccount()
+
+        XCTAssertNil(cache.values["u1"])
     }
 }
 
@@ -131,6 +196,27 @@ private final class FakeEntitlementProvider: EntitlementProviding {
 private final class FakeObservationToken: ObservationToken {
     private(set) var cancelCount = 0
     func cancel() { cancelCount += 1 }
+}
+
+@MainActor
+private final class FakeEntitlementCache: EntitlementCaching {
+    var values: [String: CachedAccountEntitlement]
+
+    init(values: [String: CachedAccountEntitlement] = [:]) {
+        self.values = values
+    }
+
+    func cachedEntitlement(for uid: String) -> CachedAccountEntitlement? {
+        values[uid]
+    }
+
+    func save(_ cachedEntitlement: CachedAccountEntitlement, for uid: String) {
+        values[uid] = cachedEntitlement
+    }
+
+    func removeEntitlement(for uid: String) {
+        values.removeValue(forKey: uid)
+    }
 }
 
 private final class EntitlementFakeAuth: AccountAuthenticating {

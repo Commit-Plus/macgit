@@ -30,12 +30,15 @@ final class AccountSessionController: ObservableObject {
     @Published private(set) var requiresRecentAuthentication = false
     @Published private(set) var entitlement: AccountEntitlement = .free
     @Published private(set) var entitlementError: String?
+    @Published private(set) var entitlementLastUpdatedAt: Date?
+    @Published private(set) var isUsingCachedEntitlement = false
     @Published private(set) var settingsSyncStatus: SettingsSyncStatus = .off
 
     let cloudFeaturesAvailable: Bool
 
     private let auth: AccountAuthenticating
     private let entitlementProvider: EntitlementProviding?
+    private let entitlementCache: EntitlementCaching?
     private let appState: AppState
     private let settingsSyncService: SettingsSyncService?
     private var entitlementObservation: ObservationToken?
@@ -97,11 +100,13 @@ final class AccountSessionController: ObservableObject {
         auth: AccountAuthenticating,
         bootstrapStatus: FirebaseBootstrapStatus,
         entitlementProvider: EntitlementProviding? = nil,
+        entitlementCache: EntitlementCaching? = nil,
         appState: AppState? = nil,
         settingsStore: CloudSettingsStore? = nil
     ) {
         self.auth = auth
         self.entitlementProvider = entitlementProvider
+        self.entitlementCache = entitlementCache
         let resolvedAppState = appState ?? AppState.shared
         self.appState = resolvedAppState
         if let settingsStore {
@@ -203,7 +208,8 @@ final class AccountSessionController: ObservableObject {
     }
 
     func deleteAccount() async {
-        guard account != nil else { return }
+        guard let account else { return }
+        let deletedUID = account.uid
         isDeletingAccount = true
         errorMessage = nil
         requiresRecentAuthentication = false
@@ -212,6 +218,7 @@ final class AccountSessionController: ObservableObject {
         do {
             try await auth.deleteAccount()
             stopEntitlementObservation()
+            entitlementCache?.removeEntitlement(for: deletedUID)
             state = .guest
             presentedSheet = nil
             pendingLinkEmail = nil
@@ -263,6 +270,11 @@ final class AccountSessionController: ObservableObject {
 
     private func startEntitlementObservation(for uid: String) {
         stopEntitlementObservation()
+        if let cachedEntitlement = entitlementCache?.cachedEntitlement(for: uid) {
+            entitlement = cachedEntitlement.entitlement
+            entitlementLastUpdatedAt = cachedEntitlement.updatedAt
+            isUsingCachedEntitlement = true
+        }
         guard let entitlementProvider else { return }
         entitlementObservation = entitlementProvider.observe(
             uid: uid,
@@ -270,12 +282,19 @@ final class AccountSessionController: ObservableObject {
                 guard self?.account?.uid == uid else { return }
                 self?.entitlement = entitlement
                 self?.entitlementError = nil
+                let updatedAt = Date.now
+                self?.entitlementLastUpdatedAt = updatedAt
+                self?.isUsingCachedEntitlement = false
+                self?.entitlementCache?.save(
+                    CachedAccountEntitlement(entitlement: entitlement, updatedAt: updatedAt),
+                    for: uid
+                )
                 self?.scheduleSettingsSyncEligibilityUpdate()
             },
             onError: { [weak self] message in
                 guard self?.account?.uid == uid else { return }
-                self?.entitlement = .free
                 self?.entitlementError = message
+                self?.isUsingCachedEntitlement = self?.entitlementLastUpdatedAt != nil
                 self?.scheduleSettingsSyncEligibilityUpdate()
             }
         )
@@ -286,6 +305,8 @@ final class AccountSessionController: ObservableObject {
         entitlementObservation = nil
         entitlement = .free
         entitlementError = nil
+        entitlementLastUpdatedAt = nil
+        isUsingCachedEntitlement = false
         scheduleSettingsSyncEligibilityUpdate()
     }
 

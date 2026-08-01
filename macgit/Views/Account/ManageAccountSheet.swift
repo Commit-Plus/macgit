@@ -32,11 +32,23 @@ struct ManageAccountSheet: View {
                 Form {
                     LabeledContent("Account", value: account.displayLabel)
                     LabeledContent("Sign-in methods", value: providerSummary(for: account))
-                    LabeledContent("Plan") {
+                    LabeledContent("Current plan") {
                         Label(
-                            controller.entitlement.hasProAccess ? "Pro" : "Free",
-                            systemImage: controller.entitlement.hasProAccess ? "star.fill" : "person"
+                            controller.entitlement.planDisplayName,
+                            systemImage: controller.entitlement.plan == .pro ? "star.fill" : "person"
                         )
+                    }
+                    if controller.entitlement.plan == .pro {
+                        LabeledContent(
+                            "Billing status",
+                            value: controller.entitlement.billingStatusDisplayName
+                        )
+                        if let currentPeriodEnd = controller.entitlement.currentPeriodEnd {
+                            LabeledContent(
+                                controller.entitlement.cancelAtPeriodEnd ? "Access until" : "Renews",
+                                value: currentPeriodEnd.formatted(date: .abbreviated, time: .omitted)
+                            )
+                        }
                     }
                     LabeledContent("Sync Settings") {
                         syncSettingsControl
@@ -44,11 +56,14 @@ struct ManageAccountSheet: View {
                     LabeledContent("Git Provider Accounts") {
                         Button("Manage Connections...", action: controller.presentConnections)
                     }
-                    if let entitlementError = controller.entitlementError {
+                    if controller.isUsingCachedEntitlement,
+                       let updatedAt = controller.entitlementLastUpdatedAt {
                         LabeledContent("Cloud status") {
-                            Text(entitlementError)
-                                .foregroundStyle(.red)
+                            Text("Saved locally · Updated \(updatedAt.formatted(date: .abbreviated, time: .shortened))")
+                                .foregroundStyle(.secondary)
                         }
+                    } else if let entitlementError = controller.entitlementError {
+                        LabeledContent("Cloud status", value: entitlementError)
                     }
                 }
                 .formStyle(.grouped)

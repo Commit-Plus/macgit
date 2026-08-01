@@ -79,6 +79,23 @@ struct AccountEntitlement: Codable, Equatable {
     var hasProAccess: Bool {
         plan == .pro && access == .active
     }
+
+    var planDisplayName: String {
+        switch plan {
+        case .free: "Free"
+        case .pro: "Pro"
+        }
+    }
+
+    var billingStatusDisplayName: String {
+        switch billingStatus {
+        case .none: "None"
+        case .trialing: "Trialing"
+        case .active: "Active"
+        case .pastDue: "Past Due"
+        case .canceled: "Canceled"
+        }
+    }
 }
 
 struct AccountSnapshot: Equatable {

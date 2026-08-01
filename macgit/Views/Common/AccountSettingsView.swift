@@ -49,16 +49,37 @@ struct AccountSettingsView: View {
                         Spacer()
 
                         Label(
-                            accountController.entitlement.hasProAccess ? "Pro" : "Free",
-                            systemImage: accountController.entitlement.hasProAccess
+                            accountController.entitlement.planDisplayName,
+                            systemImage: accountController.entitlement.plan == .pro
                                 ? "star.fill"
                                 : "person"
                         )
-                        .foregroundStyle(accountController.entitlement.hasProAccess ? .yellow : .secondary)
+                        .foregroundStyle(accountController.entitlement.plan == .pro ? .yellow : .secondary)
                     }
                     .padding(.vertical, 4)
 
                     LabeledContent("Sign-in methods", value: providerSummary(for: account))
+
+                    if accountController.entitlement.plan == .pro {
+                        LabeledContent(
+                            "Billing status",
+                            value: accountController.entitlement.billingStatusDisplayName
+                        )
+                        if let currentPeriodEnd = accountController.entitlement.currentPeriodEnd {
+                            LabeledContent(
+                                accountController.entitlement.cancelAtPeriodEnd ? "Access until" : "Renews",
+                                value: currentPeriodEnd.formatted(date: .abbreviated, time: .omitted)
+                            )
+                        }
+                    }
+
+                    if accountController.isUsingCachedEntitlement,
+                       let updatedAt = accountController.entitlementLastUpdatedAt {
+                        LabeledContent(
+                            "Plan status",
+                            value: "Saved locally · Updated \(updatedAt.formatted(date: .abbreviated, time: .shortened))"
+                        )
+                    }
 
                     Toggle("Sync app settings with Commit+ Cloud", isOn: syncSettingsBinding)
                         .disabled(!accountController.cloudFeaturesAvailable)
@@ -113,7 +134,7 @@ struct AccountSettingsView: View {
                     .padding(.vertical, 4)
                 }
 
-                if let message = accountController.entitlementError
+                if let message = (accountController.isUsingCachedEntitlement ? nil : accountController.entitlementError)
                     ?? accountController.settingsSyncError
                     ?? accountController.errorMessage {
                     Label(message, systemImage: "exclamationmark.triangle.fill")

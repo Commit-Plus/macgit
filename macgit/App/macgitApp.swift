@@ -39,6 +39,7 @@ struct macgitApp: App {
                 entitlementProvider: firebaseStatus == .configured
                     ? FirestoreEntitlementStore()
                     : nil,
+                entitlementCache: UserDefaultsEntitlementCache(),
                 appState: appState,
                 settingsStore: firebaseStatus == .configured
                     ? FirestoreSettingsStore()
