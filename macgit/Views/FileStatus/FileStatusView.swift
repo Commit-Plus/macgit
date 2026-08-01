@@ -28,6 +28,7 @@ struct FileStatusView: View {
     var syncState: SyncState? = nil
     var undoManager: GitUndoManager? = nil
     var onRequestApplyStash: (String) -> Void = { _ in }
+    var onRequestPushAfterCommit: (String, String) async throws -> Void
 
     @ObservedObject private var integrationSettings = IntegrationSettingsStore.shared
     @State private var gitStatus: GitStatus = GitStatus(staged: [], unstaged: [], untracked: [])
@@ -957,8 +958,7 @@ struct FileStatusView: View {
             }
             if pushAfterCommit {
                 let branch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
-                let options = GitStatusService.PushOptions(remote: "origin", branches: [branch], pushTags: false)
-                _ = try await GitStatusService.shared.push(options: options, in: repositoryURL)
+                try await onRequestPushAfterCommit("origin", branch)
             }
             await MainActor.run {
                 commitMessage = ""

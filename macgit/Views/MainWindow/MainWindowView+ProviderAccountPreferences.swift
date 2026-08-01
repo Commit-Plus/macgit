@@ -105,6 +105,22 @@ extension MainWindowView {
         continuation?.resume(returning: accountID)
     }
 
+    func pushAfterCommit(remote: String, branch: String) async throws {
+        guard let credentialResolver = await credentialResolverForRemoteOperation(remotes: [remote]) else {
+            return
+        }
+        let options = GitStatusService.PushOptions(
+            remote: remote,
+            branches: [branch],
+            pushTags: false
+        )
+        _ = try await GitStatusService.shared.push(
+            options: options,
+            in: repositoryURL,
+            credentialResolver: credentialResolver
+        )
+    }
+
     func trackedRemote(for branch: String) async -> String? {
         guard let upstream = await GitStatusService.shared.upstreamBranch(for: branch, in: repositoryURL) else {
             return nil

@@ -58,10 +58,11 @@ enum GitProviderAccountsPresentationPolicy {
         isSignedIn: Bool,
         account: GitProviderAccount?
     ) -> [GitProviderAccountPresentationAction] {
-        guard isSignedIn else { return [.signIn] }
-        guard let account else { return [.add] }
+        guard account != nil else {
+            return isSignedIn ? [.add] : [.add, .signIn]
+        }
 
-        return [.edit, .delete]
+        return isSignedIn ? [.edit, .delete] : [.edit, .delete, .signIn]
     }
 
     static func normalizedSelfHostedGitLabHost(from value: String) -> GitProviderHost? {

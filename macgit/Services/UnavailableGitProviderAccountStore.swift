@@ -19,7 +19,7 @@
 import Foundation
 
 @MainActor
-struct UnavailableGitProviderAccountStore: GitProviderAccountStore {
+struct UnavailableGitProviderAccountStore: GitProviderAccountCloudStore {
     func accounts(forMacgitUID uid: String) async throws -> [GitProviderAccount] {
         []
     }

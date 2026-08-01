@@ -29,51 +29,53 @@ struct GitProviderAccountsSection: View {
     @State private var editingAccount: GitProviderAccount?
 
     var body: some View {
-        VStack(alignment: isSignedIn ? .leading : .center, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
             if showsTitle {
                 Text("Git Provider Accounts")
                     .font(.headline)
                     .bold()
-                    .frame(maxWidth: .infinity, alignment: isSignedIn ? .leading : .center)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            if isSignedIn {
-                if controller.accounts.isEmpty {
-                    Text("Connect a Git provider account to use private repositories and pull request workflows.")
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    VStack(spacing: 10) {
-                        ForEach(controller.accounts) { account in
-                            GitProviderAccountRow(
-                                account: account,
-                                edit: { editingAccount = account },
-                                delete: { Task { await controller.disconnect(account) } }
-                            )
-                        }
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Button("Add", systemImage: "plus") {
-                        showingAddAccountSheet = true
-                    }
-                    .disabled(controller.isLoading)
-                }
-
-                if let authorization = controller.pendingDeviceAuthorization {
-                    GitProviderDeviceAuthorizationView(
-                        authorization: authorization,
-                        openVerification: controller.openPendingDeviceVerification,
-                        copyToPasteboard: copyToPasteboard,
-                        cancel: cancelConnection
-                    )
-                }
+            if controller.accounts.isEmpty {
+                Text("Connect a Git provider account to use private repositories and pull request workflows.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
-                Button("Sign in to Commit+ to connect a Git provider account", systemImage: "person.crop.circle.badge.exclamationmark", action: onSignIn)
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.roundedRectangle(radius: 12))
-                    .controlSize(.large)
+                VStack(spacing: 10) {
+                    ForEach(controller.accounts) { account in
+                        GitProviderAccountRow(
+                            account: account,
+                            edit: { editingAccount = account },
+                            delete: { Task { await controller.disconnect(account) } }
+                        )
+                    }
+                }
+            }
+
+            Button("Add", systemImage: "plus") {
+                showingAddAccountSheet = true
+            }
+            .disabled(controller.isLoading)
+
+            if !isSignedIn {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Connections are stored on this Mac.")
+                        .foregroundStyle(.secondary)
+
+                    Button("Sign in to sync", action: onSignIn)
+                        .buttonStyle(.link)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let authorization = controller.pendingDeviceAuthorization {
+                GitProviderDeviceAuthorizationView(
+                    authorization: authorization,
+                    openVerification: controller.openPendingDeviceVerification,
+                    copyToPasteboard: copyToPasteboard,
+                    cancel: cancelConnection
+                )
             }
 
             if controller.isLoading {
@@ -91,7 +93,7 @@ struct GitProviderAccountsSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .frame(maxWidth: .infinity, alignment: isSignedIn ? .leading : .center)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onDisappear(perform: cancelConnection)
         .sheet(isPresented: $showingAddAccountSheet) {
             GitProviderAddAccountSheet(controller: controller)

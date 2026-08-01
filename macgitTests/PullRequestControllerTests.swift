@@ -852,22 +852,27 @@ final class PullRequestControllerTests: XCTestCase {
 
 @MainActor
 private final class FakePullRequestAccountStore: GitProviderAccountStore {
+    let accountOwnerID: String
     private var accounts: [GitProviderAccount]
 
     init(accounts: [GitProviderAccount]) {
         self.accounts = accounts
+        accountOwnerID = accounts.first?.macgitUID ?? "local-owner"
     }
 
-    func accounts(forMacgitUID uid: String) async throws -> [GitProviderAccount] {
-        accounts.filter { $0.macgitUID == uid }
+    func accounts() async throws -> [GitProviderAccount] {
+        accounts
+    }
+
+    func updateCloudAccount(uid: String?) async throws {
     }
 
     func save(_ account: GitProviderAccount) async throws {
         accounts.append(account)
     }
 
-    func delete(accountID: String, macgitUID: String) async throws {
-        accounts.removeAll { $0.id == accountID && $0.macgitUID == macgitUID }
+    func delete(accountID: String) async throws {
+        accounts.removeAll { $0.id == accountID }
     }
 }
 

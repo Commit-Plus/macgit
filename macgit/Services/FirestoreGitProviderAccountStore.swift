@@ -107,7 +107,7 @@ enum GitProviderAccountDocument {
 }
 
 @MainActor
-final class FirestoreGitProviderAccountStore: GitProviderAccountStore {
+final class FirestoreGitProviderAccountStore: GitProviderAccountCloudStore {
     private let firestore: Firestore
 
     init(firestore: Firestore = Firestore.firestore()) {
