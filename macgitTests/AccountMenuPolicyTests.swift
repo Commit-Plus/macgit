@@ -37,7 +37,7 @@ final class AccountMenuPolicyTests: XCTestCase {
     func testFreeActionsUseApprovedOrder() {
         XCTAssertEqual(
             AccountMenuPolicy.actions(account: account, entitlement: .free),
-            [.manageAccount, .connections, .syncStatus, .upgrade, .signOut]
+            [.manageAccount, .manageAccountAndSubscription, .connections, .syncStatus, .signOut]
         )
     }
 
@@ -50,7 +50,7 @@ final class AccountMenuPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             AccountMenuPolicy.actions(account: account, entitlement: entitlement),
-            [.manageAccount, .connections, .syncStatus, .manageSubscriptionComingLater, .signOut]
+            [.manageAccount, .manageAccountAndSubscription, .connections, .syncStatus, .signOut]
         )
     }
 
@@ -63,7 +63,7 @@ final class AccountMenuPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             AccountMenuPolicy.actions(account: account, entitlement: entitlement),
-            [.manageAccount, .connections, .syncStatus, .manageSubscriptionComingLater, .signOut]
+            [.manageAccount, .manageAccountAndSubscription, .connections, .syncStatus, .signOut]
         )
     }
 

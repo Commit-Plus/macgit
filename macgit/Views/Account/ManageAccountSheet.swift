@@ -20,11 +20,10 @@ import SwiftUI
 
 struct ManageAccountSheet: View {
     @ObservedObject var controller: AccountSessionController
-    @State private var confirmsDeletion = false
 
     var body: some View {
         VStack(alignment: .leading) {
-            Text("Manage Account")
+            Text("Profile")
                 .font(.title2)
                 .bold()
 
@@ -68,26 +67,30 @@ struct ManageAccountSheet: View {
                 }
                 .formStyle(.grouped)
 
-                Button(billingActionTitle) {}
-                    .disabled(true)
-
-                Divider()
-
-                HStack(spacing: 10) {
-                    Button("Sign Out", action: controller.signOut)
-
-                    if controller.requiresRecentAuthentication {
-                        Button("Sign In Again...", action: controller.presentReauthentication)
+                HStack {
+                    Button(
+                        "Manage Account & Subscription",
+                        systemImage: "arrow.up.right.square"
+                    ) {
+                        Task { await controller.openAccountOnWeb() }
                     }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(controller.isOpeningAccountOnWeb)
 
-                    Button("Delete Account...", role: .destructive) {
-                        confirmsDeletion = true
-                    }
-                    .disabled(controller.isDeletingAccount)
+                    Spacer()
+
+                    Button(
+                        "Sign Out",
+                        systemImage: "rectangle.portrait.and.arrow.right",
+                        role: .destructive,
+                        action: controller.signOut
+                    )
+                    .buttonStyle(.bordered)
+                    .tint(.red)
                 }
 
-                if controller.isDeletingAccount {
-                    ProgressView("Deleting account...")
+                if controller.isOpeningAccountOnWeb {
+                    ProgressView("Opening Commit+ on the web...")
                         .controlSize(.small)
                 }
 
@@ -118,20 +121,6 @@ struct ManageAccountSheet: View {
         }
         .padding()
         .frame(minWidth: 440, minHeight: 360)
-        .alert("Delete Commit+ Account?", isPresented: $confirmsDeletion) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete Account", role: .destructive) {
-                Task { await controller.deleteAccount() }
-            }
-        } message: {
-            Text("This removes your Commit+ cloud settings, entitlement record, and account. Local repositories and Git data will not be changed.")
-        }
-    }
-
-    private var billingActionTitle: String {
-        controller.entitlement.hasProAccess
-            ? "Manage Subscription · Coming later"
-            : "Upgrade to Pro · Coming later"
     }
 
     @ViewBuilder

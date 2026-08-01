@@ -40,6 +40,10 @@ struct macgitApp: App {
                     ? FirestoreEntitlementStore()
                     : nil,
                 entitlementCache: UserDefaultsEntitlementCache(),
+                webAccountSessionProvider: firebaseStatus == .configured
+                    ? FirebaseWebAccountSessionService()
+                    : nil,
+                openWebURL: NSWorkspace.shared.open,
                 appState: appState,
                 settingsStore: firebaseStatus == .configured
                     ? FirestoreSettingsStore()

@@ -1,6 +1,26 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AccountDeletionDependencies, deleteAccountData } from "./index.js";
+import {
+  AccountDeletionDependencies,
+  createWebSignInTokenForUser,
+  deleteAccountData,
+  WebSignInTokenDependencies,
+} from "./index.js";
+
+test("web sign-in token is created for the authenticated Firebase user", async () => {
+  const requestedUIDs: string[] = [];
+  const dependencies: WebSignInTokenDependencies = {
+    async createCustomToken(uid) {
+      requestedUIDs.push(uid);
+      return "custom-token";
+    },
+  };
+
+  const token = await createWebSignInTokenForUser("user-a", dependencies);
+
+  assert.equal(token, "custom-token");
+  assert.deepEqual(requestedUIDs, ["user-a"]);
+});
 
 test("account deletion removes owned documents and auth user", async () => {
   const deletedDocuments: string[] = [];

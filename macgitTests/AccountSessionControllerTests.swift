@@ -135,6 +135,51 @@ final class AccountSessionControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .authenticated(account))
         XCTAssertTrue(controller.requiresRecentAuthentication)
     }
+
+    func testOpenAccountOnWebUsesAuthenticatedProfileURL() async throws {
+        let account = AccountSnapshot(
+            uid: "u1",
+            email: "a@example.com",
+            displayName: nil,
+            providerIDs: ["password"]
+        )
+        let profileURL = try XCTUnwrap(
+            URL(string: "http://localhost:3000/session#token=test-token")
+        )
+        let provider = FakeWebAccountSessionProvider(profileURL: profileURL)
+        var openedURLs: [URL] = []
+        let controller = AccountSessionController(
+            auth: FakeAccountAuth(current: account),
+            bootstrapStatus: .configured,
+            webAccountSessionProvider: provider,
+            openWebURL: { url in
+                openedURLs.append(url)
+                return true
+            }
+        )
+
+        await controller.openAccountOnWeb()
+
+        XCTAssertEqual(provider.requestCount, 1)
+        XCTAssertEqual(openedURLs, [profileURL])
+        XCTAssertFalse(controller.isOpeningAccountOnWeb)
+        XCTAssertNil(controller.errorMessage)
+    }
+}
+
+@MainActor
+private final class FakeWebAccountSessionProvider: WebAccountSessionProviding {
+    let profileURL: URL
+    private(set) var requestCount = 0
+
+    init(profileURL: URL) {
+        self.profileURL = profileURL
+    }
+
+    func profileSignInURL() async throws -> URL {
+        requestCount += 1
+        return profileURL
+    }
 }
 
 private final class FakeAccountAuth: AccountAuthenticating {

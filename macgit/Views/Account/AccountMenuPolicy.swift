@@ -20,11 +20,11 @@ enum AccountMenuAction: Hashable {
     case signIn
     case createAccount
     case manageAccount
+    case manageAccountAndSubscription
     case connections
     case syncLocked
     case syncStatus
     case upgrade
-    case manageSubscriptionComingLater
     case signOut
 }
 
@@ -37,9 +37,13 @@ enum AccountMenuPolicy {
             return [.signIn, .createAccount, .connections, .syncLocked, .upgrade]
         }
 
-        return entitlement.plan == .pro
-            ? [.manageAccount, .connections, .syncStatus, .manageSubscriptionComingLater, .signOut]
-            : [.manageAccount, .connections, .syncStatus, .upgrade, .signOut]
+        return [
+            .manageAccount,
+            .manageAccountAndSubscription,
+            .connections,
+            .syncStatus,
+            .signOut,
+        ]
     }
 }
 

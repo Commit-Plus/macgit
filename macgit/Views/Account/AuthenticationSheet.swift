@@ -100,14 +100,14 @@ struct AuthenticationSheet: View {
                 .controlSize(.large)
                 .disabled(controller.isLoading || controller.pendingLinkEmail != nil)
 
-                Button(action: {}) {
-                    Label("Sign in with Apple · Coming later", systemImage: "apple.logo")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
-                .controlSize(.large)
-                .disabled(true)
+                // Button(action: {}) {
+                //     Label("Sign in with Apple · Coming later", systemImage: "apple.logo")
+                //         .frame(maxWidth: .infinity)
+                // }
+                // .buttonStyle(.glass)
+                // .buttonBorderShape(.roundedRectangle(radius: 12))
+                // .controlSize(.large)
+                // .disabled(true)
             }
             .frame(maxWidth: 320)
 

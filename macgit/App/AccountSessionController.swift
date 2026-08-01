@@ -28,6 +28,7 @@ final class AccountSessionController: ObservableObject {
     @Published private(set) var pendingLinkEmail: String?
     @Published private(set) var isDeletingAccount = false
     @Published private(set) var requiresRecentAuthentication = false
+    @Published private(set) var isOpeningAccountOnWeb = false
     @Published private(set) var entitlement: AccountEntitlement = .free
     @Published private(set) var entitlementError: String?
     @Published private(set) var entitlementLastUpdatedAt: Date?
@@ -39,6 +40,8 @@ final class AccountSessionController: ObservableObject {
     private let auth: AccountAuthenticating
     private let entitlementProvider: EntitlementProviding?
     private let entitlementCache: EntitlementCaching?
+    private let webAccountSessionProvider: WebAccountSessionProviding?
+    private let openWebURL: (URL) -> Bool
     private let appState: AppState
     private let settingsSyncService: SettingsSyncService?
     private var entitlementObservation: ObservationToken?
@@ -101,12 +104,16 @@ final class AccountSessionController: ObservableObject {
         bootstrapStatus: FirebaseBootstrapStatus,
         entitlementProvider: EntitlementProviding? = nil,
         entitlementCache: EntitlementCaching? = nil,
+        webAccountSessionProvider: WebAccountSessionProviding? = nil,
+        openWebURL: @escaping (URL) -> Bool = { _ in false },
         appState: AppState? = nil,
         settingsStore: CloudSettingsStore? = nil
     ) {
         self.auth = auth
         self.entitlementProvider = entitlementProvider
         self.entitlementCache = entitlementCache
+        self.webAccountSessionProvider = webAccountSessionProvider
+        self.openWebURL = openWebURL
         let resolvedAppState = appState ?? AppState.shared
         self.appState = resolvedAppState
         if let settingsStore {
@@ -233,6 +240,22 @@ final class AccountSessionController: ObservableObject {
 
     func presentReauthentication() {
         presentAuthentication(.signIn)
+    }
+
+    func openAccountOnWeb() async {
+        guard account != nil, let webAccountSessionProvider else { return }
+        isOpeningAccountOnWeb = true
+        errorMessage = nil
+        defer { isOpeningAccountOnWeb = false }
+
+        do {
+            let url = try await webAccountSessionProvider.profileSignInURL()
+            guard openWebURL(url) else {
+                throw WebAccountSessionError.unableToOpenBrowser
+            }
+        } catch {
+            errorMessage = Self.message(for: error)
+        }
     }
 
     private func authenticate(

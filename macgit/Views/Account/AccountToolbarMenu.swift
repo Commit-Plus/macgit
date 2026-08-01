@@ -45,7 +45,7 @@ struct AccountMenuContent: View {
         Text(summary)
 
         ForEach(actions, id: \.self) { action in
-            if action == .upgrade || action == .manageSubscriptionComingLater || action == .signOut {
+            if action == .upgrade || action == .signOut {
                 Divider()
             }
 
@@ -57,7 +57,12 @@ struct AccountMenuContent: View {
                 Button("Create Account...", action: presentCreateAccount)
                     .disabled(!controller.cloudFeaturesAvailable)
             case .manageAccount:
-                Button("Manage Account...", action: controller.presentManageAccount)
+                Button("Profile...", action: controller.presentManageAccount)
+            case .manageAccountAndSubscription:
+                Button("Manage Account & Subscription") {
+                    Task { await controller.openAccountOnWeb() }
+                }
+                .disabled(controller.isOpeningAccountOnWeb)
             case .connections:
                 Button("Connections...", action: controller.presentConnections)
             case .syncLocked:
@@ -79,9 +84,6 @@ struct AccountMenuContent: View {
                     Button("Upgrade to Pro · Coming later") {}
                         .disabled(true)
                 }
-            case .manageSubscriptionComingLater:
-                Button("Manage Subscription · Coming later") {}
-                    .disabled(true)
             case .signOut:
                 Button("Sign Out", action: controller.signOut)
             }

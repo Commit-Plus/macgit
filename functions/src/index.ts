@@ -5,6 +5,32 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 initializeApp();
 
+export interface WebSignInTokenDependencies {
+  createCustomToken(uid: string): Promise<string>;
+}
+
+function webSignInTokenDependencies(): WebSignInTokenDependencies {
+  return {
+    createCustomToken: (uid) => getAuth().createCustomToken(uid),
+  };
+}
+
+export async function createWebSignInTokenForUser(
+  uid: string,
+  dependencies: WebSignInTokenDependencies = webSignInTokenDependencies(),
+): Promise<string> {
+  return dependencies.createCustomToken(uid);
+}
+
+export const createWebSignInToken = onCall({ invoker: "public" }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "Sign in before opening Commit+ on the web.");
+  }
+
+  return { customToken: await createWebSignInTokenForUser(uid) };
+});
+
 export interface AccountDeletionDependencies {
   deleteDocument(path: string): Promise<void>;
   deleteUser(uid: string): Promise<void>;

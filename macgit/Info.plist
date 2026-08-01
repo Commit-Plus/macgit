@@ -41,6 +41,8 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CommitPlusWebBaseURL</key>
+	<string>http://localhost:3000</string>
 	<key>GitHubOAuthClientID</key>
 	<string>$(GITHUB_OAUTH_CLIENT_ID)</string>
 	<key>GitLabOAuthClientID</key>
