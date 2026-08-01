@@ -54,6 +54,17 @@ final class FirestoreEntitlementStore: EntitlementProviding {
         self.firestore = firestore
     }
 
+    func load(uid: String) async throws -> AccountEntitlement {
+        let snapshot = try await firestore.collection("entitlements").document(uid)
+            .getDocument(source: .server)
+        return EntitlementDocumentDecoder.decode(
+            snapshot.data(),
+            onDiagnostic: { diagnostic in
+                NSLog("Commit+ entitlement: %@", diagnostic)
+            }
+        )
+    }
+
     func observe(
         uid: String,
         onChange: @escaping (AccountEntitlement) -> Void,

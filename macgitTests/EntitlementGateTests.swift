@@ -134,6 +134,32 @@ final class EntitlementGateTests: XCTestCase {
         XCTAssertNotNil(controller.entitlementLastUpdatedAt)
     }
 
+    func testRefreshProfileReloadsAccountAndEntitlementFromServer() async {
+        let refreshedAccount = AccountSnapshot(
+            uid: "u1",
+            email: "a@example.com",
+            displayName: "Updated Name",
+            providerIDs: ["password"]
+        )
+        let auth = EntitlementFakeAuth(current: account)
+        auth.refreshedAccount = refreshedAccount
+        let provider = FakeEntitlementProvider()
+        provider.loadResult = .pro
+        let controller = AccountSessionController(
+            auth: auth,
+            bootstrapStatus: .configured,
+            entitlementProvider: provider
+        )
+
+        await controller.refreshProfile()
+
+        XCTAssertEqual(controller.account, refreshedAccount)
+        XCTAssertEqual(provider.loadedUIDs, ["u1"])
+        XCTAssertEqual(controller.entitlement, .pro)
+        XCTAssertFalse(controller.isRefreshingProfile)
+        XCTAssertNil(controller.errorMessage)
+    }
+
     func testSuccessfulAccountDeletionRemovesCachedEntitlement() async {
         let provider = FakeEntitlementProvider()
         let cache = FakeEntitlementCache(
@@ -170,8 +196,15 @@ private extension AccountEntitlement {
 private final class FakeEntitlementProvider: EntitlementProviding {
     let token = FakeObservationToken()
     var observedUIDs: [String] = []
+    var loadedUIDs: [String] = []
+    var loadResult: AccountEntitlement = .free
     private var onChange: ((AccountEntitlement) -> Void)?
     private var onError: ((String) -> Void)?
+
+    func load(uid: String) async throws -> AccountEntitlement {
+        loadedUIDs.append(uid)
+        return loadResult
+    }
 
     func observe(
         uid: String,
@@ -222,10 +255,19 @@ private final class FakeEntitlementCache: EntitlementCaching {
 private final class EntitlementFakeAuth: AccountAuthenticating {
     var currentAccount: AccountSnapshot?
     private let signInResult: AccountSnapshot?
+    var refreshedAccount: AccountSnapshot?
 
     init(current: AccountSnapshot? = nil, signInResult: AccountSnapshot? = nil) {
         currentAccount = current
         self.signInResult = signInResult
+    }
+
+    func refreshCurrentAccount() async throws -> AccountSnapshot {
+        guard let refreshedAccount = refreshedAccount ?? currentAccount else {
+            throw AccountAuthError.invalidCredentials
+        }
+        currentAccount = refreshedAccount
+        return refreshedAccount
     }
 
     func signIn(email: String, password: String) async throws -> AccountSnapshot {

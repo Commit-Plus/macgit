@@ -30,6 +30,24 @@ final class FirebaseAuthService: AccountAuthenticating {
         Auth.auth().currentUser.map(Self.snapshot)
     }
 
+    func refreshCurrentAccount() async throws -> AccountSnapshot {
+        guard let user = Auth.auth().currentUser else {
+            throw AccountAuthError.message("Sign in before refreshing your profile.")
+        }
+
+        do {
+            try await user.reload()
+            guard let refreshedUser = Auth.auth().currentUser else {
+                throw AccountAuthError.message("Your Commit+ session is no longer available.")
+            }
+            return Self.snapshot(refreshedUser)
+        } catch let error as AccountAuthError {
+            throw error
+        } catch {
+            throw map(error)
+        }
+    }
+
     func signIn(email: String, password: String) async throws -> AccountSnapshot {
         do {
             let result = try await Auth.auth().signIn(withEmail: email, password: password)

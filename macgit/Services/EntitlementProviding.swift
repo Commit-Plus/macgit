@@ -24,6 +24,8 @@ protocol ObservationToken: AnyObject {
 
 @MainActor
 protocol EntitlementProviding {
+    func load(uid: String) async throws -> AccountEntitlement
+
     func observe(
         uid: String,
         onChange: @escaping (AccountEntitlement) -> Void,

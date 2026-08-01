@@ -55,6 +55,18 @@ struct ManageAccountSheet: View {
                     LabeledContent("Git Provider Accounts") {
                         Button("Manage Connections...", action: controller.presentConnections)
                     }
+                    HStack {
+                        Spacer()
+
+                        Button(
+                            "Sign Out",
+                            systemImage: "rectangle.portrait.and.arrow.right",
+                            role: .destructive,
+                            action: controller.signOut
+                        )
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                    }
                     if controller.isUsingCachedEntitlement,
                        let updatedAt = controller.entitlementLastUpdatedAt {
                         LabeledContent("Cloud status") {
@@ -68,25 +80,27 @@ struct ManageAccountSheet: View {
                 .formStyle(.grouped)
 
                 HStack {
+                    Button("Refresh", systemImage: "arrow.clockwise") {
+                        Task { await controller.refreshProfile() }
+                    }
+                    .disabled(controller.account == nil || controller.isRefreshingProfile)
+                    .help("Reload profile and subscription information")
+
+                    if controller.isRefreshingProfile {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Refreshing profile")
+                    }
+
+                    Spacer()
+
                     Button(
                         "Manage Account & Subscription",
                         systemImage: "arrow.up.right.square"
                     ) {
                         Task { await controller.openAccountOnWeb() }
                     }
-                    .buttonStyle(.borderedProminent)
                     .disabled(controller.isOpeningAccountOnWeb)
-
-                    Spacer()
-
-                    Button(
-                        "Sign Out",
-                        systemImage: "rectangle.portrait.and.arrow.right",
-                        role: .destructive,
-                        action: controller.signOut
-                    )
-                    .buttonStyle(.bordered)
-                    .tint(.red)
                 }
 
                 if controller.isOpeningAccountOnWeb {
@@ -112,6 +126,8 @@ struct ManageAccountSheet: View {
                     description: Text("Sign in to manage your Commit+ account.")
                 )
             }
+
+            Spacer(minLength: 20)
 
             HStack {
                 Spacer()

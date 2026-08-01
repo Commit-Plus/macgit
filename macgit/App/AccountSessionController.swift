@@ -29,6 +29,7 @@ final class AccountSessionController: ObservableObject {
     @Published private(set) var isDeletingAccount = false
     @Published private(set) var requiresRecentAuthentication = false
     @Published private(set) var isOpeningAccountOnWeb = false
+    @Published private(set) var isRefreshingProfile = false
     @Published private(set) var entitlement: AccountEntitlement = .free
     @Published private(set) var entitlementError: String?
     @Published private(set) var entitlementLastUpdatedAt: Date?
@@ -258,6 +259,40 @@ final class AccountSessionController: ObservableObject {
         }
     }
 
+    func refreshProfile() async {
+        guard let currentAccount = account, !isRefreshingProfile else { return }
+        isRefreshingProfile = true
+        errorMessage = nil
+        entitlementError = nil
+        defer { isRefreshingProfile = false }
+
+        var refreshErrors: [String] = []
+
+        do {
+            let refreshedAccount = try await auth.refreshCurrentAccount()
+            guard account?.uid == currentAccount.uid,
+                  refreshedAccount.uid == currentAccount.uid else { return }
+            state = .authenticated(refreshedAccount)
+        } catch {
+            refreshErrors.append(Self.message(for: error))
+        }
+
+        if let entitlementProvider {
+            do {
+                let refreshedEntitlement = try await entitlementProvider.load(uid: currentAccount.uid)
+                guard account?.uid == currentAccount.uid else { return }
+                applyEntitlement(refreshedEntitlement, uid: currentAccount.uid)
+            } catch {
+                let message = Self.message(for: error)
+                entitlementError = message
+            }
+        }
+
+        if !refreshErrors.isEmpty {
+            errorMessage = refreshErrors.joined(separator: "\n")
+        }
+    }
+
     private func authenticate(
         operation: () async throws -> AccountSnapshot
     ) async {
@@ -302,17 +337,7 @@ final class AccountSessionController: ObservableObject {
         entitlementObservation = entitlementProvider.observe(
             uid: uid,
             onChange: { [weak self] entitlement in
-                guard self?.account?.uid == uid else { return }
-                self?.entitlement = entitlement
-                self?.entitlementError = nil
-                let updatedAt = Date.now
-                self?.entitlementLastUpdatedAt = updatedAt
-                self?.isUsingCachedEntitlement = false
-                self?.entitlementCache?.save(
-                    CachedAccountEntitlement(entitlement: entitlement, updatedAt: updatedAt),
-                    for: uid
-                )
-                self?.scheduleSettingsSyncEligibilityUpdate()
+                self?.applyEntitlement(entitlement, uid: uid)
             },
             onError: { [weak self] message in
                 guard self?.account?.uid == uid else { return }
@@ -321,6 +346,20 @@ final class AccountSessionController: ObservableObject {
                 self?.scheduleSettingsSyncEligibilityUpdate()
             }
         )
+    }
+
+    private func applyEntitlement(_ entitlement: AccountEntitlement, uid: String) {
+        guard account?.uid == uid else { return }
+        self.entitlement = entitlement
+        entitlementError = nil
+        let updatedAt = Date.now
+        entitlementLastUpdatedAt = updatedAt
+        isUsingCachedEntitlement = false
+        entitlementCache?.save(
+            CachedAccountEntitlement(entitlement: entitlement, updatedAt: updatedAt),
+            for: uid
+        )
+        scheduleSettingsSyncEligibilityUpdate()
     }
 
     private func stopEntitlementObservation() {

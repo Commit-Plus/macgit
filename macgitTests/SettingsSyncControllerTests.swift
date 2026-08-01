@@ -157,6 +157,8 @@ private extension AccountEntitlement {
 private final class ControllerFakeEntitlements: EntitlementProviding {
     private var onChange: ((AccountEntitlement) -> Void)?
 
+    func load(uid: String) async throws -> AccountEntitlement { .free }
+
     func observe(
         uid: String,
         onChange: @escaping (AccountEntitlement) -> Void,
