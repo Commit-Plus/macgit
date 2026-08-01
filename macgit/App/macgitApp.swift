@@ -25,6 +25,7 @@ struct macgitApp: App {
     @StateObject private var appUpdateController = AppUpdateController(updater: SparkleAppUpdater())
     @StateObject private var accountController: AccountSessionController
     @StateObject private var providerAccountController: GitProviderAccountController
+    @StateObject private var aiProviderController: AIProviderController
     @StateObject private var repositoryBookmarkController: RepositoryBookmarkController
     @State private var showingAppSettings = false
 
@@ -67,6 +68,7 @@ struct macgitApp: App {
                 openURL: NSWorkspace.shared.open
             )
         )
+        _aiProviderController = StateObject(wrappedValue: AIProviderController())
         _repositoryBookmarkController = StateObject(
             wrappedValue: RepositoryBookmarkController(
                 cloudStore: firebaseStatus == .configured
@@ -80,7 +82,8 @@ struct macgitApp: App {
         WindowGroup(id: "main") {
             ContentView(
                 accountController: accountController,
-                providerAccountController: providerAccountController
+                providerAccountController: providerAccountController,
+                aiProviderController: aiProviderController
             )
                 .environmentObject(appState)
                 .environmentObject(appUpdateController)
@@ -102,6 +105,7 @@ struct macgitApp: App {
                         appState: appState,
                         accountController: accountController,
                         providerAccountController: providerAccountController,
+                        aiProviderController: aiProviderController,
                         appUpdateController: appUpdateController
                     )
                         .preferredColorScheme(appState.appearance.colorScheme)

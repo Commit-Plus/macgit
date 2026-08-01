@@ -25,6 +25,7 @@ import UniformTypeIdentifiers
 
 struct FileStatusView: View {
     let repositoryURL: URL
+    @ObservedObject var aiProviderController: AIProviderController
     var syncState: SyncState? = nil
     var undoManager: GitUndoManager? = nil
     var onRequestApplyStash: (String) -> Void = { _ in }
@@ -881,21 +882,55 @@ struct FileStatusView: View {
                     }
                 }
                 .buttonStyle(GlassButtonStyle(tint: .secondary, fontSize: 10))
+
+                AIProviderMenu(controller: aiProviderController)
             }
 
             // Message editor
-            TextEditor(text: $commitMessage)
-                .focused($isCommitMessageFocused)
-                .font(.system(size: 13))
-                .lineSpacing(2)
-                .frame(minHeight: 48, maxHeight: 100)
-                .padding(6)
-                .background(.background)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(.separator.opacity(0.45), lineWidth: 0.5)
-                )
+            ZStack(alignment: .topTrailing) {
+                TextEditor(text: $commitMessage)
+                    .focused($isCommitMessageFocused)
+                    .font(.system(size: 13))
+                    .lineSpacing(2)
+                    .scrollContentBackground(.hidden)
+                    .scrollIndicators(.hidden)
+                    .padding(6)
+                    .padding(.trailing, 30)
+                    .disabled(aiProviderController.isGenerating)
+
+                Button {
+                    Task {
+                        await generateCommitMessage()
+                    }
+                } label: {
+                    ZStack {
+                        Label("Generate commit message", systemImage: "sparkles")
+                            .labelStyle(.iconOnly)
+                            .opacity(aiProviderController.isGenerating ? 0 : 1)
+
+                        if aiProviderController.isGenerating {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .frame(width: 14, height: 14)
+                }
+                .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 11))
+                .disabled(!canGenerateCommitMessage)
+                .help(generateCommitMessageHelp)
+                .accessibilityLabel(aiProviderController.isGenerating
+                    ? "Generating commit message"
+                    : "Generate commit message")
+                .padding(8)
+            }
+            .frame(minHeight: 48, maxHeight: 100)
+            .background(.background)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(.separator.opacity(0.45), lineWidth: 0.5)
+            )
 
             // Bottom row: toggles + buttons
             HStack(spacing: 12) {
@@ -927,6 +962,39 @@ struct FileStatusView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+        .task {
+            await aiProviderController.refreshAvailability()
+        }
+    }
+
+    private var canGenerateCommitMessage: Bool {
+        !gitStatus.staged.isEmpty
+            && !aiProviderController.isGenerating
+    }
+
+    private var generateCommitMessageHelp: String {
+        if gitStatus.staged.isEmpty {
+            return "Stage changes before generating a commit message."
+        }
+        if !aiProviderController.selectedProviderAvailability.isAvailable {
+            return aiProviderController.selectedProviderAvailability.detail
+        }
+        return "Generate an editable message from staged changes."
+    }
+
+    private func generateCommitMessage() async {
+        do {
+            let generated = try await aiProviderController.generateCommitMessage(
+                repositoryURL: repositoryURL,
+                branchName: currentBranch,
+                recentCommitSubjects: recentCommits.map(\.message)
+            )
+            commitMessage = generated.text
+            isCommitMessageFocused = true
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
     }
 
     private func performCommit() async {

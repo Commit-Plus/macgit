@@ -81,6 +81,7 @@ struct TagStartPoint: Equatable {
 struct MainWindowView: View {
     let repositoryURL: URL
     @ObservedObject var providerAccountController: GitProviderAccountController
+    @ObservedObject var aiProviderController: AIProviderController
     let onOpenConnections: () -> Void
     @EnvironmentObject var appState: AppState
     @Environment(\.openWindow) private var openWindow
@@ -147,11 +148,13 @@ struct MainWindowView: View {
     init(
         repositoryURL: URL,
         providerAccountController: GitProviderAccountController,
+        aiProviderController: AIProviderController,
         onOpenConnections: @escaping () -> Void = {},
         operationProgress: RepositoryOperationProgress
     ) {
         self.repositoryURL = repositoryURL
         self.providerAccountController = providerAccountController
+        self.aiProviderController = aiProviderController
         self.onOpenConnections = onOpenConnections
         self.operationProgress = operationProgress
         _pullRequestController = StateObject(wrappedValue: PullRequestController(
@@ -845,6 +848,7 @@ struct MainWindowView: View {
             case .item(.fileStatus):
                 FileStatusView(
                     repositoryURL: repositoryURL,
+                    aiProviderController: aiProviderController,
                     syncState: syncState,
                     undoManager: undoManager,
                     onRequestApplyStash: { ref in

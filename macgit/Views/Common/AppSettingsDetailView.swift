@@ -22,6 +22,7 @@ struct AppSettingsDetailView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var accountController: AccountSessionController
     @ObservedObject var providerAccountController: GitProviderAccountController
+    @ObservedObject var aiProviderController: AIProviderController
     @ObservedObject var appUpdateController: AppUpdateController
 
     var body: some View {
@@ -39,6 +40,8 @@ struct AppSettingsDetailView: View {
             )
         case .integrations:
             IntegrationsSettingsView(appState: appState)
+        case .aiProviders:
+            AIProvidersSettingsView(controller: aiProviderController)
         case .update:
             UpdateSettingsView(updateController: appUpdateController)
         case .advanced:

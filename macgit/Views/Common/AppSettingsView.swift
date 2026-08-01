@@ -22,6 +22,7 @@ struct AppSettingsView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var accountController: AccountSessionController
     @ObservedObject var providerAccountController: GitProviderAccountController
+    @ObservedObject var aiProviderController: AIProviderController
     @ObservedObject var appUpdateController: AppUpdateController
     @State private var selectedSection: AppSettingsSection = .general
 
@@ -40,6 +41,7 @@ struct AppSettingsView: View {
                     appState: appState,
                     accountController: accountController,
                     providerAccountController: providerAccountController,
+                    aiProviderController: aiProviderController,
                     appUpdateController: appUpdateController
                 )
 

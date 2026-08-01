@@ -1,0 +1,199 @@
+//
+//  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
+//  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
+//
+//  This program is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Affero General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  This program is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU Affero General Public License for more details.
+//
+//  You should have received a copy of the GNU Affero General Public License
+//  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+import XCTest
+@testable import macgit
+
+final class AICommitMessageTests: XCTestCase {
+    func testContextBuilderBoundsLargePatch() {
+        let patch = String(repeating: "+let generated = true\n", count: 500)
+
+        let result = CommitMessageContextBuilder.build(
+            nameStatus: "M\tmacgit/App.swift",
+            numberStats: "500\t0\tmacgit/App.swift",
+            patch: patch,
+            characterBudget: 2_500
+        )
+
+        XCTAssertTrue(result.isTruncated)
+        XCTAssertTrue(result.context.contains("M\tmacgit/App.swift"))
+        XCTAssertTrue(result.context.contains("[Additional staged diff omitted]"))
+        XCTAssertLessThan(result.context.count, patch.count)
+    }
+
+    func testContextBuilderPreservesSmallPatch() {
+        let result = CommitMessageContextBuilder.build(
+            nameStatus: "M\tREADME.md",
+            numberStats: "1\t1\tREADME.md",
+            patch: "@@ -1 +1 @@\n-old\n+new",
+            characterBudget: 7_000
+        )
+
+        XCTAssertFalse(result.isTruncated)
+        XCTAssertTrue(result.context.contains("-old\n+new"))
+    }
+
+    func testConventionalFormatterAddsTypeAndDropsDuplicateBody() throws {
+        let result = try ConventionalCommitMessageFormatter.format(
+            type: "feat",
+            subject: "Add pricing page and plan comparison.",
+            body: "Add pricing page and plan comparison"
+        )
+
+        XCTAssertEqual(result.subject, "feat: Add pricing page and plan comparison")
+        XCTAssertNil(result.body)
+        XCTAssertEqual(result.text, "feat: Add pricing page and plan comparison")
+    }
+
+    func testConventionalFormatterAvoidsDuplicateTypeAndKeepsDistinctBody() throws {
+        let result = try ConventionalCommitMessageFormatter.format(
+            type: "fix",
+            subject: "feat(pricing): Replace pricing for Pro plan",
+            body: "Use the annual Pro amount in the plan card and comparison table."
+        )
+
+        XCTAssertEqual(result.subject, "fix: Replace pricing for Pro plan")
+        XCTAssertEqual(
+            result.body,
+            "Use the annual Pro amount in the plan card and comparison table."
+        )
+    }
+
+    @MainActor
+    func testLiveRegistryKeepsCloudProvidersAsUnselectablePlaceholders() async {
+        let registry = AIProviderRegistry.live()
+        let ids = registry.descriptors.map(\.id)
+
+        XCTAssertEqual(ids, [.appleIntelligence, .openAI, .anthropic, .googleGemini])
+        for id in [AIProviderID.openAI, .anthropic, .googleGemini] {
+            let provider = registry.provider(for: id)
+            let availability = await provider?.availability()
+            XCTAssertEqual(availability, .comingSoon)
+            XCTAssertEqual(provider?.descriptor.isImplemented, false)
+        }
+    }
+
+    @MainActor
+    func testControllerDefaultsToAppleAndGeneratesThroughProviderSeam() async throws {
+        let defaults = makeDefaults()
+        let provider = StubCommitMessageProvider()
+        let loader = StubCommitChangeSnapshotLoader(currentFingerprint: "tree-1")
+        let controller = AIProviderController(
+            registry: AIProviderRegistry(providers: [provider]),
+            snapshotLoader: loader,
+            defaults: defaults
+        )
+
+        await controller.refreshAvailability()
+        let result = try await controller.generateCommitMessage(
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            branchName: "main",
+            recentCommitSubjects: ["Improve status loading"]
+        )
+
+        XCTAssertEqual(controller.selectedProviderID, .appleIntelligence)
+        XCTAssertEqual(controller.selectedProviderAvailability, .available)
+        XCTAssertEqual(result.text, "Generate commit message\n\nUse the provider seam")
+        let receivedCharacterBudget = await loader.receivedCharacterBudget()
+        XCTAssertEqual(receivedCharacterBudget, 7_000)
+    }
+
+    @MainActor
+    func testControllerRejectsResponseWhenStagedTreeChanges() async throws {
+        let defaults = makeDefaults()
+        let loader = StubCommitChangeSnapshotLoader(currentFingerprint: "tree-2")
+        let controller = AIProviderController(
+            registry: AIProviderRegistry(providers: [StubCommitMessageProvider()]),
+            snapshotLoader: loader,
+            defaults: defaults
+        )
+
+        do {
+            _ = try await controller.generateCommitMessage(
+                repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+                branchName: "main",
+                recentCommitSubjects: []
+            )
+            XCTFail("Expected staged-change validation to reject the response")
+        } catch let error as CommitMessageGenerationError {
+            XCTAssertEqual(error, .stagedChangesChanged)
+        }
+    }
+
+    @MainActor
+    private func makeDefaults() -> UserDefaults {
+        let suiteName = "AICommitMessageTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+}
+
+private struct StubCommitMessageProvider: CommitMessageAIProvider {
+    let descriptor = AIProviderDescriptor(
+        id: .appleIntelligence,
+        displayName: "Apple Intelligence",
+        systemImage: "sparkles",
+        detail: "On-device",
+        dataProcessing: .onDevice,
+        inputCharacterBudget: 7_000,
+        isImplemented: true
+    )
+
+    func availability() async -> AIProviderAvailability {
+        .available
+    }
+
+    func generateCommitMessage(
+        request: CommitMessageGenerationRequest
+    ) async throws -> GeneratedCommitMessage {
+        XCTAssertEqual(request.branchName, "main")
+        return GeneratedCommitMessage(
+            subject: "Generate commit message",
+            body: "Use the provider seam"
+        )
+    }
+}
+
+private actor StubCommitChangeSnapshotLoader: CommitChangeSnapshotLoading {
+    private let currentFingerprint: String
+    private var characterBudget: Int?
+
+    init(currentFingerprint: String) {
+        self.currentFingerprint = currentFingerprint
+    }
+
+    func stagedCommitChangeSnapshot(
+        in repositoryURL: URL,
+        characterBudget: Int
+    ) async throws -> CommitChangeSnapshot {
+        self.characterBudget = characterBudget
+        return CommitChangeSnapshot(
+            fingerprint: "tree-1",
+            context: "M\tmacgit/App.swift\n+new behavior",
+            isTruncated: false
+        )
+    }
+
+    func stagedChangesFingerprint(in repositoryURL: URL) async throws -> String {
+        currentFingerprint
+    }
+
+    func receivedCharacterBudget() -> Int? {
+        characterBudget
+    }
+}

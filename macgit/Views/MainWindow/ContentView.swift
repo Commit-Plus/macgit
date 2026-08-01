@@ -23,6 +23,7 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var accountController: AccountSessionController
     @ObservedObject var providerAccountController: GitProviderAccountController
+    @ObservedObject var aiProviderController: AIProviderController
 
     @State private var repositoryURL: URL?
     @State private var showingRepoPickerSheet = false
@@ -37,6 +38,7 @@ struct ContentView: View {
                 MainWindowView(
                     repositoryURL: url,
                     providerAccountController: providerAccountController,
+                    aiProviderController: aiProviderController,
                     onOpenConnections: accountController.presentConnections,
                     operationProgress: operationProgress
                 )
