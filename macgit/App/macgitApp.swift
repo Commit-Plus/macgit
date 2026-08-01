@@ -47,9 +47,10 @@ struct macgitApp: App {
         )
         let providerConfiguration = GitHubProviderAuthConfiguration.appConfiguration()
         let gitLabProviderConfiguration = GitLabProviderAuthConfiguration.appConfiguration()
-        let providerStore: GitProviderAccountStore = firebaseStatus == .configured
+        let providerCloudStore: GitProviderAccountCloudStore? = firebaseStatus == .configured
             ? FirestoreGitProviderAccountStore()
-            : UnavailableGitProviderAccountStore()
+            : nil
+        let providerStore = LocalFirstGitProviderAccountStore(cloudStore: providerCloudStore)
         _providerAccountController = StateObject(
             wrappedValue: GitProviderAccountController(
                 store: providerStore,

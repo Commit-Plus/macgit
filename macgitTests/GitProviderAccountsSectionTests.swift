@@ -20,10 +20,20 @@ import XCTest
 @testable import macgit
 
 final class GitProviderAccountsSectionTests: XCTestCase {
-    func testGuestCannotConnectProviderUntilSignedIn() {
+    func testGuestCanAddLocalProviderAndOptionallySignInToSync() {
         XCTAssertEqual(
             GitProviderAccountsPresentationPolicy.actions(isSignedIn: false, account: nil),
-            [.signIn]
+            [.add, .signIn]
+        )
+    }
+
+    func testGuestCanEditAndDeleteLocalProviderConnection() {
+        XCTAssertEqual(
+            GitProviderAccountsPresentationPolicy.actions(
+                isSignedIn: false,
+                account: makeAccount(provider: .github, tokenStatus: .valid)
+            ),
+            [.edit, .delete, .signIn]
         )
     }
 

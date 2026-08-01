@@ -21,17 +21,21 @@ import XCTest
 
 @MainActor
 final class GitProviderAccountControllerTests: XCTestCase {
-    func testSignedOutStateDoesNotLoadProviderAccounts() async {
-        let store = FakeGitProviderAccountStore()
+    func testSignedOutStateLoadsLocalProviderAccounts() async {
+        let account = makeProviderAccount(macgitUID: "local-owner")
+        let vault = FakeGitProviderTokenVault(tokensByAccountID: [
+            account.id: GitProviderToken(accessToken: "token", refreshToken: nil, tokenType: "bearer")
+        ])
+        let store = FakeGitProviderAccountStore(localAccounts: [account])
         let controller = GitProviderAccountController(
             store: store,
-            tokenVault: FakeGitProviderTokenVault()
+            tokenVault: vault
         )
 
         await controller.updateMacgitAccount(nil)
 
-        XCTAssertEqual(store.loadedUIDs, [])
-        XCTAssertEqual(controller.accounts, [])
+        XCTAssertEqual(store.cloudUIDUpdates, [nil])
+        XCTAssertEqual(controller.accounts, [account])
     }
 
     func testSignedInStateLoadsAccountsForCurrentMacgitUID() async {
@@ -49,7 +53,7 @@ final class GitProviderAccountControllerTests: XCTestCase {
 
         await controller.updateMacgitAccount(makeMacgitAccount(uid: "macgit-user-1"))
 
-        XCTAssertEqual(store.loadedUIDs, ["macgit-user-1"])
+        XCTAssertEqual(store.cloudUIDUpdates, ["macgit-user-1"])
         XCTAssertEqual(controller.accounts, [account])
     }
 
@@ -412,32 +416,45 @@ private final class FakeGitLabProviderAuthService: GitLabProviderOAuthAuthentica
 
 @MainActor
 private final class FakeGitProviderAccountStore: GitProviderAccountStore {
-    private(set) var loadedUIDs: [String] = []
+    let accountOwnerID: String
+    private(set) var cloudUIDUpdates: [String?] = []
+    private var localAccounts: [GitProviderAccount]
     private var accountsByUID: [String: [GitProviderAccount]]
     private let events: EventRecorder?
 
     init(
+        accountOwnerID: String = "local-owner",
+        localAccounts: [GitProviderAccount] = [],
         accountsByUID: [String: [GitProviderAccount]] = [:],
         events: EventRecorder? = nil
     ) {
+        self.accountOwnerID = accountOwnerID
+        self.localAccounts = localAccounts
         self.accountsByUID = accountsByUID
         self.events = events
     }
 
-    func accounts(forMacgitUID uid: String) async throws -> [GitProviderAccount] {
-        loadedUIDs.append(uid)
-        return accountsByUID[uid] ?? []
+    func accounts() async throws -> [GitProviderAccount] {
+        localAccounts
+    }
+
+    func updateCloudAccount(uid: String?) async throws {
+        cloudUIDUpdates.append(uid)
+        guard let uid else { return }
+        for account in accountsByUID[uid] ?? [] where !localAccounts.contains(where: { $0.id == account.id }) {
+            localAccounts.append(account)
+        }
     }
 
     func save(_ account: GitProviderAccount) async throws {
         events?.values.append("save-metadata")
-        accountsByUID[account.macgitUID, default: []].removeAll { $0.id == account.id }
-        accountsByUID[account.macgitUID, default: []].append(account)
+        localAccounts.removeAll { $0.id == account.id }
+        localAccounts.append(account)
     }
 
-    func delete(accountID: String, macgitUID: String) async throws {
+    func delete(accountID: String) async throws {
         events?.values.append("delete-metadata")
-        accountsByUID[macgitUID]?.removeAll { $0.id == accountID }
+        localAccounts.removeAll { $0.id == accountID }
     }
 }
 

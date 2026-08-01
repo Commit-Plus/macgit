@@ -35,8 +35,9 @@ final class GitProviderAccountController: ObservableObject {
     private let gitLabAuthService: (any GitLabProviderOAuthAuthenticating)?
     private let gitLabRedirectURI: URL
     private let openURL: (URL) -> Bool
-    private var macgitUID: String?
     private var pendingOAuthSession: GitProviderOAuthSession?
+
+    private var accountOwnerID: String { store.accountOwnerID }
 
     init(
         store: GitProviderAccountStore,
@@ -61,16 +62,23 @@ final class GitProviderAccountController: ObservableObject {
     }
 
     func updateMacgitAccount(_ account: AccountSnapshot?) async {
-        macgitUID = account?.uid
-        guard account != nil else {
-            accounts = []
-            errorMessage = nil
-            isLoading = false
+        let previousAccounts = accounts
+        if account == nil {
             pendingDeviceAuthorization = nil
             pendingOAuthSession = nil
-            return
+        }
+        do {
+            try await store.updateCloudAccount(uid: account?.uid)
+        } catch {
+            errorMessage = error.localizedDescription
         }
         await reload()
+        for previousAccount in previousAccounts where !accounts.contains(where: {
+            hasSameProviderIdentity($0, previousAccount)
+        }) {
+            try? tokenVault.deleteToken(for: previousAccount)
+            try? sshKeyStore.deleteKey(for: previousAccount)
+        }
     }
 
     func connectGitHub() async {
@@ -95,17 +103,12 @@ final class GitProviderAccountController: ObservableObject {
     }
 
     func reload() async {
-        guard let macgitUID else {
-            accounts = []
-            return
-        }
-
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
 
         do {
-            let storedAccounts = try await store.accounts(forMacgitUID: macgitUID)
+            let storedAccounts = try await store.accounts()
             accounts = try storedAccounts.map { account in
                 if account.transportProtocol == .ssh {
                     guard try sshKeyStore.key(for: account) != nil else {
@@ -128,13 +131,11 @@ final class GitProviderAccountController: ObservableObject {
     }
 
     func disconnect(_ account: GitProviderAccount) async {
-        guard macgitUID == account.macgitUID else { return }
-
         errorMessage = nil
         do {
             try tokenVault.deleteToken(for: account)
             try sshKeyStore.deleteKey(for: account)
-            try await store.delete(accountID: account.id, macgitUID: account.macgitUID)
+            try await store.delete(accountID: account.id)
             accounts.removeAll { $0.id == account.id }
         } catch {
             errorMessage = error.localizedDescription
@@ -160,8 +161,7 @@ final class GitProviderAccountController: ObservableObject {
             return true
         }
 
-        guard let gitLabAuthService,
-              let macgitUID else {
+        guard let gitLabAuthService else {
             errorMessage = GitProviderAuthError.invalidConfiguration.localizedDescription
             pendingOAuthSession = nil
             return true
@@ -178,7 +178,7 @@ final class GitProviderAccountController: ObservableObject {
             let token = try await gitLabAuthService.exchangeCallback(callback, session: session)
             let account = try await gitLabAuthService.fetchAccount(
                 token: token,
-                macgitUID: macgitUID,
+                macgitUID: accountOwnerID,
                 host: session.host
             )
             try await saveAuthorizedAccount(account, token: token)
@@ -208,8 +208,6 @@ final class GitProviderAccountController: ObservableObject {
         transportProtocol: GitProviderTransportProtocol,
         sshKey: GitProviderSSHKey?
     ) async {
-        guard macgitUID == account.macgitUID else { return }
-
         errorMessage = nil
         var updatedAccount = account
         updatedAccount.transportProtocol = transportProtocol
@@ -221,18 +219,14 @@ final class GitProviderAccountController: ObservableObject {
                 try sshKeyStore.deleteKey(for: updatedAccount)
             }
             try await store.save(updatedAccount)
-            accounts.removeAll { $0.id == updatedAccount.id }
-            accounts.append(updatedAccount)
+            publish(updatedAccount)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     func connectSSH(host: GitProviderHost, key: GitProviderSSHKey) async {
-        guard let macgitUID else {
-            errorMessage = GitProviderAuthError.invalidConfiguration.localizedDescription
-            return
-        }
+        let macgitUID = accountOwnerID
 
         isLoading = true
         errorMessage = nil
@@ -271,16 +265,14 @@ final class GitProviderAccountController: ObservableObject {
                 throw error
             }
 
-            accounts.removeAll { $0.id == account.id }
-            accounts.append(account)
+            publish(account)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     private func startGitHubDeviceAuthorization() async {
-        guard macgitUID != nil,
-              let authService,
+        guard let authService,
               let configuration,
               !configuration.clientID.isEmpty else {
             errorMessage = GitProviderAuthError.invalidConfiguration.localizedDescription
@@ -304,10 +296,9 @@ final class GitProviderAccountController: ObservableObject {
             }
 
             let token = try await waitForGitHubDeviceAuthorization(authorization, authService: authService)
-            guard let macgitUID else { return }
             let account = try await authService.fetchAccount(
                 token: token,
-                macgitUID: macgitUID,
+                macgitUID: accountOwnerID,
                 host: .githubDotCom
             )
             try await saveAuthorizedAccount(account, token: token)
@@ -346,8 +337,7 @@ final class GitProviderAccountController: ObservableObject {
     }
 
     private func startGitLabDeviceAuthorization(host: GitProviderHost) async {
-        guard macgitUID != nil,
-              let gitLabAuthService else {
+        guard let gitLabAuthService else {
             errorMessage = gitLabInvalidConfigurationMessage
             return
         }
@@ -374,10 +364,9 @@ final class GitProviderAccountController: ObservableObject {
                 host: normalizedHost,
                 authService: gitLabAuthService
             )
-            guard let macgitUID else { return }
             let account = try await gitLabAuthService.fetchAccount(
                 token: token,
-                macgitUID: macgitUID,
+                macgitUID: accountOwnerID,
                 host: normalizedHost
             )
             try await saveAuthorizedAccount(account, token: token)
@@ -419,8 +408,7 @@ final class GitProviderAccountController: ObservableObject {
     }
 
     private func startGitLabOAuth(host: GitProviderHost) async {
-        guard macgitUID != nil,
-              let gitLabAuthService else {
+        guard let gitLabAuthService else {
             errorMessage = gitLabInvalidConfigurationMessage
             return
         }
@@ -477,7 +465,23 @@ final class GitProviderAccountController: ObservableObject {
             throw error
         }
 
-        accounts.removeAll { $0.id == account.id }
+        publish(account)
+    }
+
+    private func publish(_ account: GitProviderAccount) {
+        accounts.removeAll {
+            $0.id == account.id || hasSameProviderIdentity($0, account)
+        }
         accounts.append(account)
+    }
+
+    private func hasSameProviderIdentity(
+        _ lhs: GitProviderAccount,
+        _ rhs: GitProviderAccount
+    ) -> Bool {
+        lhs.provider == rhs.provider
+            && lhs.hostURL.host(percentEncoded: false)?.lowercased()
+                == rhs.hostURL.host(percentEncoded: false)?.lowercased()
+            && lhs.providerUserID == rhs.providerUserID
     }
 }

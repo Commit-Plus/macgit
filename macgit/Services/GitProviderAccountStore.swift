@@ -20,6 +20,16 @@ import Foundation
 
 @MainActor
 protocol GitProviderAccountStore {
+    var accountOwnerID: String { get }
+
+    func accounts() async throws -> [GitProviderAccount]
+    func updateCloudAccount(uid: String?) async throws
+    func save(_ account: GitProviderAccount) async throws
+    func delete(accountID: String) async throws
+}
+
+@MainActor
+protocol GitProviderAccountCloudStore {
     func accounts(forMacgitUID uid: String) async throws -> [GitProviderAccount]
     func save(_ account: GitProviderAccount) async throws
     func delete(accountID: String, macgitUID: String) async throws
