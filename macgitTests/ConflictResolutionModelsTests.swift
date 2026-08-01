@@ -175,4 +175,52 @@ final class ConflictResolutionModelsTests: XCTestCase {
         XCTAssertEqual(document.sections[1].resolution, .current)
         XCTAssertEqual(document.resolvedText, "first current\nsecond current\n")
     }
+
+    func testDocumentCanToggleIncomingForEveryConflictWithoutClearingCurrent() {
+        var first = ConflictResolutionSection.conflict(
+            current: "first current\n",
+            incoming: "first incoming\n"
+        )
+        first.resolution = .current
+
+        var second = ConflictResolutionSection.conflict(
+            current: "second current\n",
+            incoming: "second incoming\n"
+        )
+        second.resolution = .both
+
+        var document = ConflictResolutionDocument(
+            sections: [first, second],
+            currentContent: "",
+            incomingContent: ""
+        )
+
+        document.setAllConflictsSelected(true, for: .incoming)
+
+        XCTAssertTrue(document.allConflictsSelect(.incoming))
+        XCTAssertEqual(document.sections[0].resolution, .both)
+        XCTAssertEqual(document.sections[1].resolution, .both)
+
+        document.setAllConflictsSelected(false, for: .incoming)
+
+        XCTAssertFalse(document.allConflictsSelect(.incoming))
+        XCTAssertTrue(document.allConflictsSelect(.current))
+        XCTAssertEqual(document.sections[0].resolution, .current)
+        XCTAssertEqual(document.sections[1].resolution, .current)
+    }
+
+    func testConflictCanTakeBothInEitherOrder() {
+        var section = ConflictResolutionSection.conflict(
+            current: "current\n",
+            incoming: "incoming\n"
+        )
+
+        section.resolution = .bothIncomingFirst
+        XCTAssertTrue(section.isIncomingSelected)
+        XCTAssertTrue(section.isCurrentSelected)
+        XCTAssertEqual(section.resolvedText, "incoming\ncurrent\n")
+
+        section.resolution = .both
+        XCTAssertEqual(section.resolvedText, "current\nincoming\n")
+    }
 }

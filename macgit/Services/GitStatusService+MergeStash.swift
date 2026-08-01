@@ -23,6 +23,37 @@
 import Foundation
 
 extension GitStatusService {
+    func isMergeInProgress(in repositoryURL: URL) async -> Bool {
+        guard let mergeHead = try? await runGit(
+            arguments: ["rev-parse", "--verify", "MERGE_HEAD"],
+            in: repositoryURL
+        ) else {
+            return false
+        }
+        return !mergeHead.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func mergeCommitMessage(in repositoryURL: URL) async -> String {
+        guard let path = try? await runGit(
+            arguments: ["rev-parse", "--git-path", "MERGE_MSG"],
+            in: repositoryURL
+        ) else {
+            return ""
+        }
+
+        let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else { return "" }
+        let messageURL = trimmedPath.hasPrefix("/")
+            ? URL(fileURLWithPath: trimmedPath)
+            : repositoryURL.appendingPathComponent(trimmedPath)
+        return (try? String(contentsOf: messageURL, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    func abortMerge(in repositoryURL: URL) async throws {
+        _ = try await runGit(arguments: ["merge", "--abort"], in: repositoryURL)
+    }
+
     func merge(branch: String, options: MergeOptions, in repositoryURL: URL) async throws -> String {
         var arguments = ["merge"]
         if options.noFastForward { arguments.append("--no-ff") }

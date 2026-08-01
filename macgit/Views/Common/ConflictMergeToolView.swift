@@ -38,6 +38,12 @@ struct ConflictMergeToolView: View {
     @State private var hasUnsavedChanges = false
     @State private var scrollController = SyncedScrollController()
     @State private var showingUnresolvedConflictsAlert = false
+    @State private var resolvedFiles: [StatusFile] = []
+    @State private var mergeMessage = ""
+    @State private var isMergeInProgress = false
+    @State private var isPerformingMergeAction = false
+    @State private var showingAbortConfirmation = false
+    @ObservedObject private var integrationSettings = IntegrationSettingsStore.shared
 
     init(allConflictFiles: [StatusFile], repositoryURL: URL, onResolved: @escaping () -> Void, onClose: @escaping () -> Void) {
         self._allConflictFiles = State(initialValue: allConflictFiles)
@@ -57,6 +63,9 @@ struct ConflictMergeToolView: View {
         .task(id: selectedFile.id) {
             await loadDocument(for: selectedFile)
         }
+        .task {
+            await loadMergeContext()
+        }
         .alert("Error", isPresented: $showingError, actions: {
             Button("OK", role: .cancel) {}
         }, message: {
@@ -66,6 +75,18 @@ struct ConflictMergeToolView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("There are still conflict blocks that need to be resolved before merging.")
+        }
+        .confirmationDialog(
+            "Abort Merge?",
+            isPresented: $showingAbortConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Abort Merge", role: .destructive) {
+                Task { await abortMerge() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This restores the repository to its state before the merge started.")
         }
     }
 
@@ -83,15 +104,82 @@ struct ConflictMergeToolView: View {
     // MARK: - Sidebar
 
     private var sidebarPane: some View {
-        List(selection: $selectedFile) {
-            ForEach(allConflictFiles) { file in
-                Label(file.displayName, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.purple)
-                    .tag(file)
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Conflicted Files (\(allConflictFiles.count))")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+
+                List(selection: $selectedFile) {
+                    if allConflictFiles.isEmpty {
+                        Label("No conflicted files", systemImage: "checkmark.circle")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(allConflictFiles) { file in
+                            Label(file.displayName, systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                                .help(file.path)
+                                .tag(file)
+                        }
+                    }
+                }
+                .listStyle(.sidebar)
+                .disabled(isSaving || isPerformingMergeAction)
             }
+            .frame(minHeight: 0, maxHeight: .infinity)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Resolved Files (\(resolvedFiles.count))")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+
+                List {
+                    if resolvedFiles.isEmpty {
+                        Text("Files you resolve appear here")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(resolvedFiles) { file in
+                            Label(file.displayName, systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .help(file.path)
+                        }
+                    }
+                }
+                .listStyle(.sidebar)
+                .disabled(isSaving || isPerformingMergeAction)
+            }
+            .frame(minHeight: 0, maxHeight: .infinity)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Commit Message")
+                    .font(.headline)
+
+                TextEditor(text: $mergeMessage)
+                    .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .scrollIndicators(.never)
+                    .padding(4)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(.separator, lineWidth: 1)
+                    }
+                    .frame(minHeight: 100, idealHeight: 120, maxHeight: 160)
+                    .disabled(isPerformingMergeAction)
+                    .accessibilityLabel("Merge commit message")
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
         }
-        .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
+        .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 360)
     }
 
     // MARK: - Detail
@@ -111,7 +199,9 @@ struct ConflictMergeToolView: View {
                 EmptyStateView(
                     icon: "checkmark.circle.fill",
                     message: "All conflicts resolved",
-                    detail: "All files have been successfully merged. You can close this window."
+                    detail: isMergeInProgress
+                        ? "Review the commit message, then commit the merge."
+                        : "All files have been successfully resolved. You can close this window."
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if isLoading {
@@ -219,6 +309,12 @@ struct ConflictMergeToolView: View {
                     onSelectionChanged: { sectionIndex, isSelected in
                         guard let selectionSide else { return }
                         setConflictSide(selectionSide, selected: isSelected, sectionIndex: sectionIndex)
+                    },
+                    onResolveConflict: { sectionIndex, resolution in
+                        resolveConflict(sectionIndex: sectionIndex, using: resolution)
+                    },
+                    onResolveAll: { resolution in
+                        resolveAllConflicts(using: resolution)
                     }
                 )
             }
@@ -239,57 +335,68 @@ struct ConflictMergeToolView: View {
         ToolbarItem(placement: .navigation) {
             if let document = document, !allConflictFiles.isEmpty {
                 let navigation = navigationState(for: document)
-                HStack(spacing: 0) {
-                    Button {
-                        navigateToConflict(navigation.previousSectionIndex, in: document)
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 28, height: 22)
-                    }
-                    .disabled(!navigation.canNavigatePrevious)
-                    .accessibilityLabel("Previous conflict")
+                HStack(spacing: 8) {
+                    HStack(spacing: 0) {
+                        Button {
+                            navigateToConflict(navigation.previousSectionIndex, in: document)
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 12, weight: .semibold))
+                                .frame(width: 28, height: 22)
+                        }
+                        .disabled(!navigation.canNavigatePrevious)
+                        .accessibilityLabel("Previous conflict")
 
-                    Divider()
-                        .frame(height: 12)
+                        Divider()
+                            .frame(height: 12)
 
-                    Button {
-                        navigateToConflict(navigation.nextSectionIndex, in: document)
-                    } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 28, height: 22)
+                        Button {
+                            navigateToConflict(navigation.nextSectionIndex, in: document)
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .frame(width: 28, height: 22)
+                        }
+                        .disabled(!navigation.canNavigateNext)
+                        .accessibilityLabel("Next conflict")
                     }
-                    .disabled(!navigation.canNavigateNext)
-                    .accessibilityLabel("Next conflict")
+                    .background(
+                        Capsule()
+                            .fill(Color(nsColor: .controlBackgroundColor))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
+                    )
+
+                    Button("External Tool", systemImage: "arrow.up.forward.app") {
+                        Task { await openInExternalTool() }
+                    }
+                    .disabled(
+                        integrationSettings.selectedApplication(for: .merge) == nil
+                            || isSaving
+                            || isPerformingMergeAction
+                    )
+                    .help("Open in External Tool")
                 }
-                .background(
-                    Capsule()
-                        .fill(Color(nsColor: .controlBackgroundColor))
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
-                )
             }
         }
 
         ToolbarItem(placement: .principal) {
             HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Resolve Conflicts")
-                        .font(.headline.weight(.semibold))
-                    if allConflictFiles.isEmpty {
-                        Text("All files resolved")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    } else {
-                        Text(selectedFile.path)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                if allConflictFiles.isEmpty {
+                    Text("All files resolved")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else {
+                    Text(shortenedFilePath(selectedFile.path))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(selectedFile.path)
+                        .accessibilityLabel(selectedFile.path)
                 }
 
                 if let document = document, !allConflictFiles.isEmpty {
@@ -303,22 +410,30 @@ struct ConflictMergeToolView: View {
         }
 
         ToolbarItem(placement: .confirmationAction) {
+            Button("Abort Merge", role: .destructive) {
+                showingAbortConfirmation = true
+            }
+            .buttonStyle(.bordered)
+            .disabled(!isMergeInProgress || isSaving || isPerformingMergeAction)
+        }
+
+        ToolbarSpacer(.fixed, placement: .confirmationAction)
+
+        ToolbarItem(placement: .confirmationAction) {
             if allConflictFiles.isEmpty {
-                Button {
-                    onClose()
-                } label: {
-                    Text("Close")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(Color.accentColor)
-                        )
+                Button(isMergeInProgress ? "Commit Merge" : "Close") {
+                    if isMergeInProgress {
+                        Task { await commitMerge() }
+                    } else {
+                        onClose()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
+                .disabled(
+                    isPerformingMergeAction
+                        || (isMergeInProgress && mergeMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                )
             } else {
                 Button {
                     if hasUnresolvedConflicts {
@@ -341,7 +456,7 @@ struct ConflictMergeToolView: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.plain)
-                .disabled(isSaving)
+                .disabled(isSaving || isPerformingMergeAction)
             }
         }
     }
@@ -352,10 +467,12 @@ struct ConflictMergeToolView: View {
         let selected = allConflictsSelected(side)
 
         return Button(
-            "Select all \(side.title) conflict blocks",
+            selected
+                ? "Clear all \(side.title) conflict blocks"
+                : "Select all \(side.title) conflict blocks",
             systemImage: selected ? "checkmark.square.fill" : "square"
         ) {
-            selectAllConflicts(side)
+            toggleAllConflicts(side)
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.plain)
@@ -373,6 +490,27 @@ struct ConflictMergeToolView: View {
         }
 
         return "Unresolved \(currentOrdinal) of \(navigation.remainingCount)"
+    }
+
+    private func shortenedFilePath(_ path: String, maxLength: Int = 44) -> String {
+        guard path.count > maxLength else { return path }
+
+        let components = path.split(separator: "/", omittingEmptySubsequences: true)
+        guard let first = components.first, let last = components.last, components.count > 2 else {
+            return middleTruncated(path, maxLength: maxLength)
+        }
+
+        let shortened = "\(first)/.../\(last)"
+        return middleTruncated(shortened, maxLength: maxLength)
+    }
+
+    private func middleTruncated(_ text: String, maxLength: Int) -> String {
+        guard text.count > maxLength, maxLength > 3 else { return text }
+
+        let visibleCharacterCount = maxLength - 3
+        let prefixCount = visibleCharacterCount / 2
+        let suffixCount = visibleCharacterCount - prefixCount
+        return "\(text.prefix(prefixCount))...\(text.suffix(suffixCount))"
     }
 
     private func navigateToConflict(_ sectionIndex: Int?, in document: ConflictResolutionDocument) {
@@ -421,14 +559,41 @@ struct ConflictMergeToolView: View {
         focusCurrentConflict(in: document, preferredSectionIndex: sectionIndex, scroll: true)
     }
 
-    private func allConflictsSelected(_ side: ConflictPaneSelectionSide) -> Bool {
-        document?.allConflictsUse(side.resolution) ?? false
+    private func resolveConflict(
+        sectionIndex: Int,
+        using resolution: ConflictSectionResolution
+    ) {
+        guard var document,
+              document.sections.indices.contains(sectionIndex),
+              document.sections[sectionIndex].isConflict else {
+            return
+        }
+
+        document.sections[sectionIndex].manualResult = ""
+        document.sections[sectionIndex].resolution = resolution
+        hasUnsavedChanges = true
+        self.document = document
+        focusCurrentConflict(in: document, preferredSectionIndex: sectionIndex, scroll: true)
     }
 
-    private func selectAllConflicts(_ side: ConflictPaneSelectionSide) {
+    private func resolveAllConflicts(using resolution: ConflictSectionResolution) {
         guard var document else { return }
 
-        document.selectAllConflicts(side.resolution)
+        document.selectAllConflicts(resolution)
+        hasUnsavedChanges = true
+        self.document = document
+        focusCurrentConflict(in: document, preferredSectionIndex: selectedConflictSectionIndex, scroll: true)
+    }
+
+    private func allConflictsSelected(_ side: ConflictPaneSelectionSide) -> Bool {
+        document?.allConflictsSelect(side.resolution) ?? false
+    }
+
+    private func toggleAllConflicts(_ side: ConflictPaneSelectionSide) {
+        guard var document else { return }
+
+        let shouldSelect = !document.allConflictsSelect(side.resolution)
+        document.setAllConflictsSelected(shouldSelect, for: side.resolution)
         hasUnsavedChanges = true
         self.document = document
         focusCurrentConflict(in: document, preferredSectionIndex: selectedConflictSectionIndex, scroll: true)
@@ -491,6 +656,100 @@ struct ConflictMergeToolView: View {
         }
     }
 
+    private func loadMergeContext() async {
+        async let mergeInProgress = GitStatusService.shared.isMergeInProgress(in: repositoryURL)
+        async let message = GitStatusService.shared.mergeCommitMessage(in: repositoryURL)
+        let (loadedMergeInProgress, loadedMessage) = await (mergeInProgress, message)
+        isMergeInProgress = loadedMergeInProgress
+        if mergeMessage.isEmpty {
+            mergeMessage = loadedMessage.isEmpty && loadedMergeInProgress
+                ? "Merge changes"
+                : loadedMessage
+        }
+    }
+
+    private func openInExternalTool() async {
+        guard !allConflictFiles.isEmpty else { return }
+        isPerformingMergeAction = true
+        defer { isPerformingMergeAction = false }
+
+        do {
+            try await integrationSettings.openExternalMerge(
+                for: selectedFile,
+                in: repositoryURL
+            )
+            let updatedDocument = try await GitStatusService.shared.conflictDocument(
+                for: selectedFile,
+                in: repositoryURL
+            )
+            let stillHasConflicts = updatedDocument.sections.contains(where: \.isConflict)
+            if stillHasConflicts {
+                document = updatedDocument
+                hasUnsavedChanges = false
+                focusCurrentConflict(in: updatedDocument, preferredSectionIndex: nil, scroll: true)
+            } else {
+                try await GitStatusService.shared.resolveConflict(
+                    file: selectedFile,
+                    in: repositoryURL,
+                    with: updatedDocument
+                )
+                markSelectedFileResolved()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+
+    private func abortMerge() async {
+        isPerformingMergeAction = true
+        defer { isPerformingMergeAction = false }
+
+        do {
+            try await GitStatusService.shared.abortMerge(in: repositoryURL)
+            onResolved()
+            onClose()
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+
+    private func commitMerge() async {
+        isPerformingMergeAction = true
+        defer { isPerformingMergeAction = false }
+
+        do {
+            try await GitStatusService.shared.commit(message: mergeMessage, in: repositoryURL)
+            onResolved()
+            onClose()
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+
+    private func markSelectedFileResolved() {
+        let resolvedFile = selectedFile
+        let currentIndex = allConflictFiles.firstIndex(of: resolvedFile)
+        allConflictFiles.removeAll { $0 == resolvedFile }
+        if !resolvedFiles.contains(resolvedFile) {
+            resolvedFiles.append(resolvedFile)
+            resolvedFiles.sort { $0.path < $1.path }
+        }
+        hasUnsavedChanges = false
+        onResolved()
+
+        if allConflictFiles.isEmpty {
+            document = nil
+            selectedConflictSectionIndex = nil
+        } else if let currentIndex {
+            selectedFile = allConflictFiles[min(currentIndex, allConflictFiles.count - 1)]
+        } else if let firstFile = allConflictFiles.first {
+            selectedFile = firstFile
+        }
+    }
+
     private func saveAndAdvance() async {
         guard let document = document else { return }
         isSaving = true
@@ -503,24 +762,7 @@ struct ConflictMergeToolView: View {
                 with: document
             )
             await MainActor.run {
-                hasUnsavedChanges = false
-                
-                let currentIndex = allConflictFiles.firstIndex(of: selectedFile)
-                allConflictFiles.removeAll { $0 == selectedFile }
-                
-                // Notify main window to refresh status after each resolve
-                onResolved()
-                
-                if allConflictFiles.isEmpty {
-                    // All conflicts resolved - show empty state, user will close manually
-                    self.document = nil
-                    selectedConflictSectionIndex = nil
-                } else if let currentIndex = currentIndex {
-                    let newIndex = min(currentIndex, allConflictFiles.count - 1)
-                    selectedFile = allConflictFiles[newIndex]
-                } else {
-                    selectedFile = allConflictFiles.first!
-                }
+                markSelectedFileResolved()
             }
         } catch {
             await MainActor.run {

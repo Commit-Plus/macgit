@@ -265,10 +265,41 @@ struct FileStatusView: View {
     }
 
     private var fileListPanel: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                if !gitStatus.staged.isEmpty {
-                    Section {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    TriStateCheckbox(state: sectionCheckState(isStaged: true), accessibilityLabel: "Select all staged") { selectAll in
+                        toggleSelectAll(isStaged: true, selectAll: selectAll)
+                    }
+                    .disabled(gitStatus.staged.isEmpty)
+                    Text("Staged")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.none)
+                    Spacer()
+                    Button(actionSelection.title(for: .staged)) {
+                        Task {
+                            if actionSelection.selectedStagedFiles.isEmpty {
+                                await unstageAll()
+                            } else {
+                                await unstageSelected()
+                            }
+                        }
+                    }
+                    .buttonStyle(GlassButtonStyle(tint: .yellow, fontSize: 10))
+                    .disabled(gitStatus.staged.isEmpty)
+                }
+                .frame(height: 22)
+                .padding(.leading, 10)
+                .padding(.trailing, 8)
+                .padding(.vertical, 5)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .overlay(alignment: .bottom) {
+                    Divider()
+                }
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(visibleStagedRows) { row in
                             fileRow(file: row.file, isStaged: row.isStaged)
                         }
@@ -280,39 +311,53 @@ struct FileStatusView: View {
                                 )
                             }
                         }
-                    } header: {
-                        HStack(spacing: 8) {
-                            TriStateCheckbox(state: sectionCheckState(isStaged: true), accessibilityLabel: "Select all staged") { selectAll in
-                                toggleSelectAll(isStaged: true, selectAll: selectAll)
-                            }
-                            Text("Staged")
-                                .font(.system(size: 11, weight: .semibold))
+                        if gitStatus.staged.isEmpty {
+                            Text("No staged files")
                                 .foregroundStyle(.secondary)
-                                .textCase(.none)
-                            Spacer()
-                            Button(actionSelection.title(for: .staged)) {
-                                Task {
-                                    if actionSelection.selectedStagedFiles.isEmpty {
-                                        await unstageAll()
-                                    } else {
-                                        await unstageSelected()
-                                    }
-                                }
-                            }
-                            .buttonStyle(GlassButtonStyle(tint: .yellow, fontSize: 10))
-                        }
-                        .padding(.leading, 10)
-                        .padding(.trailing, 8)
-                        .padding(.vertical, 5)
-                        .background(Color(nsColor: .windowBackgroundColor))
-                        .overlay(alignment: .bottom) {
-                            Divider()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
                         }
                     }
                 }
+            }
+            .frame(minHeight: 0, maxHeight: .infinity)
 
-                if !changedFiles.isEmpty {
-                    Section {
+            Divider()
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    TriStateCheckbox(state: sectionCheckState(isStaged: false), accessibilityLabel: "Select all changed") { selectAll in
+                        toggleSelectAll(isStaged: false, selectAll: selectAll)
+                    }
+                    .disabled(changedFiles.isEmpty)
+                    Text("Changed")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.none)
+                    Spacer()
+                    Button(actionSelection.title(for: .changed)) {
+                        Task {
+                            if actionSelection.selectedChangedFiles.isEmpty {
+                                await stageAll()
+                            } else {
+                                await stageSelected()
+                            }
+                        }
+                    }
+                    .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 10))
+                    .disabled(changedFiles.isEmpty)
+                }
+                .frame(height: 22)
+                .padding(.leading, 10)
+                .padding(.trailing, 8)
+                .padding(.vertical, 5)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .overlay(alignment: .bottom) {
+                    Divider()
+                }
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(visibleChangedRows) { row in
                             fileRow(file: row.file, isStaged: row.isStaged)
                         }
@@ -324,37 +369,16 @@ struct FileStatusView: View {
                                 )
                             }
                         }
-                    } header: {
-                        HStack(spacing: 8) {
-                            TriStateCheckbox(state: sectionCheckState(isStaged: false), accessibilityLabel: "Select all changed") { selectAll in
-                                toggleSelectAll(isStaged: false, selectAll: selectAll)
-                            }
-                            Text("Changed")
-                                .font(.system(size: 11, weight: .semibold))
+                        if changedFiles.isEmpty {
+                            Text("No changed files")
                                 .foregroundStyle(.secondary)
-                                .textCase(.none)
-                            Spacer()
-                            Button(actionSelection.title(for: .changed)) {
-                                Task {
-                                    if actionSelection.selectedChangedFiles.isEmpty {
-                                        await stageAll()
-                                    } else {
-                                        await stageSelected()
-                                    }
-                                }
-                            }
-                            .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 10))
-                        }
-                        .padding(.leading, 10)
-                        .padding(.trailing, 8)
-                        .padding(.vertical, 5)
-                        .background(Color(nsColor: .windowBackgroundColor))
-                        .overlay(alignment: .bottom) {
-                            Divider()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
                         }
                     }
                 }
             }
+            .frame(minHeight: 0, maxHeight: .infinity)
         }
         .background(Color(nsColor: .controlBackgroundColor))
     }

@@ -26,6 +26,7 @@ enum ConflictSectionResolution: String, CaseIterable {
     case current
     case incoming
     case both
+    case bothIncomingFirst
     case manual
 }
 
@@ -60,6 +61,8 @@ struct ConflictResolutionSection: Identifiable, Equatable {
             return incomingText
         case .both:
             return currentText + incomingText
+        case .bothIncomingFirst:
+            return incomingText + currentText
         case .manual:
             return manualResult
         }
@@ -86,11 +89,11 @@ struct ConflictResolutionSection: Identifiable, Equatable {
     }
 
     var isCurrentSelected: Bool {
-        resolution == .current || resolution == .both
+        resolution == .current || resolution == .both || resolution == .bothIncomingFirst
     }
 
     var isIncomingSelected: Bool {
-        resolution == .incoming || resolution == .both
+        resolution == .incoming || resolution == .both || resolution == .bothIncomingFirst
     }
 
     mutating func setCurrentSelected(_ isSelected: Bool) {
@@ -158,10 +161,41 @@ struct ConflictResolutionDocument: Equatable {
         return conflictSections.allSatisfy { $0.resolution == resolution }
     }
 
+    func allConflictsSelect(_ resolution: ConflictSectionResolution) -> Bool {
+        let conflictSections = sections.filter(\.isConflict)
+        guard !conflictSections.isEmpty else { return false }
+
+        switch resolution {
+        case .current:
+            return conflictSections.allSatisfy(\.isCurrentSelected)
+        case .incoming:
+            return conflictSections.allSatisfy(\.isIncomingSelected)
+        case .both, .bothIncomingFirst, .manual:
+            return conflictSections.allSatisfy { $0.resolution == resolution }
+        }
+    }
+
     mutating func selectAllConflicts(_ resolution: ConflictSectionResolution) {
         for index in sections.indices where sections[index].isConflict {
             sections[index].manualResult = ""
             sections[index].resolution = resolution
+        }
+    }
+
+    mutating func setAllConflictsSelected(
+        _ isSelected: Bool,
+        for resolution: ConflictSectionResolution
+    ) {
+        for index in sections.indices where sections[index].isConflict {
+            switch resolution {
+            case .current:
+                sections[index].setCurrentSelected(isSelected)
+            case .incoming:
+                sections[index].setIncomingSelected(isSelected)
+            case .both, .bothIncomingFirst, .manual:
+                sections[index].manualResult = ""
+                sections[index].resolution = isSelected ? resolution : .manual
+            }
         }
     }
 

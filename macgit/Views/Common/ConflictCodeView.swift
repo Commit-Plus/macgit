@@ -38,6 +38,8 @@ struct ConflictCodeView: View {
     let selectionSide: ConflictPaneSelectionSide?
     let isSelected: (Int) -> Bool
     let onSelectionChanged: (Int, Bool) -> Void
+    let onResolveConflict: (Int, ConflictSectionResolution) -> Void
+    let onResolveAll: (ConflictSectionResolution) -> Void
 
     private var rowHeight: CGFloat {
         Self.rowHeight(fontSize: fontSize)
@@ -69,6 +71,8 @@ struct ConflictCodeView: View {
         self.selectionSide = nil
         self.isSelected = { _ in false }
         self.onSelectionChanged = { _, _ in }
+        self.onResolveConflict = { _, _ in }
+        self.onResolveAll = { _ in }
     }
 
     init(
@@ -78,7 +82,9 @@ struct ConflictCodeView: View {
         fontSize: CGFloat = Self.defaultFontSize,
         selectionSide: ConflictPaneSelectionSide? = nil,
         isSelected: @escaping (Int) -> Bool = { _ in false },
-        onSelectionChanged: @escaping (Int, Bool) -> Void = { _, _ in }
+        onSelectionChanged: @escaping (Int, Bool) -> Void = { _, _ in },
+        onResolveConflict: @escaping (Int, ConflictSectionResolution) -> Void = { _, _ in },
+        onResolveAll: @escaping (ConflictSectionResolution) -> Void = { _ in }
     ) {
         self.fileExtension = fileExtension
         self.highlightColor = highlightColor
@@ -87,6 +93,8 @@ struct ConflictCodeView: View {
         self.selectionSide = selectionSide
         self.isSelected = isSelected
         self.onSelectionChanged = onSelectionChanged
+        self.onResolveConflict = onResolveConflict
+        self.onResolveAll = onResolveAll
     }
 
     var body: some View {
@@ -97,6 +105,9 @@ struct ConflictCodeView: View {
             lineNumbers
             codeContent
         }
+        .overlay(alignment: .topLeading) {
+            conflictBlockBorders
+        }
     }
 
     // MARK: - Selection Controls
@@ -105,9 +116,11 @@ struct ConflictCodeView: View {
         VStack(alignment: .center, spacing: 0) {
             ForEach(rows.indices, id: \.self) { index in
                 let row = rows[index]
-                selectionControl(for: row)
-                    .frame(width: 28, height: rowHeight)
-                    .background(rowBackground(for: row))
+                rowWithContextMenu(for: row) {
+                    selectionControl(for: row)
+                        .frame(width: 28, height: rowHeight)
+                        .background(rowBackground(for: row))
+                }
             }
         }
         .padding(.vertical, Self.verticalPadding)
@@ -120,13 +133,15 @@ struct ConflictCodeView: View {
         VStack(alignment: .trailing, spacing: 0) {
             ForEach(rows.indices, id: \.self) { index in
                 let row = rows[index]
-                Text(row.lineNumber.map(String.init) ?? "")
-                    .font(.system(size: fontSize, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 40, alignment: .trailing)
-                    .padding(.trailing, 8)
-                    .frame(height: rowHeight)
-                    .background(rowBackground(for: row))
+                rowWithContextMenu(for: row) {
+                    Text(row.lineNumber.map(String.init) ?? "")
+                        .font(.system(size: fontSize, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 40, alignment: .trailing)
+                        .padding(.trailing, 8)
+                        .frame(height: rowHeight)
+                        .background(rowBackground(for: row))
+                }
             }
         }
         .padding(.vertical, Self.verticalPadding)
@@ -141,19 +156,99 @@ struct ConflictCodeView: View {
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(rows.indices, id: \.self) { index in
                 let row = rows[index]
-                Text(attributedText(for: row, using: highlighter))
-                    .font(.system(size: fontSize, design: .monospaced))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .padding(.horizontal, 8)
-                    .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
-                    .background(rowBackground(for: row))
+                rowWithContextMenu(for: row) {
+                    Text(attributedText(for: row, using: highlighter))
+                        .font(.system(size: fontSize, design: .monospaced))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.horizontal, 8)
+                        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+                        .background(rowBackground(for: row))
+                }
             }
         }
         .padding(.vertical, Self.verticalPadding)
     }
 
     // MARK: - Helpers
+
+    @ViewBuilder
+    private func rowWithContextMenu<Content: View>(
+        for row: ConflictCodeLine,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if selectionSide == nil {
+            content()
+        } else {
+            content()
+                .contentShape(Rectangle())
+                .contextMenu {
+                    contextMenuItems(for: row)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func contextMenuItems(for row: ConflictCodeLine) -> some View {
+        if row.isConflict, let sectionIndex = row.conflictSectionIndex {
+            Button("Take Incoming") {
+                onResolveConflict(sectionIndex, .incoming)
+            }
+            Button("Take Current") {
+                onResolveConflict(sectionIndex, .current)
+            }
+            Divider()
+            Button("Take Both (Incoming First)") {
+                onResolveConflict(sectionIndex, .bothIncomingFirst)
+            }
+            Button("Take Both (Current First)") {
+                onResolveConflict(sectionIndex, .both)
+            }
+        } else {
+            Button("Take All Incoming") {
+                onResolveAll(.incoming)
+            }
+            Button("Take All Current") {
+                onResolveAll(.current)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var conflictBlockBorders: some View {
+        if selectionSide != nil {
+            GeometryReader { proxy in
+                ForEach(conflictStartIndices, id: \.self) { startIndex in
+                    Rectangle()
+                        .stroke(highlightColor.opacity(0.9), lineWidth: 1)
+                        .frame(
+                            width: proxy.size.width,
+                            height: CGFloat(conflictRowCount(startingAt: startIndex)) * rowHeight
+                        )
+                        .offset(
+                            x: 0,
+                            y: Self.verticalPadding + CGFloat(startIndex) * rowHeight
+                        )
+                }
+            }
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var conflictStartIndices: [Int] {
+        rows.indices.filter { rows[$0].isConflict && rows[$0].startsConflict }
+    }
+
+    private func conflictRowCount(startingAt startIndex: Int) -> Int {
+        guard rows.indices.contains(startIndex),
+              let sectionIndex = rows[startIndex].conflictSectionIndex else {
+            return 0
+        }
+
+        return rows[startIndex...].prefix { row in
+            row.conflictSectionIndex == sectionIndex
+        }.count
+    }
 
     @ViewBuilder
     private func selectionControl(for row: ConflictCodeLine) -> some View {
