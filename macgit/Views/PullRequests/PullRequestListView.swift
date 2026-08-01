@@ -30,6 +30,7 @@ struct PullRequestListView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            Divider()
 
             if controller.isLoading {
                 ProgressView()
@@ -216,11 +217,6 @@ struct PullRequestListView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color(nsColor: .controlBackgroundColor))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(.separator)
-                .frame(height: 0.5)
-        }
     }
 
     private var paginationFooter: some View {
