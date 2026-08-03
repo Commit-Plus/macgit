@@ -1477,6 +1477,7 @@ struct MainWindowView: View {
     }
 
     private func openWorktreeInNewWindow(at path: URL) {
+        appState.newWindowRepoShouldFitScreen = false
         appState.newWindowRepoURL = path
         openWindow(id: "main")
     }

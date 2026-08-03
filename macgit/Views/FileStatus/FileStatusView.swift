@@ -888,15 +888,17 @@ struct FileStatusView: View {
 
             // Message editor
             ZStack(alignment: .topTrailing) {
-                TextEditor(text: $commitMessage)
+                TextField("", text: $commitMessage, axis: .vertical)
                     .focused($isCommitMessageFocused)
                     .font(.system(size: 13))
                     .lineSpacing(2)
-                    .scrollContentBackground(.hidden)
-                    .scrollIndicators(.hidden)
+                    .textFieldStyle(.plain)
+                    .lineLimit(2...5)
+                    .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 100, alignment: .topLeading)
                     .padding(6)
                     .padding(.trailing, 30)
                     .disabled(aiProviderController.isGenerating)
+                    .accessibilityLabel("Commit message")
 
                 Button {
                     Task {

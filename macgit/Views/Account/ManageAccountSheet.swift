@@ -58,6 +58,16 @@ struct ManageAccountSheet: View {
                     HStack {
                         Spacer()
 
+                        if controller.isRefreshingProfile {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel("Refreshing profile")
+                        }
+
+                        Button("Refresh", systemImage: "arrow.clockwise", action: refreshProfile)
+                            .disabled(controller.account == nil || controller.isRefreshingProfile)
+                            .help("Reload profile and subscription information")
+
                         Button(
                             "Sign Out",
                             systemImage: "rectangle.portrait.and.arrow.right",
@@ -79,29 +89,18 @@ struct ManageAccountSheet: View {
                 }
                 .formStyle(.grouped)
 
-                HStack {
-                    Button("Refresh", systemImage: "arrow.clockwise") {
-                        Task { await controller.refreshProfile() }
+                Button(action: openAccountOnWeb) {
+                    Label {
+                        Text("Manage Account & Subscription")
+                            .underline()
+                    } icon: {
+                        Image(systemName: "arrow.up.right.square")
                     }
-                    .disabled(controller.account == nil || controller.isRefreshingProfile)
-                    .help("Reload profile and subscription information")
-
-                    if controller.isRefreshingProfile {
-                        ProgressView()
-                            .controlSize(.small)
-                            .accessibilityLabel("Refreshing profile")
-                    }
-
-                    Spacer()
-
-                    Button(
-                        "Manage Account & Subscription",
-                        systemImage: "arrow.up.right.square"
-                    ) {
-                        Task { await controller.openAccountOnWeb() }
-                    }
-                    .disabled(controller.isOpeningAccountOnWeb)
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+                .disabled(controller.isOpeningAccountOnWeb)
+                .padding(.horizontal, 20)
 
                 if controller.isOpeningAccountOnWeb {
                     ProgressView("Opening Commit+ on the web...")
@@ -169,6 +168,14 @@ struct ManageAccountSheet: View {
 
     private func dismiss() {
         controller.presentedSheet = nil
+    }
+
+    private func refreshProfile() {
+        Task { await controller.refreshProfile() }
+    }
+
+    private func openAccountOnWeb() {
+        Task { await controller.openAccountOnWeb() }
     }
 }
 

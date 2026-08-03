@@ -30,6 +30,7 @@ struct ContentView: View {
     @State private var showingCloneSheet = false
     @State private var showingKeepCurrentAlert = false
     @State private var pendingAction: FileMenuAction?
+    @State private var shouldFitScreenWhenRepositoryOpens = false
     @StateObject private var operationProgress = RepositoryOperationProgress()
 
     var body: some View {
@@ -43,11 +44,16 @@ struct ContentView: View {
                     operationProgress: operationProgress
                 )
                 .environmentObject(accountController)
+                .background(
+                    WindowInitialScreenFitModifier(
+                        isEnabled: shouldFitScreenWhenRepositoryOpens
+                    )
+                )
             } else {
                 RepoPickerView(
                     showCloneSheetInitially: false,
                     onRepositoryOpened: { url in
-                        repositoryURL = url
+                        openRepositoryInNewWindow(url)
                     }
                 )
             }
@@ -137,13 +143,21 @@ struct ContentView: View {
 
     private func handlePendingWindowFlags() {
         if let url = appState.newWindowRepoURL {
+            shouldFitScreenWhenRepositoryOpens = appState.newWindowRepoShouldFitScreen
             repositoryURL = url
             appState.newWindowRepoURL = nil
+            appState.newWindowRepoShouldFitScreen = false
         }
         if appState.openWindowWithCloneSheet {
             appState.openWindowWithCloneSheet = false
             showingCloneSheet = true
         }
+    }
+
+    private func openRepositoryInNewWindow(_ url: URL) {
+        appState.newWindowRepoShouldFitScreen = true
+        appState.newWindowRepoURL = url
+        openWindow(id: "main")
     }
 
     private func performAction(_ action: FileMenuAction, inNewWindow: Bool) {
@@ -163,6 +177,7 @@ struct ContentView: View {
             }
         case .openRecent(let url):
             if inNewWindow {
+                appState.newWindowRepoShouldFitScreen = false
                 appState.newWindowRepoURL = url
                 openWindow(id: "main")
             } else {

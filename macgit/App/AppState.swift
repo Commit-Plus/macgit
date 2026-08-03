@@ -54,6 +54,7 @@ final class AppState: ObservableObject {
     @Published var fileMenuAction: FileMenuAction?
     @Published var openWindowWithCloneSheet = false
     @Published var newWindowRepoURL: URL?
+    @Published var newWindowRepoShouldFitScreen = false
     @Published var hasOpenRepository = false
     @Published var appearance: AppAppearance {
         didSet {
