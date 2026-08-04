@@ -33,6 +33,10 @@ function entitlement(uid, context) {
   return doc(context.firestore(), `entitlements/${uid}`);
 }
 
+function releaseFeaturePolicy(context) {
+  return doc(context.firestore(), "featurePolicies/release");
+}
+
 function gitProviderAccount(uid, connectionID, context) {
   return doc(context.firestore(), `users/${uid}/gitProviderAccounts/${connectionID}`);
 }
@@ -335,6 +339,25 @@ describe("Firestore ownership rules", () => {
 
     await assertFails(setDoc(entitlement("user-a", userA), { plan: "pro" }));
     await assertFails(deleteDoc(entitlement("user-a", userA)));
+  });
+
+  test("all clients can read but cannot write the release feature policy", async () => {
+    await environment.withSecurityRulesDisabled(async (admin) => {
+      await setDoc(releaseFeaturePolicy(admin), {
+        schemaVersion: 1,
+        revision: 1,
+        features: {},
+      });
+    });
+
+    const userA = environment.authenticatedContext("user-a");
+    const guest = environment.unauthenticatedContext();
+
+    await assertSucceeds(getDoc(releaseFeaturePolicy(userA)));
+    await assertSucceeds(getDoc(releaseFeaturePolicy(guest)));
+    await assertFails(setDoc(releaseFeaturePolicy(userA), { revision: 2 }));
+    await assertFails(setDoc(releaseFeaturePolicy(guest), { revision: 2 }));
+    await assertFails(deleteDoc(releaseFeaturePolicy(userA)));
   });
 
   test("unauthenticated clients are denied", async () => {

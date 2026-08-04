@@ -26,6 +26,8 @@ struct macgitApp: App {
     @StateObject private var accountController: AccountSessionController
     @StateObject private var providerAccountController: GitProviderAccountController
     @StateObject private var aiProviderController: AIProviderController
+    @StateObject private var featureAccessController: FeatureAccessController
+    @StateObject private var repositoryVisibilityController: RepositoryVisibilityController
     @StateObject private var repositoryBookmarkController: RepositoryBookmarkController
     @State private var showingAppSettings = false
 
@@ -57,10 +59,11 @@ struct macgitApp: App {
             ? FirestoreGitProviderAccountStore()
             : nil
         let providerStore = LocalFirstGitProviderAccountStore(cloudStore: providerCloudStore)
+        let providerTokenVault = KeychainGitProviderTokenVault()
         _providerAccountController = StateObject(
             wrappedValue: GitProviderAccountController(
                 store: providerStore,
-                tokenVault: KeychainGitProviderTokenVault(),
+                tokenVault: providerTokenVault,
                 authService: GitHubProviderAuthService(configuration: providerConfiguration),
                 configuration: providerConfiguration,
                 gitLabAuthService: GitLabProviderAuthService(configuration: gitLabProviderConfiguration),
@@ -69,6 +72,24 @@ struct macgitApp: App {
             )
         )
         _aiProviderController = StateObject(wrappedValue: AIProviderController())
+        _featureAccessController = StateObject(
+            wrappedValue: FeatureAccessController(
+                provider: firebaseStatus == .configured
+                    ? FirestoreFeaturePolicyStore()
+                    : nil,
+                cache: UserDefaultsFeaturePolicyCache()
+            )
+        )
+        _repositoryVisibilityController = StateObject(
+            wrappedValue: RepositoryVisibilityController(
+                services: [
+                    .github: GitHubRepositoryVisibilityService(),
+                    .gitlab: GitLabRepositoryVisibilityService(),
+                ],
+                tokenVault: providerTokenVault,
+                cache: UserDefaultsRepositoryVisibilityCache()
+            )
+        )
         _repositoryBookmarkController = StateObject(
             wrappedValue: RepositoryBookmarkController(
                 cloudStore: firebaseStatus == .configured
@@ -87,6 +108,8 @@ struct macgitApp: App {
             )
                 .environmentObject(appState)
                 .environmentObject(appUpdateController)
+                .environmentObject(featureAccessController)
+                .environmentObject(repositoryVisibilityController)
                 .environmentObject(repositoryBookmarkController)
                 .preferredColorScheme(appState.appearance.colorScheme)
                 .onOpenURL { url in

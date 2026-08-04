@@ -49,3 +49,53 @@ test("admin script grants and revokes test Pro access", async () => {
   assert.equal(revoked.access, "inactive");
   assert.equal(revoked.billingStatus, "none");
 });
+
+test("admin script publishes the release feature policy", async () => {
+  const featurePolicyProjectId = "macgit-feature-policy-script-test";
+  await run(
+    process.execPath,
+    [new URL("../scripts/firebase/set-feature-policy.mjs", import.meta.url).pathname, "release"],
+    {
+      env: {
+        ...process.env,
+        FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080",
+        GCLOUD_PROJECT: featurePolicyProjectId,
+      },
+    },
+  );
+
+  const response = await fetch(
+    `http://127.0.0.1:8080/v1/projects/${featurePolicyProjectId}/databases/(default)/documents/featurePolicies/release`,
+    { headers: { Authorization: "Bearer owner" } },
+  );
+  assert.equal(response.ok, true);
+  const document = await response.json();
+  const fields = document.fields;
+
+  assert.equal(fields.schemaVersion.integerValue, "1");
+  assert.equal(fields.revision.integerValue, "1");
+  assert.equal(
+    fields.features.mapValue.fields.privateRepositories
+      .mapValue.fields.plans.mapValue.fields.free
+      .mapValue.fields.enabled.booleanValue,
+    false,
+  );
+  assert.equal(
+    fields.features.mapValue.fields.pullRequests
+      .mapValue.fields.plans.mapValue.fields.free
+      .mapValue.fields.repositoryScope.stringValue,
+    "public",
+  );
+  assert.equal(
+    fields.features.mapValue.fields.gitFlow
+      .mapValue.fields.plans.mapValue.fields.free
+      .mapValue.fields.repositoryScope.stringValue,
+    "publicOrLocal",
+  );
+  assert.equal(
+    fields.features.mapValue.fields.aiCommitMessage
+      .mapValue.fields.plans.mapValue.fields.free
+      .mapValue.fields.enabled.booleanValue,
+    false,
+  );
+});

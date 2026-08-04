@@ -106,6 +106,26 @@ node scripts/firebase/set-entitlement.mjs <firebase-uid> revoke
 
 The grant command writes active test Pro access with `source: admin_test`. The revoke command writes a normalized Free entitlement. Do not run this script with production credentials unless the target UID and requested mode have been independently verified.
 
+## Release feature policy
+
+The global plan matrix lives at `featurePolicies/release`. It contains no account, repository, credential, or source-code data, so signed-in and guest clients may read it. Firestore rules deny every client write; publish it only through the operator script or another trusted Admin SDK environment.
+
+With Application Default Credentials configured for the intended Firebase project:
+
+```bash
+node scripts/firebase/set-feature-policy.mjs release
+```
+
+Against the local emulator:
+
+```bash
+export FIRESTORE_EMULATOR_HOST="127.0.0.1:8080"
+export GCLOUD_PROJECT="macgit-local"
+node scripts/firebase/set-feature-policy.mjs release
+```
+
+The release policy makes hosted private repositories and each AI feature Pro-only. Free may use Pull Requests on public repositories and Git Flow on public or local-only repositories. Update the script and increment `revision` before publishing a policy change. The app rejects unsupported schema versions, retains the last valid cached policy, and otherwise uses its bundled release defaults.
+
 ## Validation
 
 Check required local keys without printing their values:
