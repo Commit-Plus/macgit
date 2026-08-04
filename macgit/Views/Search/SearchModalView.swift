@@ -18,6 +18,9 @@
 import SwiftUI
 
 struct SearchModalView: View {
+    private static let modalWidth: CGFloat = 640
+    private static let maximumResultsHeight: CGFloat = 340
+
     @StateObject private var coordinator: SearchCoordinator
     @FocusState private var isSearchFieldFocused: Bool
     let onDismiss: () -> Void
@@ -44,31 +47,39 @@ struct SearchModalView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Search bar
             searchBar
 
-            filterBar
-            
-            Divider()
-            
-            // Results
-            if coordinator.isLoading && coordinator.results.isEmpty {
-                ProgressView()
-                    .scaleEffect(0.8)
-                    .padding(40)
-            } else if coordinator.filteredResults.isEmpty && !coordinator.query.isEmpty {
-                emptyState
-            } else {
-                resultsList
+            if showsResultSection {
+                Divider()
+                    .opacity(0.7)
+
+                filterBar
+
+                Divider()
+                    .opacity(0.7)
+
+                if coordinator.filteredResults.isEmpty {
+                    filteredEmptyState
+                } else {
+                    resultsList
+                        .frame(height: resultsListHeight)
+                }
+
+                footer
             }
-            
-            // Footer
-            footer
         }
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
-        .frame(maxWidth: 640, maxHeight: 500)
+        .frame(width: Self.modalWidth)
+        .fixedSize(horizontal: false, vertical: true)
+        .glassEffect(
+            .regular.tint(Color(nsColor: .controlBackgroundColor).opacity(0.28)),
+            in: RoundedRectangle(cornerRadius: 28)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 28)
+                .stroke(.white.opacity(0.18), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 28))
+        .shadow(color: .black.opacity(0.28), radius: 28, x: 0, y: 14)
         .onAppear {
             isSearchFieldFocused = true
         }
@@ -90,46 +101,45 @@ struct SearchModalView: View {
             }
             return .handled
         }
-        .onKeyPress(characters: .alphanumerics) { press in
-            // Allow typing to flow into the search field
-            return .ignored
+        .onKeyPress(characters: .alphanumerics) { _ in
+            .ignored
         }
     }
     
     private var searchBar: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 18))
+                .font(.title3)
                 .foregroundStyle(.secondary)
-                .accessibilityLabel("Search")
+                .accessibilityHidden(true)
             
-            TextField("Search commits, files, branches...", text: $coordinator.query)
-                .font(.system(size: 16))
+            TextField("Search commits, files, branches, and tags…", text: $coordinator.query)
+                .font(.title3)
                 .textFieldStyle(.plain)
                 .focused($isSearchFieldFocused)
+
+            if coordinator.isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Searching")
+            }
             
             if !coordinator.query.isEmpty {
-                Button(action: { coordinator.query = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Clear search")
-                }
-                .buttonStyle(.plain)
-            }
-            
-            HStack(spacing: 4) {
-                Text("⌘⇧F")
-                    .font(.system(size: 11, weight: .medium))
+                Button("Clear Search", systemImage: "xmark.circle.fill", action: coordinator.clear)
+                    .labelStyle(.iconOnly)
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Color.secondary.opacity(0.1))
-                    .cornerRadius(4)
+                    .buttonStyle(.plain)
             }
+
+            Text("⌘⇧F")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 6))
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 17)
     }
 
     private var filterBar: some View {
@@ -141,7 +151,7 @@ struct SearchModalView: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 12)
+        .padding(.vertical, 11)
     }
 
     private func filterChip(_ filter: SearchFilter) -> some View {
@@ -152,13 +162,13 @@ struct SearchModalView: View {
             onSelectFilter(filter)
         } label: {
             Text(filter.title)
-                .font(.system(size: 12, weight: .medium))
+                .font(.callout)
                 .foregroundStyle(isSelected ? Color.white : Color.primary)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.vertical, 5)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Color.accentColor : Color.secondary.opacity(0.12))
+                        .fill(isSelected ? Color.accentColor : Color.secondary.opacity(0.10))
                 )
         }
         .buttonStyle(.plain)
@@ -168,20 +178,23 @@ struct SearchModalView: View {
     
     private var resultsList: some View {
         ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
+            ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(spacing: 0) {
                     ForEach(groupedResults) { section in
                         Section(header: sectionHeader(title: section.type.rawValue)) {
                             ForEach(section.results) { result in
-                                SearchResultRow(
-                                    result: result,
-                                    isSelected: coordinator.selectedResultID == result.id
-                                )
-                                .id(result.id)
-                                .onTapGesture {
+                                Button {
                                     coordinator.selectedResultID = result.id
                                     onSelect(result.action)
+                                } label: {
+                                    SearchResultRow(
+                                        result: result,
+                                        isSelected: coordinator.selectedResultID == result.id
+                                    )
+                                    .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
+                                .id(result.id)
                             }
                         }
                     }
@@ -190,7 +203,7 @@ struct SearchModalView: View {
                 .padding(.vertical, 8)
             }
             .onChange(of: coordinator.selectedResultID) { _, newID in
-                if let newID = newID {
+                if let newID {
                     withAnimation(.easeOut(duration: 0.1)) {
                         proxy.scrollTo(newID, anchor: .center)
                     }
@@ -199,35 +212,34 @@ struct SearchModalView: View {
         }
     }
     
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Spacer()
-            Text("No results found")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.secondary)
-            Text("Try a different search term")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary.opacity(0.7))
-            Spacer()
-        }
-        .frame(minHeight: 120)
+    private var filteredEmptyState: some View {
+        ContentUnavailableView(
+            "No \(coordinator.selectedFilter.title)",
+            systemImage: "line.3.horizontal.decrease.circle",
+            description: Text("Try All or another filter.")
+        )
+        .frame(height: 120)
     }
     
     private var footer: some View {
         HStack {
             Text("↑↓ Navigate • ↵ Select")
-                .font(.system(size: 11))
+                .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
+            Text("esc Close")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+        .padding(.vertical, 9)
+        .background(.thinMaterial)
     }
     
     private func sectionHeader(title: String) -> some View {
         Text(title)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.caption)
+            .bold()
             .foregroundStyle(.secondary)
             .textCase(.uppercase)
             .padding(.horizontal, 12)
@@ -241,6 +253,16 @@ struct SearchModalView: View {
             guard !typeResults.isEmpty else { return nil }
             return ResultSection(type: type, results: typeResults)
         }
+    }
+
+    private var showsResultSection: Bool {
+        !coordinator.results.isEmpty
+    }
+
+    private var resultsListHeight: CGFloat {
+        let rowsHeight = CGFloat(coordinator.filteredResults.count) * 44
+        let headersHeight = CGFloat(groupedResults.count) * 28
+        return min(Self.maximumResultsHeight, rowsHeight + headersHeight + 16)
     }
 }
 

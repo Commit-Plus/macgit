@@ -421,7 +421,7 @@ struct MainWindowView: View {
             rootView
 
             if showingSearchModal {
-                ZStack {
+                ZStack(alignment: .top) {
                     Color.black.opacity(0.15)
                         .ignoresSafeArea()
                         .onTapGesture {
@@ -438,7 +438,8 @@ struct MainWindowView: View {
                             showingSearchModal = false
                         }
                     )
-                    .padding(.top, 80)
+                    .padding(.top, 72)
+                    .padding(.horizontal, 24)
                 }
                 .transition(.opacity)
             }

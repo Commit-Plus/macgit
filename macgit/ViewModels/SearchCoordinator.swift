@@ -28,6 +28,7 @@ final class SearchCoordinator: ObservableObject {
     
     private var cancellables = Set<AnyCancellable>()
     private var searchTask: Task<Void, Never>?
+    private var searchGeneration = 0
     private let repositoryURL: URL
     
     init(repositoryURL: URL, selectedFilter: SearchFilter = .all) {
@@ -44,29 +45,36 @@ final class SearchCoordinator: ObservableObject {
     }
     
     private func performSearch(query: String) {
+        searchGeneration += 1
+        let generation = searchGeneration
         searchTask?.cancel()
-        
-        guard !query.isEmpty else {
+
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuery.isEmpty else {
             results = []
             selectedResultID = nil
             isLoading = false
             return
         }
         
+        results = []
+        selectedResultID = nil
         isLoading = true
         
         searchTask = Task { [weak self] in
-            guard let self = self else { return }
-            defer { self.searchTask = nil }
-            let searchResults = await GitStatusService.shared.search(query: query, in: repositoryURL)
-            
-            if Task.isCancelled { return }
-            
-            await MainActor.run {
-                self.results = searchResults
-                self.selectedResultID = self.filteredResults.first?.id
-                self.isLoading = false
+            guard let self else { return }
+            defer {
+                if self.searchGeneration == generation {
+                    self.searchTask = nil
+                }
             }
+            let searchResults = await GitStatusService.shared.search(query: normalizedQuery, in: repositoryURL)
+
+            guard !Task.isCancelled, searchGeneration == generation else { return }
+            
+            self.results = searchResults
+            self.selectedResultID = self.filteredResults.first?.id
+            self.isLoading = false
         }
     }
 
@@ -100,10 +108,11 @@ final class SearchCoordinator: ObservableObject {
     }
     
     func clear() {
+        searchGeneration += 1
+        searchTask?.cancel()
         query = ""
         results = []
         selectedResultID = nil
         isLoading = false
-        searchTask?.cancel()
     }
 }
