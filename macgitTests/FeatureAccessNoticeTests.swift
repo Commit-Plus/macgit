@@ -27,6 +27,26 @@ final class FeatureAccessNoticeTests: XCTestCase {
         XCTAssertTrue(notice.message.contains("Pull Requests"))
     }
 
+    func testSignedOutPrivateRepositoryNoticeRequestsSignIn() {
+        let notice = FeatureAccessNotice(feature: .privateRepositories, denial: .requiresPro)
+
+        XCTAssertEqual(notice.title(isSignedIn: false), "Sign In Required")
+        XCTAssertEqual(
+            notice.message(isSignedIn: false),
+            "Sign in to Commit+ to use private repositories."
+        )
+    }
+
+    func testSignedInPrivateRepositoryNoticeShowsAnnualizedProPrice() {
+        let notice = FeatureAccessNotice(feature: .privateRepositories, denial: .requiresPro)
+
+        XCTAssertEqual(notice.title(isSignedIn: true), "Commit+ Pro Required")
+        XCTAssertEqual(
+            notice.message(isSignedIn: true),
+            "Upgrade to Commit+ Pro from $3.25/month (billed annually) to use private repositories."
+        )
+    }
+
     func testVisibilityNoticeExplainsRetryableFailure() {
         let notice = FeatureAccessNotice(
             feature: .privateRepositories,

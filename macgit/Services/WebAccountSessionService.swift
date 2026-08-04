@@ -21,7 +21,7 @@ import Foundation
 
 @MainActor
 protocol WebAccountSessionProviding {
-    func profileSignInURL() async throws -> URL
+    func signInURL(for destination: WebAccountDestination) async throws -> URL
 }
 
 enum WebAccountSessionError: LocalizedError {
@@ -55,7 +55,11 @@ enum CommitPlusWebConfiguration {
 }
 
 enum WebAccountSignInURLBuilder {
-    nonisolated static func profileURL(baseURL: URL, customToken: String) throws -> URL {
+    nonisolated static func signInURL(
+        baseURL: URL,
+        customToken: String,
+        destination: WebAccountDestination
+    ) throws -> URL {
         guard !customToken.isEmpty,
               var components = URLComponents(
                 url: baseURL.appending(path: "session"),
@@ -64,7 +68,9 @@ enum WebAccountSignInURLBuilder {
             throw WebAccountSessionError.invalidServerResponse
         }
 
-        components.query = nil
+        components.queryItems = [
+            URLQueryItem(name: "next", value: destination.path)
+        ]
         components.fragment = "token=\(customToken)"
         guard let url = components.url else {
             throw WebAccountSessionError.invalidServerResponse
@@ -86,16 +92,17 @@ final class FirebaseWebAccountSessionService: WebAccountSessionProviding {
         self.baseURLProvider = baseURLProvider
     }
 
-    func profileSignInURL() async throws -> URL {
+    func signInURL(for destination: WebAccountDestination) async throws -> URL {
         let result = try await functions.httpsCallable("createWebSignInToken").call()
         guard let payload = result.data as? [String: Any],
               let customToken = payload["customToken"] as? String else {
             throw WebAccountSessionError.invalidServerResponse
         }
 
-        return try WebAccountSignInURLBuilder.profileURL(
+        return try WebAccountSignInURLBuilder.signInURL(
             baseURL: baseURLProvider(),
-            customToken: customToken
+            customToken: customToken,
+            destination: destination
         )
     }
 }

@@ -144,9 +144,11 @@ final class AccountSessionControllerTests: XCTestCase {
             providerIDs: ["password"]
         )
         let profileURL = try XCTUnwrap(
-            URL(string: "http://localhost:3000/session#token=test-token")
+            URL(string: "http://localhost:3000/session?next=/profile#token=test-token")
         )
-        let provider = FakeWebAccountSessionProvider(profileURL: profileURL)
+        let provider = FakeWebAccountSessionProvider(
+            urls: [.profile: profileURL]
+        )
         var openedURLs: [URL] = []
         let controller = AccountSessionController(
             auth: FakeAccountAuth(current: account),
@@ -163,22 +165,63 @@ final class AccountSessionControllerTests: XCTestCase {
         XCTAssertEqual(provider.requestCount, 1)
         XCTAssertEqual(openedURLs, [profileURL])
         XCTAssertFalse(controller.isOpeningAccountOnWeb)
+        XCTAssertNil(controller.openingWebDestination)
+        XCTAssertNil(controller.errorMessage)
+    }
+
+    func testOpenPricingOnWebUsesAuthenticatedPricingURL() async throws {
+        let account = AccountSnapshot(
+            uid: "u1",
+            email: "a@example.com",
+            displayName: nil,
+            providerIDs: ["password"]
+        )
+        let pricingURL = try XCTUnwrap(
+            URL(string: "http://localhost:3000/session?next=/pricing#token=test-token")
+        )
+        let provider = FakeWebAccountSessionProvider(
+            urls: [.pricing: pricingURL]
+        )
+        var openedURLs: [URL] = []
+        let controller = AccountSessionController(
+            auth: FakeAccountAuth(current: account),
+            bootstrapStatus: .configured,
+            webAccountSessionProvider: provider,
+            openWebURL: { url in
+                openedURLs.append(url)
+                return true
+            }
+        )
+
+        await controller.openPricingOnWeb()
+
+        XCTAssertEqual(provider.requestedDestinations, [.pricing])
+        XCTAssertEqual(openedURLs, [pricingURL])
+        XCTAssertFalse(controller.isOpeningAccountOnWeb)
+        XCTAssertNil(controller.openingWebDestination)
         XCTAssertNil(controller.errorMessage)
     }
 }
 
 @MainActor
 private final class FakeWebAccountSessionProvider: WebAccountSessionProviding {
-    let profileURL: URL
-    private(set) var requestCount = 0
+    let urls: [WebAccountDestination: URL]
+    private(set) var requestedDestinations: [WebAccountDestination] = []
 
-    init(profileURL: URL) {
-        self.profileURL = profileURL
+    var requestCount: Int {
+        requestedDestinations.count
     }
 
-    func profileSignInURL() async throws -> URL {
-        requestCount += 1
-        return profileURL
+    init(urls: [WebAccountDestination: URL]) {
+        self.urls = urls
+    }
+
+    func signInURL(for destination: WebAccountDestination) async throws -> URL {
+        requestedDestinations.append(destination)
+        guard let url = urls[destination] else {
+            throw WebAccountSessionError.invalidServerResponse
+        }
+        return url
     }
 }
 

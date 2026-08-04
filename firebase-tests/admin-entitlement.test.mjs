@@ -73,7 +73,7 @@ test("admin script publishes the release feature policy", async () => {
   const fields = document.fields;
 
   assert.equal(fields.schemaVersion.integerValue, "1");
-  assert.equal(fields.revision.integerValue, "1");
+  assert.equal(fields.revision.integerValue, "2");
   assert.equal(
     fields.features.mapValue.fields.privateRepositories
       .mapValue.fields.plans.mapValue.fields.free
@@ -88,6 +88,12 @@ test("admin script publishes the release feature policy", async () => {
   );
   assert.equal(
     fields.features.mapValue.fields.gitFlow
+      .mapValue.fields.plans.mapValue.fields.free
+      .mapValue.fields.repositoryScope.stringValue,
+    "publicOrLocal",
+  );
+  assert.equal(
+    fields.features.mapValue.fields.gitUndo
       .mapValue.fields.plans.mapValue.fields.free
       .mapValue.fields.repositoryScope.stringValue,
     "publicOrLocal",

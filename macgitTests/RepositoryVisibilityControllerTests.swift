@@ -116,68 +116,6 @@ final class RepositoryVisibilityControllerTests: XCTestCase {
         XCTAssertEqual(cache.values.values.first?.visibility, .public)
     }
 
-    func testRepositoryAccessDecisionAllowsPublicAndRequiresProForPrivate() async {
-        let publicController = makeController(
-            service: FakeRepositoryVisibilityProvider(results: [.success(.public)])
-        )
-        let privateController = makeController(
-            service: FakeRepositoryVisibilityProvider(results: [.success(.private)])
-        )
-
-        let publicDecision = await publicController.repositoryAccessDecision(
-            repositoryURL: repositoryURL,
-            accounts: [],
-            entitlement: .free,
-            policy: .bundled
-        )
-        let privateDecision = await privateController.repositoryAccessDecision(
-            repositoryURL: repositoryURL,
-            accounts: [],
-            entitlement: .free,
-            policy: .bundled
-        )
-
-        XCTAssertEqual(publicDecision, .allowed)
-        XCTAssertEqual(privateDecision, .denied(.requiresPro))
-    }
-
-    func testRepositoryAccessDecisionAllowsActiveProPrivateRepository() async {
-        let controller = makeController(
-            service: FakeRepositoryVisibilityProvider(results: [.success(.private)])
-        )
-        let pro = AccountEntitlement(
-            plan: .pro,
-            access: .active,
-            billingStatus: .active
-        )
-
-        let decision = await controller.repositoryAccessDecision(
-            repositoryURL: repositoryURL,
-            accounts: [],
-            entitlement: pro,
-            policy: .bundled
-        )
-
-        XCTAssertEqual(decision, .allowed)
-    }
-
-    func testRepositoryAccessDecisionFailsClosedWhenVisibilityIsUnknown() async {
-        let controller = makeController(
-            service: FakeRepositoryVisibilityProvider(results: [
-                .failure(.repositoryUnavailable)
-            ])
-        )
-
-        let decision = await controller.repositoryAccessDecision(
-            repositoryURL: repositoryURL,
-            accounts: [],
-            entitlement: .free,
-            policy: .bundled
-        )
-
-        XCTAssertEqual(decision, .denied(.repositoryVisibilityUnavailable))
-    }
-
     func testUserDefaultsCachePersistsOnlyConfirmedVisibility() {
         let suiteName = "RepositoryVisibilityControllerTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

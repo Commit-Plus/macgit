@@ -51,6 +51,22 @@ struct FeatureAccessNotice: Identifiable, Equatable {
             "\(feature.displayName) is not enabled for this repository type."
         }
     }
+
+    func title(isSignedIn: Bool) -> String {
+        if denial == .requiresPro, !isSignedIn {
+            return "Sign In Required"
+        }
+        return title
+    }
+
+    func message(isSignedIn: Bool) -> String {
+        guard denial == .requiresPro else { return message }
+        guard isSignedIn else {
+            return "Sign in to Commit+ to use \(feature.displayName.lowercased())."
+        }
+        guard feature == .privateRepositories else { return message }
+        return "Upgrade to Commit+ Pro from $3.25/month (billed annually) to use private repositories."
+    }
 }
 
 extension PlanFeature {
@@ -62,6 +78,8 @@ extension PlanFeature {
             "Pull Requests"
         case .gitFlow:
             "Git Flow"
+        case .gitUndo:
+            "Git Undo"
         case .aiCommitMessage:
             "AI commit messages"
         case .repositoryChat:

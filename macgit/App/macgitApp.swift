@@ -134,6 +134,7 @@ struct macgitApp: App {
                         .preferredColorScheme(appState.appearance.colorScheme)
                 }
         }
+        .defaultSize(width: 860, height: 680)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates...") {

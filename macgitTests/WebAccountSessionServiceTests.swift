@@ -21,14 +21,28 @@ import XCTest
 
 final class WebAccountSessionServiceTests: XCTestCase {
     func testProfileURLUsesConfiguredBaseURLAndFragmentToken() throws {
-        let url = try WebAccountSignInURLBuilder.profileURL(
+        let url = try WebAccountSignInURLBuilder.signInURL(
             baseURL: XCTUnwrap(URL(string: "http://localhost:3000")),
-            customToken: "header.payload.signature"
+            customToken: "header.payload.signature",
+            destination: .profile
         )
 
         XCTAssertEqual(
             url.absoluteString,
-            "http://localhost:3000/session#token=header.payload.signature"
+            "http://localhost:3000/session?next=/profile#token=header.payload.signature"
+        )
+    }
+
+    func testPricingURLUsesAuthenticatedPricingDestination() throws {
+        let url = try WebAccountSignInURLBuilder.signInURL(
+            baseURL: XCTUnwrap(URL(string: "https://commit-plus.com")),
+            customToken: "test-token",
+            destination: .pricing
+        )
+
+        XCTAssertEqual(
+            url.absoluteString,
+            "https://commit-plus.com/session?next=/pricing#token=test-token"
         )
     }
 }

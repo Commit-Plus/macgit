@@ -29,6 +29,7 @@ final class AccountSessionController: ObservableObject {
     @Published private(set) var isDeletingAccount = false
     @Published private(set) var requiresRecentAuthentication = false
     @Published private(set) var isOpeningAccountOnWeb = false
+    @Published private(set) var openingWebDestination: WebAccountDestination?
     @Published private(set) var isRefreshingProfile = false
     @Published private(set) var entitlement: AccountEntitlement = .free
     @Published private(set) var entitlementError: String?
@@ -244,13 +245,25 @@ final class AccountSessionController: ObservableObject {
     }
 
     func openAccountOnWeb() async {
+        await openAuthenticatedWebPage(.profile)
+    }
+
+    func openPricingOnWeb() async {
+        await openAuthenticatedWebPage(.pricing)
+    }
+
+    private func openAuthenticatedWebPage(_ destination: WebAccountDestination) async {
         guard account != nil, let webAccountSessionProvider else { return }
+        openingWebDestination = destination
         isOpeningAccountOnWeb = true
         errorMessage = nil
-        defer { isOpeningAccountOnWeb = false }
+        defer {
+            isOpeningAccountOnWeb = false
+            openingWebDestination = nil
+        }
 
         do {
-            let url = try await webAccountSessionProvider.profileSignInURL()
+            let url = try await webAccountSessionProvider.signInURL(for: destination)
             guard openWebURL(url) else {
                 throw WebAccountSessionError.unableToOpenBrowser
             }

@@ -8,12 +8,12 @@ Make Commit+ plan boundaries centrally configurable from Firebase while keeping 
 
 - [completed] [Phase 1: Firebase policy foundation](2026-08-03-feature-access-phase-1-firebase-policy.md)
 - [completed] [Phase 2: Repository visibility and private-repository access](2026-08-04-feature-access-phase-2-repository-visibility.md)
-- [completed] [Phase 3: Repository opening, Pull Request, and Git Flow gates](2026-08-04-feature-access-phase-3-enforcement.md) (branch: `codex/feature-access-phase-3`)
+- [completed] [Phase 3: Repository action gates and reusable Pro upgrade UI](2026-08-04-feature-access-phase-3-enforcement.md) (branch: `codex/feature-access-phase-3`)
 - [pending] Phase 4: AI feature gates and server-enforced cloud quotas
 
 ## Shared constraints
 
-- Free supports public and local-only repositories; hosted private repositories require active Pro access.
+- Free can open and clone public, private, and local-only repositories. Selected advanced actions inside hosted private repositories require active Pro access.
 - There is no one-private-repository quota or repository activation ledger.
 - Entitlements remain UID-scoped and server-controlled at `entitlements/{uid}`.
 - Global policy is read from `featurePolicies/release`, cached locally, and validated before use.

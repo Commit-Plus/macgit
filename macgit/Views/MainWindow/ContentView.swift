@@ -20,8 +20,6 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var repositoryBookmarkController: RepositoryBookmarkController
-    @EnvironmentObject private var featureAccessController: FeatureAccessController
-    @EnvironmentObject private var repositoryVisibilityController: RepositoryVisibilityController
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var accountController: AccountSessionController
     @ObservedObject var providerAccountController: GitProviderAccountController
@@ -33,10 +31,6 @@ struct ContentView: View {
     @State private var showingKeepCurrentAlert = false
     @State private var pendingAction: FileMenuAction?
     @State private var shouldFitScreenWhenRepositoryOpens = false
-    @State private var featureAccessNotice: FeatureAccessNotice?
-    @State private var blockedRepositoryURL: URL?
-    @State private var blockedOpenInNewWindow = false
-    @State private var isCheckingRepositoryAccess = false
     @StateObject private var operationProgress = RepositoryOperationProgress()
 
     var body: some View {
@@ -59,8 +53,14 @@ struct ContentView: View {
                 RepoPickerView(
                     showCloneSheetInitially: false,
                     onRepositoryOpened: { url in
-                        Task { await requestOpenRepository(url, inNewWindow: true) }
+                        openRepository(url, inNewWindow: true)
                     }
+                )
+                .background(
+                    WindowInitialContentSizeModifier(
+                        width: 860,
+                        height: 680
+                    )
                 )
             }
         }
@@ -68,7 +68,7 @@ struct ContentView: View {
             RepoPickerView(
                 showCloneSheetInitially: false,
                 onRepositoryOpened: { url in
-                    Task { await requestOpenRepository(url, inNewWindow: false) }
+                    openRepository(url, inNewWindow: false)
                 }
             )
             .frame(minWidth: 560, minHeight: 480)
@@ -76,7 +76,7 @@ struct ContentView: View {
         .sheet(isPresented: $showingCloneSheet) {
             CloneSheetView(onClone: { url in
                 showingCloneSheet = false
-                Task { await requestOpenRepository(url, inNewWindow: false) }
+                openRepository(url, inNewWindow: false)
             })
             .frame(minWidth: 480)
         }
@@ -107,9 +107,6 @@ struct ContentView: View {
             }
         } message: {
             Text("Do you want to keep the current repository open?")
-        }
-        .alert(item: $featureAccessNotice) { notice in
-            featureAccessAlert(for: notice)
         }
         .onChange(of: appState.fileMenuAction) { _, newValue in
             guard let action = newValue else { return }
@@ -150,17 +147,6 @@ struct ContentView: View {
         .overlay(
             WindowCloseButtonModifier(isVisible: repositoryURL == nil)
         )
-        .overlay {
-            if isCheckingRepositoryAccess {
-                ZStack {
-                    Color.black.opacity(0.12)
-                        .ignoresSafeArea()
-                    ProgressView("Checking repository access…")
-                        .padding()
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                }
-            }
-        }
     }
 
     private func handlePendingWindowFlags() async {
@@ -169,7 +155,7 @@ struct ContentView: View {
             appState.newWindowRepoURL = nil
             appState.newWindowRepoShouldFitScreen = false
             shouldFitScreenWhenRepositoryOpens = shouldFitScreen
-            await requestOpenRepository(url, inNewWindow: false)
+            openRepository(url, inNewWindow: false)
         }
         if appState.openWindowWithCloneSheet {
             appState.openWindowWithCloneSheet = false
@@ -193,11 +179,7 @@ struct ContentView: View {
                 showingRepoPickerSheet = true
             }
         case .openRecent(let url):
-            if inNewWindow {
-                Task { await requestOpenRepository(url, inNewWindow: true) }
-            } else {
-                Task { await requestOpenRepository(url, inNewWindow: false) }
-            }
+            openRepository(url, inNewWindow: inNewWindow)
         case .close:
             repositoryURL = nil
         }
@@ -218,35 +200,7 @@ struct ContentView: View {
         }
     }
 
-    private func requestOpenRepository(
-        _ url: URL,
-        inNewWindow: Bool,
-        forceRefresh: Bool = false
-    ) async {
-        guard !isCheckingRepositoryAccess else { return }
-        isCheckingRepositoryAccess = true
-        defer { isCheckingRepositoryAccess = false }
-
-        let decision = await repositoryVisibilityController.repositoryAccessDecision(
-            repositoryURL: url,
-            accounts: providerAccountController.accounts,
-            entitlement: accountController.entitlement,
-            policy: featureAccessController.policy,
-            forceRefresh: forceRefresh
-        )
-        guard case .allowed = decision else {
-            if case .denied(let denial) = decision {
-                blockedRepositoryURL = url
-                blockedOpenInNewWindow = inNewWindow
-                featureAccessNotice = FeatureAccessNotice(
-                    feature: .privateRepositories,
-                    denial: denial
-                )
-            }
-            return
-        }
-
-        blockedRepositoryURL = nil
+    private func openRepository(_ url: URL, inNewWindow: Bool) {
         if inNewWindow {
             appState.newWindowRepoShouldFitScreen = true
             appState.newWindowRepoURL = url
@@ -255,45 +209,6 @@ struct ContentView: View {
             showingRepoPickerSheet = false
             showingCloneSheet = false
             repositoryURL = url
-        }
-    }
-
-    private func featureAccessAlert(for notice: FeatureAccessNotice) -> Alert {
-        let title = Text(notice.title)
-        let message = Text(notice.message)
-        switch notice.denial {
-        case .requiresPro:
-            let actionTitle = accountController.account == nil ? "Sign In" : "Manage Account"
-            return Alert(
-                title: title,
-                message: message,
-                primaryButton: .default(Text(actionTitle)) {
-                    if accountController.account == nil {
-                        accountController.presentAuthentication(.signIn)
-                    } else {
-                        accountController.presentManageAccount()
-                    }
-                },
-                secondaryButton: .cancel()
-            )
-        case .repositoryVisibilityUnavailable:
-            return Alert(
-                title: title,
-                message: message,
-                primaryButton: .default(Text("Try Again")) {
-                    guard let blockedRepositoryURL else { return }
-                    Task {
-                        await requestOpenRepository(
-                            blockedRepositoryURL,
-                            inNewWindow: blockedOpenInNewWindow,
-                            forceRefresh: true
-                        )
-                    }
-                },
-                secondaryButton: .cancel()
-            )
-        case .featureDisabled, .repositoryScopeNotAllowed:
-            return Alert(title: title, message: message, dismissButton: .default(Text("OK")))
         }
     }
 }

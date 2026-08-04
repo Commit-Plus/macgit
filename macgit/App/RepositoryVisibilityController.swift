@@ -134,32 +134,6 @@ final class RepositoryVisibilityController: ObservableObject {
         )
     }
 
-    func repositoryAccessDecision(
-        repositoryURL: URL,
-        accounts: [GitProviderAccount],
-        entitlement: AccountEntitlement,
-        policy: FeatureAccessPolicy,
-        forceRefresh: Bool = false
-    ) async -> FeatureAccessDecision {
-        let visibility = await resolve(
-            repositoryURL: repositoryURL,
-            accounts: accounts,
-            forceRefresh: forceRefresh
-        )
-        switch visibility {
-        case .local, .public:
-            return .allowed
-        case .private:
-            return FeatureAccessResolver(policy: policy).decision(
-                for: .privateRepositories,
-                entitlement: entitlement,
-                repositoryVisibility: visibility
-            )
-        case .unknown:
-            return .denied(.repositoryVisibilityUnavailable)
-        }
-    }
-
     private func resolve(
         repository: GitRepositoryIdentity,
         accounts: [GitProviderAccount],

@@ -56,6 +56,14 @@ final class FeatureAccessPolicyTests: XCTestCase {
             .allowed
         )
         XCTAssertEqual(
+            resolver.decision(
+                for: .gitUndo,
+                entitlement: .free,
+                repositoryVisibility: .private
+            ),
+            .denied(.requiresPro)
+        )
+        XCTAssertEqual(
             resolver.decision(for: .aiCommitMessage, entitlement: .free),
             .denied(.requiresPro)
         )
@@ -137,6 +145,43 @@ final class FeatureAccessPolicyTests: XCTestCase {
         )
     }
 
+    func testGitUndoAllowsFreePublicAndLocalButRequiresProForPrivate() {
+        let resolver = FeatureAccessResolver(policy: .bundled)
+
+        XCTAssertEqual(
+            resolver.decision(
+                for: .gitUndo,
+                entitlement: .free,
+                repositoryVisibility: .public
+            ),
+            .allowed
+        )
+        XCTAssertEqual(
+            resolver.decision(
+                for: .gitUndo,
+                entitlement: .free,
+                repositoryVisibility: .local
+            ),
+            .allowed
+        )
+        XCTAssertEqual(
+            resolver.decision(
+                for: .gitUndo,
+                entitlement: .free,
+                repositoryVisibility: .private
+            ),
+            .denied(.requiresPro)
+        )
+        XCTAssertEqual(
+            resolver.decision(
+                for: .gitUndo,
+                entitlement: activePro,
+                repositoryVisibility: .private
+            ),
+            .allowed
+        )
+    }
+
     func testGloballyDisabledFeatureStaysDisabledForPro() {
         let disabled = FeaturePolicyRule(
             enabled: false,
@@ -210,6 +255,7 @@ final class FeatureAccessPolicyTests: XCTestCase {
             "privateRepositories": scopedRule(freeEnabled: false, freeScope: "none"),
             "pullRequests": scopedRule(freeEnabled: true, freeScope: "public"),
             "gitFlow": scopedRule(freeEnabled: true, freeScope: "publicOrLocal"),
+            "gitUndo": scopedRule(freeEnabled: true, freeScope: "publicOrLocal"),
             "aiCommitMessage": proOnlyRule(),
             "repositoryChat": proOnlyRule(),
             "aiConflictResolution": proOnlyRule(),

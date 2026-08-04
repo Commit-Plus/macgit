@@ -96,7 +96,7 @@ enum FeaturePolicyDocumentDecoder {
 private extension PlanFeature {
     var requiresRepositoryScope: Bool {
         switch self {
-        case .privateRepositories, .pullRequests, .gitFlow:
+        case .privateRepositories, .pullRequests, .gitFlow, .gitUndo:
             true
         case .aiCommitMessage, .repositoryChat, .aiConflictResolution, .aiBringYourOwnKey:
             false

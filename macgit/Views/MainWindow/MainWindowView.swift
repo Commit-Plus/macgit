@@ -127,6 +127,10 @@ struct MainWindowView: View {
     @StateObject var pullRequestController: PullRequestController
     @State var pullRequestAccessDecision: FeatureAccessDecision?
     @State var featureAccessNotice: FeatureAccessNotice?
+    @State var proUpgradePresentation: ProUpgradePresentation?
+    @State var proUpgradeErrorMessage: String?
+    @State var pendingGitUndoAccessAction: GitUndoMenuAction?
+    @State var isCheckingGitUndoAccess = false
     @State private var repoIconName: String = "code-branch"
     @State private var remoteURLString: String = ""
     @State var selectedBranchName: String? = nil
@@ -189,6 +193,16 @@ struct MainWindowView: View {
             })
             .alert(item: $featureAccessNotice) { notice in
                 featureAccessAlert(for: notice)
+            }
+            .sheet(item: $proUpgradePresentation) { presentation in
+                ProUpgradeSheet(
+                    feature: presentation.feature,
+                    isSignedIn: accountController.account != nil,
+                    isOpening: accountController.openingWebDestination == .pricing,
+                    errorMessage: proUpgradeErrorMessage,
+                    onCancel: dismissProUpgradeSheet,
+                    onPrimaryAction: performProUpgradePrimaryAction
+                )
             }
             .confirmationDialog(
                 "Open Repository in Editor",
@@ -960,19 +974,20 @@ struct MainWindowView: View {
         if accountController.account == nil {
             accountController.presentAuthentication(.signIn)
         } else {
-            accountController.presentManageAccount()
+            Task { await accountController.openPricingOnWeb() }
         }
     }
 
     private func featureAccessAlert(for notice: FeatureAccessNotice) -> Alert {
-        let title = Text(notice.title)
-        let message = Text(notice.message)
+        let isSignedIn = accountController.account != nil
+        let title = Text(notice.title(isSignedIn: isSignedIn))
+        let message = Text(notice.message(isSignedIn: isSignedIn))
         if notice.denial == .requiresPro {
             return Alert(
                 title: title,
                 message: message,
                 primaryButton: .default(
-                    Text(accountController.account == nil ? "Sign In" : "Manage Account"),
+                    Text(isSignedIn ? "View Pricing" : "Sign In"),
                     action: presentFeatureAccessAccountAction
                 ),
                 secondaryButton: .cancel()
@@ -983,14 +998,59 @@ struct MainWindowView: View {
                 title: title,
                 message: message,
                 primaryButton: .default(Text("Try Again")) {
-                    Task {
-                        _ = await authorizePullRequestAccess(forceRefresh: true)
-                    }
+                    retryFeatureAccess(for: notice.feature)
                 },
                 secondaryButton: .cancel()
             )
         }
         return Alert(title: title, message: message, dismissButton: .default(Text("OK")))
+    }
+
+    private func retryFeatureAccess(for feature: PlanFeature) {
+        switch feature {
+        case .pullRequests:
+            Task {
+                _ = await authorizePullRequestAccess(forceRefresh: true)
+            }
+        case .gitUndo:
+            guard let action = pendingGitUndoAccessAction else { return }
+            authorizeAndHandleGitUndoMenuAction(action, forceRefresh: true)
+        case .privateRepositories, .gitFlow, .aiCommitMessage, .repositoryChat,
+             .aiConflictResolution, .aiBringYourOwnKey:
+            break
+        }
+    }
+
+    private func dismissProUpgradeSheet() {
+        guard accountController.openingWebDestination != .pricing else { return }
+        proUpgradePresentation = nil
+        proUpgradeErrorMessage = nil
+        pendingGitUndoAccessAction = nil
+    }
+
+    private func performProUpgradePrimaryAction() {
+        guard accountController.openingWebDestination != .pricing else { return }
+        proUpgradeErrorMessage = nil
+
+        guard accountController.account != nil else {
+            proUpgradePresentation = nil
+            pendingGitUndoAccessAction = nil
+            Task {
+                await Task.yield()
+                accountController.presentAuthentication(.signIn)
+            }
+            return
+        }
+
+        Task {
+            await accountController.openPricingOnWeb()
+            if let errorMessage = accountController.errorMessage {
+                proUpgradeErrorMessage = errorMessage
+            } else {
+                proUpgradePresentation = nil
+                pendingGitUndoAccessAction = nil
+            }
+        }
     }
 
     @ToolbarContentBuilder
@@ -1019,7 +1079,7 @@ struct MainWindowView: View {
                 disabled: GitUndoToolbarPolicy.isUndoDisabled(
                     isSyncing: syncState.isAnySyncing,
                     canUndo: undoManager.canUndo
-                ) || operationProgress.activeOperation != nil,
+                ) || operationProgress.activeOperation != nil || isCheckingGitUndoAccess,
                 action: { handleGitUndoMenuAction(.undo) }
             )
         }
