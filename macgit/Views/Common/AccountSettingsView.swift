@@ -19,6 +19,7 @@
 import SwiftUI
 
 struct AccountSettingsView: View {
+    @EnvironmentObject private var featureAccessController: FeatureAccessController
     @ObservedObject var accountController: AccountSessionController
     @ObservedObject var providerAccountController: GitProviderAccountController
 
@@ -153,6 +154,13 @@ struct AccountSettingsView: View {
                     controller: providerAccountController,
                     isSignedIn: accountController.account != nil,
                     onSignIn: presentSignIn,
+                    onUpgrade: {
+                        Task { await accountController.openPricingOnWeb() }
+                    },
+                    multipleAccountAccess: featureAccessController.decision(
+                        for: .multipleProviderAccounts,
+                        entitlement: accountController.entitlement
+                    ),
                     showsTitle: false
                 )
             } header: {

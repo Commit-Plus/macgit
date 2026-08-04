@@ -55,6 +55,44 @@ final class GitProviderAccountsSectionTests: XCTestCase {
         )
     }
 
+    func testFreeLimitPresentationOffersTheCorrectAccountAction() {
+        let decision = GitProviderAccountCreationDecision.denied(.requiresPro(freeLimit: 1))
+
+        XCTAssertEqual(
+            GitProviderAccountsPresentationPolicy.accountCreationMessage(for: decision),
+            "Free includes 1 Git provider account."
+        )
+        XCTAssertEqual(
+            GitProviderAccountsPresentationPolicy.accountCreationActionTitle(
+                for: decision,
+                isSignedIn: true
+            ),
+            "Upgrade to Pro"
+        )
+        XCTAssertEqual(
+            GitProviderAccountsPresentationPolicy.accountCreationActionTitle(
+                for: decision,
+                isSignedIn: false
+            ),
+            "Sign In to Use Pro"
+        )
+    }
+
+    func testDisabledAccountCreationDoesNotOfferAnUpgradeAction() {
+        let decision = GitProviderAccountCreationDecision.denied(.featureDisabled)
+
+        XCTAssertEqual(
+            GitProviderAccountsPresentationPolicy.accountCreationMessage(for: decision),
+            "Adding Git provider accounts is currently unavailable."
+        )
+        XCTAssertNil(
+            GitProviderAccountsPresentationPolicy.accountCreationActionTitle(
+                for: decision,
+                isSignedIn: true
+            )
+        )
+    }
+
     func testAddAccountAuthOptionsDisablePersonalAccessTokenUntilSupported() {
         XCTAssertEqual(
             GitProviderAddAccountPresentationPolicy.authTypeOptions,

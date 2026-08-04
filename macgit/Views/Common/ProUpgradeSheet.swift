@@ -37,6 +37,7 @@ struct ProUpgradeSheet: View {
         (feature: "AI tools", free: "—", pro: "Full"),
         (feature: "View and manage PRs", free: "Public repositories", pro: "Full"),
         (feature: "Git Flow", free: "Public & local repositories", pro: "Full"),
+        (feature: "Git provider accounts", free: "1", pro: "Unlimited"),
     ]
 
     var body: some View {
@@ -162,7 +163,8 @@ struct ProUpgradeSheet: View {
         switch feature {
         case .pullRequests, .gitFlow:
             "Upgrade to Commit+ Pro to use \(feature.displayName) in private repositories, plus advanced workflows and AI tools across your Macs."
-        case .aiCommitMessage, .repositoryChat, .aiConflictResolution, .aiBringYourOwnKey:
+        case .aiCommitMessage, .repositoryChat, .aiConflictResolution, .aiBringYourOwnKey,
+             .multipleProviderAccounts:
             "Upgrade to Commit+ Pro to use \(feature.displayName), plus advanced workflows and AI tools across your Macs."
         case .privateRepositories:
             "Upgrade to Commit+ Pro for advanced workflows and AI tools in private repositories across your Macs."

@@ -23,6 +23,7 @@ struct GitProviderAddAccountSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var controller: GitProviderAccountController
     private let editingAccount: GitProviderAccount?
+    private let accountCreationDecision: GitProviderAccountCreationDecision
 
     @State private var selectedHost: GitProviderAddAccountHost = .github
     @State private var selectedAuthType: GitProviderAddAccountAuthType = .oauth
@@ -31,9 +32,14 @@ struct GitProviderAddAccountSheet: View {
     @State private var sshKeyPath = ""
     @State private var connectionTask: Task<Void, Never>?
 
-    init(controller: GitProviderAccountController, editingAccount: GitProviderAccount? = nil) {
+    init(
+        controller: GitProviderAccountController,
+        editingAccount: GitProviderAccount? = nil,
+        accountCreationDecision: GitProviderAccountCreationDecision = .allowed
+    ) {
         self.controller = controller
         self.editingAccount = editingAccount
+        self.accountCreationDecision = accountCreationDecision
         _selectedHost = State(initialValue: editingAccount.map(GitProviderAddAccountPresentationPolicy.host(for:)) ?? .github)
         _selectedAuthType = State(initialValue: .oauth)
         _selectedProtocol = State(initialValue: editingAccount?.transportProtocol == .ssh ? .ssh : .https)
@@ -127,6 +133,16 @@ struct GitProviderAddAccountSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if editingAccount == nil,
+               matchingAccount() == nil,
+               let message = GitProviderAccountsPresentationPolicy.accountCreationMessage(
+                   for: accountCreationDecision
+               ) {
+                Text(message)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             HStack {
                 Button("Need help logging into your account?") {}
                     .buttonStyle(.link)
@@ -147,7 +163,8 @@ struct GitProviderAddAccountSheet: View {
     }
 
     private var canConnect: Bool {
-        GitProviderAddAccountPresentationPolicy.canConnect(
+        (editingAccount != nil || accountCreationDecision.isAllowed)
+            && GitProviderAddAccountPresentationPolicy.canConnect(
             host: selectedHost,
             authType: selectedAuthType,
             protocol: selectedProtocol
@@ -162,7 +179,8 @@ struct GitProviderAddAccountSheet: View {
     }
 
     private var canSave: Bool {
-        GitProviderAddAccountPresentationPolicy.canSave(
+        (editingAccount != nil || matchingAccount() != nil || accountCreationDecision.isAllowed)
+            && GitProviderAddAccountPresentationPolicy.canSave(
             connectedUsername: connectedUsername,
             protocol: selectedProtocol,
             sshKeyPath: sshKeyPath

@@ -82,6 +82,27 @@ enum GitProviderAccountsPresentationPolicy {
 
         return GitProviderHost(kind: .gitlab, baseURL: url).normalized
     }
+
+    static func accountCreationMessage(
+        for decision: GitProviderAccountCreationDecision
+    ) -> String? {
+        switch decision {
+        case .allowed:
+            nil
+        case .denied(.requiresPro(let freeLimit)):
+            "Free includes \(freeLimit) Git provider account."
+        case .denied(.featureDisabled):
+            "Adding Git provider accounts is currently unavailable."
+        }
+    }
+
+    static func accountCreationActionTitle(
+        for decision: GitProviderAccountCreationDecision,
+        isSignedIn: Bool
+    ) -> String? {
+        guard case .denied(.requiresPro) = decision else { return nil }
+        return isSignedIn ? "Upgrade to Pro" : "Sign In to Use Pro"
+    }
 }
 
 enum GitProviderAddAccountPresentationPolicy {

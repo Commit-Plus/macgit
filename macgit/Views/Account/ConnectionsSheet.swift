@@ -19,6 +19,7 @@
 import SwiftUI
 
 struct ConnectionsSheet: View {
+    @EnvironmentObject private var featureAccessController: FeatureAccessController
     @ObservedObject var accountController: AccountSessionController
     @ObservedObject var providerAccountController: GitProviderAccountController
 
@@ -31,7 +32,14 @@ struct ConnectionsSheet: View {
             GitProviderAccountsSection(
                 controller: providerAccountController,
                 isSignedIn: accountController.account != nil,
-                onSignIn: { accountController.presentAuthentication(.signIn) }
+                onSignIn: { accountController.presentAuthentication(.signIn) },
+                onUpgrade: {
+                    Task { await accountController.openPricingOnWeb() }
+                },
+                multipleAccountAccess: featureAccessController.decision(
+                    for: .multipleProviderAccounts,
+                    entitlement: accountController.entitlement
+                )
             )
 
             HStack {

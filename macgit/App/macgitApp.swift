@@ -35,24 +35,30 @@ struct macgitApp: App {
         let firebaseStatus = FirebaseBootstrap.configure()
         let appState = AppState.shared
         _appState = StateObject(wrappedValue: appState)
-        _accountController = StateObject(
-            wrappedValue: AccountSessionController(
-                auth: FirebaseAuthService(),
-                bootstrapStatus: firebaseStatus,
-                entitlementProvider: firebaseStatus == .configured
-                    ? FirestoreEntitlementStore()
-                    : nil,
-                entitlementCache: UserDefaultsEntitlementCache(),
-                webAccountSessionProvider: firebaseStatus == .configured
-                    ? FirebaseWebAccountSessionService()
-                    : nil,
-                openWebURL: NSWorkspace.shared.open,
-                appState: appState,
-                settingsStore: firebaseStatus == .configured
-                    ? FirestoreSettingsStore()
-                    : nil
-            )
+        let accountController = AccountSessionController(
+            auth: FirebaseAuthService(),
+            bootstrapStatus: firebaseStatus,
+            entitlementProvider: firebaseStatus == .configured
+                ? FirestoreEntitlementStore()
+                : nil,
+            entitlementCache: UserDefaultsEntitlementCache(),
+            webAccountSessionProvider: firebaseStatus == .configured
+                ? FirebaseWebAccountSessionService()
+                : nil,
+            openWebURL: NSWorkspace.shared.open,
+            appState: appState,
+            settingsStore: firebaseStatus == .configured
+                ? FirestoreSettingsStore()
+                : nil
         )
+        _accountController = StateObject(wrappedValue: accountController)
+        let featureAccessController = FeatureAccessController(
+            provider: firebaseStatus == .configured
+                ? FirestoreFeaturePolicyStore()
+                : nil,
+            cache: UserDefaultsFeaturePolicyCache()
+        )
+        _featureAccessController = StateObject(wrappedValue: featureAccessController)
         let providerConfiguration = GitHubProviderAuthConfiguration.appConfiguration()
         let gitLabProviderConfiguration = GitLabProviderAuthConfiguration.appConfiguration()
         let providerCloudStore: GitProviderAccountCloudStore? = firebaseStatus == .configured
@@ -68,18 +74,16 @@ struct macgitApp: App {
                 configuration: providerConfiguration,
                 gitLabAuthService: GitLabProviderAuthService(configuration: gitLabProviderConfiguration),
                 gitLabRedirectURI: gitLabProviderConfiguration.redirectURI,
-                openURL: NSWorkspace.shared.open
+                openURL: NSWorkspace.shared.open,
+                multipleAccountAccess: {
+                    featureAccessController.decision(
+                        for: .multipleProviderAccounts,
+                        entitlement: accountController.entitlement
+                    )
+                }
             )
         )
         _aiProviderController = StateObject(wrappedValue: AIProviderController())
-        _featureAccessController = StateObject(
-            wrappedValue: FeatureAccessController(
-                provider: firebaseStatus == .configured
-                    ? FirestoreFeaturePolicyStore()
-                    : nil,
-                cache: UserDefaultsFeaturePolicyCache()
-            )
-        )
         _repositoryVisibilityController = StateObject(
             wrappedValue: RepositoryVisibilityController(
                 services: [
