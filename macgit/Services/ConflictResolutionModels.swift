@@ -146,13 +146,14 @@ struct ConflictResolutionDocument: Equatable {
     var sections: [ConflictResolutionSection]
     var currentContent: String
     var incomingContent: String
+    var manualResolvedText: String? = nil
 
     var conflictCount: Int {
         sections.filter(\.isConflict).count
     }
 
     var resolvedText: String {
-        sections.map(\.resolvedText).joined()
+        manualResolvedText ?? sections.map(\.resolvedText).joined()
     }
 
     func allConflictsUse(_ resolution: ConflictSectionResolution) -> Bool {
@@ -176,6 +177,7 @@ struct ConflictResolutionDocument: Equatable {
     }
 
     mutating func selectAllConflicts(_ resolution: ConflictSectionResolution) {
+        manualResolvedText = nil
         for index in sections.indices where sections[index].isConflict {
             sections[index].manualResult = ""
             sections[index].resolution = resolution
@@ -186,6 +188,7 @@ struct ConflictResolutionDocument: Equatable {
         _ isSelected: Bool,
         for resolution: ConflictSectionResolution
     ) {
+        manualResolvedText = nil
         for index in sections.indices where sections[index].isConflict {
             switch resolution {
             case .current:
@@ -266,7 +269,8 @@ struct ConflictResolutionDocument: Equatable {
         return ConflictResolutionDocument(
             sections: sections,
             currentContent: resolvedCurrent,
-            incomingContent: resolvedIncoming
+            incomingContent: resolvedIncoming,
+            manualResolvedText: nil
         )
     }
 

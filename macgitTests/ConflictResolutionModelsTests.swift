@@ -70,6 +70,63 @@ final class ConflictResolutionModelsTests: XCTestCase {
         XCTAssertEqual(document.resolvedText, "alpha\nbeta")
     }
 
+    func testWholeResultManualEditOverridesGeneratedDocument() throws {
+        let text = """
+        prefix
+        <<<<<<< HEAD
+        current
+        =======
+        incoming
+        >>>>>>> branch
+        suffix
+        """
+
+        var document = try ConflictResolutionDocument.parse(text)
+        document.sections[1].resolution = .both
+        document.manualResolvedText = "prefix\ncustom result\nsuffix"
+
+        XCTAssertEqual(document.resolvedText, "prefix\ncustom result\nsuffix")
+        XCTAssertEqual(
+            ConflictNavigationState(document: document, currentSectionIndex: nil).remainingCount,
+            0
+        )
+    }
+
+    func testSelectingAResolutionClearsWholeResultManualEdit() throws {
+        let text = """
+        <<<<<<< HEAD
+        current
+        =======
+        incoming
+        >>>>>>> branch
+        """
+
+        var document = try ConflictResolutionDocument.parse(text)
+        document.manualResolvedText = "custom\n"
+
+        document.selectAllConflicts(.incoming)
+
+        XCTAssertNil(document.manualResolvedText)
+        XCTAssertEqual(document.resolvedText, "incoming\n")
+    }
+
+    func testResultHighlightsInsertedAndChangedLines() {
+        let baseline = "first\nold\nlast"
+        let result = "first\nnew\nlast\nadded"
+
+        XCTAssertEqual(
+            ConflictResultLineHighlights.changedLineIndices(result: result, baseline: baseline),
+            [1, 3]
+        )
+    }
+
+    func testResultHighlightsBlankLines() {
+        XCTAssertEqual(
+            ConflictResultLineHighlights.blankLineIndices(in: "first\n\n   \nlast"),
+            [1, 2]
+        )
+    }
+
     func testConflictSelectionCanUseCurrentIncomingOrBoth() {
         var section = ConflictResolutionSection.conflict(
             current: "current\n",

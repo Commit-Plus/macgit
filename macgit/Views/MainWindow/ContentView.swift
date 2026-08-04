@@ -53,7 +53,7 @@ struct ContentView: View {
                 RepoPickerView(
                     showCloneSheetInitially: false,
                     onRepositoryOpened: { url in
-                        openRepository(url, inNewWindow: true)
+                        openRepository(url, inNewWindow: false)
                     }
                 )
                 .background(
@@ -206,6 +206,7 @@ struct ContentView: View {
             appState.newWindowRepoURL = url
             openWindow(id: "main")
         } else {
+            shouldFitScreenWhenRepositoryOpens = true
             showingRepoPickerSheet = false
             showingCloneSheet = false
             repositoryURL = url

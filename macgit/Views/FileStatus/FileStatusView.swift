@@ -56,7 +56,7 @@ struct FileStatusView: View {
     @State private var currentBranch: String?
     @State private var recentCommits: [(hash: String, message: String)] = []
     @State private var ignoreTargetFile: StatusFile? = nil
-    @State private var conflictResolverWindow: NSWindow?
+    @State private var conflictResolverWindowController = NSWindowController(window: nil)
 
     private let fileDisplayPageSize = 100
 
@@ -893,7 +893,7 @@ struct FileStatusView: View {
                     .font(.system(size: 13))
                     .lineSpacing(2)
                     .textFieldStyle(.plain)
-                    .lineLimit(2...5)
+                    .lineLimit(5)
                     .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 100, alignment: .topLeading)
                     .padding(6)
                     .padding(.trailing, 30)
@@ -1478,8 +1478,8 @@ struct FileStatusView: View {
     }
 
     private func openConflictResolverWindow(for file: StatusFile) {
-        // Close existing window if any
-        conflictResolverWindow?.close()
+        let windowController = conflictResolverWindowController
+        windowController.close()
 
         let allConflictFiles = (gitStatus.staged + gitStatus.unstaged + gitStatus.untracked)
             .filter { $0.status == .conflict }
@@ -1488,6 +1488,12 @@ struct FileStatusView: View {
             }
             .values
             .sorted { $0.path < $1.path }
+
+        guard let selectedConflictFile = allConflictFiles.first(where: { $0.path == file.path })
+            ?? allConflictFiles.first else {
+            Task { await reloadRepositoryState() }
+            return
+        }
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
@@ -1501,21 +1507,21 @@ struct FileStatusView: View {
 
         let view = ConflictMergeToolView(
             allConflictFiles: allConflictFiles,
+            selectedFile: selectedConflictFile,
             repositoryURL: repositoryURL,
             onResolved: { [repositoryURL] in
                 Task {
                     await reloadRepositoryState()
                 }
             },
-            onClose: { [weak window] in
-                window?.close()
+            onClose: { [weak windowController] in
+                windowController?.close()
             }
         )
 
         window.contentView = NSHostingView(rootView: view)
         window.center()
-        window.makeKeyAndOrderFront(nil)
-
-        conflictResolverWindow = window
+        windowController.window = window
+        windowController.showWindow(nil)
     }
 }

@@ -36,6 +36,7 @@ struct ConflictMergeToolView: View {
     @State private var showingError = false
     @State private var selectedConflictSectionIndex: Int?
     @State private var hasUnsavedChanges = false
+    @State private var resultText = ""
     @State private var scrollController = SyncedScrollController()
     @State private var showingUnresolvedConflictsAlert = false
     @State private var resolvedFiles: [StatusFile] = []
@@ -45,12 +46,18 @@ struct ConflictMergeToolView: View {
     @State private var showingAbortConfirmation = false
     @ObservedObject private var integrationSettings = IntegrationSettingsStore.shared
 
-    init(allConflictFiles: [StatusFile], repositoryURL: URL, onResolved: @escaping () -> Void, onClose: @escaping () -> Void) {
+    init(
+        allConflictFiles: [StatusFile],
+        selectedFile: StatusFile,
+        repositoryURL: URL,
+        onResolved: @escaping () -> Void,
+        onClose: @escaping () -> Void
+    ) {
         self._allConflictFiles = State(initialValue: allConflictFiles)
         self.repositoryURL = repositoryURL
         self.onResolved = onResolved
         self.onClose = onClose
-        self._selectedFile = State(initialValue: allConflictFiles.first!)
+        self._selectedFile = State(initialValue: selectedFile)
     }
 
     var body: some View {
@@ -226,7 +233,6 @@ struct ConflictMergeToolView: View {
         let panels = ConflictPanelAlignment(document: document)
         let incomingData = PanelData(rows: panels.incomingRows)
         let currentData = PanelData(rows: panels.currentRows)
-        let resultData = PanelData(rows: panels.resultRows)
 
         return VStack(spacing: 0) {
             // Top row: Incoming | Current
@@ -256,13 +262,16 @@ struct ConflictMergeToolView: View {
             Divider()
 
             // Bottom row: Result
-            panelView(
-                title: "Result",
-                scrollID: "result",
-                selectionSide: nil,
-                data: resultData,
-                highlightColor: Color(nsColor: .systemPurple).opacity(0.7)
+            ConflictResultEditorView(
+                text: $resultText,
+                fileExtension: selectedFile.fileExtension,
+                baselineText: document.currentContent,
+                isDisabled: isSaving || isPerformingMergeAction,
+                scrollController: scrollController
             )
+                .onChange(of: resultText) { _, newValue in
+                    updateManualResult(newValue)
+                }
                 .frame(maxHeight: .infinity, alignment: .topLeading)
         }
     }
@@ -554,9 +563,11 @@ struct ConflictMergeToolView: View {
             document.sections[sectionIndex].setCurrentSelected(selected)
         }
 
+        document.manualResolvedText = nil
         hasUnsavedChanges = true
         self.document = document
-        focusCurrentConflict(in: document, preferredSectionIndex: sectionIndex, scroll: true)
+        resultText = document.resolvedText
+        focusCurrentConflict(in: document, preferredSectionIndex: sectionIndex, scroll: false)
     }
 
     private func resolveConflict(
@@ -571,9 +582,11 @@ struct ConflictMergeToolView: View {
 
         document.sections[sectionIndex].manualResult = ""
         document.sections[sectionIndex].resolution = resolution
+        document.manualResolvedText = nil
         hasUnsavedChanges = true
         self.document = document
-        focusCurrentConflict(in: document, preferredSectionIndex: sectionIndex, scroll: true)
+        resultText = document.resolvedText
+        focusCurrentConflict(in: document, preferredSectionIndex: sectionIndex, scroll: false)
     }
 
     private func resolveAllConflicts(using resolution: ConflictSectionResolution) {
@@ -582,7 +595,8 @@ struct ConflictMergeToolView: View {
         document.selectAllConflicts(resolution)
         hasUnsavedChanges = true
         self.document = document
-        focusCurrentConflict(in: document, preferredSectionIndex: selectedConflictSectionIndex, scroll: true)
+        resultText = document.resolvedText
+        focusCurrentConflict(in: document, preferredSectionIndex: selectedConflictSectionIndex, scroll: false)
     }
 
     private func allConflictsSelected(_ side: ConflictPaneSelectionSide) -> Bool {
@@ -596,7 +610,17 @@ struct ConflictMergeToolView: View {
         document.setAllConflictsSelected(shouldSelect, for: side.resolution)
         hasUnsavedChanges = true
         self.document = document
-        focusCurrentConflict(in: document, preferredSectionIndex: selectedConflictSectionIndex, scroll: true)
+        resultText = document.resolvedText
+        focusCurrentConflict(in: document, preferredSectionIndex: selectedConflictSectionIndex, scroll: false)
+    }
+
+    private func updateManualResult(_ text: String) {
+        guard var document, text != document.resolvedText else { return }
+
+        document.manualResolvedText = text
+        self.document = document
+        hasUnsavedChanges = true
+        focusCurrentConflict(in: document, preferredSectionIndex: nil, scroll: false)
     }
 
     private func focusCurrentConflict(
@@ -631,6 +655,7 @@ struct ConflictMergeToolView: View {
 
     private var hasUnresolvedConflicts: Bool {
         guard let document = document else { return false }
+        guard document.manualResolvedText == nil else { return false }
         return document.sections.contains { section in
             section.isConflict && !section.isIncomingSelected && !section.isCurrentSelected
         }
@@ -643,6 +668,7 @@ struct ConflictMergeToolView: View {
             let loadedDocument = try await GitStatusService.shared.conflictDocument(for: file, in: repositoryURL)
             await MainActor.run {
                 document = loadedDocument
+                resultText = loadedDocument.resolvedText
                 hasUnsavedChanges = false
                 focusCurrentConflict(in: loadedDocument, preferredSectionIndex: nil, scroll: true)
             }
@@ -685,6 +711,7 @@ struct ConflictMergeToolView: View {
             let stillHasConflicts = updatedDocument.sections.contains(where: \.isConflict)
             if stillHasConflicts {
                 document = updatedDocument
+                resultText = updatedDocument.resolvedText
                 hasUnsavedChanges = false
                 focusCurrentConflict(in: updatedDocument, preferredSectionIndex: nil, scroll: true)
             } else {
@@ -742,6 +769,7 @@ struct ConflictMergeToolView: View {
 
         if allConflictFiles.isEmpty {
             document = nil
+            resultText = ""
             selectedConflictSectionIndex = nil
         } else if let currentIndex {
             selectedFile = allConflictFiles[min(currentIndex, allConflictFiles.count - 1)]

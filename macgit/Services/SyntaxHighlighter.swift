@@ -71,18 +71,50 @@ struct SyntaxHighlighter {
 
     func attributedString(for text: String, fontSize: CGFloat = 12) -> AttributedString {
         var attributed = AttributedString(text)
-        let nsString = text as NSString
-        let fullRange = NSRange(location: 0, length: nsString.length)
 
         let baseFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
         attributed.font = Font(baseFont)
         attributed.foregroundColor = .primary
 
+        for (range, type) in mergedTokenRanges(in: text) {
+            if let swiftRange = Range(range, in: text),
+               let attrRange = convertRange(swiftRange, in: attributed) {
+                if let color = tokenColor(for: type) {
+                    attributed[attrRange].foregroundColor = Color(nsColor: color)
+                }
+            }
+        }
+
+        return attributed
+    }
+
+    func nsAttributedString(for text: String, fontSize: CGFloat = 12) -> NSAttributedString {
+        let fullRange = NSRange(location: 0, length: (text as NSString).length)
+        let attributed = NSMutableAttributedString(
+            string: text,
+            attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular),
+                .foregroundColor: NSColor.textColor,
+            ]
+        )
+
+        for (range, type) in mergedTokenRanges(in: text) {
+            guard NSMaxRange(range) <= NSMaxRange(fullRange),
+                  let color = tokenColor(for: type) else {
+                continue
+            }
+            attributed.addAttribute(.foregroundColor, value: color, range: range)
+        }
+
+        return attributed
+    }
+
+    private func mergedTokenRanges(in text: String) -> [(NSRange, TokenType)] {
+        let fullRange = NSRange(location: 0, length: (text as NSString).length)
         var tokenRanges: [(NSRange, TokenType)] = []
 
         for rule in rules {
-            let matches = rule.regex.matches(in: text, range: fullRange)
-            for match in matches {
+            for match in rule.regex.matches(in: text, range: fullRange) {
                 let range = match.range
                 if range.location != NSNotFound {
                     tokenRanges.append((range, rule.type))
@@ -102,30 +134,26 @@ struct SyntaxHighlighter {
                 mergedRanges.append((range, type))
             }
         }
+        return mergedRanges
+    }
 
-        for (range, type) in mergedRanges {
-            if let swiftRange = Range(range, in: text),
-               let attrRange = convertRange(swiftRange, in: attributed) {
-                switch type {
-                case .keyword:
-                    attributed[attrRange].foregroundColor = Color(nsColor: NSColor(calibratedRed: 0.80, green: 0.35, blue: 0.60, alpha: 1.0))
-                case .string:
-                    attributed[attrRange].foregroundColor = Color(nsColor: NSColor(calibratedRed: 0.20, green: 0.60, blue: 0.20, alpha: 1.0))
-                case .comment:
-                    attributed[attrRange].foregroundColor = Color(nsColor: NSColor(calibratedRed: 0.50, green: 0.50, blue: 0.50, alpha: 1.0))
-                case .number:
-                    attributed[attrRange].foregroundColor = Color(nsColor: NSColor(calibratedRed: 0.15, green: 0.45, blue: 0.75, alpha: 1.0))
-                case .type:
-                    attributed[attrRange].foregroundColor = Color(nsColor: NSColor(calibratedRed: 0.25, green: 0.50, blue: 0.70, alpha: 1.0))
-                case .attribute:
-                    attributed[attrRange].foregroundColor = Color(nsColor: NSColor(calibratedRed: 0.65, green: 0.40, blue: 0.20, alpha: 1.0))
-                case .normal:
-                    break
-                }
-            }
+    private func tokenColor(for type: TokenType) -> NSColor? {
+        switch type {
+        case .keyword:
+            NSColor(calibratedRed: 0.80, green: 0.35, blue: 0.60, alpha: 1.0)
+        case .string:
+            NSColor(calibratedRed: 0.20, green: 0.60, blue: 0.20, alpha: 1.0)
+        case .comment:
+            NSColor(calibratedRed: 0.50, green: 0.50, blue: 0.50, alpha: 1.0)
+        case .number:
+            NSColor(calibratedRed: 0.15, green: 0.45, blue: 0.75, alpha: 1.0)
+        case .type:
+            NSColor(calibratedRed: 0.25, green: 0.50, blue: 0.70, alpha: 1.0)
+        case .attribute:
+            NSColor(calibratedRed: 0.65, green: 0.40, blue: 0.20, alpha: 1.0)
+        case .normal:
+            nil
         }
-
-        return attributed
     }
 
     private func convertRange(_ range: Range<String.Index>, in attributed: AttributedString) -> Range<AttributedString.Index>? {

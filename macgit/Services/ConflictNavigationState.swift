@@ -44,9 +44,11 @@ struct ConflictNavigationState {
     }
 
     init(document: ConflictResolutionDocument, currentSectionIndex: Int?) {
-        unresolvedConflictSectionIndices = document.sections.indices.filter { index in
-            document.sections[index].isConflict && !document.sections[index].isResolved
-        }
+        unresolvedConflictSectionIndices = document.manualResolvedText == nil
+            ? document.sections.indices.filter { index in
+                document.sections[index].isConflict && !document.sections[index].isResolved
+            }
+            : []
 
         let normalizedCurrentSectionIndex = Self.normalizedCurrentSectionIndex(
             preferredSectionIndex: currentSectionIndex,
