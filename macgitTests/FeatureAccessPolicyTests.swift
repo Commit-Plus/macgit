@@ -95,6 +95,48 @@ final class FeatureAccessPolicyTests: XCTestCase {
         )
     }
 
+    func testUnknownVisibilityFailsClosedForScopedProFeature() {
+        let resolver = FeatureAccessResolver(policy: .bundled)
+
+        XCTAssertEqual(
+            resolver.decision(
+                for: .pullRequests,
+                entitlement: activePro,
+                repositoryVisibility: .unknown
+            ),
+            .denied(.repositoryVisibilityUnavailable)
+        )
+    }
+
+    func testGitFlowReleaseMatrixUsesSharedRepositoryScopeBoundary() {
+        let resolver = FeatureAccessResolver(policy: .bundled)
+
+        XCTAssertEqual(
+            resolver.decision(
+                for: .gitFlow,
+                entitlement: .free,
+                repositoryVisibility: .public
+            ),
+            .allowed
+        )
+        XCTAssertEqual(
+            resolver.decision(
+                for: .gitFlow,
+                entitlement: .free,
+                repositoryVisibility: .private
+            ),
+            .denied(.requiresPro)
+        )
+        XCTAssertEqual(
+            resolver.decision(
+                for: .gitFlow,
+                entitlement: activePro,
+                repositoryVisibility: .private
+            ),
+            .allowed
+        )
+    }
+
     func testGloballyDisabledFeatureStaysDisabledForPro() {
         let disabled = FeaturePolicyRule(
             enabled: false,

@@ -376,6 +376,7 @@ extension MainWindowView {
                 onCancel: { pullRequestController.dismissCreatePullRequest() },
                 onBranchesChanged: { sourceBranch, targetBranch in
                     Task {
+                        guard await authorizePullRequestAccess() else { return }
                         await pullRequestController.loadCreateDraftChanges(
                             sourceBranch: sourceBranch,
                             targetBranch: targetBranch
@@ -383,7 +384,10 @@ extension MainWindowView {
                     }
                 },
                 onCreate: { draft in
-                    Task { await pullRequestController.createPullRequest(draft) }
+                    Task {
+                        guard await authorizePullRequestAccess() else { return }
+                        await pullRequestController.createPullRequest(draft)
+                    }
                 }
             )
         }

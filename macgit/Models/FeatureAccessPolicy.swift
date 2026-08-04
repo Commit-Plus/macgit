@@ -70,7 +70,7 @@ struct FeatureAccessPolicy: Codable, Equatable {
         features: [
             .privateRepositories: FeaturePolicyRule(
                 enabled: true,
-                free: PlanFeatureRule(enabled: false, repositoryScope: .none),
+                free: PlanFeatureRule(enabled: false, repositoryScope: FeatureRepositoryScope.none),
                 pro: PlanFeatureRule(enabled: true, repositoryScope: .all)
             ),
             .pullRequests: FeaturePolicyRule(
@@ -98,8 +98,8 @@ struct FeatureAccessPolicy: Codable, Equatable {
 
     private static let deniedByDefaultRule = FeaturePolicyRule(
         enabled: false,
-        free: PlanFeatureRule(enabled: false, repositoryScope: .none),
-        pro: PlanFeatureRule(enabled: false, repositoryScope: .none)
+        free: PlanFeatureRule(enabled: false, repositoryScope: FeatureRepositoryScope.none),
+        pro: PlanFeatureRule(enabled: false, repositoryScope: FeatureRepositoryScope.none)
     )
 }
 

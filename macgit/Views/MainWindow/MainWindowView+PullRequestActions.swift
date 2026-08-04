@@ -17,7 +17,29 @@
 import SwiftUI
 
 extension MainWindowView {
+    @MainActor
+    func authorizePullRequestAccess(
+        forceRefresh: Bool = false,
+        presentNotice: Bool = true
+    ) async -> Bool {
+        let decision = await repositoryVisibilityController.accessDecision(
+            for: .pullRequests,
+            repositoryURL: repositoryURL,
+            accounts: providerAccountController.accounts,
+            entitlement: accountController.entitlement,
+            policy: featureAccessController.policy,
+            forceRefresh: forceRefresh
+        )
+        guard !Task.isCancelled else { return false }
+        pullRequestAccessDecision = decision
+        if case .denied(let denial) = decision, presentNotice {
+            featureAccessNotice = FeatureAccessNotice(feature: .pullRequests, denial: denial)
+        }
+        return decision.isAllowed
+    }
+
     func openPullRequest(branch: String) async {
+        guard await authorizePullRequestAccess() else { return }
         guard let upstream = await GitStatusService.shared.upstreamBranch(for: branch, in: repositoryURL) else {
             await MainActor.run {
                 syncState.showError("Branch '\(branch)' has no upstream. Push it first to create a pull request.")
@@ -46,6 +68,7 @@ extension MainWindowView {
     }
 
     func prepareCreatePullRequest(branch: String) async {
+        guard await authorizePullRequestAccess() else { return }
         do {
             let remote = try await prepareRemoteBranchForPullRequest(branch: branch)
             await pullRequestController.loadPullRequests(repositoryURL: repositoryURL, remoteName: remote)
@@ -166,6 +189,7 @@ extension MainWindowView {
     }
 
     func openPullRequest(remote: String, branch: String) async {
+        guard await authorizePullRequestAccess() else { return }
         let remoteURL = await GitStatusService.shared.remoteURL(remote: remote, in: repositoryURL)
         guard let url = PullRequestURLBuilder.build(remoteURL: remoteURL, branch: branch) else {
             await MainActor.run {

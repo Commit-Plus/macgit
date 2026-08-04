@@ -41,10 +41,10 @@ struct FeatureAccessResolver {
         }
 
         switch (scope, repositoryVisibility) {
-        case (.all, _), (.public, .public), (.publicOrLocal, .public), (.publicOrLocal, .local):
-            return .allowed
         case (_, .unknown):
             return .denied(.repositoryVisibilityUnavailable)
+        case (.all, _), (.public, .public), (.publicOrLocal, .public), (.publicOrLocal, .local):
+            return .allowed
         default:
             return .denied(hasProAccess ? .repositoryScopeNotAllowed : .requiresPro)
         }

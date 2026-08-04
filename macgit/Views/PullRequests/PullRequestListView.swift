@@ -24,6 +24,7 @@ struct PullRequestListView: View {
     let repositoryURL: URL
     var accountConnectionErrorMessage: String? = nil
     var onReconnectAccount: () -> Void = {}
+    var authorizeAction: () async -> Bool = { true }
     @State private var pendingCommentPullRequest: PullRequestSummary?
     @State private var selectedPullRequestID: Int?
 
@@ -49,7 +50,10 @@ struct PullRequestListView: View {
                         HStack(spacing: 10) {
                             Button(controller.accountConnectionActionTitle, action: onReconnectAccount)
                             Button("Reload", systemImage: "arrow.clockwise") {
-                                Task { await controller.loadPullRequests(repositoryURL: repositoryURL, forceRefresh: true) }
+                                Task {
+                                    guard await authorizeAction() else { return }
+                                    await controller.loadPullRequests(repositoryURL: repositoryURL, forceRefresh: true)
+                                }
                             }
                             .disabled(controller.isLoading)
                         }
@@ -88,6 +92,7 @@ struct PullRequestListView: View {
                 onCancel: { pendingCommentPullRequest = nil },
                 onSubmit: { body in
                     Task {
+                        guard await authorizeAction() else { return }
                         await controller.comment(on: pullRequest, body: body)
                         if controller.detailErrorMessage == nil {
                             pendingCommentPullRequest = nil
@@ -104,12 +109,16 @@ struct PullRequestListView: View {
             Text(controller.detailErrorMessage ?? "Could not load pull request details.")
         }
         .task(id: repositoryURL) {
+            guard await authorizeAction() else { return }
             closeDetail()
             await controller.loadPullRequests(repositoryURL: repositoryURL)
         }
         .onChange(of: controller.stateFilter) { _, _ in
             closeDetail()
-            Task { await controller.loadPullRequests(repositoryURL: repositoryURL) }
+            Task {
+                guard await authorizeAction() else { return }
+                await controller.loadPullRequests(repositoryURL: repositoryURL)
+            }
         }
     }
 
@@ -119,19 +128,33 @@ struct PullRequestListView: View {
                 PullRequestRow(
                     summary: item,
                     isBusy: controller.isPerformingAction,
-                    onOpen: { controller.openInBrowser(item) },
+                    onOpen: {
+                        Task {
+                            guard await authorizeAction() else { return }
+                            controller.openInBrowser(item)
+                        }
+                    },
                     onCheckout: {
-                        Task { await controller.checkout(item) }
+                        Task {
+                            guard await authorizeAction() else { return }
+                            await controller.checkout(item)
+                        }
                     },
                     onComment: {
-                        pendingCommentPullRequest = item
+                        Task {
+                            guard await authorizeAction() else { return }
+                            pendingCommentPullRequest = item
+                        }
                     }
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {
                     selectedPullRequestID = item.id
                     controller.clearSelectedDetail()
-                    Task { await controller.loadPullRequestDetail(item) }
+                    Task {
+                        guard await authorizeAction() else { return }
+                        await controller.loadPullRequestDetail(item)
+                    }
                 }
                 .listRowSeparator(.visible)
             }
@@ -153,17 +176,31 @@ struct PullRequestListView: View {
             PullRequestDetailPane(
                 detail: detail,
                 onClose: closeDetail,
-                onOpenPullRequest: { controller.openInBrowser(detail.summary) },
-                onOpenChanges: { controller.openChangesInBrowser(detail) },
+                onOpenPullRequest: {
+                    Task {
+                        guard await authorizeAction() else { return }
+                        controller.openInBrowser(detail.summary)
+                    }
+                },
+                onOpenChanges: {
+                    Task {
+                        guard await authorizeAction() else { return }
+                        controller.openChangesInBrowser(detail)
+                    }
+                },
                 isRefreshingDetail: controller.isLoadingDetail,
                 onRefreshDetail: {
                     Task {
+                        guard await authorizeAction() else { return }
                         await controller.loadPullRequestDetail(detail.summary, forceRefresh: true)
                     }
                 },
                 isSubmittingComment: controller.isPerformingAction,
                 onSubmitComment: { body in
-                    Task { await controller.comment(on: detail.summary, body: body) }
+                    Task {
+                        guard await authorizeAction() else { return }
+                        await controller.comment(on: detail.summary, body: body)
+                    }
                 }
             )
         } else {
@@ -203,11 +240,17 @@ struct PullRequestListView: View {
             Toggle("Created by me", isOn: $controller.createdByMeOnly)
                 .disabled(controller.selectedProviderAccountUsername == nil)
             Button("Create Pull Request") {
-                Task { await controller.presentCreatePullRequest() }
+                Task {
+                    guard await authorizeAction() else { return }
+                    await controller.presentCreatePullRequest()
+                }
             }
             .disabled(controller.isLoading || controller.errorMessage != nil)
             Button("Refresh pull requests", systemImage: "arrow.clockwise") {
-                Task { await controller.loadPullRequests(repositoryURL: repositoryURL, forceRefresh: true) }
+                Task {
+                    guard await authorizeAction() else { return }
+                    await controller.loadPullRequests(repositoryURL: repositoryURL, forceRefresh: true)
+                }
             }
             .buttonStyle(.borderless)
             .labelStyle(.iconOnly)
@@ -222,7 +265,10 @@ struct PullRequestListView: View {
     private var paginationFooter: some View {
         HStack(spacing: 10) {
             Button("Previous page", systemImage: "chevron.left") {
-                Task { await controller.loadPreviousPage(repositoryURL: repositoryURL) }
+                Task {
+                    guard await authorizeAction() else { return }
+                    await controller.loadPreviousPage(repositoryURL: repositoryURL)
+                }
             }
             .buttonStyle(.borderless)
             .labelStyle(.iconOnly)
@@ -235,7 +281,10 @@ struct PullRequestListView: View {
                 .frame(minWidth: 54)
 
             Button("Next page", systemImage: "chevron.right") {
-                Task { await controller.loadNextPage(repositoryURL: repositoryURL) }
+                Task {
+                    guard await authorizeAction() else { return }
+                    await controller.loadNextPage(repositoryURL: repositoryURL)
+                }
             }
             .buttonStyle(.borderless)
             .labelStyle(.iconOnly)

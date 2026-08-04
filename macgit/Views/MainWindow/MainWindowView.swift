@@ -84,6 +84,9 @@ struct MainWindowView: View {
     @ObservedObject var aiProviderController: AIProviderController
     let onOpenConnections: () -> Void
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var accountController: AccountSessionController
+    @EnvironmentObject var featureAccessController: FeatureAccessController
+    @EnvironmentObject var repositoryVisibilityController: RepositoryVisibilityController
     @Environment(\.openWindow) private var openWindow
     let repoSettingsStore = RepoSettingsStore.shared
     let providerAccountPreferenceStore = GitProviderAccountPreferenceStore.shared
@@ -122,6 +125,8 @@ struct MainWindowView: View {
     @StateObject var syncState = SyncState()
     @StateObject var undoManager = GitUndoManager()
     @StateObject var pullRequestController: PullRequestController
+    @State var pullRequestAccessDecision: FeatureAccessDecision?
+    @State var featureAccessNotice: FeatureAccessNotice?
     @State private var repoIconName: String = "code-branch"
     @State private var remoteURLString: String = ""
     @State var selectedBranchName: String? = nil
@@ -182,6 +187,9 @@ struct MainWindowView: View {
             }, message: {
                 Text(syncState.infoMessage ?? "")
             })
+            .alert(item: $featureAccessNotice) { notice in
+                featureAccessAlert(for: notice)
+            }
             .confirmationDialog(
                 "Open Repository in Editor",
                 isPresented: $showingExternalEditorChooser
@@ -451,7 +459,12 @@ struct MainWindowView: View {
             stashableCount: syncState.stashableCount
         ))
         .frame(minWidth: 900, minHeight: 600)
-        .task { await performInitialLoad() }
+            .task { await performInitialLoad() }
+            .task(id: pullRequestAccessTaskID) {
+                guard selectedItem == .item(.pullRequests) else { return }
+                pullRequestAccessDecision = nil
+                _ = await authorizePullRequestAccess(presentNotice: false)
+            }
         .onChange(of: appState.autoFetchEnabled) { _, globalAutoFetchEnabled in
             syncState.startBackgroundSync(
                 repositoryURL: repositoryURL,
@@ -888,12 +901,33 @@ struct MainWindowView: View {
                     onRequestCheckout: checkoutRequest
                 )
             case .item(.pullRequests):
-                PullRequestListView(
-                    controller: pullRequestController,
-                    repositoryURL: repositoryURL,
-                    accountConnectionErrorMessage: providerAccountController.errorMessage,
-                    onReconnectAccount: onOpenConnections
-                )
+                switch pullRequestAccessDecision {
+                case .allowed:
+                    PullRequestListView(
+                        controller: pullRequestController,
+                        repositoryURL: repositoryURL,
+                        accountConnectionErrorMessage: providerAccountController.errorMessage,
+                        onReconnectAccount: onOpenConnections,
+                        authorizeAction: { await authorizePullRequestAccess() }
+                    )
+                case .denied(let denial):
+                    FeatureAccessUnavailableView(
+                        notice: FeatureAccessNotice(feature: .pullRequests, denial: denial),
+                        isSignedIn: accountController.account != nil,
+                        onAccountAction: presentFeatureAccessAccountAction,
+                        onRetry: {
+                            Task {
+                                _ = await authorizePullRequestAccess(
+                                    forceRefresh: true,
+                                    presentNotice: false
+                                )
+                            }
+                        }
+                    )
+                case nil:
+                    ProgressView("Checking Pull Request access…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             case .stash(let ref):
                 StashView(repositoryURL: repositoryURL, stashRef: ref)
             case .submodule:
@@ -906,6 +940,57 @@ struct MainWindowView: View {
                 EmptyStateView(message: "Select an item from the sidebar")
             }
         }
+    }
+
+    private var pullRequestAccessTaskID: String {
+        let accounts = providerAccountController.accounts.map {
+            "\($0.id)-\(String(describing: $0.tokenStatus))"
+        }.joined(separator: ",")
+        return [
+            String(describing: selectedItem),
+            String(featureAccessController.policy.revision),
+            String(describing: featureAccessController.policy.rule(for: .pullRequests)),
+            accountController.entitlement.plan.rawValue,
+            accountController.entitlement.access.rawValue,
+            accounts,
+        ].joined(separator: "|")
+    }
+
+    private func presentFeatureAccessAccountAction() {
+        if accountController.account == nil {
+            accountController.presentAuthentication(.signIn)
+        } else {
+            accountController.presentManageAccount()
+        }
+    }
+
+    private func featureAccessAlert(for notice: FeatureAccessNotice) -> Alert {
+        let title = Text(notice.title)
+        let message = Text(notice.message)
+        if notice.denial == .requiresPro {
+            return Alert(
+                title: title,
+                message: message,
+                primaryButton: .default(
+                    Text(accountController.account == nil ? "Sign In" : "Manage Account"),
+                    action: presentFeatureAccessAccountAction
+                ),
+                secondaryButton: .cancel()
+            )
+        }
+        if notice.denial == .repositoryVisibilityUnavailable {
+            return Alert(
+                title: title,
+                message: message,
+                primaryButton: .default(Text("Try Again")) {
+                    Task {
+                        _ = await authorizePullRequestAccess(forceRefresh: true)
+                    }
+                },
+                secondaryButton: .cancel()
+            )
+        }
+        return Alert(title: title, message: message, dismissButton: .default(Text("OK")))
     }
 
     @ToolbarContentBuilder
