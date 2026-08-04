@@ -23,7 +23,7 @@ const proOnly = {
 
 await getFirestore().doc("featurePolicies/release").set({
   schemaVersion: 1,
-  revision: 3,
+  revision: 4,
   features: {
     privateRepositories: {
       enabled: true,
@@ -50,8 +50,9 @@ await getFirestore().doc("featurePolicies/release").set({
     repositoryChat: proOnly,
     aiConflictResolution: proOnly,
     aiBringYourOwnKey: proOnly,
+    multipleProviderAccounts: proOnly,
   },
   updatedAt: FieldValue.serverTimestamp(),
 });
 
-console.log("Published release feature policy revision 3.");
+console.log("Published release feature policy revision 4.");

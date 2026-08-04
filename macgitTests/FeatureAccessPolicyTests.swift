@@ -59,6 +59,14 @@ final class FeatureAccessPolicyTests: XCTestCase {
             resolver.decision(for: .aiCommitMessage, entitlement: .free),
             .denied(.requiresPro)
         )
+        XCTAssertEqual(
+            resolver.decision(for: .multipleProviderAccounts, entitlement: .free),
+            .denied(.requiresPro)
+        )
+        XCTAssertEqual(
+            resolver.decision(for: .multipleProviderAccounts, entitlement: activePro),
+            .allowed
+        )
     }
 
     func testOnlyActiveProEntitlementReceivesProRules() {
@@ -213,7 +221,8 @@ final class FeatureAccessPolicyTests: XCTestCase {
             "aiCommitMessage": proOnlyRule(),
             "repositoryChat": proOnlyRule(),
             "aiConflictResolution": proOnlyRule(),
-            "aiBringYourOwnKey": proOnlyRule()
+            "aiBringYourOwnKey": proOnlyRule(),
+            "multipleProviderAccounts": proOnlyRule()
         ]
         features.merge(overrides) { _, replacement in replacement }
         return ["schemaVersion": 1, "revision": 7, "features": features]

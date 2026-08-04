@@ -23,10 +23,19 @@ struct GitProviderAccountsSection: View {
     @ObservedObject var controller: GitProviderAccountController
     let isSignedIn: Bool
     let onSignIn: () -> Void
+    let onUpgrade: () -> Void
+    let multipleAccountAccess: FeatureAccessDecision
     var showsTitle = true
     @State private var connectionTask: Task<Void, Never>?
     @State private var showingAddAccountSheet = false
     @State private var editingAccount: GitProviderAccount?
+
+    private var accountCreationDecision: GitProviderAccountCreationDecision {
+        GitProviderAccountAccessPolicy().creationDecision(
+            existingAccountCount: controller.accounts.count,
+            multipleAccountAccess: multipleAccountAccess
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -56,9 +65,27 @@ struct GitProviderAccountsSection: View {
             Button("Add", systemImage: "plus") {
                 showingAddAccountSheet = true
             }
-            .disabled(controller.isLoading)
+            .disabled(controller.isLoading || !accountCreationDecision.isAllowed)
 
-            if !isSignedIn {
+            if let message = GitProviderAccountsPresentationPolicy.accountCreationMessage(
+                for: accountCreationDecision
+            ) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(message)
+                        .foregroundStyle(.secondary)
+
+                    if let actionTitle = GitProviderAccountsPresentationPolicy.accountCreationActionTitle(
+                        for: accountCreationDecision,
+                        isSignedIn: isSignedIn
+                    ) {
+                        Button(actionTitle, action: isSignedIn ? onUpgrade : onSignIn)
+                            .buttonStyle(.link)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !isSignedIn, accountCreationDecision.isAllowed {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("Connections are stored on this Mac.")
                         .foregroundStyle(.secondary)
@@ -96,10 +123,17 @@ struct GitProviderAccountsSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onDisappear(perform: cancelConnection)
         .sheet(isPresented: $showingAddAccountSheet) {
-            GitProviderAddAccountSheet(controller: controller)
+            GitProviderAddAccountSheet(
+                controller: controller,
+                accountCreationDecision: accountCreationDecision
+            )
         }
         .sheet(item: $editingAccount) { account in
-            GitProviderAddAccountSheet(controller: controller, editingAccount: account)
+            GitProviderAddAccountSheet(
+                controller: controller,
+                editingAccount: account,
+                accountCreationDecision: .allowed
+            )
         }
     }
 

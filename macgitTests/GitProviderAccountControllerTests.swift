@@ -311,24 +311,152 @@ final class GitProviderAccountControllerTests: XCTestCase {
         ])
     }
 
+    func testFreePlanBlocksSecondAccountBeforeAuthentication() async {
+        let existingAccount = makeProviderAccount(macgitUID: "local-owner")
+        let authService = FakeGitProviderAuthService(
+            account: makeProviderAccount(
+                macgitUID: "local-owner",
+                id: "connection-2",
+                providerUserID: "provider-user-84"
+            )
+        )
+        var openedURLs: [URL] = []
+        let controller = GitProviderAccountController(
+            store: FakeGitProviderAccountStore(localAccounts: [existingAccount]),
+            tokenVault: FakeGitProviderTokenVault(),
+            authService: authService,
+            configuration: makeConfiguration(),
+            openURL: {
+                openedURLs.append($0)
+                return true
+            },
+            multipleAccountAccess: { .denied(.requiresPro) }
+        )
+        await controller.updateMacgitAccount(nil)
+
+        await controller.connectGitHub()
+
+        XCTAssertTrue(openedURLs.isEmpty)
+        XCTAssertEqual(
+            controller.errorMessage,
+            "Free plan includes 1 Git provider account. Upgrade to Pro to add more."
+        )
+        XCTAssertEqual(controller.accounts.map(\.id), [existingAccount.id])
+    }
+
+    func testProAccessAllowsSecondAccount() async {
+        let events = EventRecorder()
+        let existingAccount = makeProviderAccount(macgitUID: "local-owner")
+        let newAccount = makeProviderAccount(
+            macgitUID: "local-owner",
+            id: "connection-2",
+            providerUserID: "provider-user-84"
+        )
+        let controller = GitProviderAccountController(
+            store: FakeGitProviderAccountStore(localAccounts: [existingAccount], events: events),
+            tokenVault: FakeGitProviderTokenVault(events: events),
+            authService: FakeGitProviderAuthService(account: newAccount),
+            configuration: makeConfiguration(),
+            openURL: { _ in true },
+            multipleAccountAccess: { .allowed }
+        )
+        await controller.updateMacgitAccount(nil)
+
+        await controller.connectGitHub()
+
+        XCTAssertEqual(Set(controller.accounts.map(\.id)), Set([existingAccount.id, newAccount.id]))
+        XCTAssertEqual(events.values, ["save-token", "save-metadata"])
+    }
+
+    func testQuotaIsRecheckedBeforeAuthorizedAccountPersistence() async {
+        let events = EventRecorder()
+        let existingAccount = makeProviderAccount(macgitUID: "local-owner")
+        let newAccount = makeProviderAccount(
+            macgitUID: "local-owner",
+            id: "connection-2",
+            providerUserID: "provider-user-84"
+        )
+        var accessDecisions: [FeatureAccessDecision] = [.allowed, .denied(.requiresPro)]
+        let controller = GitProviderAccountController(
+            store: FakeGitProviderAccountStore(localAccounts: [existingAccount], events: events),
+            tokenVault: FakeGitProviderTokenVault(events: events),
+            authService: FakeGitProviderAuthService(account: newAccount),
+            configuration: makeConfiguration(),
+            openURL: { _ in true },
+            multipleAccountAccess: { accessDecisions.removeFirst() }
+        )
+        await controller.updateMacgitAccount(nil)
+
+        await controller.connectGitHub()
+
+        XCTAssertEqual(controller.accounts.map(\.id), [existingAccount.id])
+        XCTAssertTrue(events.values.isEmpty)
+        XCTAssertEqual(
+            controller.errorMessage,
+            "Free plan includes 1 Git provider account. Upgrade to Pro to add more."
+        )
+    }
+
+    func testReconnectExistingIdentityRemainsAllowedAtFreeLimit() async {
+        let events = EventRecorder()
+        let existingAccount = makeProviderAccount(macgitUID: "local-owner")
+        let controller = GitProviderAccountController(
+            store: FakeGitProviderAccountStore(localAccounts: [existingAccount], events: events),
+            tokenVault: FakeGitProviderTokenVault(events: events),
+            authService: FakeGitProviderAuthService(account: existingAccount),
+            configuration: makeConfiguration(),
+            openURL: { _ in true },
+            multipleAccountAccess: { .denied(.requiresPro) }
+        )
+        await controller.updateMacgitAccount(nil)
+
+        await controller.reconnect(existingAccount)
+
+        XCTAssertEqual(controller.accounts.map(\.id), [existingAccount.id])
+        XCTAssertEqual(events.values, ["save-token", "save-metadata"])
+        XCTAssertNil(controller.errorMessage)
+    }
+
+    func testFreePlanBlocksSSHBeforeAuthentication() async {
+        let existingAccount = makeProviderAccount(macgitUID: "local-owner")
+        let sshAuthService = FakeGitProviderSSHAuthService(username: "another-user")
+        let controller = GitProviderAccountController(
+            store: FakeGitProviderAccountStore(localAccounts: [existingAccount]),
+            tokenVault: FakeGitProviderTokenVault(),
+            sshAuthService: sshAuthService,
+            multipleAccountAccess: { .denied(.requiresPro) }
+        )
+        await controller.updateMacgitAccount(nil)
+
+        await controller.connectSSH(
+            host: .githubDotCom,
+            key: GitProviderSSHKey(path: "/Users/test/.ssh/id_ed25519")
+        )
+
+        XCTAssertTrue(sshAuthService.requests.isEmpty)
+        XCTAssertEqual(controller.accounts.map(\.id), [existingAccount.id])
+    }
+
     private func makeMacgitAccount(uid: String) -> AccountSnapshot {
         AccountSnapshot(uid: uid, email: nil, displayName: nil, providerIDs: ["password"])
     }
 
     private func makeProviderAccount(
         macgitUID: String,
+        id: String = "connection-1",
         provider: GitProviderKind = .github,
+        providerUserID: String = "provider-user-42",
         tokenStatus: GitProviderTokenStatus = .valid,
         transportProtocol: GitProviderTransportProtocol = .https
     ) -> GitProviderAccount {
         GitProviderAccount(
-            id: "connection-1",
+            id: id,
             macgitUID: macgitUID,
             provider: provider,
             hostURL: provider == .github
                 ? URL(string: "https://github.com")!
                 : URL(string: "https://gitlab.com")!,
-            providerUserID: "provider-user-42",
+            providerUserID: providerUserID,
             username: provider == .github ? "octocat" : "tanuki",
             displayName: nil,
             avatarURL: nil,

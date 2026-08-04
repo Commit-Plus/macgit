@@ -1012,7 +1012,7 @@ struct MainWindowView: View {
                 _ = await authorizePullRequestAccess(forceRefresh: true)
             }
         case .privateRepositories, .gitFlow, .aiCommitMessage, .repositoryChat,
-             .aiConflictResolution, .aiBringYourOwnKey:
+             .aiConflictResolution, .aiBringYourOwnKey, .multipleProviderAccounts:
             break
         }
     }

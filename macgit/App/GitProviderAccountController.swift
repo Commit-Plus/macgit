@@ -35,6 +35,8 @@ final class GitProviderAccountController: ObservableObject {
     private let gitLabAuthService: (any GitLabProviderOAuthAuthenticating)?
     private let gitLabRedirectURI: URL
     private let openURL: (URL) -> Bool
+    private let multipleAccountAccess: () -> FeatureAccessDecision
+    private let accountAccessPolicy = GitProviderAccountAccessPolicy()
     private var pendingOAuthSession: GitProviderOAuthSession?
 
     private var accountOwnerID: String { store.accountOwnerID }
@@ -48,7 +50,10 @@ final class GitProviderAccountController: ObservableObject {
         configuration: GitHubProviderAuthConfiguration? = nil,
         gitLabAuthService: (any GitLabProviderOAuthAuthenticating)? = nil,
         gitLabRedirectURI: URL = GitLabProviderAuthConfiguration.appConfiguration().redirectURI,
-        openURL: @escaping (URL) -> Bool = { _ in false }
+        openURL: @escaping (URL) -> Bool = { _ in false },
+        multipleAccountAccess: @escaping () -> FeatureAccessDecision = {
+            .denied(.requiresPro)
+        }
     ) {
         self.store = store
         self.tokenVault = tokenVault
@@ -59,6 +64,14 @@ final class GitProviderAccountController: ObservableObject {
         self.gitLabAuthService = gitLabAuthService
         self.gitLabRedirectURI = gitLabRedirectURI
         self.openURL = openURL
+        self.multipleAccountAccess = multipleAccountAccess
+    }
+
+    var accountCreationDecision: GitProviderAccountCreationDecision {
+        accountAccessPolicy.creationDecision(
+            existingAccountCount: accounts.count,
+            multipleAccountAccess: multipleAccountAccess()
+        )
     }
 
     func updateMacgitAccount(_ account: AccountSnapshot?) async {
@@ -82,14 +95,17 @@ final class GitProviderAccountController: ObservableObject {
     }
 
     func connectGitHub() async {
+        guard authorizeNewAccountCreation() else { return }
         await startGitHubDeviceAuthorization()
     }
 
     func connectGitLabDotCom() async {
+        guard authorizeNewAccountCreation() else { return }
         await startGitLabDeviceAuthorization(host: .gitlabDotCom)
     }
 
     func connectSelfHostedGitLab(hostURL: URL) async {
+        guard authorizeNewAccountCreation() else { return }
         await startGitLabDeviceAuthorization(host: GitProviderHost(kind: .gitlab, baseURL: hostURL).normalized)
     }
 
@@ -226,6 +242,7 @@ final class GitProviderAccountController: ObservableObject {
     }
 
     func connectSSH(host: GitProviderHost, key: GitProviderSSHKey) async {
+        guard authorizeNewAccountCreation() else { return }
         let macgitUID = accountOwnerID
 
         isLoading = true
@@ -257,6 +274,7 @@ final class GitProviderAccountController: ObservableObject {
                 lastValidatedAt: Date()
             )
 
+            try validateAccountCreation(for: account)
             try sshKeyStore.saveKey(key, for: account)
             do {
                 try await store.save(account)
@@ -457,6 +475,7 @@ final class GitProviderAccountController: ObservableObject {
     }
 
     private func saveAuthorizedAccount(_ account: GitProviderAccount, token: GitProviderToken) async throws {
+        try validateAccountCreation(for: account)
         try tokenVault.saveToken(token, for: account)
         do {
             try await store.save(account)
@@ -483,5 +502,32 @@ final class GitProviderAccountController: ObservableObject {
             && lhs.hostURL.host(percentEncoded: false)?.lowercased()
                 == rhs.hostURL.host(percentEncoded: false)?.lowercased()
             && lhs.providerUserID == rhs.providerUserID
+    }
+
+    private func authorizeNewAccountCreation() -> Bool {
+        errorMessage = nil
+        do {
+            try validateAccountCreation()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func validateAccountCreation(for candidate: GitProviderAccount? = nil) throws {
+        if let candidate,
+           accounts.contains(where: { hasSameProviderIdentity($0, candidate) }) {
+            return
+        }
+
+        switch accountCreationDecision {
+        case .allowed:
+            return
+        case .denied(.requiresPro(let freeLimit)):
+            throw GitProviderAccountAccessError.freeAccountLimitReached(limit: freeLimit)
+        case .denied(.featureDisabled):
+            throw GitProviderAccountAccessError.featureDisabled
+        }
     }
 }
