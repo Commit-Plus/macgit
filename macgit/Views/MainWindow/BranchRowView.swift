@@ -78,13 +78,7 @@ struct BranchRowContent: View, Equatable {
             }
         }
         .padding(.vertical, 2)
-        .background(
-            isActiveDropRow
-                ? Color.accentColor.opacity(0.24)
-                : isCurrentBranchPrefix
-                    ? Color.accentColor.opacity(0.10)
-                    : Color.clear
-        )
+        .background(isActiveDropRow ? Color.accentColor.opacity(0.24) : Color.clear)
         .overlay {
             if isActiveDropRow {
                 RoundedRectangle(cornerRadius: 5)

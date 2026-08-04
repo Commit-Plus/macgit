@@ -26,6 +26,7 @@ import Network
 
 extension Notification.Name {
     static let repositoryDidChange = Notification.Name("macgit.repositoryDidChange")
+    static let repositoryCurrentBranchDidChange = Notification.Name("macgit.repositoryCurrentBranchDidChange")
 }
 
 class SyncState: ObservableObject {
@@ -57,6 +58,7 @@ class SyncState: ObservableObject {
     private let networkMonitor = NWPathMonitor()
     private let networkMonitorQueue = DispatchQueue(label: "dev.thanhtran.macgit.sync-state.network")
     private var refreshGeneration = 0
+    private var refreshedCurrentBranches: [URL: String] = [:]
     private static let backgroundRefreshInterval: Duration = .seconds(5)
     private static let autoFetchInterval: TimeInterval = 60
 
@@ -73,6 +75,7 @@ class SyncState: ObservableObject {
             refreshGeneration += 1
             return refreshGeneration
         }
+        async let loadedCurrentBranch = GitStatusService.shared.currentBranch(in: repositoryURL)
 
         let uncommittedCount = await GitStatusService.shared.uncommittedChangeCount(in: repositoryURL)
         let trackedCounts = await GitStatusService.shared.trackedStatusCounts(in: repositoryURL)
@@ -85,14 +88,25 @@ class SyncState: ObservableObject {
 
         let counts = await GitStatusService.shared.aheadBehindCount(in: repositoryURL)
         let operation = await GitStatusService.shared.inProgressOperation(in: repositoryURL)
-        await MainActor.run {
+        let currentBranch = await loadedCurrentBranch ?? ""
+        let currentBranchDidChange = await MainActor.run { () -> Bool in
             // A checkout or another repository change can start a newer
             // refresh while this one is still reading Git state. Never let
             // the older snapshot overwrite the newer one.
-            guard generation == refreshGeneration else { return }
+            guard generation == refreshGeneration else { return false }
             self.pushBadgeCount = counts.ahead
             self.pullBadgeCount = counts.behind
             self.inProgressOperation = operation
+            let previousBranch = refreshedCurrentBranches.updateValue(currentBranch, forKey: repositoryURL)
+            return previousBranch != nil && previousBranch != currentBranch
+        }
+
+        if currentBranchDidChange {
+            NotificationCenter.default.post(
+                name: .repositoryCurrentBranchDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
         }
     }
 

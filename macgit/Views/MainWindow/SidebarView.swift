@@ -569,6 +569,14 @@ struct SidebarView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryCurrentBranchDidChange)) { notification in
+            if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
+                Task {
+                    await GitStatusService.shared.invalidateBranchListCache(in: repositoryURL)
+                    await loadBranches(force: true)
+                }
+            }
+        }
         .onChange(of: appState.showSubtrees) { _, isVisible in
             guard isVisible, sectionStates.subtreesExpanded else { return }
             Task {
