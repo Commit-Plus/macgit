@@ -23,6 +23,7 @@ struct ConflictResultEditorView: View {
     let fileExtension: String
     let baselineText: String
     let isDisabled: Bool
+    let undoResetGeneration: Int
     let scrollController: SyncedScrollController
 
     var body: some View {
@@ -53,6 +54,7 @@ struct ConflictResultEditorView: View {
                 baselineText: baselineText,
                 colorScheme: colorScheme,
                 isEditable: !isDisabled,
+                undoResetGeneration: undoResetGeneration,
                 scrollID: "result",
                 scrollController: scrollController
             )

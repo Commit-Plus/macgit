@@ -24,6 +24,7 @@ struct ConflictResultTextView: NSViewRepresentable {
     let baselineText: String
     let colorScheme: ColorScheme
     let isEditable: Bool
+    let undoResetGeneration: Int
     let scrollID: String
     let scrollController: SyncedScrollController
 
@@ -44,8 +45,9 @@ struct ConflictResultTextView: NSViewRepresentable {
         layoutManager.addTextContainer(textContainer)
         textStorage.addLayoutManager(layoutManager)
 
-        let textView = NSTextView(frame: .zero, textContainer: textContainer)
+        let textView = ConflictResultNSTextView(frame: .zero, textContainer: textContainer)
         textView.delegate = context.coordinator
+        textView.allowsUndo = true
         textView.drawsBackground = false
         textView.isRichText = false
         textView.importsGraphics = false
@@ -109,6 +111,7 @@ struct ConflictResultTextView: NSViewRepresentable {
         private var isApplyingPresentation = false
         private var lastHighlightedFileExtension: String?
         private var lastHighlightedColorScheme: ColorScheme?
+        private var lastUndoResetGeneration: Int?
         private weak var registeredScrollController: SyncedScrollController?
         private var registeredScrollID: String?
 
@@ -143,6 +146,10 @@ struct ConflictResultTextView: NSViewRepresentable {
 
             textView.isEditable = parent.isEditable
             textView.isSelectable = true
+            if lastUndoResetGeneration != parent.undoResetGeneration {
+                textView.undoManager?.removeAllActions()
+                lastUndoResetGeneration = parent.undoResetGeneration
+            }
             layoutManager.changedLineIndices = ConflictResultLineHighlights.changedLineIndices(
                 result: parent.text,
                 baseline: parent.baselineText
@@ -226,6 +233,11 @@ struct ConflictResultTextView: NSViewRepresentable {
             }
 
             isApplyingPresentation = true
+            let undoManager = textView.undoManager
+            let shouldRestoreUndoRegistration = undoManager?.isUndoRegistrationEnabled == true
+            if shouldRestoreUndoRegistration {
+                undoManager?.disableUndoRegistration()
+            }
             textView.textStorage?.setAttributedString(highlighted)
             let textLength = text.utf16.count
             let clampedLocation = min(selectedRange.location, textLength)
@@ -241,6 +253,9 @@ struct ConflictResultTextView: NSViewRepresentable {
                 .foregroundColor: NSColor.textColor,
                 .paragraphStyle: paragraphStyle,
             ]
+            if shouldRestoreUndoRegistration {
+                undoManager?.enableUndoRegistration()
+            }
             isApplyingPresentation = false
         }
     }

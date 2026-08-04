@@ -99,6 +99,51 @@ struct macgitApp: App {
         )
     }
 
+    private func performUndoMenuAction(_ action: GitUndoMenuAction) {
+        guard let commandContext = ConflictUndoCommandContext.identifier(for: NSApp.keyWindow) else {
+            NotificationCenter.default.post(
+                name: .gitUndoAction,
+                object: nil,
+                userInfo: ["action": action]
+            )
+            return
+        }
+
+        if performTextUndoIfAvailable(action, in: NSApp.keyWindow) {
+            return
+        }
+
+        NotificationCenter.default.post(
+            name: .conflictUndoAction,
+            object: nil,
+            userInfo: [
+                "action": action,
+                "commandContext": commandContext,
+            ]
+        )
+    }
+
+    private func performTextUndoIfAvailable(
+        _ action: GitUndoMenuAction,
+        in window: NSWindow?
+    ) -> Bool {
+        guard let textView = window?.firstResponder as? NSTextView,
+              let undoManager = textView.undoManager else {
+            return false
+        }
+
+        switch action {
+        case .undo where undoManager.canUndo:
+            undoManager.undo()
+            return true
+        case .redo where undoManager.canRedo:
+            undoManager.redo()
+            return true
+        default:
+            return false
+        }
+    }
+
     var body: some Scene {
         WindowGroup(id: "main") {
             ContentView(
@@ -184,21 +229,13 @@ struct macgitApp: App {
 
             CommandGroup(replacing: .undoRedo) {
                 Button("Undo Git Action") {
-                    NotificationCenter.default.post(
-                        name: .gitUndoAction,
-                        object: nil,
-                        userInfo: ["action": GitUndoMenuAction.undo]
-                    )
+                    performUndoMenuAction(.undo)
                 }
                 .disabled(!appState.hasOpenRepository)
                 .keyboardShortcut("z", modifiers: .command)
 
                 Button("Redo Git Action") {
-                    NotificationCenter.default.post(
-                        name: .gitUndoAction,
-                        object: nil,
-                        userInfo: ["action": GitUndoMenuAction.redo]
-                    )
+                    performUndoMenuAction(.redo)
                 }
                 .disabled(!appState.hasOpenRepository)
                 .keyboardShortcut("z", modifiers: [.command, .shift])

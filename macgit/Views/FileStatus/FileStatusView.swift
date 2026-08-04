@@ -1504,11 +1504,14 @@ struct FileStatusView: View {
         window.title = "Resolve Conflicts"
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
+        let commandContextIdentifier = ConflictUndoCommandContext.makeIdentifier()
+        window.identifier = commandContextIdentifier
 
         let view = ConflictMergeToolView(
             allConflictFiles: allConflictFiles,
             selectedFile: selectedConflictFile,
             repositoryURL: repositoryURL,
+            commandContextIdentifier: commandContextIdentifier.rawValue,
             onResolved: { [repositoryURL] in
                 Task {
                     await reloadRepositoryState()

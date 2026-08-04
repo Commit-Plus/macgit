@@ -25,6 +25,7 @@ import SwiftUI
 struct ConflictMergeToolView: View {
     @State private var allConflictFiles: [StatusFile]
     let repositoryURL: URL
+    let commandContextIdentifier: String
     let onResolved: () -> Void
     let onClose: () -> Void
 
@@ -37,6 +38,7 @@ struct ConflictMergeToolView: View {
     @State private var selectedConflictSectionIndex: Int?
     @State private var hasUnsavedChanges = false
     @State private var resultText = ""
+    @State private var resultEditorUndoResetGeneration = 0
     @State private var scrollController = SyncedScrollController()
     @State private var showingUnresolvedConflictsAlert = false
     @State private var resolvedFiles: [StatusFile] = []
@@ -44,17 +46,21 @@ struct ConflictMergeToolView: View {
     @State private var isMergeInProgress = false
     @State private var isPerformingMergeAction = false
     @State private var showingAbortConfirmation = false
+    @State private var conflictUndoStacks: [String: [ConflictUndoSnapshot]] = [:]
+    @State private var conflictRedoStacks: [String: [ConflictUndoSnapshot]] = [:]
     @ObservedObject private var integrationSettings = IntegrationSettingsStore.shared
 
     init(
         allConflictFiles: [StatusFile],
         selectedFile: StatusFile,
         repositoryURL: URL,
+        commandContextIdentifier: String,
         onResolved: @escaping () -> Void,
         onClose: @escaping () -> Void
     ) {
         self._allConflictFiles = State(initialValue: allConflictFiles)
         self.repositoryURL = repositoryURL
+        self.commandContextIdentifier = commandContextIdentifier
         self.onResolved = onResolved
         self.onClose = onClose
         self._selectedFile = State(initialValue: selectedFile)
@@ -94,6 +100,13 @@ struct ConflictMergeToolView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This restores the repository to its state before the merge started.")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .conflictUndoAction)) { notification in
+            guard notification.userInfo?["commandContext"] as? String == commandContextIdentifier,
+                  let action = notification.userInfo?["action"] as? GitUndoMenuAction else {
+                return
+            }
+            performConflictUndoMenuAction(action)
         }
     }
 
@@ -267,6 +280,7 @@ struct ConflictMergeToolView: View {
                 fileExtension: selectedFile.fileExtension,
                 baselineText: document.currentContent,
                 isDisabled: isSaving || isPerformingMergeAction,
+                undoResetGeneration: resultEditorUndoResetGeneration,
                 scrollController: scrollController
             )
                 .onChange(of: resultText) { _, newValue in
@@ -335,6 +349,13 @@ struct ConflictMergeToolView: View {
 
     private struct PanelData {
         let rows: [ConflictCodeLine]
+    }
+
+    private struct ConflictUndoSnapshot {
+        let document: ConflictResolutionDocument
+        let resultText: String
+        let selectedConflictSectionIndex: Int?
+        let hasUnsavedChanges: Bool
     }
 
     // MARK: - Toolbar
@@ -556,6 +577,8 @@ struct ConflictMergeToolView: View {
             return
         }
 
+        let previousDocument = document
+
         switch side {
         case .incoming:
             document.sections[sectionIndex].setIncomingSelected(selected)
@@ -564,6 +587,9 @@ struct ConflictMergeToolView: View {
         }
 
         document.manualResolvedText = nil
+        guard document != previousDocument else { return }
+        registerConflictUndo(document: previousDocument)
+        resultEditorUndoResetGeneration += 1
         hasUnsavedChanges = true
         self.document = document
         resultText = document.resolvedText
@@ -580,9 +606,13 @@ struct ConflictMergeToolView: View {
             return
         }
 
+        let previousDocument = document
         document.sections[sectionIndex].manualResult = ""
         document.sections[sectionIndex].resolution = resolution
         document.manualResolvedText = nil
+        guard document != previousDocument else { return }
+        registerConflictUndo(document: previousDocument)
+        resultEditorUndoResetGeneration += 1
         hasUnsavedChanges = true
         self.document = document
         resultText = document.resolvedText
@@ -592,7 +622,11 @@ struct ConflictMergeToolView: View {
     private func resolveAllConflicts(using resolution: ConflictSectionResolution) {
         guard var document else { return }
 
+        let previousDocument = document
         document.selectAllConflicts(resolution)
+        guard document != previousDocument else { return }
+        registerConflictUndo(document: previousDocument)
+        resultEditorUndoResetGeneration += 1
         hasUnsavedChanges = true
         self.document = document
         resultText = document.resolvedText
@@ -606,8 +640,12 @@ struct ConflictMergeToolView: View {
     private func toggleAllConflicts(_ side: ConflictPaneSelectionSide) {
         guard var document else { return }
 
+        let previousDocument = document
         let shouldSelect = !document.allConflictsSelect(side.resolution)
         document.setAllConflictsSelected(shouldSelect, for: side.resolution)
+        guard document != previousDocument else { return }
+        registerConflictUndo(document: previousDocument)
+        resultEditorUndoResetGeneration += 1
         hasUnsavedChanges = true
         self.document = document
         resultText = document.resolvedText
@@ -621,6 +659,53 @@ struct ConflictMergeToolView: View {
         self.document = document
         hasUnsavedChanges = true
         focusCurrentConflict(in: document, preferredSectionIndex: nil, scroll: false)
+    }
+
+    private func registerConflictUndo(document: ConflictResolutionDocument) {
+        let filePath = selectedFile.path
+        conflictUndoStacks[filePath, default: []].append(
+            ConflictUndoSnapshot(
+                document: document,
+                resultText: resultText,
+                selectedConflictSectionIndex: selectedConflictSectionIndex,
+                hasUnsavedChanges: hasUnsavedChanges
+            )
+        )
+        if conflictUndoStacks[filePath, default: []].count > 100 {
+            conflictUndoStacks[filePath, default: []].removeFirst()
+        }
+        conflictRedoStacks[filePath] = []
+    }
+
+    private func performConflictUndoMenuAction(_ action: GitUndoMenuAction) {
+        guard let document else { return }
+
+        let filePath = selectedFile.path
+        let currentSnapshot = ConflictUndoSnapshot(
+            document: document,
+            resultText: resultText,
+            selectedConflictSectionIndex: selectedConflictSectionIndex,
+            hasUnsavedChanges: hasUnsavedChanges
+        )
+
+        switch action {
+        case .undo:
+            guard let snapshot = conflictUndoStacks[filePath]?.popLast() else { return }
+            conflictRedoStacks[filePath, default: []].append(currentSnapshot)
+            restoreConflictSnapshot(snapshot)
+        case .redo:
+            guard let snapshot = conflictRedoStacks[filePath]?.popLast() else { return }
+            conflictUndoStacks[filePath, default: []].append(currentSnapshot)
+            restoreConflictSnapshot(snapshot)
+        }
+    }
+
+    private func restoreConflictSnapshot(_ snapshot: ConflictUndoSnapshot) {
+        resultEditorUndoResetGeneration += 1
+        document = snapshot.document
+        resultText = snapshot.resultText
+        selectedConflictSectionIndex = snapshot.selectedConflictSectionIndex
+        hasUnsavedChanges = snapshot.hasUnsavedChanges
     }
 
     private func focusCurrentConflict(
