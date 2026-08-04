@@ -19,7 +19,8 @@ import AppKit
 import SwiftUI
 
 struct ConflictResultTextView: NSViewRepresentable {
-    @Binding var text: String
+    let text: String
+    let onTextChange: (String) -> Void
     let fileExtension: String
     let baselineText: String
     let colorScheme: ColorScheme
@@ -101,6 +102,7 @@ struct ConflictResultTextView: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        coordinator.cancelPendingPresentationRefresh()
         coordinator.unregister(scrollView: scrollView)
     }
 
@@ -109,9 +111,12 @@ struct ConflictResultTextView: NSViewRepresentable {
         weak var textView: NSTextView?
         weak var layoutManager: ConflictResultBackgroundLayoutManager?
         private var isApplyingPresentation = false
+        private var hasAppliedPresentation = false
         private var lastHighlightedFileExtension: String?
         private var lastHighlightedColorScheme: ColorScheme?
+        private var lastHighlightedBaselineText: String?
         private var lastUndoResetGeneration: Int?
+        private var pendingPresentationRefresh: DispatchWorkItem?
         private weak var registeredScrollController: SyncedScrollController?
         private var registeredScrollID: String?
 
@@ -150,46 +155,89 @@ struct ConflictResultTextView: NSViewRepresentable {
                 textView.undoManager?.removeAllActions()
                 lastUndoResetGeneration = parent.undoResetGeneration
             }
-            layoutManager.changedLineIndices = ConflictResultLineHighlights.changedLineIndices(
-                result: parent.text,
-                baseline: parent.baselineText
-            )
-            layoutManager.blankLineIndices = ConflictResultLineHighlights.blankLineIndices(in: parent.text)
 
-            guard textView.string != parent.text
-                    || textView.textStorage?.length == 0
-                    || lastHighlightedFileExtension != parent.fileExtension
-                    || lastHighlightedColorScheme != parent.colorScheme else {
-                layoutManager.invalidateDisplay(forCharacterRange: NSRange(location: 0, length: textView.string.utf16.count))
+            let hasExternalTextChange = textView.string != parent.text
+            let hasPresentationConfigurationChange =
+                lastHighlightedFileExtension != parent.fileExtension
+                || lastHighlightedColorScheme != parent.colorScheme
+                || lastHighlightedBaselineText != parent.baselineText
+
+            guard !hasAppliedPresentation
+                    || hasExternalTextChange
+                    || hasPresentationConfigurationChange else {
                 return
             }
 
-            applySyntaxHighlighting(to: textView, text: parent.text, fileExtension: parent.fileExtension)
-            lastHighlightedFileExtension = parent.fileExtension
-            lastHighlightedColorScheme = parent.colorScheme
+            cancelPendingPresentationRefresh()
+            refreshPresentation(
+                in: textView,
+                layoutManager: layoutManager,
+                text: parent.text,
+                fileExtension: parent.fileExtension,
+                baselineText: parent.baselineText
+            )
         }
 
         func textDidChange(_ notification: Notification) {
             guard !isApplyingPresentation, let textView else { return }
-            parent.text = textView.string
-            applySyntaxHighlighting(
-                to: textView,
-                text: textView.string,
-                fileExtension: parent.fileExtension
+            parent.onTextChange(textView.string)
+            schedulePresentationRefresh(for: textView.string)
+        }
+
+        func cancelPendingPresentationRefresh() {
+            pendingPresentationRefresh?.cancel()
+            pendingPresentationRefresh = nil
+        }
+
+        private func schedulePresentationRefresh(for expectedText: String) {
+            cancelPendingPresentationRefresh()
+            guard let textView, let layoutManager else { return }
+
+            let workItem = DispatchWorkItem { [weak self, weak textView, weak layoutManager] in
+                guard let self,
+                      let textView,
+                      let layoutManager,
+                      textView.string == expectedText else {
+                    return
+                }
+
+                self.refreshPresentation(
+                    in: textView,
+                    layoutManager: layoutManager,
+                    text: expectedText,
+                    fileExtension: self.parent.fileExtension,
+                    baselineText: self.parent.baselineText
+                )
+                self.pendingPresentationRefresh = nil
+            }
+            pendingPresentationRefresh = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+        }
+
+        private func refreshPresentation(
+            in textView: NSTextView,
+            layoutManager: ConflictResultBackgroundLayoutManager,
+            text: String,
+            fileExtension: String,
+            baselineText: String
+        ) {
+            applySyntaxHighlighting(to: textView, text: text, fileExtension: fileExtension)
+            layoutManager.changedLineIndices = ConflictResultLineHighlights.changedLineIndices(
+                result: text,
+                baseline: baselineText
             )
-            lastHighlightedFileExtension = parent.fileExtension
-            lastHighlightedColorScheme = parent.colorScheme
-            layoutManager?.changedLineIndices = ConflictResultLineHighlights.changedLineIndices(
-                result: textView.string,
-                baseline: parent.baselineText
-            )
-            layoutManager?.blankLineIndices = ConflictResultLineHighlights.blankLineIndices(in: textView.string)
-            layoutManager?.invalidateDisplay(
-                forCharacterRange: NSRange(location: 0, length: textView.string.utf16.count)
+            layoutManager.blankLineIndices = ConflictResultLineHighlights.blankLineIndices(in: text)
+            layoutManager.invalidateDisplay(
+                forCharacterRange: NSRange(location: 0, length: text.utf16.count)
             )
             if let scrollView = textView.enclosingScrollView {
                 updateDocumentFrame(viewportSize: scrollView.contentSize)
             }
+
+            hasAppliedPresentation = true
+            lastHighlightedFileExtension = fileExtension
+            lastHighlightedColorScheme = parent.colorScheme
+            lastHighlightedBaselineText = baselineText
         }
 
         func updateDocumentFrame(viewportSize: NSSize) {

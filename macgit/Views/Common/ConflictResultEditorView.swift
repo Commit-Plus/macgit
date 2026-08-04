@@ -19,7 +19,8 @@ import SwiftUI
 
 struct ConflictResultEditorView: View {
     @Environment(\.colorScheme) private var colorScheme
-    @Binding var text: String
+    let text: String
+    let onTextChange: (String) -> Void
     let fileExtension: String
     let baselineText: String
     let isDisabled: Bool
@@ -49,7 +50,8 @@ struct ConflictResultEditorView: View {
             }
 
             ConflictResultTextView(
-                text: $text,
+                text: text,
+                onTextChange: onTextChange,
                 fileExtension: fileExtension,
                 baselineText: baselineText,
                 colorScheme: colorScheme,

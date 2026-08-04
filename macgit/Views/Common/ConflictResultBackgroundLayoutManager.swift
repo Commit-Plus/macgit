@@ -29,16 +29,25 @@ final class ConflictResultBackgroundLayoutManager: NSLayoutManager {
         }
 
         let text = textStorage.string as NSString
+        let backgroundWidth = max(viewportWidth, usedRect(for: textContainer).width)
+        var visibleLineIndex: Int?
         enumerateLineFragments(forGlyphRange: glyphsToShow) { [self] rect, _, _, glyphRange, _ in
-            let characterIndex = characterIndexForGlyph(at: glyphRange.location)
-            let prefixRange = NSRange(location: 0, length: min(characterIndex, text.length))
-            let lineIndex = text.substring(with: prefixRange).reduce(into: 0) { count, character in
-                if character == "\n" { count += 1 }
+            let lineIndex: Int
+            if let visibleLineIndex {
+                lineIndex = visibleLineIndex
+            } else {
+                let characterIndex = characterIndexForGlyph(at: glyphRange.location)
+                let prefixRange = NSRange(location: 0, length: min(characterIndex, text.length))
+                lineIndex = text.substring(with: prefixRange).reduce(into: 0) { count, character in
+                    if character == "\n" { count += 1 }
+                }
             }
+            visibleLineIndex = lineIndex + 1
+
             let backgroundRect = NSRect(
                 x: origin.x,
                 y: origin.y + rect.minY,
-                width: max(viewportWidth, usedRect(for: textContainer).width),
+                width: backgroundWidth,
                 height: rect.height
             )
 

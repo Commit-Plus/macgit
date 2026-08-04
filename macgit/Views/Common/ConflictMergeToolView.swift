@@ -37,7 +37,7 @@ struct ConflictMergeToolView: View {
     @State private var showingError = false
     @State private var selectedConflictSectionIndex: Int?
     @State private var hasUnsavedChanges = false
-    @State private var resultText = ""
+    @State private var resultTextBuffer = ConflictResultTextBuffer()
     @State private var resultEditorUndoResetGeneration = 0
     @State private var scrollController = SyncedScrollController()
     @State private var showingUnresolvedConflictsAlert = false
@@ -276,16 +276,14 @@ struct ConflictMergeToolView: View {
 
             // Bottom row: Result
             ConflictResultEditorView(
-                text: $resultText,
+                text: resultTextBuffer.text,
+                onTextChange: handleResultTextChange,
                 fileExtension: selectedFile.fileExtension,
                 baselineText: document.currentContent,
                 isDisabled: isSaving || isPerformingMergeAction,
                 undoResetGeneration: resultEditorUndoResetGeneration,
                 scrollController: scrollController
             )
-                .onChange(of: resultText) { _, newValue in
-                    updateManualResult(newValue)
-                }
                 .frame(maxHeight: .infinity, alignment: .topLeading)
         }
     }
@@ -592,7 +590,7 @@ struct ConflictMergeToolView: View {
         resultEditorUndoResetGeneration += 1
         hasUnsavedChanges = true
         self.document = document
-        resultText = document.resolvedText
+        resultTextBuffer.text = document.resolvedText
         focusCurrentConflict(in: document, preferredSectionIndex: sectionIndex, scroll: false)
     }
 
@@ -615,7 +613,7 @@ struct ConflictMergeToolView: View {
         resultEditorUndoResetGeneration += 1
         hasUnsavedChanges = true
         self.document = document
-        resultText = document.resolvedText
+        resultTextBuffer.text = document.resolvedText
         focusCurrentConflict(in: document, preferredSectionIndex: sectionIndex, scroll: false)
     }
 
@@ -629,7 +627,7 @@ struct ConflictMergeToolView: View {
         resultEditorUndoResetGeneration += 1
         hasUnsavedChanges = true
         self.document = document
-        resultText = document.resolvedText
+        resultTextBuffer.text = document.resolvedText
         focusCurrentConflict(in: document, preferredSectionIndex: selectedConflictSectionIndex, scroll: false)
     }
 
@@ -648,17 +646,15 @@ struct ConflictMergeToolView: View {
         resultEditorUndoResetGeneration += 1
         hasUnsavedChanges = true
         self.document = document
-        resultText = document.resolvedText
+        resultTextBuffer.text = document.resolvedText
         focusCurrentConflict(in: document, preferredSectionIndex: selectedConflictSectionIndex, scroll: false)
     }
 
-    private func updateManualResult(_ text: String) {
-        guard var document, text != document.resolvedText else { return }
-
-        document.manualResolvedText = text
-        self.document = document
-        hasUnsavedChanges = true
-        focusCurrentConflict(in: document, preferredSectionIndex: nil, scroll: false)
+    private func handleResultTextChange(_ text: String) {
+        resultTextBuffer.text = text
+        if !hasUnsavedChanges {
+            hasUnsavedChanges = true
+        }
     }
 
     private func registerConflictUndo(document: ConflictResolutionDocument) {
@@ -666,7 +662,7 @@ struct ConflictMergeToolView: View {
         conflictUndoStacks[filePath, default: []].append(
             ConflictUndoSnapshot(
                 document: document,
-                resultText: resultText,
+                resultText: resultTextBuffer.text,
                 selectedConflictSectionIndex: selectedConflictSectionIndex,
                 hasUnsavedChanges: hasUnsavedChanges
             )
@@ -683,7 +679,7 @@ struct ConflictMergeToolView: View {
         let filePath = selectedFile.path
         let currentSnapshot = ConflictUndoSnapshot(
             document: document,
-            resultText: resultText,
+            resultText: resultTextBuffer.text,
             selectedConflictSectionIndex: selectedConflictSectionIndex,
             hasUnsavedChanges: hasUnsavedChanges
         )
@@ -703,7 +699,7 @@ struct ConflictMergeToolView: View {
     private func restoreConflictSnapshot(_ snapshot: ConflictUndoSnapshot) {
         resultEditorUndoResetGeneration += 1
         document = snapshot.document
-        resultText = snapshot.resultText
+        resultTextBuffer.text = snapshot.resultText
         selectedConflictSectionIndex = snapshot.selectedConflictSectionIndex
         hasUnsavedChanges = snapshot.hasUnsavedChanges
     }
@@ -740,6 +736,7 @@ struct ConflictMergeToolView: View {
 
     private var hasUnresolvedConflicts: Bool {
         guard let document = document else { return false }
+        guard resultTextBuffer.text == document.resolvedText else { return false }
         guard document.manualResolvedText == nil else { return false }
         return document.sections.contains { section in
             section.isConflict && !section.isIncomingSelected && !section.isCurrentSelected
@@ -752,8 +749,8 @@ struct ConflictMergeToolView: View {
         do {
             let loadedDocument = try await GitStatusService.shared.conflictDocument(for: file, in: repositoryURL)
             await MainActor.run {
+                resultTextBuffer.text = loadedDocument.resolvedText
                 document = loadedDocument
-                resultText = loadedDocument.resolvedText
                 hasUnsavedChanges = false
                 focusCurrentConflict(in: loadedDocument, preferredSectionIndex: nil, scroll: true)
             }
@@ -795,8 +792,8 @@ struct ConflictMergeToolView: View {
             )
             let stillHasConflicts = updatedDocument.sections.contains(where: \.isConflict)
             if stillHasConflicts {
+                resultTextBuffer.text = updatedDocument.resolvedText
                 document = updatedDocument
-                resultText = updatedDocument.resolvedText
                 hasUnsavedChanges = false
                 focusCurrentConflict(in: updatedDocument, preferredSectionIndex: nil, scroll: true)
             } else {
@@ -854,7 +851,7 @@ struct ConflictMergeToolView: View {
 
         if allConflictFiles.isEmpty {
             document = nil
-            resultText = ""
+            resultTextBuffer.text = ""
             selectedConflictSectionIndex = nil
         } else if let currentIndex {
             selectedFile = allConflictFiles[min(currentIndex, allConflictFiles.count - 1)]
@@ -863,8 +860,16 @@ struct ConflictMergeToolView: View {
         }
     }
 
+    private func documentWithEditorResult() -> ConflictResolutionDocument? {
+        guard var document else { return nil }
+        if resultTextBuffer.text != document.resolvedText {
+            document.manualResolvedText = resultTextBuffer.text
+        }
+        return document
+    }
+
     private func saveAndAdvance() async {
-        guard let document = document else { return }
+        guard let document = documentWithEditorResult() else { return }
         isSaving = true
         defer { isSaving = false }
 
