@@ -129,8 +129,6 @@ struct MainWindowView: View {
     @State var featureAccessNotice: FeatureAccessNotice?
     @State var proUpgradePresentation: ProUpgradePresentation?
     @State var proUpgradeErrorMessage: String?
-    @State var pendingGitUndoAccessAction: GitUndoMenuAction?
-    @State var isCheckingGitUndoAccess = false
     @State private var repoIconName: String = "code-branch"
     @State private var remoteURLString: String = ""
     @State var selectedBranchName: String? = nil
@@ -974,7 +972,8 @@ struct MainWindowView: View {
         if accountController.account == nil {
             accountController.presentAuthentication(.signIn)
         } else {
-            Task { await accountController.openPricingOnWeb() }
+            proUpgradeErrorMessage = nil
+            proUpgradePresentation = ProUpgradePresentation(feature: .pullRequests)
         }
     }
 
@@ -1012,9 +1011,6 @@ struct MainWindowView: View {
             Task {
                 _ = await authorizePullRequestAccess(forceRefresh: true)
             }
-        case .gitUndo:
-            guard let action = pendingGitUndoAccessAction else { return }
-            authorizeAndHandleGitUndoMenuAction(action, forceRefresh: true)
         case .privateRepositories, .gitFlow, .aiCommitMessage, .repositoryChat,
              .aiConflictResolution, .aiBringYourOwnKey:
             break
@@ -1025,7 +1021,6 @@ struct MainWindowView: View {
         guard accountController.openingWebDestination != .pricing else { return }
         proUpgradePresentation = nil
         proUpgradeErrorMessage = nil
-        pendingGitUndoAccessAction = nil
     }
 
     private func performProUpgradePrimaryAction() {
@@ -1034,7 +1029,6 @@ struct MainWindowView: View {
 
         guard accountController.account != nil else {
             proUpgradePresentation = nil
-            pendingGitUndoAccessAction = nil
             Task {
                 await Task.yield()
                 accountController.presentAuthentication(.signIn)
@@ -1048,7 +1042,6 @@ struct MainWindowView: View {
                 proUpgradeErrorMessage = errorMessage
             } else {
                 proUpgradePresentation = nil
-                pendingGitUndoAccessAction = nil
             }
         }
     }
@@ -1079,7 +1072,7 @@ struct MainWindowView: View {
                 disabled: GitUndoToolbarPolicy.isUndoDisabled(
                     isSyncing: syncState.isAnySyncing,
                     canUndo: undoManager.canUndo
-                ) || operationProgress.activeOperation != nil || isCheckingGitUndoAccess,
+                ) || operationProgress.activeOperation != nil,
                 action: { handleGitUndoMenuAction(.undo) }
             )
         }

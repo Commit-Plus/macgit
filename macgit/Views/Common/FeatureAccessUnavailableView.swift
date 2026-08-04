@@ -31,7 +31,7 @@ struct FeatureAccessUnavailableView: View {
             Text(notice.message)
         } actions: {
             if notice.denial == .requiresPro {
-                Button(isSignedIn ? "Manage Account" : "Sign In", action: onAccountAction)
+                Button(isSignedIn ? "View Pricing" : "Sign In", action: onAccountAction)
                     .buttonStyle(.borderedProminent)
             }
             if notice.denial == .repositoryVisibilityUnavailable {

@@ -33,7 +33,12 @@ extension MainWindowView {
         guard !Task.isCancelled else { return false }
         pullRequestAccessDecision = decision
         if case .denied(let denial) = decision, presentNotice {
-            featureAccessNotice = FeatureAccessNotice(feature: .pullRequests, denial: denial)
+            if denial == .requiresPro {
+                proUpgradeErrorMessage = nil
+                proUpgradePresentation = ProUpgradePresentation(feature: .pullRequests)
+            } else {
+                featureAccessNotice = FeatureAccessNotice(feature: .pullRequests, denial: denial)
+            }
         }
         return decision.isAllowed
     }

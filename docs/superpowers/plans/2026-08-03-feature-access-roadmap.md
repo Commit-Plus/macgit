@@ -8,7 +8,7 @@ Make Commit+ plan boundaries centrally configurable from Firebase while keeping 
 
 - [completed] [Phase 1: Firebase policy foundation](2026-08-03-feature-access-phase-1-firebase-policy.md)
 - [completed] [Phase 2: Repository visibility and private-repository access](2026-08-04-feature-access-phase-2-repository-visibility.md)
-- [completed] [Phase 3: Repository action gates and reusable Pro upgrade UI](2026-08-04-feature-access-phase-3-enforcement.md) (branch: `codex/feature-access-phase-3`)
+- [completed] [Phase 3: Private collaboration gates and reusable Pro upgrade UI](2026-08-04-feature-access-phase-3-enforcement.md) (branch: `codex/feature-access-phase-3`; private Pull Requests are gated while core Git remains available)
 - [pending] Phase 4: AI feature gates and server-enforced cloud quotas
 
 ## Shared constraints

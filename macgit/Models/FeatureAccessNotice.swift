@@ -78,8 +78,6 @@ extension PlanFeature {
             "Pull Requests"
         case .gitFlow:
             "Git Flow"
-        case .gitUndo:
-            "Git Undo"
         case .aiCommitMessage:
             "AI commit messages"
         case .repositoryChat:

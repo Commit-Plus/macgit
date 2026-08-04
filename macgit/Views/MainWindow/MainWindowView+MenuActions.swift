@@ -74,47 +74,11 @@ extension MainWindowView {
             return
         }
         guard pendingConfirmedUndo == nil else { return }
-        guard !isCheckingGitUndoAccess else { return }
 
-        authorizeAndHandleGitUndoMenuAction(action)
+        beginGitUndoMenuAction(action)
     }
 
-    func authorizeAndHandleGitUndoMenuAction(
-        _ action: GitUndoMenuAction,
-        forceRefresh: Bool = false
-    ) {
-        isCheckingGitUndoAccess = true
-        Task {
-            let decision = await repositoryVisibilityController.accessDecision(
-                for: .gitUndo,
-                repositoryURL: repositoryURL,
-                accounts: providerAccountController.accounts,
-                entitlement: accountController.entitlement,
-                policy: featureAccessController.policy,
-                forceRefresh: forceRefresh
-            )
-            guard !Task.isCancelled else {
-                isCheckingGitUndoAccess = false
-                return
-            }
-
-            isCheckingGitUndoAccess = false
-            switch decision {
-            case .allowed:
-                pendingGitUndoAccessAction = nil
-                beginAuthorizedGitUndoMenuAction(action)
-            case .denied(.requiresPro):
-                pendingGitUndoAccessAction = action
-                proUpgradeErrorMessage = nil
-                proUpgradePresentation = ProUpgradePresentation(feature: .gitUndo)
-            case .denied(let denial):
-                pendingGitUndoAccessAction = action
-                featureAccessNotice = FeatureAccessNotice(feature: .gitUndo, denial: denial)
-            }
-        }
-    }
-
-    private func beginAuthorizedGitUndoMenuAction(_ action: GitUndoMenuAction) {
+    private func beginGitUndoMenuAction(_ action: GitUndoMenuAction) {
         switch action {
         case .undo:
             guard let entry = undoManager.popForUndo() else {
