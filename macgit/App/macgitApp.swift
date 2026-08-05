@@ -197,12 +197,12 @@ struct macgitApp: App {
             }
 
             CommandGroup(replacing: .newItem) {
-                Button("New...") {
+                Button("Clone new repo") {
                     appState.fileMenuAction = .new
                 }
                 .keyboardShortcut("n", modifiers: .command)
 
-                Button("Open...") {
+                Button("Open a repo") {
                     appState.fileMenuAction = .open
                 }
                 .keyboardShortcut("o", modifiers: .command)

@@ -970,25 +970,29 @@ struct FileStatusView: View {
     }
 
     private var canGenerateCommitMessage: Bool {
-        !gitStatus.staged.isEmpty
+        (!gitStatus.staged.isEmpty || !changedFiles.isEmpty)
             && !aiProviderController.isGenerating
     }
 
     private var generateCommitMessageHelp: String {
-        if gitStatus.staged.isEmpty {
-            return "Stage changes before generating a commit message."
+        if gitStatus.staged.isEmpty && changedFiles.isEmpty {
+            return "Change a file before generating a commit message."
         }
         if !aiProviderController.selectedProviderAvailability.isAvailable {
             return aiProviderController.selectedProviderAvailability.detail
         }
-        return "Generate an editable message from staged changes."
+        return gitStatus.staged.isEmpty
+            ? "Generate an editable message from changed files."
+            : "Generate an editable message from staged changes."
     }
 
     private func generateCommitMessage() async {
         do {
+            let changeSource: CommitChangeSource = gitStatus.staged.isEmpty ? .workingTree : .staged
             let generated = try await aiProviderController.generateCommitMessage(
                 repositoryURL: repositoryURL,
                 branchName: currentBranch,
+                changeSource: changeSource,
                 recentCommitSubjects: recentCommits.map(\.message)
             )
             commitMessage = generated.text

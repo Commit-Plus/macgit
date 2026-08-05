@@ -17,6 +17,20 @@
 //
 import Foundation
 
+enum CommitChangeSource: Equatable, Sendable {
+    case staged
+    case workingTree
+
+    var displayName: String {
+        switch self {
+        case .staged:
+            "staged changes"
+        case .workingTree:
+            "changed files"
+        }
+    }
+}
+
 struct CommitChangeSnapshot: Equatable, Sendable {
     let fingerprint: String
     let context: String
@@ -26,7 +40,8 @@ struct CommitChangeSnapshot: Equatable, Sendable {
 struct CommitMessageGenerationRequest: Sendable {
     let repositoryName: String
     let branchName: String?
-    let stagedChanges: CommitChangeSnapshot
+    let changeSource: CommitChangeSource
+    let changes: CommitChangeSnapshot
     let recentCommitSubjects: [String]
 }
 
@@ -41,28 +56,27 @@ struct GeneratedCommitMessage: Equatable, Sendable {
 }
 
 enum CommitMessageGenerationError: LocalizedError, Equatable {
-    case noStagedChanges
+    case noChanges(CommitChangeSource)
     case providerUnavailable(String)
     case providerNotImplemented
     case contextTooLarge
     case invalidResponse
-    case stagedChangesChanged
+    case changesChanged(CommitChangeSource)
 
     var errorDescription: String? {
         switch self {
-        case .noStagedChanges:
-            "Stage changes before generating a commit message."
+        case .noChanges(let source):
+            "No \(source.displayName) are available to generate a commit message."
         case .providerUnavailable(let reason):
             reason
         case .providerNotImplemented:
             "This AI provider is not available yet."
         case .contextTooLarge:
-            "The staged changes are too large for Apple Intelligence. Try staging a smaller commit."
+            "The changes are too large for Apple Intelligence. Try generating from a smaller change."
         case .invalidResponse:
             "The AI provider did not return a valid commit message."
-        case .stagedChangesChanged:
-            "Staged changes changed while the message was being generated. Generate it again."
+        case .changesChanged(let source):
+            "The \(source.displayName) changed while the message was being generated. Generate it again."
         }
     }
 }
-

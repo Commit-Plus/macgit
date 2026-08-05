@@ -58,9 +58,8 @@ enum CommitMessageContextBuilder {
             return (text, false)
         }
         return (
-            String(text.prefix(maximumCharacters)) + "\n[Additional staged diff omitted]",
+            String(text.prefix(maximumCharacters)) + "\n[Additional change data omitted]",
             true
         )
     }
 }
-

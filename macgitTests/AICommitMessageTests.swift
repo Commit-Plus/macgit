@@ -31,7 +31,7 @@ final class AICommitMessageTests: XCTestCase {
 
         XCTAssertTrue(result.isTruncated)
         XCTAssertTrue(result.context.contains("M\tmacgit/App.swift"))
-        XCTAssertTrue(result.context.contains("[Additional staged diff omitted]"))
+        XCTAssertTrue(result.context.contains("[Additional change data omitted]"))
         XCTAssertLessThan(result.context.count, patch.count)
     }
 
@@ -102,6 +102,7 @@ final class AICommitMessageTests: XCTestCase {
         let result = try await controller.generateCommitMessage(
             repositoryURL: URL(fileURLWithPath: "/tmp/example"),
             branchName: "main",
+            changeSource: .staged,
             recentCommitSubjects: ["Improve status loading"]
         )
 
@@ -110,6 +111,8 @@ final class AICommitMessageTests: XCTestCase {
         XCTAssertEqual(result.text, "Generate commit message\n\nUse the provider seam")
         let receivedCharacterBudget = await loader.receivedCharacterBudget()
         XCTAssertEqual(receivedCharacterBudget, 7_000)
+        let receivedSource = await loader.receivedSource()
+        XCTAssertEqual(receivedSource, .staged)
     }
 
     @MainActor
@@ -126,11 +129,12 @@ final class AICommitMessageTests: XCTestCase {
             _ = try await controller.generateCommitMessage(
                 repositoryURL: URL(fileURLWithPath: "/tmp/example"),
                 branchName: "main",
+                changeSource: .workingTree,
                 recentCommitSubjects: []
             )
             XCTFail("Expected staged-change validation to reject the response")
         } catch let error as CommitMessageGenerationError {
-            XCTAssertEqual(error, .stagedChangesChanged)
+            XCTAssertEqual(error, .changesChanged(.workingTree))
         }
     }
 
@@ -172,16 +176,19 @@ private struct StubCommitMessageProvider: CommitMessageAIProvider {
 private actor StubCommitChangeSnapshotLoader: CommitChangeSnapshotLoading {
     private let currentFingerprint: String
     private var characterBudget: Int?
+    private var source: CommitChangeSource?
 
     init(currentFingerprint: String) {
         self.currentFingerprint = currentFingerprint
     }
 
-    func stagedCommitChangeSnapshot(
+    func commitChangeSnapshot(
         in repositoryURL: URL,
+        source: CommitChangeSource,
         characterBudget: Int
     ) async throws -> CommitChangeSnapshot {
         self.characterBudget = characterBudget
+        self.source = source
         return CommitChangeSnapshot(
             fingerprint: "tree-1",
             context: "M\tmacgit/App.swift\n+new behavior",
@@ -189,11 +196,18 @@ private actor StubCommitChangeSnapshotLoader: CommitChangeSnapshotLoading {
         )
     }
 
-    func stagedChangesFingerprint(in repositoryURL: URL) async throws -> String {
+    func changesFingerprint(
+        in repositoryURL: URL,
+        source: CommitChangeSource
+    ) async throws -> String {
         currentFingerprint
     }
 
     func receivedCharacterBudget() -> Int? {
         characterBudget
+    }
+
+    func receivedSource() -> CommitChangeSource? {
+        source
     }
 }

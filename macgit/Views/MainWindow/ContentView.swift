@@ -78,7 +78,6 @@ struct ContentView: View {
                 showingCloneSheet = false
                 openRepository(url, inNewWindow: false)
             })
-            .frame(minWidth: 480)
         }
         .sheet(item: $accountController.presentedSheet) { sheet in
             switch sheet {

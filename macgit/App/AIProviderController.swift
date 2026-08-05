@@ -89,6 +89,7 @@ final class AIProviderController: ObservableObject {
     func generateCommitMessage(
         repositoryURL: URL,
         branchName: String?,
+        changeSource: CommitChangeSource,
         recentCommitSubjects: [String]
     ) async throws -> GeneratedCommitMessage {
         guard !isGenerating else {
@@ -107,20 +108,25 @@ final class AIProviderController: ObservableObject {
         isGenerating = true
         defer { isGenerating = false }
 
-        let snapshot = try await snapshotLoader.stagedCommitChangeSnapshot(
+        let snapshot = try await snapshotLoader.commitChangeSnapshot(
             in: repositoryURL,
+            source: changeSource,
             characterBudget: provider.descriptor.inputCharacterBudget
         )
         let request = CommitMessageGenerationRequest(
             repositoryName: repositoryURL.lastPathComponent,
             branchName: branchName,
-            stagedChanges: snapshot,
+            changeSource: changeSource,
+            changes: snapshot,
             recentCommitSubjects: Array(recentCommitSubjects.prefix(8))
         )
         let generated = try await provider.generateCommitMessage(request: request)
-        let currentFingerprint = try await snapshotLoader.stagedChangesFingerprint(in: repositoryURL)
+        let currentFingerprint = try await snapshotLoader.changesFingerprint(
+            in: repositoryURL,
+            source: changeSource
+        )
         guard providerID == selectedProviderID, currentFingerprint == snapshot.fingerprint else {
-            throw CommitMessageGenerationError.stagedChangesChanged
+            throw CommitMessageGenerationError.changesChanged(changeSource)
         }
         return generated
     }
