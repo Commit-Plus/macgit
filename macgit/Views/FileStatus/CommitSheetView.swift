@@ -25,7 +25,11 @@ import SwiftUI
 struct CommitSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("commit.allChanges") private var commitAllChanges = false
+    @ObservedObject var aiProviderController: AIProviderController
     @State private var message: String = ""
+    @State private var errorMessage: String?
+    @State private var showingError = false
+    let repositoryURL: URL
     let hasStagedChanges: Bool
     let onCommit: (String, Bool) -> Void
 
@@ -41,10 +45,17 @@ struct CommitSheetView: View {
                 Text("Leave this empty to create a commit without a message.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TextField("Enter a commit message…", text: $message, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 400)
-                    .lineLimit(3...6)
+                ZStack(alignment: .topTrailing) {
+                    TextField("Enter a commit message…", text: $message, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 400)
+                        .lineLimit(3...6)
+                        .disabled(aiProviderController.isGenerating)
+
+                    generateCommitMessageButton
+                        .padding(8)
+                        .zIndex(1)
+                }
                 if !hasStagedChanges {
                     HStack(spacing: 8) {
                         Label("No files staged", systemImage: "exclamationmark.triangle")
@@ -75,5 +86,74 @@ struct CommitSheetView: View {
         }
         .padding(30)
         .frame(minWidth: 480)
+        .task {
+            await aiProviderController.refreshAvailability()
+        }
+        .alert("Unable to Generate Commit Message", isPresented: $showingError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "An unknown error occurred.")
+        }
+    }
+
+    private var generateCommitMessageButton: some View {
+        Button {
+            Task {
+                await generateCommitMessage()
+            }
+        } label: {
+            ZStack {
+                Label("Generate commit message", systemImage: "sparkles")
+                    .labelStyle(.iconOnly)
+                    .opacity(aiProviderController.isGenerating ? 0 : 1)
+
+                if aiProviderController.isGenerating {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(width: 14, height: 14)
+        }
+        .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 11))
+        .disabled(aiProviderController.isGenerating)
+        .help(generateCommitMessageHelp)
+        .accessibilityLabel(aiProviderController.isGenerating
+            ? "Generating commit message"
+            : "Generate commit message")
+        .onContinuousHover { phase in
+            switch phase {
+            case .active:
+                NSCursor.pointingHand.set()
+            case .ended:
+                NSCursor.arrow.set()
+            }
+        }
+    }
+
+    private var generateCommitMessageHelp: String {
+        if !aiProviderController.selectedProviderAvailability.isAvailable {
+            return aiProviderController.selectedProviderAvailability.detail
+        }
+        return hasStagedChanges
+            ? "Generate an editable message from staged changes."
+            : "Generate an editable message from changed files."
+    }
+
+    private func generateCommitMessage() async {
+        do {
+            async let branchName = GitStatusService.shared.currentBranch(in: repositoryURL)
+            async let recentCommits = GitStatusService.shared.recentCommits(in: repositoryURL)
+            let generated = try await aiProviderController.generateCommitMessage(
+                repositoryURL: repositoryURL,
+                branchName: await branchName,
+                changeSource: hasStagedChanges ? .staged : .workingTree,
+                recentCommitSubjects: await recentCommits.map(\.message)
+            )
+            message = generated.text
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
     }
 }

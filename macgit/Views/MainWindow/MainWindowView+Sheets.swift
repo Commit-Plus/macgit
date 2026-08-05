@@ -19,7 +19,11 @@ import SwiftUI
 extension MainWindowView {
     @ViewBuilder
     var commitSheet: some View {
-        CommitSheetView(hasStagedChanges: syncState.stagedBadgeCount > 0) { message, commitAllChanges in
+        CommitSheetView(
+            aiProviderController: aiProviderController,
+            repositoryURL: repositoryURL,
+            hasStagedChanges: syncState.stagedBadgeCount > 0
+        ) { message, commitAllChanges in
             runRepositoryOperation("Committing changes...") {
                 await commitFromToolbar(message: message, commitAllChanges: commitAllChanges)
             }
