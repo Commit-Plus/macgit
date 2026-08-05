@@ -44,6 +44,7 @@ struct FileStatusView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showingError = false
+    @State private var isAIGenerationRequested = false
 
     @State private var isCommitBarExpanded = false
     @State private var commitMessage = ""
@@ -901,9 +902,7 @@ struct FileStatusView: View {
                     .accessibilityLabel("Commit message")
 
                 Button {
-                    Task {
-                        await generateCommitMessage()
-                    }
+                    isAIGenerationRequested = true
                 } label: {
                     ZStack {
                         Label("Generate commit message", systemImage: "sparkles")
@@ -966,6 +965,11 @@ struct FileStatusView: View {
         .padding(.vertical, 10)
         .task {
             await aiProviderController.refreshAvailability()
+        }
+        .aiCommitMessageAccessGate(isRequested: $isAIGenerationRequested) {
+            Task {
+                await generateCommitMessage()
+            }
         }
     }
 

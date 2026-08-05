@@ -29,6 +29,7 @@ struct CommitSheetView: View {
     @State private var message: String = ""
     @State private var errorMessage: String?
     @State private var showingError = false
+    @State private var isAIGenerationRequested = false
     let repositoryURL: URL
     let hasStagedChanges: Bool
     let onCommit: (String, Bool) -> Void
@@ -94,13 +95,16 @@ struct CommitSheetView: View {
         } message: {
             Text(errorMessage ?? "An unknown error occurred.")
         }
+        .aiCommitMessageAccessGate(isRequested: $isAIGenerationRequested) {
+            Task {
+                await generateCommitMessage()
+            }
+        }
     }
 
     private var generateCommitMessageButton: some View {
         Button {
-            Task {
-                await generateCommitMessage()
-            }
+            isAIGenerationRequested = true
         } label: {
             ZStack {
                 Label("Generate commit message", systemImage: "sparkles")
