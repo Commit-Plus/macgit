@@ -74,19 +74,22 @@ struct GitFlowPlanner {
         let configuration = configuration.normalized()
         guard configuration.isEnabled else { throw GitFlowPlannerError.disabled }
         try validate(configuration)
-        guard kind.supportsPhaseTwoFinish else {
-            throw GitFlowPlannerError.invalidConfiguration("Finish \(kind.displayName) is planned for a later Git Flow phase.")
-        }
         guard topicKind(for: currentBranch, configuration: configuration) == kind else {
             throw GitFlowPlannerError.invalidConfiguration(
                 "Check out a \(kind.displayName) branch before finishing it."
             )
         }
 
+        let tagName = kind.requiresReleaseTag
+            ? versionName(from: currentBranch, prefix: configuration.prefix(for: kind))
+            : nil
         return GitFlowFinishPlan(
             kind: kind,
             sourceBranch: currentBranch,
-            targetBranch: configuration.developBranch,
+            targetBranch: kind.requiresReleaseTag ? configuration.mainBranch : configuration.developBranch,
+            secondaryTargetBranch: kind.requiresReleaseTag ? configuration.developBranch : nil,
+            tagName: tagName,
+            createTag: kind.requiresReleaseTag,
             deleteSourceBranch: deleteSourceBranch
         )
     }
@@ -110,5 +113,10 @@ struct GitFlowPlanner {
         guard Set(prefixes).count == prefixes.count else {
             throw GitFlowPlannerError.invalidConfiguration("Git Flow prefixes must be unique.")
         }
+    }
+
+    private func versionName(from branch: String, prefix: String) -> String {
+        guard branch.hasPrefix(prefix) else { return branch }
+        return String(branch.dropFirst(prefix.count))
     }
 }

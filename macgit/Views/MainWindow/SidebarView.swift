@@ -35,6 +35,7 @@ struct SidebarView: View {
     let currentBranchFallbackSyncStatus: BranchSyncStatus?
     let isAccountMenuDisabled: Bool
     let gitFlowConfiguration: GitFlowConfiguration
+    let gitFlowFinishCheckpoint: GitFlowFinishCheckpoint?
     let isGitFlowOperationDisabled: Bool
     let isBranchSyncing: (String) -> Bool
     let onRequestCheckout: (String, Bool) -> Void
@@ -81,6 +82,8 @@ struct SidebarView: View {
     let onRequestSearch: () -> Void
     let onRequestStartGitFlow: (GitFlowTopicKind) -> Void
     let onRequestFinishGitFlow: (GitFlowTopicKind) -> Void
+    let onRequestResumeGitFlowFinish: () -> Void
+    let onRequestAbortGitFlowFinish: () -> Void
     let onRequestEditGitFlow: () -> Void
     let onRequestDisableGitFlow: () -> Void
     let onRequestDragDrop: (GitDragDropRequest) -> Void
@@ -177,6 +180,7 @@ struct SidebarView: View {
         currentBranchFallbackSyncStatus: BranchSyncStatus? = nil,
         isAccountMenuDisabled: Bool = false,
         gitFlowConfiguration: GitFlowConfiguration = GitFlowConfiguration(),
+        gitFlowFinishCheckpoint: GitFlowFinishCheckpoint? = nil,
         isGitFlowOperationDisabled: Bool = false,
         isBranchSyncing: @escaping (String) -> Bool = { _ in false },
         onRequestCheckout: @escaping (String, Bool) -> Void,
@@ -223,6 +227,8 @@ struct SidebarView: View {
         onRequestSearch: @escaping () -> Void = {},
         onRequestStartGitFlow: @escaping (GitFlowTopicKind) -> Void = { _ in },
         onRequestFinishGitFlow: @escaping (GitFlowTopicKind) -> Void = { _ in },
+        onRequestResumeGitFlowFinish: @escaping () -> Void = {},
+        onRequestAbortGitFlowFinish: @escaping () -> Void = {},
         onRequestEditGitFlow: @escaping () -> Void = {},
         onRequestDisableGitFlow: @escaping () -> Void = {},
         onRequestDragDrop: @escaping (GitDragDropRequest) -> Void = { _ in },
@@ -236,6 +242,7 @@ struct SidebarView: View {
         self.currentBranchFallbackSyncStatus = currentBranchFallbackSyncStatus
         self.isAccountMenuDisabled = isAccountMenuDisabled
         self.gitFlowConfiguration = gitFlowConfiguration
+        self.gitFlowFinishCheckpoint = gitFlowFinishCheckpoint
         self.isGitFlowOperationDisabled = isGitFlowOperationDisabled
         self.isBranchSyncing = isBranchSyncing
         self.onRequestCheckout = onRequestCheckout
@@ -282,6 +289,8 @@ struct SidebarView: View {
         self.onRequestSearch = onRequestSearch
         self.onRequestStartGitFlow = onRequestStartGitFlow
         self.onRequestFinishGitFlow = onRequestFinishGitFlow
+        self.onRequestResumeGitFlowFinish = onRequestResumeGitFlowFinish
+        self.onRequestAbortGitFlowFinish = onRequestAbortGitFlowFinish
         self.onRequestEditGitFlow = onRequestEditGitFlow
         self.onRequestDisableGitFlow = onRequestDisableGitFlow
         self.onRequestDragDrop = onRequestDragDrop
@@ -620,12 +629,15 @@ struct SidebarView: View {
             SidebarGitFlowSection(
                 configuration: gitFlowConfiguration,
                 currentBranch: currentBranch,
+                hasPendingFinish: gitFlowFinishCheckpoint != nil,
                 isExpanded: sectionStates.gitFlowExpanded,
                 isOperationDisabled: isGitFlowOperationDisabled,
                 actions: SidebarGitFlowActions(
                     toggleSection: { toggleSection(.gitFlow) },
                     start: onRequestStartGitFlow,
                     finish: onRequestFinishGitFlow,
+                    resumeFinish: onRequestResumeGitFlowFinish,
+                    abortFinish: onRequestAbortGitFlowFinish,
                     editWorkflow: onRequestEditGitFlow,
                     disableWorkflow: onRequestDisableGitFlow
                 )

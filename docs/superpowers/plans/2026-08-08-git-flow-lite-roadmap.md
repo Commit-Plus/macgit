@@ -8,7 +8,7 @@ Deliver a safe, repository-local Git Flow experience for Feature, Bugfix, Releas
 
 - [completed] [Phase 1: Configuration and Start flows](2026-08-08-git-flow-lite-phase-1-configuration-and-start.md), merged to `main` from `codex/git-flow-lite-phase-1`
 - [completed] [Phase 2: Finish Feature and Bugfix plus sidebar workflow surface](2026-08-08-git-flow-lite-phase-2-feature-bugfix-finish.md), implemented on `codex/git-flow-lite-phase-2`
-- [pending] Phase 3: Finish Release and Hotfix with multi-target merge, annotated tag, conflict checkpoint, Resume, and Abort
+- [completed] [Phase 3: Finish Release and Hotfix with multi-target merge, annotated tag, conflict checkpoint, Resume, and Abort](2026-08-08-git-flow-lite-phase-3-release-hotfix-finish.md), implemented on `codex/git-flow-lite-phase-3`
 - [pending] Phase 4: Worktree-aware Start flows
 - [pending] Phase 5: Advanced finish preferences for merge/rebase policy
 - [pending] Phase 6: UX polish, branch-role badges, accessibility, and complete edge-case coverage

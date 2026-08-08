@@ -24,24 +24,37 @@ final class GitFlowCommandStateTests: XCTestCase {
         let state = GitFlowCommandState(
             isEnabled: true,
             currentKind: .feature,
-            operationInProgress: false
+            operationInProgress: false,
+            hasPendingFinish: false
         )
 
         XCTAssertTrue(state.canStart(.hotfix))
         XCTAssertTrue(state.canFinish(.feature))
         XCTAssertFalse(state.canFinish(.bugfix))
-        XCTAssertFalse(state.canFinish(.release))
-        XCTAssertFalse(state.canFinish(.hotfix))
     }
 
     func testOperationInProgressDisablesGitFlowCommands() {
         let state = GitFlowCommandState(
             isEnabled: true,
             currentKind: .bugfix,
-            operationInProgress: true
+            operationInProgress: true,
+            hasPendingFinish: false
         )
 
         XCTAssertFalse(state.canStart(.feature))
         XCTAssertFalse(state.canFinish(.bugfix))
+    }
+
+    func testPendingFinishDisablesStartAndEnablesRecoveryCommands() {
+        let state = GitFlowCommandState(
+            isEnabled: true,
+            currentKind: .release,
+            operationInProgress: false,
+            hasPendingFinish: true
+        )
+
+        XCTAssertFalse(state.canStart(.feature))
+        XCTAssertFalse(state.canFinish(.release))
+        XCTAssertTrue(state.canResumeOrAbortFinish)
     }
 }

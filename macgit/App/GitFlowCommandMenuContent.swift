@@ -25,6 +25,20 @@ struct GitFlowCommandMenuContent: View {
 
     var body: some View {
         if let state, state.isEnabled {
+            if state.hasPendingFinish {
+                Button("Resume Finish") {
+                    perform(.resumeFinish)
+                }
+                .disabled(!state.canResumeOrAbortFinish)
+
+                Button("Abort Finish", role: .destructive) {
+                    perform(.abortFinish)
+                }
+                .disabled(!state.canResumeOrAbortFinish)
+
+                Divider()
+            }
+
             ForEach(GitFlowTopicKind.allCases) { kind in
                 Button("Start \(kind.displayName)…") {
                     perform(.start(kind))

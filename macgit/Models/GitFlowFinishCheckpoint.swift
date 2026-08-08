@@ -16,12 +16,17 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-struct SidebarGitFlowActions {
-    let toggleSection: () -> Void
-    let start: (GitFlowTopicKind) -> Void
-    let finish: (GitFlowTopicKind) -> Void
-    let resumeFinish: () -> Void
-    let abortFinish: () -> Void
-    let editWorkflow: () -> Void
-    let disableWorkflow: () -> Void
+import Foundation
+
+struct GitFlowFinishCheckpoint: Codable, Equatable {
+    enum Phase: String, Codable {
+        case primaryMerge
+        case secondaryMerge
+    }
+
+    var plan: GitFlowFinishPlan
+    var sourceTip: String
+    var targetResults: [GitFlowFinishTargetResult]
+    var createdTagName: String?
+    var phase: Phase
 }
