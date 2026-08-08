@@ -103,6 +103,7 @@ struct BranchSheetView: View {
         initialStartPoint: GitBranchStartPoint? = nil,
         initialTab: BranchTab = .create,
         initiallySelectedLocalBranches: Set<String> = [],
+        initialForceDelete: Bool = false,
         onRunRepositoryOperation: @escaping RepositoryOperationRunner = { _, operation in
             Task { await operation() }
         },
@@ -115,6 +116,7 @@ struct BranchSheetView: View {
         self.initialStartPoint = initialStartPoint
         self.initiallySelectedLocalBranches = initiallySelectedLocalBranches
         self._selectedTab = State(initialValue: initialTab)
+        self._forceDelete = State(initialValue: initialForceDelete)
     }
 
     private var canCreate: Bool {
@@ -187,6 +189,13 @@ struct BranchSheetView: View {
 
                 // Buttons
                 HStack(spacing: 12) {
+                    if selectedTab == .delete {
+                        Toggle("Force delete", isOn: $forceDelete)
+                            .toggleStyle(.checkbox)
+                            .font(.system(size: 12))
+                            .help("Delete branches regardless of merge status")
+                    }
+
                     Spacer()
                     Button("Cancel", role: .cancel) {
                         dismiss()
@@ -509,10 +518,6 @@ struct BranchSheetView: View {
             }
             .background(.quaternary.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-            Toggle("Force delete regardless of merge status", isOn: $forceDelete)
-                .toggleStyle(.checkbox)
-                .font(.system(size: 12))
         }
     }
 

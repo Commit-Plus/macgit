@@ -30,6 +30,7 @@ struct SidebarDeletePrefixSheet: View {
             undoManager: undoManager,
             initialTab: .delete,
             initiallySelectedLocalBranches: branches,
+            initialForceDelete: true,
             onRunRepositoryOperation: onRunRepositoryOperation,
             onCompleted: onCompleted
         )
