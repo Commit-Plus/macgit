@@ -1,6 +1,6 @@
 # Git Flow Lite Phase 5: Finish Preferences
 
-Status: pending.
+Status: completed on `codex/git-flow-lite-phase-5`.
 
 **Implementation branch:** `codex/git-flow-lite-phase-5`
 

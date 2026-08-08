@@ -63,6 +63,7 @@ enum GitFlowFinishError: LocalizedError, Equatable {
     case missingTargetBranch(String)
     case targetCheckedOutInWorktree(String)
     case tagAlreadyExists(String)
+    case invalidTagName(String)
     case missingCheckpoint
 
     var errorDescription: String? {
@@ -79,6 +80,8 @@ enum GitFlowFinishError: LocalizedError, Equatable {
             return "The target branch '\(branch)' is checked out in another worktree."
         case .tagAlreadyExists(let tag):
             return "The tag '\(tag)' already exists."
+        case .invalidTagName(let tag):
+            return "'\(tag)' is not a valid Git tag name."
         case .missingCheckpoint:
             return "There is no Git Flow finish operation to resume."
         }
@@ -312,6 +315,10 @@ struct GitFlowService {
     }
 
     func finish(_ plan: GitFlowFinishPlan, in repositoryURL: URL) async throws -> GitFlowFinishResult {
+        var plan = plan
+        if plan.createTag {
+            plan.tagName = plan.tagName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         let git = GitStatusService.shared
         guard await git.hasUnfinishedGitFlowStartOperation(in: repositoryURL) == false else {
             throw GitFlowFinishError.unfinishedOperation
@@ -323,12 +330,22 @@ struct GitFlowService {
             throw GitFlowFinishError.currentBranchChanged(expected: plan.sourceBranch)
         }
         try await validateTargets(for: plan, in: repositoryURL)
-        if plan.createTag, let tagName = plan.tagName, try await tagExists(tagName, in: repositoryURL) {
-            throw GitFlowFinishError.tagAlreadyExists(tagName)
+        if plan.createTag, let validationError = await tagValidationError(
+            plan.tagName ?? "",
+            in: repositoryURL
+        ) {
+            throw validationError
         }
 
         let support = GitBranchUndoSupport()
         let sourceTip = try await support.tip(of: plan.sourceBranch, in: repositoryURL)
+        if plan.strategy == .rebaseFastForward, !plan.kind.requiresReleaseTag {
+            return try await finishByRebase(
+                plan,
+                sourceTip: sourceTip,
+                repositoryURL: repositoryURL
+            )
+        }
         var checkpoint = GitFlowFinishCheckpoint(
             plan: plan,
             sourceTip: sourceTip,
@@ -364,7 +381,8 @@ struct GitFlowService {
             targetResults: checkpoint.targetResults,
             createdTagName: checkpoint.createdTagName,
             didDeleteSourceBranch: didDelete,
-            deletionWarning: deletionWarning
+            deletionWarning: deletionWarning,
+            rewrittenSourceTip: nil
         )
     }
 
@@ -373,6 +391,9 @@ struct GitFlowService {
             throw GitFlowFinishError.missingCheckpoint
         }
         let git = GitStatusService.shared
+        if checkpoint.phase == .topicRebase || checkpoint.phase == .topicFastForward {
+            return try await resumeRebaseFinish(checkpoint, in: repositoryURL)
+        }
         if await git.isMergeInProgress(in: repositoryURL) {
             _ = try await git.runGit(arguments: ["merge", "--continue"], in: repositoryURL)
         } else if await git.dirtyCount(in: repositoryURL) != 0 {
@@ -390,6 +411,8 @@ struct GitFlowService {
             }
         case .secondaryMerge:
             checkpoint = try await recordCurrentMergeIfNeeded(at: 1, checkpoint: checkpoint, in: repositoryURL)
+        case .topicRebase, .topicFastForward:
+            preconditionFailure("Rebase checkpoints are handled before merge recovery.")
         }
 
         var didDelete = false
@@ -410,7 +433,8 @@ struct GitFlowService {
             targetResults: checkpoint.targetResults,
             createdTagName: checkpoint.createdTagName,
             didDeleteSourceBranch: didDelete,
-            deletionWarning: deletionWarning
+            deletionWarning: deletionWarning,
+            rewrittenSourceTip: nil
         )
     }
 
@@ -419,6 +443,10 @@ struct GitFlowService {
             throw GitFlowFinishError.missingCheckpoint
         }
         let git = GitStatusService.shared
+        if checkpoint.phase == .topicRebase || checkpoint.phase == .topicFastForward {
+            try await abortRebaseFinish(checkpoint, in: repositoryURL)
+            return
+        }
         if await git.isMergeInProgress(in: repositoryURL) {
             try await git.abortMerge(in: repositoryURL)
         }
@@ -511,7 +539,7 @@ struct GitFlowService {
             name: tagName,
             commit: target.tipAfterMerge,
             annotated: true,
-            message: "Release \(tagName)",
+            message: tagMessage(for: checkpoint.plan.kind, tagName: tagName),
             in: repositoryURL
         )
         checkpoint.createdTagName = tagName
@@ -529,5 +557,164 @@ struct GitFlowService {
         } catch {
             return false
         }
+    }
+
+    func tagValidationError(_ tag: String, in repositoryURL: URL) async -> GitFlowFinishError? {
+        let tag = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard await GitStatusService.shared.isValidTagName(tag, in: repositoryURL) else {
+            return .invalidTagName(tag)
+        }
+        guard (try? await tagExists(tag, in: repositoryURL)) != true else {
+            return .tagAlreadyExists(tag)
+        }
+        return nil
+    }
+
+    private func finishByRebase(
+        _ plan: GitFlowFinishPlan,
+        sourceTip: String,
+        repositoryURL: URL
+    ) async throws -> GitFlowFinishResult {
+        let support = GitBranchUndoSupport()
+        let targetTip = try await support.tip(of: plan.primaryTargetBranch, in: repositoryURL)
+        var checkpoint = GitFlowFinishCheckpoint(
+            plan: plan,
+            sourceTip: sourceTip,
+            targetResults: [],
+            createdTagName: nil,
+            phase: .topicRebase,
+            targetTipBeforeIntegration: targetTip
+        )
+        try await recoveryStore.save(checkpoint, in: repositoryURL)
+
+        _ = try await GitStatusService.shared.runGit(
+            arguments: ["rebase", plan.primaryTargetBranch],
+            in: repositoryURL
+        )
+        checkpoint.rewrittenSourceTip = try await support.tip(of: plan.sourceBranch, in: repositoryURL)
+        checkpoint.phase = .topicFastForward
+        try await recoveryStore.save(checkpoint, in: repositoryURL)
+        return try await completeRebaseFastForward(checkpoint, in: repositoryURL)
+    }
+
+    private func resumeRebaseFinish(
+        _ savedCheckpoint: GitFlowFinishCheckpoint,
+        in repositoryURL: URL
+    ) async throws -> GitFlowFinishResult {
+        var checkpoint = savedCheckpoint
+        let git = GitStatusService.shared
+        let support = GitBranchUndoSupport()
+
+        if checkpoint.phase == .topicRebase {
+            if await git.isRebaseInProgress(in: repositoryURL) {
+                _ = try await git.runGit(arguments: ["rebase", "--continue"], in: repositoryURL)
+            } else if await git.dirtyCount(in: repositoryURL) != 0 {
+                throw GitFlowFinishError.dirtyWorkingTree
+            }
+            checkpoint.rewrittenSourceTip = try await support.tip(
+                of: checkpoint.plan.sourceBranch,
+                in: repositoryURL
+            )
+            checkpoint.phase = .topicFastForward
+            try await recoveryStore.save(checkpoint, in: repositoryURL)
+        }
+        return try await completeRebaseFastForward(checkpoint, in: repositoryURL)
+    }
+
+    private func completeRebaseFastForward(
+        _ savedCheckpoint: GitFlowFinishCheckpoint,
+        in repositoryURL: URL
+    ) async throws -> GitFlowFinishResult {
+        var checkpoint = savedCheckpoint
+        let git = GitStatusService.shared
+        let support = GitBranchUndoSupport()
+        guard let targetTipBefore = checkpoint.targetTipBeforeIntegration,
+              let rewrittenSourceTip = checkpoint.rewrittenSourceTip else {
+            throw GitFlowFinishError.missingCheckpoint
+        }
+        let actualSourceTip = try await support.tip(of: checkpoint.plan.sourceBranch, in: repositoryURL)
+        guard actualSourceTip == rewrittenSourceTip else {
+            throw GitFlowFinishError.currentBranchChanged(expected: checkpoint.plan.sourceBranch)
+        }
+        let actualTargetTip = try await support.tip(of: checkpoint.plan.primaryTargetBranch, in: repositoryURL)
+        guard actualTargetTip == targetTipBefore else {
+            throw GitFlowFinishError.currentBranchChanged(expected: checkpoint.plan.primaryTargetBranch)
+        }
+
+        _ = try await git.runGit(arguments: ["checkout", checkpoint.plan.primaryTargetBranch], in: repositoryURL)
+        _ = try await git.runGit(
+            arguments: ["merge", "--ff-only", checkpoint.plan.sourceBranch],
+            in: repositoryURL
+        )
+        let targetTipAfter = try await support.tip(of: checkpoint.plan.primaryTargetBranch, in: repositoryURL)
+        checkpoint.targetResults = [
+            GitFlowFinishTargetResult(
+                branch: checkpoint.plan.primaryTargetBranch,
+                tipBeforeMerge: targetTipBefore,
+                tipAfterMerge: targetTipAfter
+            )
+        ]
+        try await recoveryStore.save(checkpoint, in: repositoryURL)
+
+        let deletion = await deleteSourceIfRequested(checkpoint.plan, in: repositoryURL)
+        try await recoveryStore.clear(in: repositoryURL)
+        return GitFlowFinishResult(
+            plan: checkpoint.plan,
+            sourceTip: checkpoint.sourceTip,
+            targetResults: checkpoint.targetResults,
+            createdTagName: nil,
+            didDeleteSourceBranch: deletion.didDelete,
+            deletionWarning: deletion.warning,
+            rewrittenSourceTip: rewrittenSourceTip
+        )
+    }
+
+    private func abortRebaseFinish(
+        _ checkpoint: GitFlowFinishCheckpoint,
+        in repositoryURL: URL
+    ) async throws {
+        let git = GitStatusService.shared
+        let support = GitBranchUndoSupport()
+        if await git.isRebaseInProgress(in: repositoryURL) {
+            _ = try await git.runGit(arguments: ["rebase", "--abort"], in: repositoryURL)
+        } else {
+            if let targetTipBefore = checkpoint.targetTipBeforeIntegration {
+                let actualTargetTip = try await support.tip(of: checkpoint.plan.primaryTargetBranch, in: repositoryURL)
+                guard actualTargetTip == targetTipBefore else {
+                    throw GitError.commandFailed("Cannot abort because the target branch moved.")
+                }
+            }
+            _ = try await git.runGit(arguments: ["checkout", checkpoint.plan.sourceBranch], in: repositoryURL)
+            _ = try await git.runGit(arguments: ["reset", "--hard", checkpoint.sourceTip], in: repositoryURL)
+        }
+        let restoredSourceTip = try await support.tip(of: checkpoint.plan.sourceBranch, in: repositoryURL)
+        guard restoredSourceTip == checkpoint.sourceTip else {
+            throw GitError.commandFailed("Cannot abort because the source branch could not be restored.")
+        }
+        try await recoveryStore.clear(in: repositoryURL)
+    }
+
+    private func deleteSourceIfRequested(
+        _ plan: GitFlowFinishPlan,
+        in repositoryURL: URL
+    ) async -> (didDelete: Bool, warning: String?) {
+        guard plan.deleteSourceBranch else { return (false, nil) }
+        do {
+            _ = try await GitStatusService.shared.deleteBranch(
+                name: plan.sourceBranch,
+                force: false,
+                in: repositoryURL
+            )
+            return (true, nil)
+        } catch {
+            return (
+                false,
+                "The integration completed, but Commit+ could not delete '\(plan.sourceBranch)': \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func tagMessage(for kind: GitFlowTopicKind, tagName: String) -> String {
+        "\(kind == .hotfix ? "Hotfix" : "Release") \(tagName)"
     }
 }

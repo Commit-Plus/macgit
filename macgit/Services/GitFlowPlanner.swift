@@ -92,14 +92,24 @@ struct GitFlowPlanner {
         let tagName = kind.requiresReleaseTag
             ? versionName(from: currentBranch, prefix: configuration.prefix(for: kind))
             : nil
+        let createTag: Bool
+        switch kind {
+        case .release:
+            createTag = configuration.createReleaseTagOnFinish
+        case .hotfix:
+            createTag = configuration.createHotfixTagOnFinish
+        case .feature, .bugfix:
+            createTag = false
+        }
         return GitFlowFinishPlan(
             kind: kind,
             sourceBranch: currentBranch,
             targetBranch: kind.requiresReleaseTag ? configuration.mainBranch : configuration.developBranch,
             secondaryTargetBranch: kind.requiresReleaseTag ? configuration.developBranch : nil,
             tagName: tagName,
-            createTag: kind.requiresReleaseTag,
-            deleteSourceBranch: deleteSourceBranch
+            createTag: createTag,
+            deleteSourceBranch: deleteSourceBranch,
+            strategy: kind.requiresReleaseTag ? .mergeNoFastForward : configuration.topicFinishStrategy
         )
     }
 

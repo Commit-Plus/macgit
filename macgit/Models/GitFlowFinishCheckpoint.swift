@@ -22,6 +22,8 @@ struct GitFlowFinishCheckpoint: Codable, Equatable {
     enum Phase: String, Codable {
         case primaryMerge
         case secondaryMerge
+        case topicRebase
+        case topicFastForward
     }
 
     var plan: GitFlowFinishPlan
@@ -29,4 +31,46 @@ struct GitFlowFinishCheckpoint: Codable, Equatable {
     var targetResults: [GitFlowFinishTargetResult]
     var createdTagName: String?
     var phase: Phase
+    var rewrittenSourceTip: String?
+    var targetTipBeforeIntegration: String?
+
+    init(
+        plan: GitFlowFinishPlan,
+        sourceTip: String,
+        targetResults: [GitFlowFinishTargetResult],
+        createdTagName: String?,
+        phase: Phase,
+        rewrittenSourceTip: String? = nil,
+        targetTipBeforeIntegration: String? = nil
+    ) {
+        self.plan = plan
+        self.sourceTip = sourceTip
+        self.targetResults = targetResults
+        self.createdTagName = createdTagName
+        self.phase = phase
+        self.rewrittenSourceTip = rewrittenSourceTip
+        self.targetTipBeforeIntegration = targetTipBeforeIntegration
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case plan, sourceTip, targetResults, createdTagName, phase
+        case rewrittenSourceTip, targetTipBeforeIntegration
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        plan = try container.decode(GitFlowFinishPlan.self, forKey: .plan)
+        sourceTip = try container.decode(String.self, forKey: .sourceTip)
+        targetResults = try container.decodeIfPresent(
+            [GitFlowFinishTargetResult].self,
+            forKey: .targetResults
+        ) ?? []
+        createdTagName = try container.decodeIfPresent(String.self, forKey: .createdTagName)
+        phase = try container.decode(Phase.self, forKey: .phase)
+        rewrittenSourceTip = try container.decodeIfPresent(String.self, forKey: .rewrittenSourceTip)
+        targetTipBeforeIntegration = try container.decodeIfPresent(
+            String.self,
+            forKey: .targetTipBeforeIntegration
+        )
+    }
 }

@@ -400,6 +400,9 @@ extension MainWindowView {
         FinishGitFlowSheet(
             plan: plan,
             onRunRepositoryOperation: runRepositoryOperation,
+            onValidateTag: { tag in
+                await GitFlowService().tagValidationError(tag, in: repositoryURL)?.localizedDescription
+            },
             onFinish: finishGitFlow
         )
     }

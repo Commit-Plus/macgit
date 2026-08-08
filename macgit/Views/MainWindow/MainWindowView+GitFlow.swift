@@ -162,12 +162,13 @@ extension MainWindowView {
             return true
         } catch {
             let mergeInProgress = await GitStatusService.shared.isMergeInProgress(in: repositoryURL)
+            let rebaseInProgress = await GitStatusService.shared.isRebaseInProgress(in: repositoryURL)
             let checkpoint = await GitFlowRecoveryStore().checkpoint(in: repositoryURL)
             await MainActor.run {
                 gitFlowFinishCheckpoint = checkpoint
-                if mergeInProgress {
+                if mergeInProgress || rebaseInProgress {
                     selectedItem = .item(.fileStatus)
-                    gitFlowCurrentBranch = plan.targetBranch
+                    gitFlowCurrentBranch = rebaseInProgress ? plan.sourceBranch : plan.targetBranch
                 }
                 syncState.showError(error.localizedDescription)
             }
@@ -212,6 +213,10 @@ extension MainWindowView {
     }
 
     private func registerCompletedGitFlowFinish(_ result: GitFlowFinishResult) async {
+        if let rewrittenSourceTip = result.rewrittenSourceTip {
+            await registerCompletedRebaseFinish(result, rewrittenSourceTip: rewrittenSourceTip)
+            return
+        }
         let plan = result.plan
         let mergeMessage = "Finish \(plan.kind.displayName.lowercased()) '\(plan.sourceBranch)'"
         var undoOperations: [GitUndoOperation] = [.requireCleanWorkingTree]
@@ -254,7 +259,7 @@ extension MainWindowView {
                         name: tagName,
                         commit: target.tipAfterMerge,
                         annotated: true,
-                        message: "Release \(tagName)"
+                        message: "\(plan.kind == .hotfix ? "Hotfix" : "Release") \(tagName)"
                     )
                 )
             }
@@ -277,6 +282,84 @@ extension MainWindowView {
             let selectedBranch = result.targetResults.last?.branch ?? plan.targetBranch
             gitFlowCurrentBranch = selectedBranch
             selectedItem = .branch(selectedBranch)
+            if let warning = result.deletionWarning {
+                syncState.showError(warning)
+            }
+        }
+    }
+
+    private func registerCompletedRebaseFinish(
+        _ result: GitFlowFinishResult,
+        rewrittenSourceTip: String
+    ) async {
+        guard let target = result.targetResults.first else { return }
+        let plan = result.plan
+        var undoOperations: [GitUndoOperation] = [.requireCleanWorkingTree]
+        if result.didDeleteSourceBranch {
+            undoOperations.append(.requireLocalBranchAbsent(plan.sourceBranch))
+        } else {
+            undoOperations.append(
+                .requireLocalBranchTip(name: plan.sourceBranch, expectedTip: rewrittenSourceTip)
+            )
+        }
+        undoOperations.append(.checkoutRef(ref: target.branch))
+        undoOperations.append(
+            .resetHead(
+                target: target.tipBeforeMerge,
+                mode: .hard,
+                expectedHead: target.tipAfterMerge
+            )
+        )
+        if result.didDeleteSourceBranch {
+            undoOperations.append(
+                .createLocalBranch(name: plan.sourceBranch, startPoint: result.sourceTip, checkout: true)
+            )
+        } else {
+            undoOperations.append(
+                .updateLocalBranch(
+                    name: plan.sourceBranch,
+                    newTip: result.sourceTip,
+                    expectedTip: rewrittenSourceTip
+                )
+            )
+            undoOperations.append(.checkoutRef(ref: plan.sourceBranch))
+        }
+
+        var redoOperations: [GitUndoOperation] = [
+            .requireCleanWorkingTree,
+            .requireLocalBranchTip(name: plan.sourceBranch, expectedTip: result.sourceTip),
+            .checkoutRef(ref: target.branch),
+            .requireHead(target.tipBeforeMerge),
+            .updateLocalBranch(
+                name: plan.sourceBranch,
+                newTip: rewrittenSourceTip,
+                expectedTip: result.sourceTip
+            ),
+            .mergeFastForward(branch: plan.sourceBranch)
+        ]
+        if result.didDeleteSourceBranch {
+            redoOperations.append(
+                .deleteLocalBranch(
+                    name: plan.sourceBranch,
+                    force: false,
+                    expectedTip: rewrittenSourceTip
+                )
+            )
+        }
+
+        await MainActor.run {
+            undoManager.register(
+                GitUndoEntry(
+                    repositoryURL: repositoryURL,
+                    label: "Finish \(plan.kind.displayName) \(plan.sourceBranch)",
+                    undoOperation: .sequence(undoOperations),
+                    redoOperation: .sequence(redoOperations),
+                    confirmationMessage: "Undo will restore the source branch before its rebase and move Develop back. Continue?"
+                )
+            )
+            gitFlowFinishCheckpoint = nil
+            gitFlowCurrentBranch = target.branch
+            selectedItem = .branch(target.branch)
             if let warning = result.deletionWarning {
                 syncState.showError(warning)
             }

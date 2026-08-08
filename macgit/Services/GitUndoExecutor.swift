@@ -122,6 +122,8 @@ struct GitUndoExecutor {
                 arguments: ["merge", "--no-ff", branch, "-m", message],
                 in: repositoryURL
             )
+        case .mergeFastForward(let branch):
+            _ = try await runner.runGit(arguments: ["merge", "--ff-only", branch], in: repositoryURL)
         case .rebaseOnto(let commit):
             _ = try await runner.runGit(arguments: ["rebase", commit], in: repositoryURL)
         case .stashPush(let message, let keepIndex, let paths, let includeUntracked):
@@ -162,6 +164,11 @@ struct GitUndoExecutor {
             }
             let flag = force ? "-D" : "-d"
             _ = try await runner.runGit(arguments: ["branch", flag, name], in: repositoryURL)
+        case .updateLocalBranch(let name, let newTip, let expectedTip):
+            _ = try await runner.runGit(
+                arguments: ["update-ref", "refs/heads/\(name)", newTip, expectedTip],
+                in: repositoryURL
+            )
         case .createTag(let name, let commit, let annotated, let message):
             var arguments = ["tag"]
             if annotated {

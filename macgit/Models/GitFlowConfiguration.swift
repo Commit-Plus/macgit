@@ -27,6 +27,9 @@ struct GitFlowConfiguration: Codable, Equatable {
     var releasePrefix: String
     var hotfixPrefix: String
     var defaultStartDestination: GitFlowStartDestination
+    var topicFinishStrategy: GitFlowTopicFinishStrategy
+    var createReleaseTagOnFinish: Bool
+    var createHotfixTagOnFinish: Bool
 
     init(
         isEnabled: Bool = false,
@@ -36,7 +39,10 @@ struct GitFlowConfiguration: Codable, Equatable {
         bugfixPrefix: String = "bugfix/",
         releasePrefix: String = "release/",
         hotfixPrefix: String = "hotfix/",
-        defaultStartDestination: GitFlowStartDestination = .currentWorkingCopy
+        defaultStartDestination: GitFlowStartDestination = .currentWorkingCopy,
+        topicFinishStrategy: GitFlowTopicFinishStrategy = .mergeNoFastForward,
+        createReleaseTagOnFinish: Bool = true,
+        createHotfixTagOnFinish: Bool = true
     ) {
         self.isEnabled = isEnabled
         self.mainBranch = mainBranch
@@ -46,6 +52,9 @@ struct GitFlowConfiguration: Codable, Equatable {
         self.releasePrefix = releasePrefix
         self.hotfixPrefix = hotfixPrefix
         self.defaultStartDestination = defaultStartDestination
+        self.topicFinishStrategy = topicFinishStrategy
+        self.createReleaseTagOnFinish = createReleaseTagOnFinish
+        self.createHotfixTagOnFinish = createHotfixTagOnFinish
     }
 
     init(from decoder: Decoder) throws {
@@ -61,6 +70,18 @@ struct GitFlowConfiguration: Codable, Equatable {
             GitFlowStartDestination.self,
             forKey: .defaultStartDestination
         ) ?? .currentWorkingCopy
+        topicFinishStrategy = try container.decodeIfPresent(
+            GitFlowTopicFinishStrategy.self,
+            forKey: .topicFinishStrategy
+        ) ?? .mergeNoFastForward
+        createReleaseTagOnFinish = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .createReleaseTagOnFinish
+        ) ?? true
+        createHotfixTagOnFinish = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .createHotfixTagOnFinish
+        ) ?? true
     }
 
     static func detected(branches: [String]) -> GitFlowConfiguration {
@@ -97,7 +118,10 @@ struct GitFlowConfiguration: Codable, Equatable {
             bugfixPrefix: Self.normalizedPrefix(bugfixPrefix),
             releasePrefix: Self.normalizedPrefix(releasePrefix),
             hotfixPrefix: Self.normalizedPrefix(hotfixPrefix),
-            defaultStartDestination: defaultStartDestination
+            defaultStartDestination: defaultStartDestination,
+            topicFinishStrategy: topicFinishStrategy,
+            createReleaseTagOnFinish: createReleaseTagOnFinish,
+            createHotfixTagOnFinish: createHotfixTagOnFinish
         )
     }
 

@@ -10,7 +10,7 @@ Deliver a safe, repository-local Git Flow experience for Feature, Bugfix, Releas
 - [completed] [Phase 2: Finish Feature and Bugfix plus sidebar workflow surface](2026-08-08-git-flow-lite-phase-2-feature-bugfix-finish.md), implemented on `codex/git-flow-lite-phase-2`
 - [completed] [Phase 3: Finish Release and Hotfix with multi-target merge, annotated tag, conflict checkpoint, Resume, and Abort](2026-08-08-git-flow-lite-phase-3-release-hotfix-finish.md), implemented on `codex/git-flow-lite-phase-3`
 - [completed] [Phase 4: Worktree-aware Start flows with repository-local default, safe cleanup, and guarded Undo/Redo](2026-08-08-git-flow-lite-phase-4-worktree-aware-start.md), implemented on `codex/git-flow-lite-phase-4`
-- [pending] [Phase 5: Finish preferences for Feature/Bugfix Merge or Rebase and Release/Hotfix annotated tags](2026-08-08-git-flow-lite-phase-5-finish-preferences.md)
+- [completed] [Phase 5: Finish preferences for Feature/Bugfix Merge or Rebase and Release/Hotfix annotated tags](2026-08-08-git-flow-lite-phase-5-finish-preferences.md), implemented on `codex/git-flow-lite-phase-5`
 - [pending] [Phase 6: UX polish, branch-role badges, accessibility, feature-access enforcement, and recovery hardening](2026-08-08-git-flow-lite-phase-6-polish-and-hardening.md)
 
 ## Shared constraints

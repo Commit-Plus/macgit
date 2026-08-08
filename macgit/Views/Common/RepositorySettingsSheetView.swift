@@ -504,6 +504,38 @@ struct RepositorySettingsSheetView: View {
             }
             .disabled(!gitFlowConfiguration.isEnabled)
 
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Finish behavior")
+                    .font(.headline)
+
+                LabeledContent("Feature & Bugfix") {
+                    Picker("Feature & Bugfix", selection: $gitFlowConfiguration.topicFinishStrategy) {
+                        ForEach(GitFlowTopicFinishStrategy.allCases) { strategy in
+                            Text(strategy.displayName).tag(strategy)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(minWidth: 180)
+                }
+
+                Toggle(
+                    "Create an annotated tag when finishing Release",
+                    isOn: $gitFlowConfiguration.createReleaseTagOnFinish
+                )
+                .toggleStyle(.checkbox)
+                Toggle(
+                    "Create an annotated tag when finishing Hotfix",
+                    isOn: $gitFlowConfiguration.createHotfixTagOnFinish
+                )
+                .toggleStyle(.checkbox)
+
+                Text("Release and Hotfix always merge into Main, then Develop. Tag names default to the branch suffix.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .disabled(!gitFlowConfiguration.isEnabled)
+
             if let validationMessage = gitFlowValidationMessage {
                 Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(.subheadline)

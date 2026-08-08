@@ -26,6 +26,7 @@ struct GitFlowFinishPlan: Identifiable, Codable, Equatable {
     var tagName: String?
     var createTag: Bool
     var deleteSourceBranch: Bool
+    var strategy: GitFlowTopicFinishStrategy
 
     var id: String { "\(kind.rawValue):\(sourceBranch)" }
 
@@ -45,7 +46,8 @@ struct GitFlowFinishPlan: Identifiable, Codable, Equatable {
         secondaryTargetBranch: String? = nil,
         tagName: String? = nil,
         createTag: Bool = false,
-        deleteSourceBranch: Bool
+        deleteSourceBranch: Bool,
+        strategy: GitFlowTopicFinishStrategy = .mergeNoFastForward
     ) {
         self.kind = kind
         self.sourceBranch = sourceBranch
@@ -54,6 +56,28 @@ struct GitFlowFinishPlan: Identifiable, Codable, Equatable {
         self.tagName = tagName
         self.createTag = createTag
         self.deleteSourceBranch = deleteSourceBranch
+        self.strategy = kind.requiresReleaseTag ? .mergeNoFastForward : strategy
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, sourceBranch, primaryTargetBranch, secondaryTargetBranch
+        case tagName, createTag, deleteSourceBranch, strategy
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decode(GitFlowTopicKind.self, forKey: .kind)
+        sourceBranch = try container.decode(String.self, forKey: .sourceBranch)
+        primaryTargetBranch = try container.decode(String.self, forKey: .primaryTargetBranch)
+        secondaryTargetBranch = try container.decodeIfPresent(String.self, forKey: .secondaryTargetBranch)
+        tagName = try container.decodeIfPresent(String.self, forKey: .tagName)
+        createTag = try container.decodeIfPresent(Bool.self, forKey: .createTag) ?? false
+        deleteSourceBranch = try container.decodeIfPresent(Bool.self, forKey: .deleteSourceBranch) ?? true
+        let decodedStrategy = try container.decodeIfPresent(
+            GitFlowTopicFinishStrategy.self,
+            forKey: .strategy
+        ) ?? .mergeNoFastForward
+        strategy = kind.requiresReleaseTag ? .mergeNoFastForward : decodedStrategy
     }
 }
 
@@ -64,6 +88,7 @@ struct GitFlowFinishResult: Equatable {
     let createdTagName: String?
     let didDeleteSourceBranch: Bool
     let deletionWarning: String?
+    let rewrittenSourceTip: String?
 
     var targetTipBeforeMerge: String {
         targetResults.first?.tipBeforeMerge ?? ""

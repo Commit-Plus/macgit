@@ -28,13 +28,26 @@ extension GitStatusService {
         }
     }
 
+    func isValidTagName(_ tag: String, in repositoryURL: URL) async -> Bool {
+        guard !tag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        do {
+            _ = try await runGit(
+                arguments: ["check-ref-format", "refs/tags/\(tag)"],
+                in: repositoryURL
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
     func hasUnfinishedGitFlowStartOperation(in repositoryURL: URL) async -> Bool {
         if await isMergeInProgress(in: repositoryURL) { return true }
         if await inProgressOperation(in: repositoryURL) != nil { return true }
         return await isRebaseInProgress(in: repositoryURL)
     }
 
-    private func isRebaseInProgress(in repositoryURL: URL) async -> Bool {
+    func isRebaseInProgress(in repositoryURL: URL) async -> Bool {
         for gitPath in ["rebase-merge", "rebase-apply"] {
             guard let output = try? await runGit(
                 arguments: ["rev-parse", "--path-format=absolute", "--git-path", gitPath],
