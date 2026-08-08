@@ -355,6 +355,19 @@ extension MainWindowView {
                     }
                 }
             },
+            onCreateGitFlowDevelopBranch: { name, startingPoint in
+                let branch = try await GitFlowService().createDevelopBranch(
+                    name: name,
+                    startingPoint: startingPoint,
+                    in: repositoryURL
+                )
+                NotificationCenter.default.post(
+                    name: .repositoryDidChange,
+                    object: nil,
+                    userInfo: ["repositoryURL": repositoryURL]
+                )
+                return branch
+            },
             onSaveProviderAccountPreferences: { preferences in
                 for (preferenceKey, accountID) in preferences {
                     providerAccountPreferenceStore.update(

@@ -59,6 +59,7 @@ struct RepositorySettingsSheetView: View {
     let providerAccountPreferences: [String: String]
     let onSave: (RepoSettings) -> Void
     let onSaveGitFlowConfiguration: (GitFlowConfiguration) -> Void
+    let onCreateGitFlowDevelopBranch: (String, String) async throws -> String
     let onSaveProviderAccountPreferences: ([String: String?]) -> Void
     let onOpenGitIgnore: () -> Void
     let onOpenGitConfig: () -> Void
@@ -74,6 +75,7 @@ struct RepositorySettingsSheetView: View {
     @State private var remoteEditMode: RemoteEditMode = .add
     @State private var selectedProviderAccountIDs: [String: String] = [:]
     @State private var gitFlowConfiguration = GitFlowConfiguration()
+    @State private var showingCreateDevelopBranchSheet = false
     private let settingsContentWidth: CGFloat = 500
 
     var body: some View {
@@ -130,6 +132,14 @@ struct RepositorySettingsSheetView: View {
                     await handleRemoteSave(name: name, url: url)
                 }
             }
+        }
+        .sheet(isPresented: $showingCreateDevelopBranchSheet) {
+            CreateGitFlowDevelopBranchSheet(
+                suggestedName: suggestedDevelopBranchName,
+                startingPoint: gitFlowConfiguration.mainBranch,
+                onCreate: onCreateGitFlowDevelopBranch,
+                onCreated: selectCreatedDevelopBranch
+            )
         }
     }
 
@@ -459,7 +469,8 @@ struct RepositorySettingsSheetView: View {
                 )
                 branchPicker(
                     title: "Develop branch",
-                    selection: $gitFlowConfiguration.developBranch
+                    selection: $gitFlowConfiguration.developBranch,
+                    showsCreateDevelopBranchButton: shouldOfferCreateDevelopBranch
                 )
             }
             .disabled(!gitFlowConfiguration.isEnabled)
@@ -491,18 +502,52 @@ struct RepositorySettingsSheetView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func branchPicker(title: String, selection: Binding<String>) -> some View {
+    private func branchPicker(
+        title: String,
+        selection: Binding<String>,
+        showsCreateDevelopBranchButton: Bool = false
+    ) -> some View {
         LabeledContent(title) {
-            Picker(title, selection: selection) {
-                Text("Select a branch").tag("")
-                ForEach(branches, id: \.self) { branch in
-                    Text(branch).tag(branch)
+            HStack(spacing: 8) {
+                Picker(title, selection: selection) {
+                    Text("Select a branch").tag("")
+                    ForEach(branches, id: \.self) { branch in
+                        Text(branch).tag(branch)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(minWidth: 180)
+
+                if showsCreateDevelopBranchButton {
+                    Button("Create Develop Branch…") {
+                        showingCreateDevelopBranchSheet = true
+                    }
+                    .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 11))
+                    .disabled(gitFlowConfiguration.mainBranch.isEmpty)
                 }
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(minWidth: 180)
         }
+    }
+
+    private var shouldOfferCreateDevelopBranch: Bool {
+        let selectedDevelopBranch = gitFlowConfiguration.developBranch
+        return gitFlowConfiguration.isEnabled
+            && (selectedDevelopBranch.isEmpty || !branches.contains(selectedDevelopBranch))
+    }
+
+    private var suggestedDevelopBranchName: String {
+        let selectedDevelopBranch = gitFlowConfiguration.developBranch
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return selectedDevelopBranch.isEmpty ? "develop" : selectedDevelopBranch
+    }
+
+    private func selectCreatedDevelopBranch(_ branch: String) {
+        if !branches.contains(branch) {
+            branches.append(branch)
+            branches.sort()
+        }
+        gitFlowConfiguration.developBranch = branch
     }
 
     private func prefixField(_ title: String, text: Binding<String>) -> some View {

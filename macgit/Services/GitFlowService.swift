@@ -64,7 +64,58 @@ enum GitFlowFinishError: LocalizedError, Equatable {
     }
 }
 
+enum GitFlowDevelopBranchCreationError: LocalizedError, Equatable {
+    case emptyBranchName
+    case missingMainBranch(String)
+    case branchAlreadyExists(String)
+    case invalidBranchName(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyBranchName:
+            return "Enter a name for the Develop branch."
+        case .missingMainBranch(let branch):
+            return "The selected Main branch '\(branch)' does not exist."
+        case .branchAlreadyExists(let branch):
+            return "The branch '\(branch)' already exists. Select it from the Develop branch menu."
+        case .invalidBranchName(let branch):
+            return "'\(branch)' is not a valid Git branch name."
+        }
+    }
+}
+
 struct GitFlowService {
+    func createDevelopBranch(
+        name: String,
+        startingPoint: String,
+        in repositoryURL: URL
+    ) async throws -> String {
+        let branchName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !branchName.isEmpty else {
+            throw GitFlowDevelopBranchCreationError.emptyBranchName
+        }
+
+        let git = GitStatusService.shared
+        let branches = await git.localBranches(in: repositoryURL)
+        guard branches.contains(startingPoint) else {
+            throw GitFlowDevelopBranchCreationError.missingMainBranch(startingPoint)
+        }
+        guard !branches.contains(branchName) else {
+            throw GitFlowDevelopBranchCreationError.branchAlreadyExists(branchName)
+        }
+        guard await git.isValidBranchName(branchName, in: repositoryURL) else {
+            throw GitFlowDevelopBranchCreationError.invalidBranchName(branchName)
+        }
+
+        _ = try await git.createBranch(
+            name: branchName,
+            checkout: false,
+            commit: startingPoint,
+            in: repositoryURL
+        )
+        return branchName
+    }
+
     func start(_ plan: GitFlowStartPlan, in repositoryURL: URL) async throws -> GitFlowStartResult {
         guard await GitStatusService.shared.hasUnfinishedGitFlowStartOperation(in: repositoryURL) == false else {
             throw GitFlowStartError.unfinishedOperation
