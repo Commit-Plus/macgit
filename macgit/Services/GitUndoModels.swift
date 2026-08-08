@@ -75,6 +75,34 @@ indirect enum GitUndoOperation: Equatable {
     case deleteFileSnapshot(id: UUID)
     case discardFiles(paths: [String])
     case removeFiles(paths: [String])
+    case removeGitFlowWorktree(path: URL, branch: String, expectedTip: String)
+    case recreateGitFlowWorktree(path: URL, branch: String, baseTip: String, label: String?)
+}
+
+@MainActor
+final class OpenRepositoryRegistry {
+    static let shared = OpenRepositoryRegistry()
+
+    private var counts: [String: Int] = [:]
+
+    func register(_ repositoryURL: URL) {
+        let key = WorktreeLabelStore.key(for: repositoryURL)
+        counts[key, default: 0] += 1
+    }
+
+    func unregister(_ repositoryURL: URL) {
+        let key = WorktreeLabelStore.key(for: repositoryURL)
+        guard let count = counts[key] else { return }
+        if count <= 1 {
+            counts.removeValue(forKey: key)
+        } else {
+            counts[key] = count - 1
+        }
+    }
+
+    func isOpen(_ repositoryURL: URL) -> Bool {
+        counts[WorktreeLabelStore.key(for: repositoryURL), default: 0] > 0
+    }
 }
 
 struct GitUndoEntry: Identifiable, Equatable {

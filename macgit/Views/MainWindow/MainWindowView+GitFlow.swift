@@ -58,32 +58,59 @@ extension MainWindowView {
         showingRepositorySettings = true
     }
 
-    func startGitFlow(_ plan: GitFlowStartPlan) async -> Bool {
+    func startGitFlow(_ plan: GitFlowStartPlan, openAfterCreate: Bool) async -> Bool {
         do {
             let result = try await GitFlowService().start(plan, in: repositoryURL)
             await MainActor.run {
-                undoManager.register(
-                    GitUndoEntry(
-                        repositoryURL: repositoryURL,
-                        label: "Start \(plan.kind.displayName) \(plan.branchName)",
-                        undoOperation: .sequence([
-                            .checkoutRef(ref: result.previousRef),
-                            .deleteLocalBranch(
+                switch result.placement {
+                case .currentWorkingCopy(let previousRef):
+                    undoManager.register(
+                        GitUndoEntry(
+                            repositoryURL: repositoryURL,
+                            label: "Start \(plan.kind.displayName) \(plan.branchName)",
+                            undoOperation: .sequence([
+                                .checkoutRef(ref: previousRef),
+                                .deleteLocalBranch(
+                                    name: result.plan.branchName,
+                                    force: true,
+                                    expectedTip: result.createdTip
+                                )
+                            ]),
+                            redoOperation: .createLocalBranch(
                                 name: result.plan.branchName,
-                                force: true,
-                                expectedTip: result.createdTip
+                                startPoint: result.createdTip,
+                                checkout: true
                             )
-                        ]),
-                        redoOperation: .createLocalBranch(
-                            name: result.plan.branchName,
-                            startPoint: result.createdTip,
-                            checkout: true
                         )
                     )
-                )
-                selectedItem = .branch(result.plan.branchName)
-                gitFlowCurrentBranch = result.plan.branchName
+                    selectedItem = .branch(result.plan.branchName)
+                    gitFlowCurrentBranch = result.plan.branchName
+
+                case .newWorktree(let path, let label):
+                    undoManager.register(
+                        GitUndoEntry(
+                            repositoryURL: repositoryURL,
+                            label: "Start \(plan.kind.displayName) \(plan.branchName) in worktree",
+                            undoOperation: .removeGitFlowWorktree(
+                                path: path,
+                                branch: plan.branchName,
+                                expectedTip: result.createdTip
+                            ),
+                            redoOperation: .recreateGitFlowWorktree(
+                                path: path,
+                                branch: plan.branchName,
+                                baseTip: result.baseTip,
+                                label: label
+                            ),
+                            confirmationMessage: "Undo will remove the linked worktree folder and its local branch. Continue?"
+                        )
+                    )
+                    if openAfterCreate {
+                        openWorktreeInNewWindow(at: path)
+                    }
+                }
             }
+            await GitStatusService.shared.invalidateBranchListCache(in: repositoryURL)
             await syncState.refresh(repositoryURL: repositoryURL)
             NotificationCenter.default.post(
                 name: .repositoryDidChange,

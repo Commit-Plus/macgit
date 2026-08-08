@@ -486,6 +486,24 @@ struct RepositorySettingsSheetView: View {
             }
             .disabled(!gitFlowConfiguration.isEnabled)
 
+            VStack(alignment: .leading, spacing: 6) {
+                LabeledContent("Start new flows in") {
+                    Picker("Start new flows in", selection: $gitFlowConfiguration.defaultStartDestination) {
+                        ForEach(GitFlowStartDestination.allCases) { destination in
+                            Text(destination.displayName).tag(destination)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(minWidth: 180)
+                }
+
+                Text("This is the default. You can change the destination for each flow from the Start sheet.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .disabled(!gitFlowConfiguration.isEnabled)
+
             if let validationMessage = gitFlowValidationMessage {
                 Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(.subheadline)

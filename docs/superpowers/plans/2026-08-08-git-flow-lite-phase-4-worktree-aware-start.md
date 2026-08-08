@@ -1,6 +1,6 @@
 # Git Flow Lite Phase 4: Worktree-Aware Start Flows
 
-Status: pending.
+Status: completed on `codex/git-flow-lite-phase-4`.
 
 **Implementation branch:** `codex/git-flow-lite-phase-4`
 
@@ -152,3 +152,11 @@ Split `GitFlowService.start` by destination while sharing branch-name, base-bran
 - Run `git diff --check`.
 - Run `xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build`.
 - Do not launch the app. If the full test host aborts during Firebase bootstrap, do not loop it; retain targeted-test and successful-build evidence.
+
+## Result
+
+- Repository settings persist a backward-compatible default Start destination, while each Start sheet can override it.
+- All four topic kinds can create their branch in the current working copy or at the shared Worktrees `.worktrees/<branch>` path convention with an optional label and Open-after-create behavior.
+- New-worktree Start permits a dirty current working copy, validates the path and refs before mutation, and conservatively cleans up a partially created branch/worktree pair.
+- Git Undo removes only the exact clean, unlocked, unopened worktree at the recorded branch tip; Redo restores the same path, branch, base tip, and label.
+- Phase 1-4 focused tests compiled, but the test host hit the documented Firebase bootstrap `Early unexpected exit` / `abort()` and was not rerun. `git diff --check` and the macOS build passed without launching the app.

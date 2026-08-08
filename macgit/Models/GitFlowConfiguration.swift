@@ -26,6 +26,7 @@ struct GitFlowConfiguration: Codable, Equatable {
     var bugfixPrefix: String
     var releasePrefix: String
     var hotfixPrefix: String
+    var defaultStartDestination: GitFlowStartDestination
 
     init(
         isEnabled: Bool = false,
@@ -34,7 +35,8 @@ struct GitFlowConfiguration: Codable, Equatable {
         featurePrefix: String = "feature/",
         bugfixPrefix: String = "bugfix/",
         releasePrefix: String = "release/",
-        hotfixPrefix: String = "hotfix/"
+        hotfixPrefix: String = "hotfix/",
+        defaultStartDestination: GitFlowStartDestination = .currentWorkingCopy
     ) {
         self.isEnabled = isEnabled
         self.mainBranch = mainBranch
@@ -43,6 +45,7 @@ struct GitFlowConfiguration: Codable, Equatable {
         self.bugfixPrefix = bugfixPrefix
         self.releasePrefix = releasePrefix
         self.hotfixPrefix = hotfixPrefix
+        self.defaultStartDestination = defaultStartDestination
     }
 
     init(from decoder: Decoder) throws {
@@ -54,6 +57,10 @@ struct GitFlowConfiguration: Codable, Equatable {
         bugfixPrefix = try container.decodeIfPresent(String.self, forKey: .bugfixPrefix) ?? "bugfix/"
         releasePrefix = try container.decodeIfPresent(String.self, forKey: .releasePrefix) ?? "release/"
         hotfixPrefix = try container.decodeIfPresent(String.self, forKey: .hotfixPrefix) ?? "hotfix/"
+        defaultStartDestination = try container.decodeIfPresent(
+            GitFlowStartDestination.self,
+            forKey: .defaultStartDestination
+        ) ?? .currentWorkingCopy
     }
 
     static func detected(branches: [String]) -> GitFlowConfiguration {
@@ -89,7 +96,8 @@ struct GitFlowConfiguration: Codable, Equatable {
             featurePrefix: Self.normalizedPrefix(featurePrefix),
             bugfixPrefix: Self.normalizedPrefix(bugfixPrefix),
             releasePrefix: Self.normalizedPrefix(releasePrefix),
-            hotfixPrefix: Self.normalizedPrefix(hotfixPrefix)
+            hotfixPrefix: Self.normalizedPrefix(hotfixPrefix),
+            defaultStartDestination: defaultStartDestination
         )
     }
 

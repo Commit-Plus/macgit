@@ -111,7 +111,8 @@ extension GitStatusService {
         at path: URL,
         target: WorktreeAddTarget,
         label: String?,
-        in repositoryURL: URL
+        in repositoryURL: URL,
+        notifyChange: Bool = true
     ) async throws {
         var arguments = ["worktree", "add"]
         switch target {
@@ -134,10 +135,17 @@ extension GitStatusService {
             try WorktreeLabelStore().setLabel(label, for: path, in: gitDirectory)
         }
 
-        await postRepositoryDidChange(for: repositoryURL)
+        if notifyChange {
+            await postRepositoryDidChange(for: repositoryURL)
+        }
     }
 
-    func removeWorktree(at path: URL, force: Bool, in repositoryURL: URL) async throws {
+    func removeWorktree(
+        at path: URL,
+        force: Bool,
+        in repositoryURL: URL,
+        notifyChange: Bool = true
+    ) async throws {
         if isMainWorktree(path, repositoryURL: repositoryURL) {
             throw GitError.commandFailed("The main worktree cannot be removed.")
         }
@@ -153,7 +161,9 @@ extension GitStatusService {
 
         let gitDirectory = try await gitCommonDirectory(in: repositoryURL)
         try WorktreeLabelStore().removeLabel(for: path, in: gitDirectory)
-        await postRepositoryDidChange(for: repositoryURL)
+        if notifyChange {
+            await postRepositoryDidChange(for: repositoryURL)
+        }
     }
 
     func repairWorktreeLocation(from oldPath: URL, to newPath: URL, in repositoryURL: URL) async throws {

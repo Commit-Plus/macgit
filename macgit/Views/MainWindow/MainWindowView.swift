@@ -148,6 +148,7 @@ struct MainWindowView: View {
     @State var pendingGitFlowTopicKind: GitFlowTopicKind?
     @State var pendingGitFlowFinishPlan: GitFlowFinishPlan?
     @State var gitFlowCurrentBranch = ""
+    @State var gitFlowWorktreeRootURL: URL?
     @State var pendingConfirmedUndo: (entry: GitUndoEntry, action: GitUndoMenuAction)?
     @State var pendingCommitDropConfirmation: PendingCommitDropConfirmation?
     @State var pendingBranchDropConfirmation: PendingBranchDropConfirmation?
@@ -531,7 +532,11 @@ struct MainWindowView: View {
             guard let action = notification.userInfo?["action"] as? GitFlowMenuAction else { return }
             handleGitFlowMenuAction(action)
         }
+        .onAppear {
+            OpenRepositoryRegistry.shared.register(repositoryURL)
+        }
         .onDisappear {
+            OpenRepositoryRegistry.shared.unregister(repositoryURL)
             syncState.stopBackgroundSync()
         }
     }
@@ -1195,12 +1200,14 @@ struct MainWindowView: View {
         async let loadedLocalBranches = GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
         async let loadedGitFlowConfiguration = gitFlowConfigurationStore.configuration(in: repositoryURL)
         async let loadedGitFlowCheckpoint = GitFlowRecoveryStore().checkpoint(in: repositoryURL)
-        let (remotes, currentBranch, localBranches, savedGitFlowConfiguration, savedGitFlowCheckpoint) = await (
+        async let loadedGitCommonDirectory = try? GitStatusService.shared.gitCommonDirectory(in: repositoryURL)
+        let (remotes, currentBranch, localBranches, savedGitFlowConfiguration, savedGitFlowCheckpoint, gitCommonDirectory) = await (
             loadedRemotes,
             loadedCurrentBranch,
             loadedLocalBranches,
             loadedGitFlowConfiguration,
-            loadedGitFlowCheckpoint
+            loadedGitFlowCheckpoint,
+            loadedGitCommonDirectory
         )
         let loadedSettings = repoSettingsStore.settings(
             for: repositoryURL.path,
@@ -1214,6 +1221,7 @@ struct MainWindowView: View {
                 branches: localBranches
             )
             gitFlowFinishCheckpoint = savedGitFlowCheckpoint
+            gitFlowWorktreeRootURL = gitCommonDirectory?.deletingLastPathComponent()
         }
         await syncState.refresh(repositoryURL: repositoryURL)
         syncState.startBackgroundSync(
@@ -1681,7 +1689,7 @@ struct MainWindowView: View {
         openTerminal(at: repositoryURL)
     }
 
-    private func openWorktreeInNewWindow(at path: URL) {
+    func openWorktreeInNewWindow(at path: URL) {
         appState.newWindowRepoShouldFitScreen = false
         appState.newWindowRepoURL = path
         openWindow(id: "main")

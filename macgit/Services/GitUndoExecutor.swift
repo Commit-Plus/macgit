@@ -224,7 +224,165 @@ struct GitUndoExecutor {
             for path in paths {
                 _ = try await runner.runGit(arguments: ["rm", "-f", "--", path], in: repositoryURL)
             }
+        case .removeGitFlowWorktree(let path, let branch, let expectedTip):
+            try await removeGitFlowWorktree(
+                path: path,
+                branch: branch,
+                expectedTip: expectedTip,
+                repositoryURL: repositoryURL
+            )
+        case .recreateGitFlowWorktree(let path, let branch, let baseTip, let label):
+            try await recreateGitFlowWorktree(
+                path: path,
+                branch: branch,
+                baseTip: baseTip,
+                label: label,
+                repositoryURL: repositoryURL
+            )
         }
+    }
+
+    private func removeGitFlowWorktree(
+        path: URL,
+        branch: String,
+        expectedTip: String,
+        repositoryURL: URL
+    ) async throws {
+        guard await OpenRepositoryRegistry.shared.isOpen(path) == false else {
+            throw GitError.commandFailed("Close the linked worktree window before undoing this Git Flow start.")
+        }
+
+        let worktreeOutput = try await runner.runGit(
+            arguments: ["worktree", "list", "--porcelain"],
+            in: repositoryURL
+        )
+        guard let entry = worktreeEntry(at: path, in: worktreeOutput) else {
+            throw GitError.commandFailed("Cannot undo because the linked worktree is missing or moved.")
+        }
+        guard entry.branch == branch else {
+            throw GitError.commandFailed("Cannot undo because the linked worktree is checked out to another branch.")
+        }
+        guard entry.isLocked == false else {
+            throw GitError.commandFailed("Unlock the linked worktree before undoing this Git Flow start.")
+        }
+
+        let status = try await runner.runGit(arguments: ["status", "--porcelain"], in: path)
+        guard status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw GitError.commandFailed("Commit, stash, or discard changes in the linked worktree before undoing.")
+        }
+        let actualBranch = try await runner.runGit(
+            arguments: ["symbolic-ref", "--quiet", "--short", "HEAD"],
+            in: path
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard actualBranch == branch else {
+            throw GitError.commandFailed("Cannot undo because the linked worktree branch changed.")
+        }
+        let branchTip = try await branchSupport.tip(of: branch, in: repositoryURL)
+        let worktreeTip = try await branchSupport.tip(of: "HEAD", in: path)
+        guard branchTip == expectedTip, worktreeTip == expectedTip else {
+            throw GitError.commandFailed("Cannot undo because the Git Flow branch has new commits.")
+        }
+
+        _ = try await runner.runGit(arguments: ["worktree", "remove", path.path], in: repositoryURL)
+        _ = try await runner.runGit(arguments: ["branch", "-D", branch], in: repositoryURL)
+        // A stale optional display label must not turn a completed Git undo into a failed undo entry.
+        try? await removeWorktreeLabel(path: path, repositoryURL: repositoryURL)
+    }
+
+    private func recreateGitFlowWorktree(
+        path: URL,
+        branch: String,
+        baseTip: String,
+        label: String?,
+        repositoryURL: URL
+    ) async throws {
+        guard FileManager.default.fileExists(atPath: path.path) == false else {
+            throw GitError.commandFailed("Cannot redo because the worktree path already exists.")
+        }
+        if (try? await runner.runGit(
+            arguments: ["show-ref", "--verify", "--quiet", "refs/heads/\(branch)"],
+            in: repositoryURL
+        )) != nil {
+            throw GitError.commandFailed("Cannot redo because branch '\(branch)' already exists.")
+        }
+        let resolvedBase = try await branchSupport.tip(of: baseTip, in: repositoryURL)
+        guard resolvedBase == baseTip else {
+            throw GitError.commandFailed("Cannot redo because the recorded base commit is unavailable.")
+        }
+
+        _ = try await runner.runGit(
+            arguments: ["worktree", "add", "-b", branch, path.path, baseTip],
+            in: repositoryURL
+        )
+        do {
+            try await setWorktreeLabel(label, path: path, repositoryURL: repositoryURL)
+        } catch {
+            _ = try? await runner.runGit(arguments: ["worktree", "remove", path.path], in: repositoryURL)
+            _ = try? await runner.runGit(arguments: ["branch", "-D", branch], in: repositoryURL)
+            throw error
+        }
+    }
+
+    private struct UndoWorktreeEntry {
+        let path: URL
+        let branch: String?
+        let isLocked: Bool
+    }
+
+    private func worktreeEntry(at expectedPath: URL, in output: String) -> UndoWorktreeEntry? {
+        var entries: [UndoWorktreeEntry] = []
+        var path: URL?
+        var branch: String?
+        var isLocked = false
+
+        func flush() {
+            guard let path else { return }
+            entries.append(UndoWorktreeEntry(path: path, branch: branch, isLocked: isLocked))
+        }
+
+        for line in output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) {
+            if line.isEmpty {
+                flush()
+                path = nil
+                branch = nil
+                isLocked = false
+            } else if line.hasPrefix("worktree ") {
+                flush()
+                path = URL(fileURLWithPath: String(line.dropFirst("worktree ".count))).standardizedFileURL
+                branch = nil
+                isLocked = false
+            } else if line.hasPrefix("branch ") {
+                let ref = String(line.dropFirst("branch ".count))
+                branch = ref.hasPrefix("refs/heads/") ? String(ref.dropFirst("refs/heads/".count)) : ref
+            } else if line == "locked" || line.hasPrefix("locked ") {
+                isLocked = true
+            }
+        }
+        flush()
+
+        let expectedKey = WorktreeLabelStore.key(for: expectedPath)
+        return entries.first { WorktreeLabelStore.key(for: $0.path) == expectedKey }
+    }
+
+    private func setWorktreeLabel(_ label: String?, path: URL, repositoryURL: URL) async throws {
+        let commonDirectory = try await gitCommonDirectory(repositoryURL: repositoryURL)
+        try WorktreeLabelStore().setLabel(label, for: path, in: commonDirectory)
+    }
+
+    private func removeWorktreeLabel(path: URL, repositoryURL: URL) async throws {
+        let commonDirectory = try await gitCommonDirectory(repositoryURL: repositoryURL)
+        try WorktreeLabelStore().removeLabel(for: path, in: commonDirectory)
+    }
+
+    private func gitCommonDirectory(repositoryURL: URL) async throws -> URL {
+        let output = try await runner.runGit(
+            arguments: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            in: repositoryURL
+        )
+        return URL(
+            fileURLWithPath: output.trimmingCharacters(in: .whitespacesAndNewlines),
+            isDirectory: true
+        ).standardizedFileURL
     }
 
     private func runFileCommand(_ prefix: [String], paths: [String], in repositoryURL: URL) async throws {

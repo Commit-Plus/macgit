@@ -24,6 +24,11 @@ enum GitFlowStartError: LocalizedError, Equatable {
     case missingBaseBranch(String)
     case branchAlreadyExists(String)
     case invalidBranchName(String)
+    case missingWorktreePath
+    case invalidWorktreePath
+    case worktreePathAlreadyExists(String)
+    case worktreePathAlreadyRegistered(String)
+    case partialWorktreeCreation(String)
 
     var errorDescription: String? {
         switch self {
@@ -37,6 +42,16 @@ enum GitFlowStartError: LocalizedError, Equatable {
             return "The branch '\(branch)' already exists."
         case .invalidBranchName(let branch):
             return "'\(branch)' is not a valid Git branch name."
+        case .missingWorktreePath:
+            return "Choose an absolute path for the new worktree."
+        case .invalidWorktreePath:
+            return "The worktree path must be absolute and normalized."
+        case .worktreePathAlreadyExists(let path):
+            return "A file or folder already exists at '\(path)'."
+        case .worktreePathAlreadyRegistered(let path):
+            return "'\(path)' is already registered as a worktree."
+        case .partialWorktreeCreation(let message):
+            return message
         }
     }
 }
@@ -125,39 +140,175 @@ struct GitFlowService {
     }
 
     func start(_ plan: GitFlowStartPlan, in repositoryURL: URL) async throws -> GitFlowStartResult {
-        guard await GitStatusService.shared.hasUnfinishedGitFlowStartOperation(in: repositoryURL) == false else {
+        let git = GitStatusService.shared
+        guard await git.hasUnfinishedGitFlowStartOperation(in: repositoryURL) == false else {
             throw GitFlowStartError.unfinishedOperation
         }
-        guard await GitStatusService.shared.dirtyCount(in: repositoryURL) == 0 else {
-            throw GitFlowStartError.dirtyWorkingTree
-        }
 
-        let branches = await GitStatusService.shared.localBranches(in: repositoryURL)
+        let branches = await git.localBranches(in: repositoryURL)
         guard branches.contains(plan.baseBranch) else {
             throw GitFlowStartError.missingBaseBranch(plan.baseBranch)
         }
         guard !branches.contains(plan.branchName) else {
             throw GitFlowStartError.branchAlreadyExists(plan.branchName)
         }
-        guard await GitStatusService.shared.isValidBranchName(plan.branchName, in: repositoryURL) else {
+        guard await git.isValidBranchName(plan.branchName, in: repositoryURL) else {
             throw GitFlowStartError.invalidBranchName(plan.branchName)
         }
 
         let support = GitBranchUndoSupport()
-        let previousRef = try await support.currentRef(in: repositoryURL)
-        let createdTip = try await support.tip(of: plan.baseBranch, in: repositoryURL)
-        _ = try await GitStatusService.shared.createBranch(
-            name: plan.branchName,
-            checkout: true,
-            commit: plan.baseBranch,
-            in: repositoryURL
-        )
+        let baseTip = try await support.tip(of: plan.baseBranch, in: repositoryURL)
+
+        switch plan.destination {
+        case .currentWorkingCopy:
+            guard await git.dirtyCount(in: repositoryURL) == 0 else {
+                throw GitFlowStartError.dirtyWorkingTree
+            }
+            let previousRef = try await support.currentRef(in: repositoryURL)
+            _ = try await git.createBranch(
+                name: plan.branchName,
+                checkout: true,
+                commit: plan.baseBranch,
+                in: repositoryURL
+            )
+            return GitFlowStartResult(
+                plan: plan,
+                placement: .currentWorkingCopy(previousRef: previousRef),
+                baseTip: baseTip,
+                createdTip: baseTip
+            )
+
+        case .newWorktree:
+            return try await startInNewWorktree(
+                plan,
+                baseTip: baseTip,
+                repositoryURL: repositoryURL
+            )
+        }
+    }
+
+    private func startInNewWorktree(
+        _ plan: GitFlowStartPlan,
+        baseTip: String,
+        repositoryURL: URL
+    ) async throws -> GitFlowStartResult {
+        guard let path = plan.worktreePath else {
+            throw GitFlowStartError.missingWorktreePath
+        }
+        let normalizedPath = path.standardizedFileURL
+        guard path.isFileURL,
+              (path.path as NSString).isAbsolutePath,
+              WorktreeLabelStore.key(for: path) == WorktreeLabelStore.key(for: normalizedPath) else {
+            throw GitFlowStartError.invalidWorktreePath
+        }
+
+        let fileManager = FileManager.default
+        guard !fileManager.fileExists(atPath: normalizedPath.path) else {
+            throw GitFlowStartError.worktreePathAlreadyExists(normalizedPath.path)
+        }
+
+        let git = GitStatusService.shared
+        let worktrees = await git.worktrees(in: repositoryURL)
+        let normalizedKey = WorktreeLabelStore.key(for: normalizedPath)
+        guard !worktrees.contains(where: { WorktreeLabelStore.key(for: $0.path) == normalizedKey }) else {
+            throw GitFlowStartError.worktreePathAlreadyRegistered(normalizedPath.path)
+        }
+
+        do {
+            // Recheck the ref immediately before `git worktree add -b`.
+            let branches = await git.localBranches(in: repositoryURL)
+            guard branches.contains(plan.baseBranch),
+                  try await GitBranchUndoSupport().tip(of: plan.baseBranch, in: repositoryURL) == baseTip else {
+                throw GitFlowStartError.missingBaseBranch(plan.baseBranch)
+            }
+            guard !branches.contains(plan.branchName) else {
+                throw GitFlowStartError.branchAlreadyExists(plan.branchName)
+            }
+            guard await git.isValidBranchName(plan.branchName, in: repositoryURL) else {
+                throw GitFlowStartError.invalidBranchName(plan.branchName)
+            }
+            try await git.addWorktree(
+                at: normalizedPath,
+                target: .newBranch(name: plan.branchName, base: baseTip),
+                label: plan.worktreeLabel,
+                in: repositoryURL,
+                notifyChange: false
+            )
+        } catch {
+            do {
+                try await cleanUpFailedWorktreeStart(
+                    plan: plan,
+                    path: normalizedPath,
+                    baseTip: baseTip,
+                    repositoryURL: repositoryURL
+                )
+            } catch let cleanupError {
+                throw GitFlowStartError.partialWorktreeCreation(
+                    "Worktree creation failed and Commit+ could not safely clean up: \(cleanupError.localizedDescription)"
+                )
+            }
+            throw error
+        }
 
         return GitFlowStartResult(
             plan: plan,
-            previousRef: previousRef,
-            createdTip: createdTip
+            placement: .newWorktree(path: normalizedPath, label: plan.worktreeLabel),
+            baseTip: baseTip,
+            createdTip: baseTip
         )
+    }
+
+    private func cleanUpFailedWorktreeStart(
+        plan: GitFlowStartPlan,
+        path: URL,
+        baseTip: String,
+        repositoryURL: URL
+    ) async throws {
+        let git = GitStatusService.shared
+        let worktrees = await git.worktrees(in: repositoryURL)
+        let pathKey = WorktreeLabelStore.key(for: path)
+        let matchingPath = worktrees.first { WorktreeLabelStore.key(for: $0.path) == pathKey }
+        let branchWorktree = worktrees.first { $0.branch == plan.branchName }
+
+        if let matchingPath {
+            guard matchingPath.branch == plan.branchName,
+                  matchingPath.isLocked == false,
+                  matchingPath.dirtyCount == 0,
+                  try await GitBranchUndoSupport().tip(of: "HEAD", in: path) == baseTip else {
+                throw GitError.commandFailed("The partially created worktree no longer matches the requested branch and tip.")
+            }
+            try await git.removeWorktree(
+                at: path,
+                force: false,
+                in: repositoryURL,
+                notifyChange: false
+            )
+        } else if branchWorktree != nil {
+            throw GitError.commandFailed("The new branch is attached to an unexpected worktree path.")
+        }
+
+        if let actualTip = try? await GitBranchUndoSupport().tip(of: plan.branchName, in: repositoryURL) {
+            guard actualTip == baseTip else {
+                throw GitError.commandFailed("The partially created branch moved and was left untouched.")
+            }
+            _ = try await git.deleteBranch(
+                name: plan.branchName,
+                force: true,
+                in: repositoryURL
+            )
+        }
+
+        if fileManagerDirectoryIsEmpty(path) {
+            try FileManager.default.removeItem(at: path)
+        }
+    }
+
+    private func fileManagerDirectoryIsEmpty(_ path: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: path.path),
+              let contents = try? FileManager.default.contentsOfDirectory(atPath: path.path) else {
+            return false
+        }
+        return contents.isEmpty
     }
 
     func finish(_ plan: GitFlowFinishPlan, in repositoryURL: URL) async throws -> GitFlowFinishResult {

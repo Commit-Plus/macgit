@@ -23,21 +23,75 @@ struct StartGitFlowSheet: View {
 
     let kind: GitFlowTopicKind
     let configuration: GitFlowConfiguration
+    let worktreeRootURL: URL
     let onRunRepositoryOperation: RepositoryOperationRunner
-    let onStart: (GitFlowStartPlan) async -> Bool
+    let onStart: (GitFlowStartPlan, Bool) async -> Bool
 
     @State private var topicName = ""
+    @State private var destination: GitFlowStartDestination
+    @State private var worktreePath = ""
+    @State private var worktreeLabel = ""
+    @State private var openAfterCreate = true
+    @State private var hasEditedWorktreePath = false
+
+    init(
+        kind: GitFlowTopicKind,
+        configuration: GitFlowConfiguration,
+        worktreeRootURL: URL,
+        onRunRepositoryOperation: @escaping RepositoryOperationRunner,
+        onStart: @escaping (GitFlowStartPlan, Bool) async -> Bool
+    ) {
+        self.kind = kind
+        self.configuration = configuration
+        self.worktreeRootURL = worktreeRootURL
+        self.onRunRepositoryOperation = onRunRepositoryOperation
+        self.onStart = onStart
+        _destination = State(initialValue: configuration.defaultStartDestination)
+    }
 
     private var plan: GitFlowStartPlan? {
-        try? GitFlowPlanner().startPlan(
+        let path: URL?
+        if destination == .newWorktree {
+            path = WorktreePathPolicy.normalizedURL(fromAbsolutePath: worktreePath)
+            guard path != nil, worktreePathError == nil else { return nil }
+        } else {
+            path = nil
+        }
+        return try? GitFlowPlanner().startPlan(
             kind: kind,
             topicName: topicName,
-            configuration: configuration
+            configuration: configuration,
+            destination: destination,
+            worktreePath: path,
+            worktreeLabel: worktreeLabel
         )
     }
 
+    private var resolvedBranchName: String {
+        configuration.normalized().prefix(for: kind)
+            + topicName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var suggestedWorktreePath: String {
+        WorktreePathPolicy.suggestedPath(
+            root: worktreeRootURL,
+            branchName: resolvedBranchName
+        ).path
+    }
+
+    private var worktreePathError: String? {
+        guard destination == .newWorktree else { return nil }
+        guard let path = WorktreePathPolicy.normalizedURL(fromAbsolutePath: worktreePath) else {
+            return "Enter an absolute worktree path."
+        }
+        if FileManager.default.fileExists(atPath: path.path) {
+            return "A file or folder already exists at this path."
+        }
+        return nil
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Start \(kind.displayName)")
                 .font(.title2)
                 .bold()
@@ -62,15 +116,69 @@ struct StartGitFlowSheet: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(.separator)
                 }
+
+                Text("Starting point: \(configuration.baseBranch(for: kind))")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
 
-            LabeledContent("Starting point") {
-                Text(configuration.baseBranch(for: kind))
-                    .bold()
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Start new flow:")
+                    .font(.subheadline)
+
+                Picker("", selection: $destination) {
+                    Text("Current working copy")
+                        .tag(GitFlowStartDestination.currentWorkingCopy)
+                    Text("Worktree")
+                        .tag(GitFlowStartDestination.newWorktree)
+                }
+                .labelsHidden()
+                .pickerStyle(.radioGroup)
+                .padding(.leading, 2)
+            }
+            .onChange(of: destination) { _, newDestination in
+                if newDestination == .newWorktree, worktreePath.isEmpty {
+                    worktreePath = suggestedWorktreePath
+                }
+            }
+
+            if destination == .newWorktree {
+                VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Worktree path")
+                            .font(.subheadline)
+                        TextField("/absolute/path/to/worktree", text: $worktreePath) { isEditing in
+                            if isEditing {
+                                hasEditedWorktreePath = true
+                            }
+                        }
+                        .textFieldStyle(.roundedBorder)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Label (optional)")
+                            .font(.subheadline)
+                        TextField("Task label", text: $worktreeLabel)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    Toggle("Open after create", isOn: $openAfterCreate)
+                        .toggleStyle(.checkbox)
+
+                    if let worktreePathError {
+                        Label(worktreePathError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(.orange)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.3))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
             if let plan {
-                Label("Commit+ will create and check out \(plan.branchName).", systemImage: "arrow.triangle.branch")
+                Label(previewText(for: plan), systemImage: "arrow.triangle.branch")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -86,7 +194,7 @@ struct StartGitFlowSheet: View {
                 Button("Start \(kind.displayName)") {
                     guard let plan else { return }
                     onRunRepositoryOperation("Starting \(plan.branchName)...") {
-                        if await onStart(plan) {
+                        if await onStart(plan, destination == .newWorktree && openAfterCreate) {
                             await MainActor.run {
                                 dismiss()
                             }
@@ -99,6 +207,25 @@ struct StartGitFlowSheet: View {
             }
         }
         .padding(24)
-        .frame(minWidth: 440, idealWidth: 480)
+        .frame(minWidth: 480, idealWidth: 520)
+        .onAppear {
+            if destination == .newWorktree, worktreePath.isEmpty {
+                worktreePath = suggestedWorktreePath
+            }
+        }
+        .onChange(of: topicName) { _, _ in
+            if destination == .newWorktree, !hasEditedWorktreePath {
+                worktreePath = suggestedWorktreePath
+            }
+        }
+    }
+
+    private func previewText(for plan: GitFlowStartPlan) -> String {
+        switch plan.destination {
+        case .currentWorkingCopy:
+            return "Creates and checks out \(plan.branchName) from \(plan.baseBranch)."
+        case .newWorktree:
+            return "Creates \(plan.branchName) from \(plan.baseBranch) in a new worktree. The current working copy stays unchanged."
+        }
     }
 }

@@ -389,6 +389,7 @@ extension MainWindowView {
         StartGitFlowSheet(
             kind: kind,
             configuration: gitFlowConfiguration,
+            worktreeRootURL: gitFlowWorktreeRootURL ?? repositoryURL,
             onRunRepositoryOperation: runRepositoryOperation,
             onStart: startGitFlow
         )

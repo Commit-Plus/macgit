@@ -116,7 +116,7 @@ final class GitFlowLitePhase1Tests: XCTestCase {
         )
         let developTip = try await GitBranchUndoSupport().tip(of: "develop", in: repositoryURL)
 
-        XCTAssertEqual(result.previousRef, "main")
+        XCTAssertEqual(result.placement, .currentWorkingCopy(previousRef: "main"))
         XCTAssertEqual(currentBranch, "feature/workflow-menu")
         XCTAssertEqual(featureTip, developTip)
     }

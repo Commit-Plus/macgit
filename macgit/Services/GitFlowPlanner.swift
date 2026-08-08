@@ -39,7 +39,10 @@ struct GitFlowPlanner {
     func startPlan(
         kind: GitFlowTopicKind,
         topicName: String,
-        configuration: GitFlowConfiguration
+        configuration: GitFlowConfiguration,
+        destination: GitFlowStartDestination? = nil,
+        worktreePath: URL? = nil,
+        worktreeLabel: String? = nil
     ) throws -> GitFlowStartPlan {
         let configuration = configuration.normalized()
         guard configuration.isEnabled else { throw GitFlowPlannerError.disabled }
@@ -48,10 +51,16 @@ struct GitFlowPlanner {
         let name = topicName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { throw GitFlowPlannerError.emptyTopicName }
 
+        let resolvedDestination = destination ?? configuration.defaultStartDestination
         return GitFlowStartPlan(
             kind: kind,
             branchName: configuration.prefix(for: kind) + name,
-            baseBranch: configuration.baseBranch(for: kind)
+            baseBranch: configuration.baseBranch(for: kind),
+            destination: resolvedDestination,
+            worktreePath: resolvedDestination == .newWorktree ? worktreePath?.standardizedFileURL : nil,
+            worktreeLabel: resolvedDestination == .newWorktree
+                ? Self.trimmedOptional(worktreeLabel)
+                : nil
         )
     }
 
@@ -118,5 +127,10 @@ struct GitFlowPlanner {
     private func versionName(from branch: String, prefix: String) -> String {
         guard branch.hasPrefix(prefix) else { return branch }
         return String(branch.dropFirst(prefix.count))
+    }
+
+    private static func trimmedOptional(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

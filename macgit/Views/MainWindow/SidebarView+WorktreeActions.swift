@@ -257,8 +257,10 @@ extension SidebarView {
 
     func defaultWorktreePath() -> URL {
         let baseRoot = worktreeRootURL ?? repositoryURL
-        let container = baseRoot.appendingPathComponent(".worktrees", isDirectory: true)
-        return container.appendingPathComponent(defaultWorktreeFolderName(), isDirectory: true)
+        return WorktreePathPolicy.suggestedPath(
+            root: baseRoot,
+            branchName: defaultWorktreeFolderName()
+        )
     }
 
     func defaultWorktreeFolderName() -> String {
@@ -289,9 +291,7 @@ extension SidebarView {
     }
 
     func sanitizedWorktreeFolderComponent(_ input: String) -> String {
-        let candidate = input.replacingOccurrences(of: "/", with: "-")
-        let trimmed = candidate.trimmingCharacters(in: CharacterSet(charactersIn: "- "))
-        return trimmed.isEmpty ? "worktree" : trimmed
+        WorktreePathPolicy.folderName(for: input)
     }
 
     func suggestedMovedWorktreePath(for entry: WorktreeEntry) -> URL {

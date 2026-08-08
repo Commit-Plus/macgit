@@ -22,10 +22,35 @@ struct GitFlowStartPlan: Equatable {
     let kind: GitFlowTopicKind
     let branchName: String
     let baseBranch: String
+    let destination: GitFlowStartDestination
+    let worktreePath: URL?
+    let worktreeLabel: String?
+
+    init(
+        kind: GitFlowTopicKind,
+        branchName: String,
+        baseBranch: String,
+        destination: GitFlowStartDestination = .currentWorkingCopy,
+        worktreePath: URL? = nil,
+        worktreeLabel: String? = nil
+    ) {
+        self.kind = kind
+        self.branchName = branchName
+        self.baseBranch = baseBranch
+        self.destination = destination
+        self.worktreePath = worktreePath
+        self.worktreeLabel = worktreeLabel
+    }
+}
+
+enum GitFlowStartPlacement: Equatable {
+    case currentWorkingCopy(previousRef: String)
+    case newWorktree(path: URL, label: String?)
 }
 
 struct GitFlowStartResult: Equatable {
     let plan: GitFlowStartPlan
-    let previousRef: String
+    let placement: GitFlowStartPlacement
+    let baseTip: String
     let createdTip: String
 }
