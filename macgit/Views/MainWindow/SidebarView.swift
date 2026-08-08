@@ -484,11 +484,13 @@ struct SidebarView: View {
                     deleteConfirmationTarget: $deleteConfirmationTarget,
                     forceDeleteBranch: $forceDeleteBranch,
                     remoteBranchDeleteTarget: $remoteBranchDeleteTarget,
+                    repositoryURL: repositoryURL,
+                    undoManager: undoManager,
                     currentBranch: currentBranch,
                     branchesUnderPrefix: branchesUnderPrefix,
                     cancelDeleteConfirmation: cancelDeleteConfirmation,
                     confirmDeleteBranch: confirmDeleteBranch,
-                    confirmDeletePrefix: confirmDeletePrefix,
+                    onPrefixDeleteCompleted: refreshAfterBranchDeletion,
                     deleteRemoteBranch: deleteRemoteBranch,
                     onRunRepositoryOperation: onRunRepositoryOperation
                 )

@@ -62,6 +62,7 @@ struct BranchSheetView: View {
     let onRunRepositoryOperation: RepositoryOperationRunner
     var undoManager: GitUndoManager? = nil
     var initialStartPoint: GitBranchStartPoint? = nil
+    let initiallySelectedLocalBranches: Set<String>
 
     @State private var selectedTab: BranchTab = .create
 
@@ -85,6 +86,7 @@ struct BranchSheetView: View {
     // Delete tab state
     @State private var branches: [BranchDeleteItem] = []
     @State private var forceDelete = false
+    @State private var hasAppliedInitialDeleteSelection = false
 
     // Confirmation overlay
     @State private var showingDeleteConfirmation = false
@@ -99,6 +101,8 @@ struct BranchSheetView: View {
         repositoryURL: URL,
         undoManager: GitUndoManager? = nil,
         initialStartPoint: GitBranchStartPoint? = nil,
+        initialTab: BranchTab = .create,
+        initiallySelectedLocalBranches: Set<String> = [],
         onRunRepositoryOperation: @escaping RepositoryOperationRunner = { _, operation in
             Task { await operation() }
         },
@@ -109,6 +113,8 @@ struct BranchSheetView: View {
         self.onRunRepositoryOperation = onRunRepositoryOperation
         self.undoManager = undoManager
         self.initialStartPoint = initialStartPoint
+        self.initiallySelectedLocalBranches = initiallySelectedLocalBranches
+        self._selectedTab = State(initialValue: initialTab)
     }
 
     private var canCreate: Bool {
@@ -247,13 +253,16 @@ struct BranchSheetView: View {
                         .font(.system(size: 13))
                         .multilineTextAlignment(.center)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(selectedBranches) { branch in
-                            Text("• \(branch.name)")
-                                .font(.system(size: 12))
+                    ScrollView(.vertical) {
+                        LazyVStack(alignment: .leading, spacing: 4) {
+                            ForEach(selectedBranches) { branch in
+                                Text("• \(branch.name)")
+                                    .font(.system(size: 12))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, maxHeight: 240, alignment: .leading)
 
                     HStack(spacing: 12) {
                         Button("Cancel", role: .cancel) {
@@ -275,7 +284,7 @@ struct BranchSheetView: View {
                     }
                 }
                 .padding(24)
-                .frame(minWidth: 320, idealWidth: 360)
+                .frame(minWidth: 320, idealWidth: 400, maxWidth: 440)
                 .background(.regularMaterial)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 8)
@@ -452,8 +461,11 @@ struct BranchSheetView: View {
 
             // Table header
             HStack(spacing: 0) {
-                Text("")
+                Toggle("Select all branches", sources: $branches, isOn: \.isSelected)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
                     .frame(width: 30)
+                    .disabled(branches.isEmpty)
                 Text("Branch name")
                     .font(.system(size: 11, weight: .medium))
                     .frame(minWidth: 120, alignment: .leading)
@@ -470,16 +482,22 @@ struct BranchSheetView: View {
             VStack(spacing: 0) {
                 ForEach($branches) { $branch in
                     HStack(spacing: 0) {
-                        Toggle("", isOn: $branch.isSelected)
+                        Toggle(branch.name, isOn: $branch.isSelected)
                             .toggleStyle(.checkbox)
                             .labelsHidden()
                             .frame(width: 30)
 
-                        Text(branch.name)
-                            .font(.system(size: 12))
-                            .frame(minWidth: 120, alignment: .leading)
-
-                        Spacer()
+                        Button {
+                            branch.isSelected.toggle()
+                        } label: {
+                            Text(branch.name)
+                                .font(.system(size: 12))
+                                .frame(minWidth: 120, maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 3)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHidden(true)
 
                         Text(branch.type.rawValue)
                             .font(.system(size: 12))
@@ -487,7 +505,6 @@ struct BranchSheetView: View {
                             .frame(width: 60, alignment: .leading)
                     }
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
                 }
             }
             .background(.quaternary.opacity(0.1))
@@ -592,6 +609,7 @@ struct BranchSheetView: View {
             await MainActor.run {
                 isDeleting = false
                 showingDeleteConfirmation = false
+                onCompleted()
                 // Refresh branch list and keep modal open
                 Task { await loadDeleteData() }
             }
@@ -638,11 +656,18 @@ struct BranchSheetView: View {
     private func loadDeleteData() async {
         let locals = await GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
         let remotesList = await GitStatusService.shared.remotes(in: repositoryURL)
+        let initialSelection = hasAppliedInitialDeleteSelection ? [] : initiallySelectedLocalBranches
 
         var items: [BranchDeleteItem] = []
 
         for name in locals {
-            items.append(BranchDeleteItem(name: name, type: .local))
+            items.append(
+                BranchDeleteItem(
+                    name: name,
+                    type: .local,
+                    isSelected: initialSelection.contains(name)
+                )
+            )
         }
 
         for remote in remotesList {
@@ -656,6 +681,7 @@ struct BranchSheetView: View {
 
         await MainActor.run {
             branches = items
+            hasAppliedInitialDeleteSelection = true
         }
     }
 

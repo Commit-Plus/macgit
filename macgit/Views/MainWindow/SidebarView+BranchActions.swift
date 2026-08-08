@@ -146,15 +146,6 @@ extension SidebarView {
         }
     }
 
-    func confirmDeletePrefix(_ prefix: String) {
-        let force = forceDeleteBranch
-        deleteConfirmationTarget = nil
-        forceDeleteBranch = false
-        onRunRepositoryOperation("Deleting branches in \(prefix)/...") {
-            await deleteBranchesWithPrefix(prefix, force: force)
-        }
-    }
-
     func deleteBranch(_ branch: String, force: Bool = false) async {
         do {
             let support = GitBranchUndoSupport()
@@ -190,52 +181,15 @@ extension SidebarView {
         }
     }
 
-    func deleteBranchesWithPrefix(_ prefix: String, force: Bool) async {
-        let toDelete = branchesUnderPrefix(prefix).filter { $0 != currentBranch }
-        guard !toDelete.isEmpty else { return }
-
-        var undoSequences: [GitUndoOperation] = []
-        var redoOperations: [GitUndoOperation] = []
-        var failed: [String] = []
-        let support = GitBranchUndoSupport()
-
-        for branch in toDelete {
-            do {
-                let tip = try await support.tip(of: branch, in: repositoryURL)
-                let upstream = await support.upstream(of: branch, in: repositoryURL)
-                _ = try await GitStatusService.shared.deleteBranch(name: branch, force: force, in: repositoryURL)
-
-                var undoOps: [GitUndoOperation] = [
-                    .createLocalBranch(name: branch, startPoint: tip, checkout: false)
-                ]
-                if let upstream {
-                    undoOps.append(.setUpstream(branch: branch, upstream: upstream))
-                }
-                undoSequences.append(.sequence(undoOps))
-                redoOperations.append(.deleteLocalBranch(name: branch, force: force, expectedTip: tip))
-            } catch {
-                failed.append(branch)
-            }
+    func refreshAfterBranchDeletion() {
+        Task {
+            await loadBranches(force: true)
+            await loadRemotes()
+            NotificationCenter.default.post(
+                name: .repositoryDidChange,
+                object: nil,
+                userInfo: ["repositoryURL": repositoryURL]
+            )
         }
-
-        await MainActor.run {
-            if !undoSequences.isEmpty {
-                let label = "Delete \(undoSequences.count) branch\(undoSequences.count == 1 ? "" : "es") in \(prefix)/"
-                undoManager?.register(
-                    GitUndoEntry(
-                        repositoryURL: repositoryURL,
-                        label: label,
-                        undoOperation: .sequence(undoSequences),
-                        redoOperation: .sequence(redoOperations)
-                    )
-                )
-            }
-            if !failed.isEmpty {
-                errorMessage = "Failed to delete: \(failed.joined(separator: ", "))"
-                showingError = true
-            }
-        }
-
-        NotificationCenter.default.post(name: .repositoryDidChange, object: nil, userInfo: ["repositoryURL": repositoryURL])
     }
 }

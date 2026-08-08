@@ -22,11 +22,13 @@ struct SidebarBranchPresentationModifier: ViewModifier {
     @Binding var forceDeleteBranch: Bool
     @Binding var remoteBranchDeleteTarget: RemoteBranchDeleteTarget?
 
+    let repositoryURL: URL
+    let undoManager: GitUndoManager?
     let currentBranch: String
     let branchesUnderPrefix: (String) -> [String]
     let cancelDeleteConfirmation: () -> Void
     let confirmDeleteBranch: (String) -> Void
-    let confirmDeletePrefix: (String) -> Void
+    let onPrefixDeleteCompleted: () -> Void
     let deleteRemoteBranch: (RemoteBranchDeleteTarget) async -> Void
     let onRunRepositoryOperation: RepositoryOperationRunner
 
@@ -52,17 +54,12 @@ struct SidebarBranchPresentationModifier: ViewModifier {
                 onDelete: { confirmDeleteBranch(branch) }
             )
         case .prefix(let prefix):
-            let allBranches = branchesUnderPrefix(prefix)
-            let deletableBranches = allBranches.filter { $0 != currentBranch }
-            let skippedBranches = allBranches.filter { $0 == currentBranch }
             SidebarDeletePrefixSheet(
-                prefix: prefix,
-                allBranches: allBranches,
-                deletableBranches: deletableBranches,
-                skippedBranches: skippedBranches,
-                forceDelete: $forceDeleteBranch,
-                onCancel: cancelDeleteConfirmation,
-                onDelete: { confirmDeletePrefix(prefix) }
+                repositoryURL: repositoryURL,
+                branches: Set(branchesUnderPrefix(prefix).filter { $0 != currentBranch }),
+                undoManager: undoManager,
+                onRunRepositoryOperation: onRunRepositoryOperation,
+                onCompleted: onPrefixDeleteCompleted
             )
         }
     }
