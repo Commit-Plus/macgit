@@ -616,21 +616,19 @@ struct SidebarView: View {
     private var sidebarRows: some View {
         SidebarWorkspaceSection(onRequestSearch: onRequestSearch)
 
-        if gitFlowConfiguration.isEnabled {
-            SidebarGitFlowSection(
-                configuration: gitFlowConfiguration,
-                currentBranch: currentBranch,
-                isExpanded: sectionStates.gitFlowExpanded,
-                isOperationDisabled: isGitFlowOperationDisabled,
-                actions: SidebarGitFlowActions(
-                    toggleSection: { toggleSection(.gitFlow) },
-                    start: onRequestStartGitFlow,
-                    finish: onRequestFinishGitFlow,
-                    editWorkflow: onRequestEditGitFlow,
-                    disableWorkflow: onRequestDisableGitFlow
-                )
+        SidebarGitFlowSection(
+            configuration: gitFlowConfiguration,
+            currentBranch: currentBranch,
+            isExpanded: sectionStates.gitFlowExpanded,
+            isOperationDisabled: isGitFlowOperationDisabled,
+            actions: SidebarGitFlowActions(
+                toggleSection: { toggleSection(.gitFlow) },
+                start: onRequestStartGitFlow,
+                finish: onRequestFinishGitFlow,
+                editWorkflow: onRequestEditGitFlow,
+                disableWorkflow: onRequestDisableGitFlow
             )
-        }
+        )
 
         SidebarBranchesSection(
             rows: visibleBranchRows,

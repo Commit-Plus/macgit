@@ -39,16 +39,30 @@ struct SidebarGitFlowSection: View {
             ) {
                 EmptyView()
             }
-            .contextMenu { actionMenu }
+            .contextMenu {
+                if configuration.isEnabled {
+                    actionMenu
+                } else {
+                    Button("Set Up Git Flow…", action: actions.editWorkflow)
+                        .disabled(isOperationDisabled)
+                }
+            }
 
             if isExpanded {
-                ForEach(GitFlowTopicKind.allCases) { kind in
-                    Button {
-                        actions.start(kind)
-                    } label: {
-                        Label("Start \(kind.displayName)…", systemImage: kind.sidebarIcon)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                if configuration.isEnabled {
+                    ForEach(GitFlowTopicKind.allCases) { kind in
+                        Button {
+                            actions.start(kind)
+                        } label: {
+                            Label("Start \(kind.displayName)…", systemImage: kind.sidebarIcon)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isOperationDisabled)
+                        .padding(.leading, 6)
                     }
+                } else {
+                    Button("Set Up Git Flow…", systemImage: "gearshape", action: actions.editWorkflow)
                     .buttonStyle(.plain)
                     .disabled(isOperationDisabled)
                     .padding(.leading, 6)
@@ -80,7 +94,10 @@ struct SidebarGitFlowSection: View {
     }
 
     private func canFinish(_ kind: GitFlowTopicKind) -> Bool {
-        !isOperationDisabled && kind.supportsPhaseTwoFinish && currentKind == kind
+        configuration.isEnabled
+            && !isOperationDisabled
+            && kind.supportsPhaseTwoFinish
+            && currentKind == kind
     }
 }
 
