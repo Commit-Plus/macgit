@@ -41,6 +41,29 @@ enum GitFlowStartError: LocalizedError, Equatable {
     }
 }
 
+enum GitFlowFinishError: LocalizedError, Equatable {
+    case dirtyWorkingTree
+    case unfinishedOperation
+    case currentBranchChanged(expected: String)
+    case missingTargetBranch(String)
+    case targetCheckedOutInWorktree(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .dirtyWorkingTree:
+            return "Commit, stash, or discard the current changes before finishing Git Flow."
+        case .unfinishedOperation:
+            return "Finish or abort the current Git operation before finishing Git Flow."
+        case .currentBranchChanged(let expected):
+            return "Check out '\(expected)' again before finishing it."
+        case .missingTargetBranch(let branch):
+            return "The target branch '\(branch)' does not exist."
+        case .targetCheckedOutInWorktree(let branch):
+            return "The target branch '\(branch)' is checked out in another worktree."
+        }
+    }
+}
+
 struct GitFlowService {
     func start(_ plan: GitFlowStartPlan, in repositoryURL: URL) async throws -> GitFlowStartResult {
         guard await GitStatusService.shared.hasUnfinishedGitFlowStartOperation(in: repositoryURL) == false else {
@@ -76,5 +99,59 @@ struct GitFlowService {
             previousRef: previousRef,
             createdTip: createdTip
         )
+    }
+
+    func finish(_ plan: GitFlowFinishPlan, in repositoryURL: URL) async throws -> GitFlowFinishResult {
+        let git = GitStatusService.shared
+        guard await git.hasUnfinishedGitFlowStartOperation(in: repositoryURL) == false else {
+            throw GitFlowFinishError.unfinishedOperation
+        }
+        guard await git.dirtyCount(in: repositoryURL) == 0 else {
+            throw GitFlowFinishError.dirtyWorkingTree
+        }
+        guard await git.currentBranch(in: repositoryURL) == plan.sourceBranch else {
+            throw GitFlowFinishError.currentBranchChanged(expected: plan.sourceBranch)
+        }
+        let branches = await git.localBranches(in: repositoryURL)
+        guard branches.contains(plan.targetBranch) else {
+            throw GitFlowFinishError.missingTargetBranch(plan.targetBranch)
+        }
+        if try await git.worktreePath(for: plan.targetBranch, in: repositoryURL) != nil {
+            throw GitFlowFinishError.targetCheckedOutInWorktree(plan.targetBranch)
+        }
+
+        let support = GitBranchUndoSupport()
+        let sourceTip = try await support.tip(of: plan.sourceBranch, in: repositoryURL)
+        let oldTargetTip = try await support.tip(of: plan.targetBranch, in: repositoryURL)
+        _ = try await git.runGit(arguments: ["checkout", plan.targetBranch], in: repositoryURL)
+        _ = try await git.runGit(
+            arguments: ["merge", "--no-ff", plan.sourceBranch, "-m", mergeMessage(for: plan)],
+            in: repositoryURL
+        )
+        let newTargetTip = try await support.tip(of: plan.targetBranch, in: repositoryURL)
+
+        var didDelete = false
+        var deletionWarning: String?
+        if plan.deleteSourceBranch {
+            do {
+                _ = try await git.deleteBranch(name: plan.sourceBranch, force: false, in: repositoryURL)
+                didDelete = true
+            } catch {
+                deletionWarning = "The merge completed, but Commit+ could not delete '\(plan.sourceBranch)': \(error.localizedDescription)"
+            }
+        }
+
+        return GitFlowFinishResult(
+            plan: plan,
+            sourceTip: sourceTip,
+            targetTipBeforeMerge: oldTargetTip,
+            targetTipAfterMerge: newTargetTip,
+            didDeleteSourceBranch: didDelete,
+            deletionWarning: deletionWarning
+        )
+    }
+
+    private func mergeMessage(for plan: GitFlowFinishPlan) -> String {
+        "Finish \(plan.kind.displayName.lowercased()) '\(plan.sourceBranch)'"
     }
 }

@@ -39,6 +39,10 @@ enum GitUndoResetMode: Equatable {
 }
 
 indirect enum GitUndoOperation: Equatable {
+    case requireCleanWorkingTree
+    case requireHead(String)
+    case requireLocalBranchTip(name: String, expectedTip: String)
+    case requireLocalBranchAbsent(String)
     case stageFiles(paths: [String])
     case unstageFiles(paths: [String])
     case applyPatch(patch: String, cached: Bool, reverse: Bool)
@@ -48,6 +52,7 @@ indirect enum GitUndoOperation: Equatable {
     case cherryPickCommits(commits: [String])
     case revert(commit: String)
     case mergeCommit(commit: String, noCommit: Bool, log: Bool)
+    case mergeNoFastForward(branch: String, message: String)
     case rebaseOnto(commit: String)
     case stashPush(message: String, keepIndex: Bool, paths: [String], includeUntracked: Bool)
     case stashApply(ref: String)

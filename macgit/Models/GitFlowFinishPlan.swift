@@ -18,19 +18,20 @@
 
 import Foundation
 
-enum GitFlowTopicKind: String, Codable, CaseIterable, Identifiable {
-    case feature
-    case bugfix
-    case release
-    case hotfix
+struct GitFlowFinishPlan: Identifiable, Equatable {
+    let kind: GitFlowTopicKind
+    let sourceBranch: String
+    let targetBranch: String
+    var deleteSourceBranch: Bool
 
-    var id: String { rawValue }
+    var id: String { "\(kind.rawValue):\(sourceBranch)" }
+}
 
-    var displayName: String {
-        rawValue.capitalized
-    }
-
-    var supportsPhaseTwoFinish: Bool {
-        self == .feature || self == .bugfix
-    }
+struct GitFlowFinishResult: Equatable {
+    let plan: GitFlowFinishPlan
+    let sourceTip: String
+    let targetTipBeforeMerge: String
+    let targetTipAfterMerge: String
+    let didDeleteSourceBranch: Bool
+    let deletionWarning: String?
 }

@@ -45,8 +45,11 @@ extension MainWindowView {
     var gitFlowMenuItems: some View {
         if gitFlowConfiguration.isEnabled {
             ForEach(GitFlowTopicKind.allCases) { kind in
-                Button("Start \(kind.displayName)...") {
-                    pendingGitFlowTopicKind = kind
+                Button("Start \(kind.displayName)...") { pendingGitFlowTopicKind = kind }
+                Button("Finish \(kind.displayName)...") { requestFinishGitFlow(kind) }
+                    .disabled(!canFinishGitFlow(kind))
+                if kind != GitFlowTopicKind.allCases.last {
+                    Divider()
                 }
             }
 
@@ -91,6 +94,7 @@ extension MainWindowView {
                     )
                 )
                 selectedItem = .branch(result.plan.branchName)
+                gitFlowCurrentBranch = result.plan.branchName
             }
             await syncState.refresh(repositoryURL: repositoryURL)
             NotificationCenter.default.post(
@@ -105,6 +109,118 @@ extension MainWindowView {
             }
             return false
         }
+    }
+
+    func canFinishGitFlow(_ kind: GitFlowTopicKind) -> Bool {
+        kind.supportsPhaseTwoFinish
+            && GitFlowPlanner().topicKind(
+                for: gitFlowCurrentBranch,
+                configuration: gitFlowConfiguration
+            ) == kind
+    }
+
+    func requestFinishGitFlow(_ kind: GitFlowTopicKind) {
+        Task {
+            let currentBranch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
+            do {
+                let plan = try GitFlowPlanner().finishPlan(
+                    kind: kind,
+                    currentBranch: currentBranch,
+                    configuration: gitFlowConfiguration
+                )
+                await MainActor.run {
+                    gitFlowCurrentBranch = currentBranch
+                    pendingGitFlowFinishPlan = plan
+                }
+            } catch {
+                await MainActor.run { syncState.showError(error.localizedDescription) }
+            }
+        }
+    }
+
+    func finishGitFlow(_ plan: GitFlowFinishPlan) async -> Bool {
+        do {
+            let result = try await GitFlowService().finish(plan, in: repositoryURL)
+            let mergeMessage = "Finish \(plan.kind.displayName.lowercased()) '\(plan.sourceBranch)'"
+            var undoOperations: [GitUndoOperation] = [
+                .requireCleanWorkingTree
+            ]
+            if result.didDeleteSourceBranch {
+                undoOperations.append(.requireLocalBranchAbsent(plan.sourceBranch))
+            } else {
+                undoOperations.append(
+                    .requireLocalBranchTip(name: plan.sourceBranch, expectedTip: result.sourceTip)
+                )
+            }
+            undoOperations.append(contentsOf: [
+                .checkoutRef(ref: plan.targetBranch),
+                .resetHead(
+                    target: result.targetTipBeforeMerge,
+                    mode: .hard,
+                    expectedHead: result.targetTipAfterMerge
+                )
+            ])
+            if result.didDeleteSourceBranch {
+                undoOperations.append(
+                    .createLocalBranch(name: plan.sourceBranch, startPoint: result.sourceTip, checkout: true)
+                )
+            } else {
+                undoOperations.append(.checkoutRef(ref: plan.sourceBranch))
+            }
+
+            var redoOperations: [GitUndoOperation] = [
+                .requireCleanWorkingTree,
+                .requireLocalBranchTip(name: plan.sourceBranch, expectedTip: result.sourceTip),
+                .checkoutRef(ref: plan.targetBranch),
+                .requireHead(result.targetTipBeforeMerge),
+                .mergeNoFastForward(branch: plan.sourceBranch, message: mergeMessage)
+            ]
+            if result.didDeleteSourceBranch {
+                redoOperations.append(
+                    .deleteLocalBranch(name: plan.sourceBranch, force: false, expectedTip: result.sourceTip)
+                )
+            }
+
+            await MainActor.run {
+                undoManager.register(
+                    GitUndoEntry(
+                        repositoryURL: repositoryURL,
+                        label: "Finish \(plan.kind.displayName) \(plan.sourceBranch)",
+                        undoOperation: .sequence(undoOperations),
+                        redoOperation: .sequence(redoOperations),
+                        confirmationMessage: "Undo will move '\(plan.targetBranch)' back to its previous commit. Continue?"
+                    )
+                )
+                gitFlowCurrentBranch = plan.targetBranch
+                selectedItem = .branch(plan.targetBranch)
+                if let warning = result.deletionWarning {
+                    syncState.showError(warning)
+                }
+            }
+            await refreshAfterGitFlowMutation()
+            return true
+        } catch {
+            let mergeInProgress = await GitStatusService.shared.isMergeInProgress(in: repositoryURL)
+            await MainActor.run {
+                if mergeInProgress {
+                    selectedItem = .item(.fileStatus)
+                    gitFlowCurrentBranch = plan.targetBranch
+                }
+                syncState.showError(error.localizedDescription)
+            }
+            await refreshAfterGitFlowMutation()
+            return false
+        }
+    }
+
+    private func refreshAfterGitFlowMutation() async {
+        await GitStatusService.shared.invalidateBranchListCache(in: repositoryURL)
+        await syncState.refresh(repositoryURL: repositoryURL)
+        NotificationCenter.default.post(
+            name: .repositoryDidChange,
+            object: nil,
+            userInfo: ["repositoryURL": repositoryURL]
+        )
     }
 
     func disableGitFlow() {

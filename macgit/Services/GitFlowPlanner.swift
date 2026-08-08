@@ -65,6 +65,32 @@ struct GitFlowPlanner {
         }
     }
 
+    func finishPlan(
+        kind: GitFlowTopicKind,
+        currentBranch: String,
+        configuration: GitFlowConfiguration,
+        deleteSourceBranch: Bool = true
+    ) throws -> GitFlowFinishPlan {
+        let configuration = configuration.normalized()
+        guard configuration.isEnabled else { throw GitFlowPlannerError.disabled }
+        try validate(configuration)
+        guard kind.supportsPhaseTwoFinish else {
+            throw GitFlowPlannerError.invalidConfiguration("Finish \(kind.displayName) is planned for a later Git Flow phase.")
+        }
+        guard topicKind(for: currentBranch, configuration: configuration) == kind else {
+            throw GitFlowPlannerError.invalidConfiguration(
+                "Check out a \(kind.displayName) branch before finishing it."
+            )
+        }
+
+        return GitFlowFinishPlan(
+            kind: kind,
+            sourceBranch: currentBranch,
+            targetBranch: configuration.developBranch,
+            deleteSourceBranch: deleteSourceBranch
+        )
+    }
+
     func validate(_ configuration: GitFlowConfiguration) throws {
         let configuration = configuration.normalized()
         guard !configuration.mainBranch.isEmpty else {

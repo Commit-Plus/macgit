@@ -63,6 +63,28 @@ struct GitUndoExecutor {
 
     func execute(_ operation: GitUndoOperation, in repositoryURL: URL) async throws {
         switch operation {
+        case .requireCleanWorkingTree:
+            let status = try await runner.runGit(arguments: ["status", "--porcelain"], in: repositoryURL)
+            guard status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw GitError.commandFailed("Commit, stash, or discard working tree changes before undoing this Git Flow action.")
+            }
+        case .requireHead(let expected):
+            let actual = try await branchSupport.tip(of: "HEAD", in: repositoryURL)
+            guard actual == expected else {
+                throw GitUndoError.expectedHeadMismatch(expected: expected, actual: actual)
+            }
+        case .requireLocalBranchTip(let name, let expectedTip):
+            let actualTip = try await branchSupport.tip(of: name, in: repositoryURL)
+            guard actualTip == expectedTip else {
+                throw GitError.commandFailed("Cannot continue because branch '\(name)' moved.")
+            }
+        case .requireLocalBranchAbsent(let name):
+            if (try? await runner.runGit(
+                arguments: ["show-ref", "--verify", "--quiet", "refs/heads/\(name)"],
+                in: repositoryURL
+            )) != nil {
+                throw GitError.commandFailed("Cannot restore branch '\(name)' because it already exists.")
+            }
         case .stageFiles(let paths):
             try await runFileCommand(["add", "--"], paths: paths, in: repositoryURL)
         case .unstageFiles(let paths):
@@ -95,6 +117,11 @@ struct GitUndoExecutor {
             if log { arguments.append("--log") }
             arguments.append(commit)
             _ = try await runner.runGit(arguments: arguments, in: repositoryURL)
+        case .mergeNoFastForward(let branch, let message):
+            _ = try await runner.runGit(
+                arguments: ["merge", "--no-ff", branch, "-m", message],
+                in: repositoryURL
+            )
         case .rebaseOnto(let commit):
             _ = try await runner.runGit(arguments: ["rebase", commit], in: repositoryURL)
         case .stashPush(let message, let keepIndex, let paths, let includeUntracked):

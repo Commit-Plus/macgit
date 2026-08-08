@@ -16,21 +16,10 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-import Foundation
-
-enum GitFlowTopicKind: String, Codable, CaseIterable, Identifiable {
-    case feature
-    case bugfix
-    case release
-    case hotfix
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        rawValue.capitalized
-    }
-
-    var supportsPhaseTwoFinish: Bool {
-        self == .feature || self == .bugfix
-    }
+struct SidebarGitFlowActions {
+    let toggleSection: () -> Void
+    let start: (GitFlowTopicKind) -> Void
+    let finish: (GitFlowTopicKind) -> Void
+    let editWorkflow: () -> Void
+    let disableWorkflow: () -> Void
 }

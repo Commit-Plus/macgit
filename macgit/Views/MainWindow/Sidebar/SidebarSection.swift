@@ -18,6 +18,7 @@
 
 enum SidebarSection: String, CaseIterable {
     case workspace = "WORKSPACE"
+    case gitFlow = "GIT FLOW"
     case branches = "BRANCHES"
     case worktrees = "WORKTREES"
     case tags = "TAGS"
@@ -30,6 +31,8 @@ enum SidebarSection: String, CaseIterable {
         switch self {
         case .workspace:
             return "square.grid.2x2"
+        case .gitFlow:
+            return "point.3.connected.trianglepath.dotted"
         case .branches:
             return "arrow.triangle.branch"
         case .worktrees:
