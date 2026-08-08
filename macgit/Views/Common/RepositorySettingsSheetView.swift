@@ -25,6 +25,7 @@ import SwiftUI
 private enum RepositorySettingsTab: String, CaseIterable, Identifiable {
     case remote = "Remote"
     case pullFetch = "Pull & Fetch"
+    case gitFlow = "Git Flow"
     case advanced = "Advanced"
 
     var id: String { rawValue }
@@ -52,9 +53,12 @@ struct RepositorySettingsSheetView: View {
 
     let repositoryURL: URL
     let initialSettings: RepoSettings
+    let initialGitFlowConfiguration: GitFlowConfiguration
+    let initiallySelectGitFlow: Bool
     let providerAccountResolver: GitProviderCredentialResolver
     let providerAccountPreferences: [String: String]
     let onSave: (RepoSettings) -> Void
+    let onSaveGitFlowConfiguration: (GitFlowConfiguration) -> Void
     let onSaveProviderAccountPreferences: ([String: String?]) -> Void
     let onOpenGitIgnore: () -> Void
     let onOpenGitConfig: () -> Void
@@ -69,6 +73,7 @@ struct RepositorySettingsSheetView: View {
     @State private var showingRemoteEditSheet = false
     @State private var remoteEditMode: RemoteEditMode = .add
     @State private var selectedProviderAccountIDs: [String: String] = [:]
+    @State private var gitFlowConfiguration = GitFlowConfiguration()
     private let settingsContentWidth: CGFloat = 500
 
     var body: some View {
@@ -86,6 +91,8 @@ struct RepositorySettingsSheetView: View {
                             remoteTab(draft)
                         case .pullFetch:
                             pullFetchTab
+                        case .gitFlow:
+                            gitFlowTab
                         case .advanced:
                             advancedTab
                         }
@@ -104,10 +111,15 @@ struct RepositorySettingsSheetView: View {
 
             footer
         }
-        .frame(minWidth: 520, idealWidth: 560, maxWidth: 600)
+        .frame(minWidth: 600, idealWidth: 640, maxWidth: 680)
         .frame(minHeight: 420, idealHeight: 480)
         .task {
             await loadOptions()
+        }
+        .onAppear {
+            if initiallySelectGitFlow {
+                selectedTab = .gitFlow
+            }
         }
         .sheet(isPresented: $showingRemoteEditSheet) {
             RemoteEditSheetView(
@@ -135,7 +147,7 @@ struct RepositorySettingsSheetView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 300)
+            .frame(width: 360)
         }
         .padding([.top, .horizontal], 24)
     }
@@ -152,11 +164,13 @@ struct RepositorySettingsSheetView: View {
             Button("Save") {
                 guard let draft else { return }
                 onSave(draft.resolvedSettings)
+                onSaveGitFlowConfiguration(gitFlowConfiguration.normalized())
                 onSaveProviderAccountPreferences(providerAccountPreferenceChanges)
                 dismiss()
             }
             .keyboardShortcut(.defaultAction)
             .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 13))
+            .disabled(!canSave)
         }
         .padding([.horizontal, .bottom], 24)
     }
@@ -433,6 +447,93 @@ struct RepositorySettingsSheetView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var gitFlowTab: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Toggle("Enable Git Flow", isOn: $gitFlowConfiguration.isEnabled)
+                .toggleStyle(.checkbox)
+
+            VStack(alignment: .leading, spacing: 12) {
+                branchPicker(
+                    title: "Main branch",
+                    selection: $gitFlowConfiguration.mainBranch
+                )
+                branchPicker(
+                    title: "Develop branch",
+                    selection: $gitFlowConfiguration.developBranch
+                )
+            }
+            .disabled(!gitFlowConfiguration.isEnabled)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Branch prefixes")
+                    .font(.headline)
+
+                prefixField("Feature", text: $gitFlowConfiguration.featurePrefix)
+                prefixField("Bugfix", text: $gitFlowConfiguration.bugfixPrefix)
+                prefixField("Release", text: $gitFlowConfiguration.releasePrefix)
+                prefixField("Hotfix", text: $gitFlowConfiguration.hotfixPrefix)
+            }
+            .disabled(!gitFlowConfiguration.isEnabled)
+
+            if let validationMessage = gitFlowValidationMessage {
+                Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.orange)
+            } else if gitFlowConfiguration.isEnabled {
+                Text("Feature, Bugfix, and Release start from Develop. Hotfix starts from Main.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.3))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func branchPicker(title: String, selection: Binding<String>) -> some View {
+        LabeledContent(title) {
+            Picker(title, selection: selection) {
+                Text("Select a branch").tag("")
+                ForEach(branches, id: \.self) { branch in
+                    Text(branch).tag(branch)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(minWidth: 180)
+        }
+    }
+
+    private func prefixField(_ title: String, text: Binding<String>) -> some View {
+        LabeledContent(title) {
+            TextField("\(title.lowercased())/", text: text)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 180)
+        }
+    }
+
+    private var gitFlowValidationMessage: String? {
+        guard gitFlowConfiguration.isEnabled else { return nil }
+        do {
+            try GitFlowPlanner().validate(gitFlowConfiguration)
+            let normalized = gitFlowConfiguration.normalized()
+            guard branches.contains(normalized.mainBranch) else {
+                return "The selected Main branch does not exist."
+            }
+            guard branches.contains(normalized.developBranch) else {
+                return "The selected Develop branch does not exist."
+            }
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private var canSave: Bool {
+        draft != nil && gitFlowValidationMessage == nil
+    }
+
     private var userInformationSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("User information")
@@ -548,6 +649,7 @@ struct RepositorySettingsSheetView: View {
                 branches: loadedBranchesValue,
                 currentBranch: currentBranch
             )
+            gitFlowConfiguration = initialGitFlowConfiguration
             selectedProviderAccountIDs = validProviderAccountPreferences
         }
     }
