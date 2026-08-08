@@ -25,6 +25,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
         let value = AppSettingsSnapshot(
             appearance: .dark,
             showToolbarButtonText: false,
+            showGitFlow: false,
             showSubmodules: true,
             showSubtrees: true,
             showHeaderBranchButton: false,
@@ -51,6 +52,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
                 "schemaVersion",
                 "appearance",
                 "showToolbarButtonText",
+                "showGitFlow",
                 "showSubmodules",
                 "showSubtrees",
                 "showHeaderBranchButton",
@@ -68,6 +70,25 @@ final class AppSettingsSnapshotTests: XCTestCase {
         )
     }
 
+    func testSnapshotDecodingDefaultsMissingGitFlowVisibilityToTrue() throws {
+        let snapshot = AppSettingsSnapshot(
+            showToolbarButtonText: true,
+            showGitFlow: false,
+            showSubmodules: false,
+            showSubtrees: false
+        )
+        let encoded = try JSONEncoder().encode(snapshot)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object.removeValue(forKey: "showGitFlow")
+
+        let decoded = try JSONDecoder().decode(
+            AppSettingsSnapshot.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+
+        XCTAssertTrue(decoded.showGitFlow)
+    }
+
     func testAppStateApplyChangesOnlyApprovedSettings() {
         let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -80,6 +101,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
             AppSettingsSnapshot(
                 appearance: .dark,
                 showToolbarButtonText: false,
+                showGitFlow: false,
                 showSubmodules: true,
                 showSubtrees: true,
                 showHeaderBranchButton: true,
@@ -96,6 +118,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
             AppSettingsSnapshot(
                 appearance: .dark,
                 showToolbarButtonText: false,
+                showGitFlow: false,
                 showSubmodules: true,
                 showSubtrees: true,
                 showHeaderBranchButton: true,
@@ -107,6 +130,7 @@ final class AppSettingsSnapshotTests: XCTestCase {
             )
         )
         XCTAssertEqual(state.appearance, .dark)
+        XCTAssertFalse(state.showGitFlow)
         XCTAssertFalse(state.autoFetchEnabled)
         XCTAssertTrue(state.refreshOnAppActive)
         XCTAssertTrue(state.hasOpenRepository)
@@ -125,6 +149,20 @@ final class AppSettingsSnapshotTests: XCTestCase {
 
         XCTAssertTrue(AppState(userDefaults: defaults).syncEnabled)
         XCTAssertEqual(defaults.object(forKey: "settingsSyncEnabled") as? Bool, true)
+    }
+
+    func testGitFlowVisibilityDefaultsOnAndPersistsLocally() {
+        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let state = AppState(userDefaults: defaults)
+        XCTAssertTrue(state.showGitFlow)
+
+        state.showGitFlow = false
+
+        XCTAssertFalse(AppState(userDefaults: defaults).showGitFlow)
+        XCTAssertEqual(defaults.object(forKey: "showGitFlow") as? Bool, false)
     }
 
     func testSearchFilterIsDeviceLocalAndPersisted() {

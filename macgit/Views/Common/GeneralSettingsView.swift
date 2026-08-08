@@ -25,6 +25,12 @@ struct GeneralSettingsView: View {
         Form {
             Section {
                 SettingsToggleRow(
+                    title: "Show Git Flow",
+                    detail: "Include Git Flow workflow actions as a dedicated repository sidebar section.",
+                    isOn: $appState.showGitFlow
+                )
+
+                SettingsToggleRow(
                     title: "Show submodules",
                     detail: "Include Git submodules as a dedicated section in the repository sidebar.",
                     isOn: $appState.showSubmodules
@@ -87,6 +93,7 @@ struct GeneralSettingsView: View {
     }
 
     private func restoreDefaults() {
+        appState.showGitFlow = true
         appState.showSubmodules = false
         appState.showSubtrees = false
         appState.historyIncludeRemotes = false

@@ -366,6 +366,9 @@ struct macgitApp: App {
                     Label("Show Button Text", systemImage: "character.textbox")
                 }
                 .keyboardShortcut("t", modifiers: [.command, .option])
+                Toggle(isOn: $appState.showGitFlow) {
+                    Label("Show Git Flow", systemImage: "point.3.connected.trianglepath.dotted")
+                }
                 Toggle(isOn: $appState.showSubmodules) {
                     Label("Show Submodules", systemImage: "folder.badge.gearshape")
                 }

@@ -29,6 +29,7 @@ final class AppState: ObservableObject {
     static let shared = AppState()
     private static let appearanceKey = "appearance"
     private static let showToolbarButtonTextKey = "showToolbarButtonText"
+    private static let showGitFlowKey = "showGitFlow"
     private static let showSubmodulesKey = "showSubmodules"
     private static let showSubtreesKey = "showSubtrees"
     private static let showHeaderBranchButtonKey = "showHeaderBranchButton"
@@ -67,6 +68,14 @@ final class AppState: ObservableObject {
     @Published var showToolbarButtonText: Bool {
         didSet {
             userDefaults.set(showToolbarButtonText, forKey: Self.showToolbarButtonTextKey)
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
+        }
+    }
+    @Published var showGitFlow: Bool {
+        didSet {
+            userDefaults.set(showGitFlow, forKey: Self.showGitFlowKey)
             if !isApplyingSnapshot {
                 currentSettingsSnapshot = snapshot
             }
@@ -210,6 +219,7 @@ final class AppState: ObservableObject {
         let appearance = userDefaults.string(forKey: Self.appearanceKey)
             .flatMap(AppAppearance.init(rawValue:)) ?? .system
         let showToolbarButtonText = userDefaults.object(forKey: Self.showToolbarButtonTextKey) as? Bool ?? true
+        let showGitFlow = userDefaults.object(forKey: Self.showGitFlowKey) as? Bool ?? true
         let showSubmodules = userDefaults.object(forKey: Self.showSubmodulesKey) as? Bool ?? false
         let showSubtrees = userDefaults.object(forKey: Self.showSubtreesKey) as? Bool ?? false
         let showHeaderBranchButton = userDefaults.object(forKey: Self.showHeaderBranchButtonKey) as? Bool ?? true
@@ -233,6 +243,7 @@ final class AppState: ObservableObject {
 
         self.appearance = appearance
         self.showToolbarButtonText = showToolbarButtonText
+        self.showGitFlow = showGitFlow
         self.showSubmodules = showSubmodules
         self.showSubtrees = showSubtrees
         self.showHeaderBranchButton = showHeaderBranchButton
@@ -252,6 +263,7 @@ final class AppState: ObservableObject {
         currentSettingsSnapshot = AppSettingsSnapshot(
             appearance: appearance,
             showToolbarButtonText: showToolbarButtonText,
+            showGitFlow: showGitFlow,
             showSubmodules: showSubmodules,
             showSubtrees: showSubtrees,
             showHeaderBranchButton: showHeaderBranchButton,
@@ -272,6 +284,7 @@ final class AppState: ObservableObject {
         AppSettingsSnapshot(
             appearance: appearance,
             showToolbarButtonText: showToolbarButtonText,
+            showGitFlow: showGitFlow,
             showSubmodules: showSubmodules,
             showSubtrees: showSubtrees,
             showHeaderBranchButton: showHeaderBranchButton,
@@ -293,6 +306,7 @@ final class AppState: ObservableObject {
         defer { isApplyingSnapshot = false }
         appearance = snapshot.appearance
         showToolbarButtonText = snapshot.showToolbarButtonText
+        showGitFlow = snapshot.showGitFlow
         showSubmodules = snapshot.showSubmodules
         showSubtrees = snapshot.showSubtrees
         showHeaderBranchButton = snapshot.showHeaderBranchButton

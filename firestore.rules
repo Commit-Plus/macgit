@@ -22,6 +22,7 @@ service cloud.firestore {
           'schemaVersion',
           'appearance',
           'showToolbarButtonText',
+          'showGitFlow',
           'showSubmodules',
           'showSubtrees',
           'showHeaderBranchButton',
@@ -49,6 +50,7 @@ service cloud.firestore {
         && (!('appearance' in request.resource.data)
           || request.resource.data.appearance in ['system', 'light', 'dark'])
         && request.resource.data.showToolbarButtonText is bool
+        && (!('showGitFlow' in request.resource.data) || request.resource.data.showGitFlow is bool)
         && request.resource.data.showSubmodules is bool
         && request.resource.data.showSubtrees is bool
         && (!('showHeaderBranchButton' in request.resource.data) || request.resource.data.showHeaderBranchButton is bool)

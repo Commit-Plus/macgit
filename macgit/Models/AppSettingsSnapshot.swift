@@ -22,6 +22,7 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
     let schemaVersion: Int
     var appearance: AppAppearance
     var showToolbarButtonText: Bool
+    var showGitFlow: Bool
     var showSubmodules: Bool
     var showSubtrees: Bool
     var showHeaderBranchButton: Bool
@@ -39,6 +40,7 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
     init(
         appearance: AppAppearance = .system,
         showToolbarButtonText: Bool,
+        showGitFlow: Bool = true,
         showSubmodules: Bool,
         showSubtrees: Bool,
         showHeaderBranchButton: Bool = true,
@@ -56,6 +58,7 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
         schemaVersion = 1
         self.appearance = appearance
         self.showToolbarButtonText = showToolbarButtonText
+        self.showGitFlow = showGitFlow
         self.showSubmodules = showSubmodules
         self.showSubtrees = showSubtrees
         self.showHeaderBranchButton = showHeaderBranchButton
@@ -69,5 +72,26 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
         self.historyIncludeRemotes = historyIncludeRemotes
         self.autoFetchEnabled = autoFetchEnabled
         self.refreshOnAppActive = refreshOnAppActive
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        appearance = try container.decode(AppAppearance.self, forKey: .appearance)
+        showToolbarButtonText = try container.decode(Bool.self, forKey: .showToolbarButtonText)
+        showGitFlow = try container.decodeIfPresent(Bool.self, forKey: .showGitFlow) ?? true
+        showSubmodules = try container.decode(Bool.self, forKey: .showSubmodules)
+        showSubtrees = try container.decode(Bool.self, forKey: .showSubtrees)
+        showHeaderBranchButton = try container.decode(Bool.self, forKey: .showHeaderBranchButton)
+        showHeaderMergeButton = try container.decode(Bool.self, forKey: .showHeaderMergeButton)
+        showHeaderStashButton = try container.decode(Bool.self, forKey: .showHeaderStashButton)
+        showHeaderRemoteButton = try container.decode(Bool.self, forKey: .showHeaderRemoteButton)
+        showHeaderFinderButton = try container.decode(Bool.self, forKey: .showHeaderFinderButton)
+        showHeaderEditorButton = try container.decode(Bool.self, forKey: .showHeaderEditorButton)
+        showHeaderTerminalButton = try container.decode(Bool.self, forKey: .showHeaderTerminalButton)
+        historyBranchFilter = try container.decode(HistoryBranchFilter.self, forKey: .historyBranchFilter)
+        historyIncludeRemotes = try container.decode(Bool.self, forKey: .historyIncludeRemotes)
+        autoFetchEnabled = try container.decode(Bool.self, forKey: .autoFetchEnabled)
+        refreshOnAppActive = try container.decode(Bool.self, forKey: .refreshOnAppActive)
     }
 }

@@ -24,6 +24,7 @@ final class CloudSettingsDocumentTests: XCTestCase {
     private let snapshot = AppSettingsSnapshot(
         appearance: .dark,
         showToolbarButtonText: false,
+        showGitFlow: false,
         showSubmodules: true,
         showSubtrees: false,
         showHeaderBranchButton: true,
@@ -50,6 +51,7 @@ final class CloudSettingsDocumentTests: XCTestCase {
                 "schemaVersion",
                 "appearance",
                 "showToolbarButtonText",
+                "showGitFlow",
                 "showSubmodules",
                 "showSubtrees",
                 "showHeaderBranchButton",
@@ -69,6 +71,7 @@ final class CloudSettingsDocumentTests: XCTestCase {
         XCTAssertEqual(document["schemaVersion"] as? Int, 1)
         XCTAssertEqual(document["appearance"] as? String, "dark")
         XCTAssertEqual(document["showToolbarButtonText"] as? Bool, false)
+        XCTAssertEqual(document["showGitFlow"] as? Bool, false)
         XCTAssertEqual(document["showSubmodules"] as? Bool, true)
         XCTAssertEqual(document["showSubtrees"] as? Bool, false)
         XCTAssertEqual(document["showHeaderBranchButton"] as? Bool, true)
@@ -96,6 +99,15 @@ final class CloudSettingsDocumentTests: XCTestCase {
         XCTAssertTrue(decoded.showHeaderBranchButton)
         XCTAssertTrue(decoded.showHeaderRemoteButton)
         XCTAssertTrue(decoded.showHeaderEditorButton)
+    }
+
+    func testDecodingDefaultsMissingGitFlowVisibilityToTrue() throws {
+        var document = validDocument()
+        document.removeValue(forKey: "showGitFlow")
+
+        let decoded = try CloudSettingsDocument.decode(document)
+
+        XCTAssertTrue(decoded.showGitFlow)
     }
 
     func testDecodingDefaultsMissingHistoryFilterSettings() throws {

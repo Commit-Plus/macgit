@@ -28,6 +28,7 @@ enum CloudSettingsDocument {
             "schemaVersion": snapshot.schemaVersion,
             "appearance": snapshot.appearance.rawValue,
             "showToolbarButtonText": snapshot.showToolbarButtonText,
+            "showGitFlow": snapshot.showGitFlow,
             "showSubmodules": snapshot.showSubmodules,
             "showSubtrees": snapshot.showSubtrees,
             "showHeaderBranchButton": snapshot.showHeaderBranchButton,
@@ -71,6 +72,7 @@ enum CloudSettingsDocument {
         return AppSettingsSnapshot(
             appearance: appearance,
             showToolbarButtonText: showToolbarButtonText,
+            showGitFlow: data["showGitFlow"] as? Bool ?? true,
             showSubmodules: showSubmodules,
             showSubtrees: showSubtrees,
             showHeaderBranchButton: data["showHeaderBranchButton"] as? Bool ?? true,
