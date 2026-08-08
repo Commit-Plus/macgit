@@ -89,6 +89,7 @@ struct MainWindowView: View {
     @EnvironmentObject var repositoryVisibilityController: RepositoryVisibilityController
     @Environment(\.openWindow) private var openWindow
     let repoSettingsStore = RepoSettingsStore.shared
+    let gitFlowConfigurationStore = GitFlowConfigurationStore()
     let providerAccountPreferenceStore = GitProviderAccountPreferenceStore.shared
     private let fileService = RepositorySettingsFileService()
     let undoExecutor = GitUndoExecutor()
@@ -139,8 +140,11 @@ struct MainWindowView: View {
     @State private var pullPreselectedBranch: String? = nil
     @State var showingSearchModal = false
     @State var showingRepositorySettings = false
+    @State var initiallySelectGitFlowSettings = false
     @State var pendingSearchFileOpenRequest: SearchFileOpenRequest?
     @State var repoSettings = RepoSettings.defaults(currentBranch: nil, remotes: [])
+    @State var gitFlowConfiguration = GitFlowConfiguration()
+    @State var pendingGitFlowTopicKind: GitFlowTopicKind?
     @State var pendingConfirmedUndo: (entry: GitUndoEntry, action: GitUndoMenuAction)?
     @State var pendingCommitDropConfirmation: PendingCommitDropConfirmation?
     @State var pendingBranchDropConfirmation: PendingBranchDropConfirmation?
@@ -264,7 +268,13 @@ struct MainWindowView: View {
             }
             .sheet(isPresented: $showingMergeSheet) { mergeSheet }
             .sheet(isPresented: $showingStashSheet) { stashSheet }
-            .sheet(isPresented: $showingRepositorySettings) { repositorySettingsSheet }
+            .sheet(
+                isPresented: $showingRepositorySettings,
+                onDismiss: { initiallySelectGitFlowSettings = false }
+            ) { repositorySettingsSheet }
+            .sheet(item: $pendingGitFlowTopicKind) { kind in
+                startGitFlowSheet(for: kind)
+            }
             .sheet(item: $pendingProviderAccountSelection) { selection in
                 GitProviderAccountSelectionSheet(
                     selection: selection,
@@ -1132,7 +1142,10 @@ struct MainWindowView: View {
                 label: "Settings",
                 showText: appState.showToolbarButtonText,
                 disabled: operationProgress.activeOperation != nil,
-                action: { showingRepositorySettings = true }
+                action: {
+                    initiallySelectGitFlowSettings = false
+                    showingRepositorySettings = true
+                }
             )
         }
     }
@@ -1140,7 +1153,14 @@ struct MainWindowView: View {
     private func performInitialLoad() async {
         async let loadedRemotes = GitStatusService.shared.remotes(in: repositoryURL)
         async let loadedCurrentBranch = GitStatusService.shared.currentBranch(in: repositoryURL)
-        let (remotes, currentBranch) = await (loadedRemotes, loadedCurrentBranch)
+        async let loadedLocalBranches = GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
+        async let loadedGitFlowConfiguration = gitFlowConfigurationStore.configuration(in: repositoryURL)
+        let (remotes, currentBranch, localBranches, savedGitFlowConfiguration) = await (
+            loadedRemotes,
+            loadedCurrentBranch,
+            loadedLocalBranches,
+            loadedGitFlowConfiguration
+        )
         let loadedSettings = repoSettingsStore.settings(
             for: repositoryURL.path,
             currentBranch: currentBranch,
@@ -1148,6 +1168,9 @@ struct MainWindowView: View {
         )
         await MainActor.run {
             repoSettings = loadedSettings
+            gitFlowConfiguration = savedGitFlowConfiguration ?? GitFlowConfiguration.detected(
+                branches: localBranches
+            )
         }
         await syncState.refresh(repositoryURL: repositoryURL)
         syncState.startBackgroundSync(
@@ -1178,6 +1201,7 @@ struct MainWindowView: View {
                 if appState.showHeaderBranchButton {
                     toolbarButton(icon: "arrow.triangle.branch", label: "Branch", showText: showText, disabled: operationInProgress, action: { presentBranchSheet(startPoint: nil) })
                 }
+                gitFlowMenu
                 if appState.showHeaderMergeButton {
                     toolbarButton(icon: "arrow.triangle.merge", label: "Merge", showText: showText, isLoading: syncState.isMerging, disabled: syncing || operationInProgress, action: { showingMergeSheet = true })
                 }
@@ -1227,6 +1251,7 @@ struct MainWindowView: View {
                         .disabled(syncing || operationInProgress || syncState.stashableCount == 0)
                 }
             }
+            gitFlowMoreMenu
         } label: {
             ToolbarButtonLabel(icon: "ellipsis", label: "More", showText: appState.showToolbarButtonText)
         }

@@ -317,6 +317,8 @@ extension MainWindowView {
         RepositorySettingsSheetView(
             repositoryURL: repositoryURL,
             initialSettings: repoSettings,
+            initialGitFlowConfiguration: gitFlowConfiguration,
+            initiallySelectGitFlow: initiallySelectGitFlowSettings,
             providerAccountResolver: providerAccountController.credentialResolver(
                 preferredAccountIDsByRemoteIdentity: providerAccountPreferenceStore.preferences
             ),
@@ -341,6 +343,18 @@ extension MainWindowView {
                     await refreshRemotePresentation(for: newSettings.defaultRemoteName)
                 }
             },
+            onSaveGitFlowConfiguration: { configuration in
+                gitFlowConfiguration = configuration
+                Task {
+                    do {
+                        try await gitFlowConfigurationStore.save(configuration, in: repositoryURL)
+                    } catch {
+                        await MainActor.run {
+                            syncState.showError(error.localizedDescription)
+                        }
+                    }
+                }
+            },
             onSaveProviderAccountPreferences: { preferences in
                 for (preferenceKey, accountID) in preferences {
                     providerAccountPreferenceStore.update(
@@ -354,6 +368,16 @@ extension MainWindowView {
             onOpenRemoteURL: { remote in
                 openRemoteURL(remote: remote)
             }
+        )
+    }
+
+    @ViewBuilder
+    func startGitFlowSheet(for kind: GitFlowTopicKind) -> some View {
+        StartGitFlowSheet(
+            kind: kind,
+            configuration: gitFlowConfiguration,
+            onRunRepositoryOperation: runRepositoryOperation,
+            onStart: startGitFlow
         )
     }
 
