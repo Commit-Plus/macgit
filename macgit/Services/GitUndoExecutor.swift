@@ -162,6 +162,25 @@ struct GitUndoExecutor {
             }
             let flag = force ? "-D" : "-d"
             _ = try await runner.runGit(arguments: ["branch", flag, name], in: repositoryURL)
+        case .createTag(let name, let commit, let annotated, let message):
+            var arguments = ["tag"]
+            if annotated {
+                arguments.append("-a")
+            }
+            arguments.append(name)
+            if annotated, let message, !message.isEmpty {
+                arguments.append(contentsOf: ["-m", message])
+            }
+            arguments.append(commit)
+            _ = try await runner.runGit(arguments: arguments, in: repositoryURL)
+        case .deleteTag(let name, let expectedTarget):
+            if let expectedTarget {
+                let actualTarget = try await branchSupport.tip(of: name, in: repositoryURL)
+                guard actualTarget == expectedTarget else {
+                    throw GitError.commandFailed("Cannot delete tag '\(name)' because it moved.")
+                }
+            }
+            _ = try await runner.runGit(arguments: ["tag", "-d", name], in: repositoryURL)
         case .renameLocalBranch(let from, let to):
             _ = try await runner.runGit(arguments: ["branch", "-m", from, to], in: repositoryURL)
         case .deleteRemoteBranch(let remote, let branch, let expectedHash):

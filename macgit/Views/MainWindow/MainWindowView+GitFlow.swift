@@ -26,7 +26,8 @@ extension MainWindowView {
                 for: gitFlowCurrentBranch,
                 configuration: gitFlowConfiguration
             ),
-            operationInProgress: operationProgress.activeOperation != nil
+            operationInProgress: operationProgress.activeOperation != nil,
+            hasPendingFinish: gitFlowFinishCheckpoint != nil
         )
     }
 
@@ -41,6 +42,10 @@ extension MainWindowView {
             }
         case .finish(let kind):
             requestFinishGitFlow(kind)
+        case .resumeFinish:
+            resumeGitFlowFinish()
+        case .abortFinish:
+            abortGitFlowFinish()
         case .configure:
             presentGitFlowSettings()
         case .disable:
@@ -95,7 +100,8 @@ extension MainWindowView {
     }
 
     func canFinishGitFlow(_ kind: GitFlowTopicKind) -> Bool {
-        kind.supportsPhaseTwoFinish
+        kind.supportsFinish
+            && gitFlowFinishCheckpoint == nil
             && GitFlowPlanner().topicKind(
                 for: gitFlowCurrentBranch,
                 configuration: gitFlowConfiguration
@@ -124,67 +130,14 @@ extension MainWindowView {
     func finishGitFlow(_ plan: GitFlowFinishPlan) async -> Bool {
         do {
             let result = try await GitFlowService().finish(plan, in: repositoryURL)
-            let mergeMessage = "Finish \(plan.kind.displayName.lowercased()) '\(plan.sourceBranch)'"
-            var undoOperations: [GitUndoOperation] = [
-                .requireCleanWorkingTree
-            ]
-            if result.didDeleteSourceBranch {
-                undoOperations.append(.requireLocalBranchAbsent(plan.sourceBranch))
-            } else {
-                undoOperations.append(
-                    .requireLocalBranchTip(name: plan.sourceBranch, expectedTip: result.sourceTip)
-                )
-            }
-            undoOperations.append(contentsOf: [
-                .checkoutRef(ref: plan.targetBranch),
-                .resetHead(
-                    target: result.targetTipBeforeMerge,
-                    mode: .hard,
-                    expectedHead: result.targetTipAfterMerge
-                )
-            ])
-            if result.didDeleteSourceBranch {
-                undoOperations.append(
-                    .createLocalBranch(name: plan.sourceBranch, startPoint: result.sourceTip, checkout: true)
-                )
-            } else {
-                undoOperations.append(.checkoutRef(ref: plan.sourceBranch))
-            }
-
-            var redoOperations: [GitUndoOperation] = [
-                .requireCleanWorkingTree,
-                .requireLocalBranchTip(name: plan.sourceBranch, expectedTip: result.sourceTip),
-                .checkoutRef(ref: plan.targetBranch),
-                .requireHead(result.targetTipBeforeMerge),
-                .mergeNoFastForward(branch: plan.sourceBranch, message: mergeMessage)
-            ]
-            if result.didDeleteSourceBranch {
-                redoOperations.append(
-                    .deleteLocalBranch(name: plan.sourceBranch, force: false, expectedTip: result.sourceTip)
-                )
-            }
-
-            await MainActor.run {
-                undoManager.register(
-                    GitUndoEntry(
-                        repositoryURL: repositoryURL,
-                        label: "Finish \(plan.kind.displayName) \(plan.sourceBranch)",
-                        undoOperation: .sequence(undoOperations),
-                        redoOperation: .sequence(redoOperations),
-                        confirmationMessage: "Undo will move '\(plan.targetBranch)' back to its previous commit. Continue?"
-                    )
-                )
-                gitFlowCurrentBranch = plan.targetBranch
-                selectedItem = .branch(plan.targetBranch)
-                if let warning = result.deletionWarning {
-                    syncState.showError(warning)
-                }
-            }
+            await registerCompletedGitFlowFinish(result)
             await refreshAfterGitFlowMutation()
             return true
         } catch {
             let mergeInProgress = await GitStatusService.shared.isMergeInProgress(in: repositoryURL)
+            let checkpoint = await GitFlowRecoveryStore().checkpoint(in: repositoryURL)
             await MainActor.run {
+                gitFlowFinishCheckpoint = checkpoint
                 if mergeInProgress {
                     selectedItem = .item(.fileStatus)
                     gitFlowCurrentBranch = plan.targetBranch
@@ -196,9 +149,120 @@ extension MainWindowView {
         }
     }
 
+    func resumeGitFlowFinish() {
+        runRepositoryOperation("Resuming Git Flow finish…") {
+            do {
+                let result = try await GitFlowService().resumeFinish(in: repositoryURL)
+                await registerCompletedGitFlowFinish(result)
+                await refreshAfterGitFlowMutation()
+            } catch {
+                let checkpoint = await GitFlowRecoveryStore().checkpoint(in: repositoryURL)
+                await MainActor.run {
+                    gitFlowFinishCheckpoint = checkpoint
+                    selectedItem = .item(.fileStatus)
+                    syncState.showError(error.localizedDescription)
+                }
+                await refreshAfterGitFlowMutation()
+            }
+        }
+    }
+
+    func abortGitFlowFinish() {
+        runRepositoryOperation("Aborting Git Flow finish…") {
+            do {
+                try await GitFlowService().abortFinish(in: repositoryURL)
+                await MainActor.run {
+                    gitFlowFinishCheckpoint = nil
+                    syncState.showInfo("Git Flow finish aborted.")
+                }
+                await refreshAfterGitFlowMutation()
+            } catch {
+                await MainActor.run {
+                    syncState.showError(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func registerCompletedGitFlowFinish(_ result: GitFlowFinishResult) async {
+        let plan = result.plan
+        let mergeMessage = "Finish \(plan.kind.displayName.lowercased()) '\(plan.sourceBranch)'"
+        var undoOperations: [GitUndoOperation] = [.requireCleanWorkingTree]
+        if result.didDeleteSourceBranch {
+            undoOperations.append(.requireLocalBranchAbsent(plan.sourceBranch))
+        } else {
+            undoOperations.append(.requireLocalBranchTip(name: plan.sourceBranch, expectedTip: result.sourceTip))
+        }
+        if let tagName = result.createdTagName, let target = result.targetResults.first {
+            undoOperations.append(.deleteTag(name: tagName, expectedTarget: target.tipAfterMerge))
+        }
+        for target in result.targetResults.reversed() {
+            undoOperations.append(.checkoutRef(ref: target.branch))
+            undoOperations.append(
+                .resetHead(
+                    target: target.tipBeforeMerge,
+                    mode: .hard,
+                    expectedHead: target.tipAfterMerge
+                )
+            )
+        }
+        if result.didDeleteSourceBranch {
+            undoOperations.append(.createLocalBranch(name: plan.sourceBranch, startPoint: result.sourceTip, checkout: true))
+        } else {
+            undoOperations.append(.checkoutRef(ref: plan.sourceBranch))
+        }
+
+        var redoOperations: [GitUndoOperation] = [
+            .requireCleanWorkingTree,
+            .requireLocalBranchTip(name: plan.sourceBranch, expectedTip: result.sourceTip)
+        ]
+        for target in result.targetResults {
+            redoOperations.append(.checkoutRef(ref: target.branch))
+            redoOperations.append(.requireHead(target.tipBeforeMerge))
+            redoOperations.append(.mergeNoFastForward(branch: plan.sourceBranch, message: mergeMessage))
+            if target.branch == plan.primaryTargetBranch,
+               let tagName = result.createdTagName {
+                redoOperations.append(
+                    .createTag(
+                        name: tagName,
+                        commit: target.tipAfterMerge,
+                        annotated: true,
+                        message: "Release \(tagName)"
+                    )
+                )
+            }
+        }
+        if result.didDeleteSourceBranch {
+            redoOperations.append(.deleteLocalBranch(name: plan.sourceBranch, force: false, expectedTip: result.sourceTip))
+        }
+
+        await MainActor.run {
+            undoManager.register(
+                GitUndoEntry(
+                    repositoryURL: repositoryURL,
+                    label: "Finish \(plan.kind.displayName) \(plan.sourceBranch)",
+                    undoOperation: .sequence(undoOperations),
+                    redoOperation: .sequence(redoOperations),
+                    confirmationMessage: "Undo will move Git Flow target branches back to their previous commits. Continue?"
+                )
+            )
+            gitFlowFinishCheckpoint = nil
+            let selectedBranch = result.targetResults.last?.branch ?? plan.targetBranch
+            gitFlowCurrentBranch = selectedBranch
+            selectedItem = .branch(selectedBranch)
+            if let warning = result.deletionWarning {
+                syncState.showError(warning)
+            }
+        }
+    }
+
     private func refreshAfterGitFlowMutation() async {
+        let checkpoint = await GitFlowRecoveryStore().checkpoint(in: repositoryURL)
         await GitStatusService.shared.invalidateBranchListCache(in: repositoryURL)
         await syncState.refresh(repositoryURL: repositoryURL)
+        await MainActor.run {
+            gitFlowFinishCheckpoint = checkpoint
+        }
         NotificationCenter.default.post(
             name: .repositoryDidChange,
             object: nil,

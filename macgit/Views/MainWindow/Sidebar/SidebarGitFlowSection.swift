@@ -21,6 +21,7 @@ import SwiftUI
 struct SidebarGitFlowSection: View {
     let configuration: GitFlowConfiguration
     let currentBranch: String
+    let hasPendingFinish: Bool
     let isExpanded: Bool
     let isOperationDisabled: Bool
     let actions: SidebarGitFlowActions
@@ -58,7 +59,7 @@ struct SidebarGitFlowSection: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .buttonStyle(.plain)
-                        .disabled(isOperationDisabled)
+                        .disabled(isOperationDisabled || hasPendingFinish)
                         .padding(.leading, 6)
                     }
                 } else {
@@ -73,6 +74,14 @@ struct SidebarGitFlowSection: View {
 
     @ViewBuilder
     private var actionMenu: some View {
+        if hasPendingFinish {
+            Button("Resume Finish", action: actions.resumeFinish)
+                .disabled(isOperationDisabled)
+            Button("Abort Finish", role: .destructive, action: actions.abortFinish)
+                .disabled(isOperationDisabled)
+            Divider()
+        }
+
         flowMenuPair(.bugfix)
         Divider()
         flowMenuPair(.feature)
@@ -88,7 +97,7 @@ struct SidebarGitFlowSection: View {
     @ViewBuilder
     private func flowMenuPair(_ kind: GitFlowTopicKind) -> some View {
         Button("Start \(kind.displayName)…") { actions.start(kind) }
-            .disabled(isOperationDisabled)
+            .disabled(isOperationDisabled || hasPendingFinish)
         Button("Finish \(kind.displayName)…") { actions.finish(kind) }
             .disabled(!canFinish(kind))
     }
@@ -96,7 +105,8 @@ struct SidebarGitFlowSection: View {
     private func canFinish(_ kind: GitFlowTopicKind) -> Bool {
         configuration.isEnabled
             && !isOperationDisabled
-            && kind.supportsPhaseTwoFinish
+            && !hasPendingFinish
+            && kind.supportsFinish
             && currentKind == kind
     }
 }

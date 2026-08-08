@@ -21,6 +21,8 @@ import SwiftUI
 enum GitFlowMenuAction: Hashable {
     case start(GitFlowTopicKind)
     case finish(GitFlowTopicKind)
+    case resumeFinish
+    case abortFinish
     case configure
     case disable
 }
@@ -29,16 +31,22 @@ struct GitFlowCommandState: Equatable {
     let isEnabled: Bool
     let currentKind: GitFlowTopicKind?
     let operationInProgress: Bool
+    let hasPendingFinish: Bool
 
     func canStart(_ kind: GitFlowTopicKind) -> Bool {
-        isEnabled && !operationInProgress
+        isEnabled && !operationInProgress && !hasPendingFinish
     }
 
     func canFinish(_ kind: GitFlowTopicKind) -> Bool {
         isEnabled
             && !operationInProgress
-            && kind.supportsPhaseTwoFinish
+            && !hasPendingFinish
+            && kind.supportsFinish
             && currentKind == kind
+    }
+
+    var canResumeOrAbortFinish: Bool {
+        isEnabled && !operationInProgress && hasPendingFinish
     }
 }
 

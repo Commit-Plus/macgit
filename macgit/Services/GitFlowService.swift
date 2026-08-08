@@ -47,6 +47,8 @@ enum GitFlowFinishError: LocalizedError, Equatable {
     case currentBranchChanged(expected: String)
     case missingTargetBranch(String)
     case targetCheckedOutInWorktree(String)
+    case tagAlreadyExists(String)
+    case missingCheckpoint
 
     var errorDescription: String? {
         switch self {
@@ -60,6 +62,10 @@ enum GitFlowFinishError: LocalizedError, Equatable {
             return "The target branch '\(branch)' does not exist."
         case .targetCheckedOutInWorktree(let branch):
             return "The target branch '\(branch)' is checked out in another worktree."
+        case .tagAlreadyExists(let tag):
+            return "The tag '\(tag)' already exists."
+        case .missingCheckpoint:
+            return "There is no Git Flow finish operation to resume."
         }
     }
 }
@@ -85,6 +91,8 @@ enum GitFlowDevelopBranchCreationError: LocalizedError, Equatable {
 }
 
 struct GitFlowService {
+    private let recoveryStore = GitFlowRecoveryStore()
+
     func createDevelopBranch(
         name: String,
         startingPoint: String,
@@ -163,23 +171,29 @@ struct GitFlowService {
         guard await git.currentBranch(in: repositoryURL) == plan.sourceBranch else {
             throw GitFlowFinishError.currentBranchChanged(expected: plan.sourceBranch)
         }
-        let branches = await git.localBranches(in: repositoryURL)
-        guard branches.contains(plan.targetBranch) else {
-            throw GitFlowFinishError.missingTargetBranch(plan.targetBranch)
-        }
-        if try await git.worktreePath(for: plan.targetBranch, in: repositoryURL) != nil {
-            throw GitFlowFinishError.targetCheckedOutInWorktree(plan.targetBranch)
+        try await validateTargets(for: plan, in: repositoryURL)
+        if plan.createTag, let tagName = plan.tagName, try await tagExists(tagName, in: repositoryURL) {
+            throw GitFlowFinishError.tagAlreadyExists(tagName)
         }
 
         let support = GitBranchUndoSupport()
         let sourceTip = try await support.tip(of: plan.sourceBranch, in: repositoryURL)
-        let oldTargetTip = try await support.tip(of: plan.targetBranch, in: repositoryURL)
-        _ = try await git.runGit(arguments: ["checkout", plan.targetBranch], in: repositoryURL)
-        _ = try await git.runGit(
-            arguments: ["merge", "--no-ff", plan.sourceBranch, "-m", mergeMessage(for: plan)],
-            in: repositoryURL
+        var checkpoint = GitFlowFinishCheckpoint(
+            plan: plan,
+            sourceTip: sourceTip,
+            targetResults: [],
+            createdTagName: nil,
+            phase: .primaryMerge
         )
-        let newTargetTip = try await support.tip(of: plan.targetBranch, in: repositoryURL)
+        try await recoveryStore.save(checkpoint, in: repositoryURL)
+
+        checkpoint = try await mergeTarget(at: 0, checkpoint: checkpoint, in: repositoryURL)
+        checkpoint = try await createTagIfNeeded(checkpoint, in: repositoryURL)
+        if plan.secondaryTargetBranch != nil {
+            checkpoint.phase = .secondaryMerge
+            try await recoveryStore.save(checkpoint, in: repositoryURL)
+            checkpoint = try await mergeTarget(at: 1, checkpoint: checkpoint, in: repositoryURL)
+        }
 
         var didDelete = false
         var deletionWarning: String?
@@ -191,18 +205,178 @@ struct GitFlowService {
                 deletionWarning = "The merge completed, but Commit+ could not delete '\(plan.sourceBranch)': \(error.localizedDescription)"
             }
         }
+        try await recoveryStore.clear(in: repositoryURL)
 
         return GitFlowFinishResult(
             plan: plan,
             sourceTip: sourceTip,
-            targetTipBeforeMerge: oldTargetTip,
-            targetTipAfterMerge: newTargetTip,
+            targetResults: checkpoint.targetResults,
+            createdTagName: checkpoint.createdTagName,
             didDeleteSourceBranch: didDelete,
             deletionWarning: deletionWarning
         )
     }
 
+    func resumeFinish(in repositoryURL: URL) async throws -> GitFlowFinishResult {
+        guard var checkpoint = await recoveryStore.checkpoint(in: repositoryURL) else {
+            throw GitFlowFinishError.missingCheckpoint
+        }
+        let git = GitStatusService.shared
+        if await git.isMergeInProgress(in: repositoryURL) {
+            _ = try await git.runGit(arguments: ["merge", "--continue"], in: repositoryURL)
+        } else if await git.dirtyCount(in: repositoryURL) != 0 {
+            throw GitFlowFinishError.dirtyWorkingTree
+        }
+
+        switch checkpoint.phase {
+        case .primaryMerge:
+            checkpoint = try await recordCurrentMergeIfNeeded(at: 0, checkpoint: checkpoint, in: repositoryURL)
+            checkpoint = try await createTagIfNeeded(checkpoint, in: repositoryURL)
+            if checkpoint.plan.secondaryTargetBranch != nil {
+                checkpoint.phase = .secondaryMerge
+                try await recoveryStore.save(checkpoint, in: repositoryURL)
+                checkpoint = try await mergeTarget(at: 1, checkpoint: checkpoint, in: repositoryURL)
+            }
+        case .secondaryMerge:
+            checkpoint = try await recordCurrentMergeIfNeeded(at: 1, checkpoint: checkpoint, in: repositoryURL)
+        }
+
+        var didDelete = false
+        var deletionWarning: String?
+        if checkpoint.plan.deleteSourceBranch {
+            do {
+                _ = try await git.deleteBranch(name: checkpoint.plan.sourceBranch, force: false, in: repositoryURL)
+                didDelete = true
+            } catch {
+                deletionWarning = "The merge completed, but Commit+ could not delete '\(checkpoint.plan.sourceBranch)': \(error.localizedDescription)"
+            }
+        }
+        try await recoveryStore.clear(in: repositoryURL)
+
+        return GitFlowFinishResult(
+            plan: checkpoint.plan,
+            sourceTip: checkpoint.sourceTip,
+            targetResults: checkpoint.targetResults,
+            createdTagName: checkpoint.createdTagName,
+            didDeleteSourceBranch: didDelete,
+            deletionWarning: deletionWarning
+        )
+    }
+
+    func abortFinish(in repositoryURL: URL) async throws {
+        guard let checkpoint = await recoveryStore.checkpoint(in: repositoryURL) else {
+            throw GitFlowFinishError.missingCheckpoint
+        }
+        let git = GitStatusService.shared
+        if await git.isMergeInProgress(in: repositoryURL) {
+            try await git.abortMerge(in: repositoryURL)
+        }
+        if let tagName = checkpoint.createdTagName {
+            try? await git.deleteTag(name: tagName, in: repositoryURL)
+        }
+        for target in checkpoint.targetResults.reversed() {
+            _ = try await git.runGit(arguments: ["checkout", target.branch], in: repositoryURL)
+            _ = try await git.runGit(arguments: ["reset", "--hard", target.tipBeforeMerge], in: repositoryURL)
+        }
+        _ = try await git.runGit(arguments: ["checkout", checkpoint.plan.sourceBranch], in: repositoryURL)
+        try await recoveryStore.clear(in: repositoryURL)
+    }
+
     private func mergeMessage(for plan: GitFlowFinishPlan) -> String {
         "Finish \(plan.kind.displayName.lowercased()) '\(plan.sourceBranch)'"
+    }
+
+    private func validateTargets(for plan: GitFlowFinishPlan, in repositoryURL: URL) async throws {
+        let git = GitStatusService.shared
+        let branches = await git.localBranches(in: repositoryURL)
+        for branch in plan.targetBranches {
+            guard branches.contains(branch) else {
+                throw GitFlowFinishError.missingTargetBranch(branch)
+            }
+            if try await git.worktreePath(for: branch, in: repositoryURL) != nil {
+                throw GitFlowFinishError.targetCheckedOutInWorktree(branch)
+            }
+        }
+    }
+
+    private func mergeTarget(
+        at index: Int,
+        checkpoint: GitFlowFinishCheckpoint,
+        in repositoryURL: URL
+    ) async throws -> GitFlowFinishCheckpoint {
+        var checkpoint = checkpoint
+        let plan = checkpoint.plan
+        let branch = plan.targetBranches[index]
+        let support = GitBranchUndoSupport()
+        let oldTip = try await support.tip(of: branch, in: repositoryURL)
+        _ = try await GitStatusService.shared.runGit(arguments: ["checkout", branch], in: repositoryURL)
+        checkpoint.phase = index == 0 ? .primaryMerge : .secondaryMerge
+        try await recoveryStore.save(checkpoint, in: repositoryURL)
+        _ = try await GitStatusService.shared.runGit(
+            arguments: ["merge", "--no-ff", plan.sourceBranch, "-m", mergeMessage(for: plan)],
+            in: repositoryURL
+        )
+        let newTip = try await support.tip(of: branch, in: repositoryURL)
+        checkpoint.targetResults.append(
+            GitFlowFinishTargetResult(branch: branch, tipBeforeMerge: oldTip, tipAfterMerge: newTip)
+        )
+        try await recoveryStore.save(checkpoint, in: repositoryURL)
+        return checkpoint
+    }
+
+    private func recordCurrentMergeIfNeeded(
+        at index: Int,
+        checkpoint: GitFlowFinishCheckpoint,
+        in repositoryURL: URL
+    ) async throws -> GitFlowFinishCheckpoint {
+        var checkpoint = checkpoint
+        guard checkpoint.targetResults.count == index else { return checkpoint }
+        let branch = checkpoint.plan.targetBranches[index]
+        let support = GitBranchUndoSupport()
+        let newTip = try await support.tip(of: branch, in: repositoryURL)
+        let beforeTip = try await support.tip(of: "HEAD^1", in: repositoryURL)
+        checkpoint.targetResults.append(
+            GitFlowFinishTargetResult(branch: branch, tipBeforeMerge: beforeTip, tipAfterMerge: newTip)
+        )
+        try await recoveryStore.save(checkpoint, in: repositoryURL)
+        return checkpoint
+    }
+
+    private func createTagIfNeeded(
+        _ checkpoint: GitFlowFinishCheckpoint,
+        in repositoryURL: URL
+    ) async throws -> GitFlowFinishCheckpoint {
+        var checkpoint = checkpoint
+        guard checkpoint.createdTagName == nil,
+              checkpoint.plan.createTag,
+              let tagName = checkpoint.plan.tagName,
+              let target = checkpoint.targetResults.first else {
+            return checkpoint
+        }
+        if try await tagExists(tagName, in: repositoryURL) {
+            throw GitFlowFinishError.tagAlreadyExists(tagName)
+        }
+        try await GitStatusService.shared.createTag(
+            name: tagName,
+            commit: target.tipAfterMerge,
+            annotated: true,
+            message: "Release \(tagName)",
+            in: repositoryURL
+        )
+        checkpoint.createdTagName = tagName
+        try await recoveryStore.save(checkpoint, in: repositoryURL)
+        return checkpoint
+    }
+
+    private func tagExists(_ tag: String, in repositoryURL: URL) async throws -> Bool {
+        do {
+            _ = try await GitStatusService.shared.runGit(
+                arguments: ["show-ref", "--verify", "--quiet", "refs/tags/\(tag)"],
+                in: repositoryURL
+            )
+            return true
+        } catch {
+            return false
+        }
     }
 }

@@ -144,6 +144,7 @@ struct MainWindowView: View {
     @State var pendingSearchFileOpenRequest: SearchFileOpenRequest?
     @State var repoSettings = RepoSettings.defaults(currentBranch: nil, remotes: [])
     @State var gitFlowConfiguration = GitFlowConfiguration()
+    @State var gitFlowFinishCheckpoint: GitFlowFinishCheckpoint?
     @State var pendingGitFlowTopicKind: GitFlowTopicKind?
     @State var pendingGitFlowFinishPlan: GitFlowFinishPlan?
     @State var gitFlowCurrentBranch = ""
@@ -587,6 +588,7 @@ struct MainWindowView: View {
             currentBranchFallbackSyncStatus: currentBranchFallbackSyncStatus,
             isAccountMenuDisabled: operationProgress.activeOperation != nil,
             gitFlowConfiguration: gitFlowConfiguration,
+            gitFlowFinishCheckpoint: gitFlowFinishCheckpoint,
             isGitFlowOperationDisabled: operationProgress.activeOperation != nil,
             isBranchSyncing: { branch in
                 BranchSyncBadgePolicy.shouldShowLoading(
@@ -857,6 +859,12 @@ struct MainWindowView: View {
             },
             onRequestFinishGitFlow: { kind in
                 requestFinishGitFlow(kind)
+            },
+            onRequestResumeGitFlowFinish: {
+                resumeGitFlowFinish()
+            },
+            onRequestAbortGitFlowFinish: {
+                abortGitFlowFinish()
             },
             onRequestEditGitFlow: {
                 initiallySelectGitFlowSettings = true
@@ -1186,11 +1194,13 @@ struct MainWindowView: View {
         async let loadedCurrentBranch = GitStatusService.shared.currentBranch(in: repositoryURL)
         async let loadedLocalBranches = GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
         async let loadedGitFlowConfiguration = gitFlowConfigurationStore.configuration(in: repositoryURL)
-        let (remotes, currentBranch, localBranches, savedGitFlowConfiguration) = await (
+        async let loadedGitFlowCheckpoint = GitFlowRecoveryStore().checkpoint(in: repositoryURL)
+        let (remotes, currentBranch, localBranches, savedGitFlowConfiguration, savedGitFlowCheckpoint) = await (
             loadedRemotes,
             loadedCurrentBranch,
             loadedLocalBranches,
-            loadedGitFlowConfiguration
+            loadedGitFlowConfiguration,
+            loadedGitFlowCheckpoint
         )
         let loadedSettings = repoSettingsStore.settings(
             for: repositoryURL.path,
@@ -1203,6 +1213,7 @@ struct MainWindowView: View {
             gitFlowConfiguration = savedGitFlowConfiguration ?? GitFlowConfiguration.detected(
                 branches: localBranches
             )
+            gitFlowFinishCheckpoint = savedGitFlowCheckpoint
         }
         await syncState.refresh(repositoryURL: repositoryURL)
         syncState.startBackgroundSync(

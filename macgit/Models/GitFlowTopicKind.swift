@@ -33,4 +33,12 @@ enum GitFlowTopicKind: String, Codable, CaseIterable, Hashable, Identifiable {
     var supportsPhaseTwoFinish: Bool {
         self == .feature || self == .bugfix
     }
+
+    var supportsFinish: Bool {
+        true
+    }
+
+    var requiresReleaseTag: Bool {
+        self == .release || self == .hotfix
+    }
 }

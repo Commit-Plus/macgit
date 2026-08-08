@@ -36,11 +36,20 @@ final class GitFlowLitePhase2Tests: XCTestCase {
                 deleteSourceBranch: true
             )
         )
-        XCTAssertThrowsError(
+        XCTAssertEqual(
             try GitFlowPlanner().finishPlan(
                 kind: .release,
                 currentBranch: "release/2.0",
                 configuration: configuration
+            ),
+            GitFlowFinishPlan(
+                kind: .release,
+                sourceBranch: "release/2.0",
+                targetBranch: "main",
+                secondaryTargetBranch: "develop",
+                tagName: "2.0",
+                createTag: true,
+                deleteSourceBranch: true
             )
         )
     }
