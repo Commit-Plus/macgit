@@ -19,55 +19,38 @@
 import SwiftUI
 
 extension MainWindowView {
-    var gitFlowMenu: some View {
-        Menu {
-            gitFlowMenuItems
-        } label: {
-            ToolbarButtonLabel(
-                icon: "point.3.connected.trianglepath.dotted",
-                label: "Git Flow",
-                showText: appState.showToolbarButtonText
-            )
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .disabled(operationProgress.activeOperation != nil)
-        .help("Git Flow")
+    var gitFlowCommandState: GitFlowCommandState {
+        GitFlowCommandState(
+            isEnabled: gitFlowConfiguration.isEnabled,
+            currentKind: GitFlowPlanner().topicKind(
+                for: gitFlowCurrentBranch,
+                configuration: gitFlowConfiguration
+            ),
+            operationInProgress: operationProgress.activeOperation != nil
+        )
     }
 
-    var gitFlowMoreMenu: some View {
-        Menu("Git Flow") {
-            gitFlowMenuItems
+    func handleGitFlowMenuAction(_ action: GitFlowMenuAction) {
+        guard operationProgress.activeOperation == nil else { return }
+        switch action {
+        case .start(let kind):
+            if gitFlowConfiguration.isEnabled {
+                pendingGitFlowTopicKind = kind
+            } else {
+                presentGitFlowSettings()
+            }
+        case .finish(let kind):
+            requestFinishGitFlow(kind)
+        case .configure:
+            presentGitFlowSettings()
+        case .disable:
+            disableGitFlow()
         }
     }
 
-    @ViewBuilder
-    var gitFlowMenuItems: some View {
-        if gitFlowConfiguration.isEnabled {
-            ForEach(GitFlowTopicKind.allCases) { kind in
-                Button("Start \(kind.displayName)...") { pendingGitFlowTopicKind = kind }
-                Button("Finish \(kind.displayName)...") { requestFinishGitFlow(kind) }
-                    .disabled(!canFinishGitFlow(kind))
-                if kind != GitFlowTopicKind.allCases.last {
-                    Divider()
-                }
-            }
-
-            Divider()
-
-            Button("Configure Git Flow...") {
-                initiallySelectGitFlowSettings = true
-                showingRepositorySettings = true
-            }
-            Button("Disable Git Flow") {
-                disableGitFlow()
-            }
-        } else {
-            Button("Set Up Git Flow...") {
-                initiallySelectGitFlowSettings = true
-                showingRepositorySettings = true
-            }
-        }
+    private func presentGitFlowSettings() {
+        initiallySelectGitFlowSettings = true
+        showingRepositorySettings = true
     }
 
     func startGitFlow(_ plan: GitFlowStartPlan) async -> Bool {

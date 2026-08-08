@@ -486,6 +486,7 @@ struct MainWindowView: View {
             stagedCount: syncState.stagedBadgeCount,
             stashableCount: syncState.stashableCount
         ))
+        .focusedSceneValue(\.gitFlowCommandState, gitFlowCommandState)
         .frame(minWidth: 900, minHeight: 600)
             .task { await performInitialLoad() }
             .task(id: pullRequestAccessTaskID) {
@@ -524,6 +525,10 @@ struct MainWindowView: View {
                 let branch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
                 await MainActor.run { gitFlowCurrentBranch = branch }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .gitFlowMenuAction)) { notification in
+            guard let action = notification.userInfo?["action"] as? GitFlowMenuAction else { return }
+            handleGitFlowMenuAction(action)
         }
         .onDisappear {
             syncState.stopBackgroundSync()
@@ -1228,7 +1233,6 @@ struct MainWindowView: View {
                 if appState.showHeaderBranchButton {
                     toolbarButton(icon: "arrow.triangle.branch", label: "Branch", showText: showText, disabled: operationInProgress, action: { presentBranchSheet(startPoint: nil) })
                 }
-                gitFlowMenu
                 if appState.showHeaderMergeButton {
                     toolbarButton(icon: "arrow.triangle.merge", label: "Merge", showText: showText, isLoading: syncState.isMerging, disabled: syncing || operationInProgress, action: { showingMergeSheet = true })
                 }
@@ -1278,7 +1282,6 @@ struct MainWindowView: View {
                         .disabled(syncing || operationInProgress || syncState.stashableCount == 0)
                 }
             }
-            gitFlowMoreMenu
         } label: {
             ToolbarButtonLabel(icon: "ellipsis", label: "More", showText: appState.showToolbarButtonText)
         }

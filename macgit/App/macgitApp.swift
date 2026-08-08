@@ -30,6 +30,7 @@ struct macgitApp: App {
     @StateObject private var repositoryVisibilityController: RepositoryVisibilityController
     @StateObject private var repositoryBookmarkController: RepositoryBookmarkController
     @State private var showingAppSettings = false
+    @FocusedValue(\.gitFlowCommandState) private var gitFlowCommandState
 
     init() {
         let firebaseStatus = FirebaseBootstrap.configure()
@@ -336,6 +337,14 @@ struct macgitApp: App {
                 .keyboardShortcut("f", modifiers: [.command, .shift])
             }
 
+            CommandMenu("Git Flow") {
+                GitFlowCommandMenuContent(
+                    state: gitFlowCommandState,
+                    hasOpenRepository: appState.hasOpenRepository,
+                    perform: performGitFlowMenuAction
+                )
+            }
+
             CommandMenu("Accounts") {
                 AccountMenuContent(controller: accountController)
             }
@@ -365,5 +374,13 @@ struct macgitApp: App {
                 }
             }
         }
+    }
+
+    private func performGitFlowMenuAction(_ action: GitFlowMenuAction) {
+        NotificationCenter.default.post(
+            name: .gitFlowMenuAction,
+            object: nil,
+            userInfo: ["action": action]
+        )
     }
 }
