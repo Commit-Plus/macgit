@@ -145,6 +145,8 @@ struct MainWindowView: View {
     @State var repoSettings = RepoSettings.defaults(currentBranch: nil, remotes: [])
     @State var gitFlowConfiguration = GitFlowConfiguration()
     @State var pendingGitFlowTopicKind: GitFlowTopicKind?
+    @State var pendingGitFlowFinishPlan: GitFlowFinishPlan?
+    @State var gitFlowCurrentBranch = ""
     @State var pendingConfirmedUndo: (entry: GitUndoEntry, action: GitUndoMenuAction)?
     @State var pendingCommitDropConfirmation: PendingCommitDropConfirmation?
     @State var pendingBranchDropConfirmation: PendingBranchDropConfirmation?
@@ -274,6 +276,9 @@ struct MainWindowView: View {
             ) { repositorySettingsSheet }
             .sheet(item: $pendingGitFlowTopicKind) { kind in
                 startGitFlowSheet(for: kind)
+            }
+            .sheet(item: $pendingGitFlowFinishPlan) { plan in
+                finishGitFlowSheet(for: plan)
             }
             .sheet(item: $pendingProviderAccountSelection) { selection in
                 GitProviderAccountSelectionSheet(
@@ -512,6 +517,14 @@ struct MainWindowView: View {
                 clearReferenceDiff()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryCurrentBranchDidChange)) { notification in
+            guard let changedRepositoryURL = notification.userInfo?["repositoryURL"] as? URL,
+                  changedRepositoryURL.standardizedFileURL == repositoryURL.standardizedFileURL else { return }
+            Task {
+                let branch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
+                await MainActor.run { gitFlowCurrentBranch = branch }
+            }
+        }
         .onDisappear {
             syncState.stopBackgroundSync()
         }
@@ -568,6 +581,8 @@ struct MainWindowView: View {
             undoManager: undoManager,
             currentBranchFallbackSyncStatus: currentBranchFallbackSyncStatus,
             isAccountMenuDisabled: operationProgress.activeOperation != nil,
+            gitFlowConfiguration: gitFlowConfiguration,
+            isGitFlowOperationDisabled: operationProgress.activeOperation != nil,
             isBranchSyncing: { branch in
                 BranchSyncBadgePolicy.shouldShowLoading(
                     for: branch,
@@ -832,6 +847,17 @@ struct MainWindowView: View {
             onRequestSearch: {
                 showingSearchModal = true
             },
+            onRequestStartGitFlow: { kind in
+                pendingGitFlowTopicKind = kind
+            },
+            onRequestFinishGitFlow: { kind in
+                requestFinishGitFlow(kind)
+            },
+            onRequestEditGitFlow: {
+                initiallySelectGitFlowSettings = true
+                showingRepositorySettings = true
+            },
+            onRequestDisableGitFlow: disableGitFlow,
             onRequestDragDrop: { request in
                 handleDragDropRequest(request)
             },
@@ -1168,6 +1194,7 @@ struct MainWindowView: View {
         )
         await MainActor.run {
             repoSettings = loadedSettings
+            gitFlowCurrentBranch = currentBranch ?? ""
             gitFlowConfiguration = savedGitFlowConfiguration ?? GitFlowConfiguration.detected(
                 branches: localBranches
             )

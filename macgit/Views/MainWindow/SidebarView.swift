@@ -34,6 +34,8 @@ struct SidebarView: View {
     let undoManager: GitUndoManager?
     let currentBranchFallbackSyncStatus: BranchSyncStatus?
     let isAccountMenuDisabled: Bool
+    let gitFlowConfiguration: GitFlowConfiguration
+    let isGitFlowOperationDisabled: Bool
     let isBranchSyncing: (String) -> Bool
     let onRequestCheckout: (String, Bool) -> Void
     let onRequestFetchBranch: (String) -> Void
@@ -77,6 +79,10 @@ struct SidebarView: View {
     let onRequestDeinitializeSubmodule: (String, Bool) async throws -> Void
     let onRequestRemoveSubmodule: (String, Bool) async throws -> Void
     let onRequestSearch: () -> Void
+    let onRequestStartGitFlow: (GitFlowTopicKind) -> Void
+    let onRequestFinishGitFlow: (GitFlowTopicKind) -> Void
+    let onRequestEditGitFlow: () -> Void
+    let onRequestDisableGitFlow: () -> Void
     let onRequestDragDrop: (GitDragDropRequest) -> Void
     let onRunRepositoryOperation: RepositoryOperationRunner
 
@@ -170,6 +176,8 @@ struct SidebarView: View {
         undoManager: GitUndoManager? = nil,
         currentBranchFallbackSyncStatus: BranchSyncStatus? = nil,
         isAccountMenuDisabled: Bool = false,
+        gitFlowConfiguration: GitFlowConfiguration = GitFlowConfiguration(),
+        isGitFlowOperationDisabled: Bool = false,
         isBranchSyncing: @escaping (String) -> Bool = { _ in false },
         onRequestCheckout: @escaping (String, Bool) -> Void,
         onRequestFetchBranch: @escaping (String) -> Void,
@@ -213,6 +221,10 @@ struct SidebarView: View {
         onRequestDeinitializeSubmodule: @escaping (String, Bool) async throws -> Void = { _, _ in },
         onRequestRemoveSubmodule: @escaping (String, Bool) async throws -> Void = { _, _ in },
         onRequestSearch: @escaping () -> Void = {},
+        onRequestStartGitFlow: @escaping (GitFlowTopicKind) -> Void = { _ in },
+        onRequestFinishGitFlow: @escaping (GitFlowTopicKind) -> Void = { _ in },
+        onRequestEditGitFlow: @escaping () -> Void = {},
+        onRequestDisableGitFlow: @escaping () -> Void = {},
         onRequestDragDrop: @escaping (GitDragDropRequest) -> Void = { _ in },
         onRunRepositoryOperation: @escaping RepositoryOperationRunner = { _, operation in
             Task { await operation() }
@@ -223,6 +235,8 @@ struct SidebarView: View {
         self.undoManager = undoManager
         self.currentBranchFallbackSyncStatus = currentBranchFallbackSyncStatus
         self.isAccountMenuDisabled = isAccountMenuDisabled
+        self.gitFlowConfiguration = gitFlowConfiguration
+        self.isGitFlowOperationDisabled = isGitFlowOperationDisabled
         self.isBranchSyncing = isBranchSyncing
         self.onRequestCheckout = onRequestCheckout
         self.onRequestFetchBranch = onRequestFetchBranch
@@ -266,6 +280,10 @@ struct SidebarView: View {
         self.onRequestDeinitializeSubmodule = onRequestDeinitializeSubmodule
         self.onRequestRemoveSubmodule = onRequestRemoveSubmodule
         self.onRequestSearch = onRequestSearch
+        self.onRequestStartGitFlow = onRequestStartGitFlow
+        self.onRequestFinishGitFlow = onRequestFinishGitFlow
+        self.onRequestEditGitFlow = onRequestEditGitFlow
+        self.onRequestDisableGitFlow = onRequestDisableGitFlow
         self.onRequestDragDrop = onRequestDragDrop
         self.onRunRepositoryOperation = onRunRepositoryOperation
     }
@@ -597,6 +615,22 @@ struct SidebarView: View {
     @ViewBuilder
     private var sidebarRows: some View {
         SidebarWorkspaceSection(onRequestSearch: onRequestSearch)
+
+        if gitFlowConfiguration.isEnabled {
+            SidebarGitFlowSection(
+                configuration: gitFlowConfiguration,
+                currentBranch: currentBranch,
+                isExpanded: sectionStates.gitFlowExpanded,
+                isOperationDisabled: isGitFlowOperationDisabled,
+                actions: SidebarGitFlowActions(
+                    toggleSection: { toggleSection(.gitFlow) },
+                    start: onRequestStartGitFlow,
+                    finish: onRequestFinishGitFlow,
+                    editWorkflow: onRequestEditGitFlow,
+                    disableWorkflow: onRequestDisableGitFlow
+                )
+            )
+        }
 
         SidebarBranchesSection(
             rows: visibleBranchRows,

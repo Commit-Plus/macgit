@@ -381,6 +381,15 @@ extension MainWindowView {
         )
     }
 
+    @ViewBuilder
+    func finishGitFlowSheet(for plan: GitFlowFinishPlan) -> some View {
+        FinishGitFlowSheet(
+            plan: plan,
+            onRunRepositoryOperation: runRepositoryOperation,
+            onFinish: finishGitFlow
+        )
+    }
+
     var createPullRequestSheetPresented: Binding<Bool> {
         Binding(
             get: { pullRequestController.createDraftSeed != nil },
