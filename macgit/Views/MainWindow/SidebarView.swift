@@ -609,6 +609,20 @@ struct SidebarView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryBranchDidCreate)) { notification in
+            guard let url = notification.userInfo?["repositoryURL"] as? URL,
+                  let branchName = notification.userInfo?["branchName"] as? String,
+                  url == repositoryURL else {
+                return
+            }
+
+            expandedFolders.formUnion(
+                SidebarTreeBuilder.expandedFolderPaths(revealing: branchName)
+            )
+            Task {
+                await loadBranches(force: true)
+            }
+        }
         .onChange(of: appState.showSubtrees) { _, isVisible in
             guard isVisible, sectionStates.subtreesExpanded else { return }
             Task {

@@ -103,6 +103,16 @@ extension GitStatusService {
             output = try await runGit(arguments: arguments, in: repositoryURL)
         }
         await invalidateBranchListCache(in: repositoryURL)
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: .repositoryBranchDidCreate,
+                object: nil,
+                userInfo: [
+                    "repositoryURL": repositoryURL,
+                    "branchName": name
+                ]
+            )
+        }
         return output
     }
 
