@@ -60,7 +60,7 @@ struct StartGitFlowSheet: View {
         }
         return try? GitFlowPlanner().startPlan(
             kind: kind,
-            topicName: topicName,
+            topicName: sanitizedTopicName,
             configuration: configuration,
             destination: destination,
             worktreePath: path,
@@ -68,9 +68,13 @@ struct StartGitFlowSheet: View {
         )
     }
 
+    private var sanitizedTopicName: String {
+        GitBranchNameSanitizer.sanitize(topicName)
+    }
+
     private var resolvedBranchName: String {
         configuration.normalized().prefix(for: kind)
-            + topicName.trimmingCharacters(in: .whitespacesAndNewlines)
+            + sanitizedTopicName
     }
 
     private var suggestedWorktreePath: String {

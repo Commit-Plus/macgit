@@ -174,11 +174,10 @@ struct GitFlowService {
             throw GitFlowStartError.unfinishedOperation
         }
 
-        let branches = await git.localBranches(in: repositoryURL)
-        guard branches.contains(plan.baseBranch) else {
+        guard await localBranchExists(plan.baseBranch, in: repositoryURL) else {
             throw GitFlowStartError.missingBaseBranch(plan.baseBranch)
         }
-        guard !branches.contains(plan.branchName) else {
+        guard await localBranchExists(plan.branchName, in: repositoryURL) == false else {
             throw GitFlowStartError.branchAlreadyExists(plan.branchName)
         }
         guard await git.isValidBranchName(plan.branchName, in: repositoryURL) else {
@@ -245,12 +244,11 @@ struct GitFlowService {
 
         do {
             // Recheck the ref immediately before `git worktree add -b`.
-            let branches = await git.localBranches(in: repositoryURL)
-            guard branches.contains(plan.baseBranch),
+            guard await localBranchExists(plan.baseBranch, in: repositoryURL),
                   try await GitBranchUndoSupport().tip(of: plan.baseBranch, in: repositoryURL) == baseTip else {
                 throw GitFlowStartError.missingBaseBranch(plan.baseBranch)
             }
-            guard !branches.contains(plan.branchName) else {
+            guard await localBranchExists(plan.branchName, in: repositoryURL) == false else {
                 throw GitFlowStartError.branchAlreadyExists(plan.branchName)
             }
             guard await git.isValidBranchName(plan.branchName, in: repositoryURL) else {
@@ -621,6 +619,18 @@ struct GitFlowService {
         do {
             _ = try await GitStatusService.shared.runGit(
                 arguments: ["show-ref", "--verify", "--quiet", "refs/tags/\(tag)"],
+                in: repositoryURL
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func localBranchExists(_ branch: String, in repositoryURL: URL) async -> Bool {
+        do {
+            _ = try await GitStatusService.shared.runGit(
+                arguments: ["show-ref", "--verify", "--quiet", "refs/heads/\(branch)"],
                 in: repositoryURL
             )
             return true

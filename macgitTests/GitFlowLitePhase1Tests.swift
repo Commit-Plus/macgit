@@ -20,6 +20,17 @@ import XCTest
 @testable import macgit
 
 final class GitFlowLitePhase1Tests: XCTestCase {
+    func testBranchNameSanitizerMatchesCreateBranchBehavior() {
+        XCTAssertEqual(
+            GitBranchNameSanitizer.sanitize("  Test  Feature Flow  "),
+            "test-feature-flow"
+        )
+        XCTAssertEqual(
+            GitBranchNameSanitizer.sanitize("Feature/Sidebar & Search"),
+            "feature/sidebar-search"
+        )
+    }
+
     func testPlannerMapsTopicKindsToExpectedBaseAndPrefix() throws {
         let configuration = GitFlowConfiguration(isEnabled: true)
         let planner = GitFlowPlanner()

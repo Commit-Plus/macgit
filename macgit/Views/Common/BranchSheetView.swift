@@ -323,7 +323,7 @@ struct BranchSheetView: View {
                 TextField("Enter branch name...", text: $branchNameInput)
                     .textFieldStyle(.roundedBorder)
                     .onChange(of: branchNameInput) { _, newValue in
-                        sanitizedName = sanitizeBranchName(newValue)
+                        sanitizedName = GitBranchNameSanitizer.sanitize(newValue)
                     }
                 if !sanitizedName.isEmpty {
                     Text(sanitizedName)
@@ -784,25 +784,6 @@ struct BranchSheetView: View {
         case nil:
             return selectedStartReference.isEmpty ? nil : selectedStartReference
         }
-    }
-
-    private func sanitizeBranchName(_ input: String) -> String {
-        guard !input.isEmpty else { return "" }
-        let result = input.lowercased()
-        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789-_/")
-        var sanitized = ""
-        for scalar in result.unicodeScalars {
-            if allowed.contains(scalar) {
-                sanitized.append(Character(scalar))
-            } else {
-                sanitized.append("-")
-            }
-        }
-        while sanitized.contains("--") {
-            sanitized = sanitized.replacingOccurrences(of: "--", with: "-")
-        }
-        sanitized = sanitized.trimmingCharacters(in: CharacterSet(charactersIn: "-/"))
-        return sanitized
     }
 
     private func friendlyErrorMessage(for error: Error) -> String {
