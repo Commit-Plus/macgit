@@ -19,6 +19,9 @@
 import Foundation
 
 struct GitFlowFinishCheckpoint: Codable, Equatable {
+    static let supportedSchemaVersion = 1
+
+    var schemaVersion: Int
     enum Phase: String, Codable {
         case primaryMerge
         case secondaryMerge
@@ -35,6 +38,7 @@ struct GitFlowFinishCheckpoint: Codable, Equatable {
     var targetTipBeforeIntegration: String?
 
     init(
+        schemaVersion: Int = GitFlowFinishCheckpoint.supportedSchemaVersion,
         plan: GitFlowFinishPlan,
         sourceTip: String,
         targetResults: [GitFlowFinishTargetResult],
@@ -43,6 +47,7 @@ struct GitFlowFinishCheckpoint: Codable, Equatable {
         rewrittenSourceTip: String? = nil,
         targetTipBeforeIntegration: String? = nil
     ) {
+        self.schemaVersion = schemaVersion
         self.plan = plan
         self.sourceTip = sourceTip
         self.targetResults = targetResults
@@ -53,12 +58,13 @@ struct GitFlowFinishCheckpoint: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case plan, sourceTip, targetResults, createdTagName, phase
+        case schemaVersion, plan, sourceTip, targetResults, createdTagName, phase
         case rewrittenSourceTip, targetTipBeforeIntegration
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         plan = try container.decode(GitFlowFinishPlan.self, forKey: .plan)
         sourceTip = try container.decode(String.self, forKey: .sourceTip)
         targetResults = try container.decodeIfPresent(

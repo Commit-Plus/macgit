@@ -36,6 +36,7 @@ struct SidebarView: View {
     let isAccountMenuDisabled: Bool
     let gitFlowConfiguration: GitFlowConfiguration
     let gitFlowFinishCheckpoint: GitFlowFinishCheckpoint?
+    let gitFlowRecoveryIssue: GitFlowLocalStateIssue?
     let isGitFlowOperationDisabled: Bool
     let isBranchSyncing: (String) -> Bool
     let onRequestCheckout: (String, Bool) -> Void
@@ -181,6 +182,7 @@ struct SidebarView: View {
         isAccountMenuDisabled: Bool = false,
         gitFlowConfiguration: GitFlowConfiguration = GitFlowConfiguration(),
         gitFlowFinishCheckpoint: GitFlowFinishCheckpoint? = nil,
+        gitFlowRecoveryIssue: GitFlowLocalStateIssue? = nil,
         isGitFlowOperationDisabled: Bool = false,
         isBranchSyncing: @escaping (String) -> Bool = { _ in false },
         onRequestCheckout: @escaping (String, Bool) -> Void,
@@ -243,6 +245,7 @@ struct SidebarView: View {
         self.isAccountMenuDisabled = isAccountMenuDisabled
         self.gitFlowConfiguration = gitFlowConfiguration
         self.gitFlowFinishCheckpoint = gitFlowFinishCheckpoint
+        self.gitFlowRecoveryIssue = gitFlowRecoveryIssue
         self.isGitFlowOperationDisabled = isGitFlowOperationDisabled
         self.isBranchSyncing = isBranchSyncing
         self.onRequestCheckout = onRequestCheckout
@@ -631,7 +634,8 @@ struct SidebarView: View {
             SidebarGitFlowSection(
                 configuration: gitFlowConfiguration,
                 currentBranch: currentBranch,
-                hasPendingFinish: gitFlowFinishCheckpoint != nil,
+                checkpoint: gitFlowFinishCheckpoint,
+                recoveryIssue: gitFlowRecoveryIssue,
                 isExpanded: sectionStates.gitFlowExpanded,
                 isOperationDisabled: isGitFlowOperationDisabled,
                 actions: SidebarGitFlowActions(
@@ -651,6 +655,7 @@ struct SidebarView: View {
             isExpanded: sectionStates.branchesExpanded,
             isLoading: isLoadingBranches,
             currentBranch: currentBranch,
+            gitFlowConfiguration: gitFlowConfiguration,
             headHash: headHash,
             expandedFolders: expandedFolders,
             branchSyncStatus: branchSyncStatus,

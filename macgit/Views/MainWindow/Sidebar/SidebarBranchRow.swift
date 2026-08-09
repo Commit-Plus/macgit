@@ -22,6 +22,7 @@ import UniformTypeIdentifiers
 struct SidebarBranchRow: View {
     let row: BranchRowItem
     let currentBranch: String
+    let gitFlowConfiguration: GitFlowConfiguration
     let currentBranchFallbackSyncStatus: BranchSyncStatus?
     let expandedFolders: Set<String>
     let isCurrentBranchDropTargeted: Bool
@@ -136,7 +137,11 @@ struct SidebarBranchRow: View {
             syncStatus: resolvedSyncStatus,
             headBadgeVisible: isCurrentBranch && !row.isFolder,
             folderIsExpanded: expandedFolders.contains(row.fullPath),
-            isCurrentBranchPrefix: isCurrentBranchPrefix
+            isCurrentBranchPrefix: isCurrentBranchPrefix,
+            gitFlowRole: GitFlowBranchRoleResolver().role(
+                for: row.fullPath,
+                configuration: gitFlowConfiguration
+            )
         )
     }
 

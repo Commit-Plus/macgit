@@ -145,6 +145,8 @@ struct MainWindowView: View {
     @State var repoSettings = RepoSettings.defaults(currentBranch: nil, remotes: [])
     @State var gitFlowConfiguration = GitFlowConfiguration()
     @State var gitFlowFinishCheckpoint: GitFlowFinishCheckpoint?
+    @State var gitFlowRecoveryIssue: GitFlowLocalStateIssue?
+    @State var gitFlowConfigurationIssue: GitFlowLocalStateIssue?
     @State var pendingGitFlowTopicKind: GitFlowTopicKind?
     @State var pendingGitFlowFinishPlan: GitFlowFinishPlan?
     @State var gitFlowCurrentBranch = ""
@@ -594,6 +596,7 @@ struct MainWindowView: View {
             isAccountMenuDisabled: operationProgress.activeOperation != nil,
             gitFlowConfiguration: gitFlowConfiguration,
             gitFlowFinishCheckpoint: gitFlowFinishCheckpoint,
+            gitFlowRecoveryIssue: gitFlowRecoveryIssue,
             isGitFlowOperationDisabled: operationProgress.activeOperation != nil,
             isBranchSyncing: { branch in
                 BranchSyncBadgePolicy.shouldShowLoading(
@@ -860,7 +863,7 @@ struct MainWindowView: View {
                 showingSearchModal = true
             },
             onRequestStartGitFlow: { kind in
-                pendingGitFlowTopicKind = kind
+                requestStartGitFlow(kind)
             },
             onRequestFinishGitFlow: { kind in
                 requestFinishGitFlow(kind)
@@ -872,8 +875,7 @@ struct MainWindowView: View {
                 abortGitFlowFinish()
             },
             onRequestEditGitFlow: {
-                initiallySelectGitFlowSettings = true
-                showingRepositorySettings = true
+                requestPresentGitFlowSettings()
             },
             onRequestDisableGitFlow: disableGitFlow,
             onRequestDragDrop: { request in
@@ -1066,7 +1068,11 @@ struct MainWindowView: View {
             Task {
                 _ = await authorizePullRequestAccess(forceRefresh: true)
             }
-        case .privateRepositories, .gitFlow, .aiCommitMessage, .repositoryChat,
+        case .gitFlow:
+            Task {
+                _ = await authorizeGitFlowAccess(forceRefresh: true)
+            }
+        case .privateRepositories, .aiCommitMessage, .repositoryChat,
              .aiConflictResolution, .aiBringYourOwnKey, .multipleProviderAccounts:
             break
         }
@@ -1198,10 +1204,10 @@ struct MainWindowView: View {
         async let loadedRemotes = GitStatusService.shared.remotes(in: repositoryURL)
         async let loadedCurrentBranch = GitStatusService.shared.currentBranch(in: repositoryURL)
         async let loadedLocalBranches = GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
-        async let loadedGitFlowConfiguration = gitFlowConfigurationStore.configuration(in: repositoryURL)
-        async let loadedGitFlowCheckpoint = GitFlowRecoveryStore().checkpoint(in: repositoryURL)
+        async let loadedGitFlowConfiguration = gitFlowConfigurationStore.loadResult(in: repositoryURL)
+        async let loadedGitFlowCheckpoint = GitFlowRecoveryStore().loadResult(in: repositoryURL)
         async let loadedGitCommonDirectory = try? GitStatusService.shared.gitCommonDirectory(in: repositoryURL)
-        let (remotes, currentBranch, localBranches, savedGitFlowConfiguration, savedGitFlowCheckpoint, gitCommonDirectory) = await (
+        let (remotes, currentBranch, localBranches, configurationResult, checkpointResult, gitCommonDirectory) = await (
             loadedRemotes,
             loadedCurrentBranch,
             loadedLocalBranches,
@@ -1217,10 +1223,30 @@ struct MainWindowView: View {
         await MainActor.run {
             repoSettings = loadedSettings
             gitFlowCurrentBranch = currentBranch ?? ""
-            gitFlowConfiguration = savedGitFlowConfiguration ?? GitFlowConfiguration.detected(
-                branches: localBranches
-            )
-            gitFlowFinishCheckpoint = savedGitFlowCheckpoint
+            switch configurationResult {
+            case .none:
+                gitFlowConfiguration = GitFlowConfiguration.detected(branches: localBranches)
+                gitFlowConfigurationIssue = nil
+            case .value(let configuration):
+                gitFlowConfiguration = configuration
+                gitFlowConfigurationIssue = nil
+            case .invalid(let issue):
+                gitFlowConfiguration = GitFlowConfiguration.detected(branches: localBranches)
+                gitFlowConfigurationIssue = issue
+                syncState.showError("The saved Git Flow configuration is invalid. Open Repository Settings and save a valid configuration to replace it.")
+            }
+            switch checkpointResult {
+            case .none:
+                gitFlowFinishCheckpoint = nil
+                gitFlowRecoveryIssue = nil
+            case .value(let checkpoint):
+                gitFlowFinishCheckpoint = checkpoint
+                gitFlowRecoveryIssue = nil
+            case .invalid(let issue):
+                gitFlowFinishCheckpoint = nil
+                gitFlowRecoveryIssue = issue
+                syncState.showError(issue.message)
+            }
             gitFlowWorktreeRootURL = gitCommonDirectory?.deletingLastPathComponent()
         }
         await syncState.refresh(repositoryURL: repositoryURL)

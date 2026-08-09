@@ -32,6 +32,7 @@ struct FinishGitFlowSheet: View {
     @State private var tagValidationMessage: String?
     @State private var isValidatingTag = false
     @State private var deleteSourceBranch: Bool
+    @FocusState private var isTagNameFocused: Bool
 
     init(
         plan: GitFlowFinishPlan,
@@ -61,6 +62,7 @@ struct FinishGitFlowSheet: View {
             executionPreview
 
             Toggle("Delete local branch after a successful finish", isOn: $deleteSourceBranch)
+                .accessibilityHint("Deletes only the local topic branch after every finish step succeeds.")
 
             HStack(spacing: 12) {
                 Spacer()
@@ -76,6 +78,12 @@ struct FinishGitFlowSheet: View {
         .frame(minWidth: 500, idealWidth: 540)
         .task(id: tagValidationKey) {
             await validateTagIfNeeded()
+        }
+        .onAppear {
+            isTagNameFocused = initialPlan.kind.requiresReleaseTag && createTag
+        }
+        .onChange(of: createTag) { _, isEnabled in
+            if isEnabled { isTagNameFocused = true }
         }
     }
 
@@ -96,11 +104,14 @@ struct FinishGitFlowSheet: View {
         if initialPlan.kind.requiresReleaseTag {
             Toggle("Create annotated tag", isOn: $createTag)
                 .toggleStyle(.checkbox)
+                .accessibilityHint("Creates the tag on the Main merge commit. No remote tag is pushed.")
             if createTag {
                 LabeledContent("Tag name") {
                     TextField("Version tag", text: $tagName)
                         .textFieldStyle(.roundedBorder)
                         .frame(minWidth: 220)
+                        .focused($isTagNameFocused)
+                        .accessibilityLabel("Annotated tag name")
                 }
                 if isValidatingTag {
                     Label("Checking tag…", systemImage: "clock")
@@ -110,6 +121,7 @@ struct FinishGitFlowSheet: View {
                     Label(tagValidationMessage, systemImage: "exclamationmark.triangle.fill")
                         .font(.subheadline)
                         .foregroundStyle(.orange)
+                        .accessibilityLabel("Tag validation error: \(tagValidationMessage)")
                 }
             }
         } else {
@@ -119,6 +131,9 @@ struct FinishGitFlowSheet: View {
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityLabel("Finish strategy")
+            .accessibilityValue(strategy.displayName)
+            .accessibilityHint("Choose a merge commit or rebase followed by fast-forward.")
         }
     }
 
@@ -126,12 +141,19 @@ struct FinishGitFlowSheet: View {
         Label(previewText, systemImage: strategyIcon)
             .font(.subheadline)
             .foregroundStyle(.secondary)
+            .accessibilityLabel("Finish preview: \(previewText)")
     }
 
     private var previewText: String {
         if initialPlan.kind.requiresReleaseTag {
-            let tagCopy = createTag ? " An annotated tag will be created on the Main merge." : " No tag will be created."
-            return "Commit+ will merge into \(initialPlan.targetBranches.joined(separator: ", then ")).\(tagCopy)"
+            let normalizedTag = tagName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let tagCopy = createTag
+                ? " The annotated tag '\(normalizedTag)' will be created on the Main merge."
+                : " No tag will be created."
+            let deletionCopy = deleteSourceBranch
+                ? " The local source branch will be deleted after both merges succeed."
+                : " The local source branch will be kept."
+            return "Commit+ will merge into \(initialPlan.targetBranches.joined(separator: ", then ")).\(tagCopy)\(deletionCopy)"
         }
         if strategy == .rebaseFastForward {
             return "Commit+ will rebase \(initialPlan.sourceBranch) onto \(initialPlan.targetBranch), then fast-forward \(initialPlan.targetBranch). This rewrites the local topic branch and will not force-push it."

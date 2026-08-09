@@ -55,5 +55,10 @@ struct SidebarSectionHeader<Trailing: View>: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(section.rawValue) section")
+        .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+        .accessibilityHint(isExpanded ? "Collapse section" : "Expand section")
+        .accessibilityAddTraits(.isButton)
     }
 }

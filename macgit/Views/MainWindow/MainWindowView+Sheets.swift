@@ -319,6 +319,7 @@ extension MainWindowView {
             initialSettings: repoSettings,
             initialGitFlowConfiguration: gitFlowConfiguration,
             initiallySelectGitFlow: initiallySelectGitFlowSettings,
+            hasInvalidGitFlowConfiguration: gitFlowConfigurationIssue != nil,
             providerAccountResolver: providerAccountController.credentialResolver(
                 preferredAccountIDsByRemoteIdentity: providerAccountPreferenceStore.preferences
             ),
@@ -344,18 +345,25 @@ extension MainWindowView {
                 }
             },
             onSaveGitFlowConfiguration: { configuration in
-                gitFlowConfiguration = configuration
-                Task {
-                    do {
-                        try await gitFlowConfigurationStore.save(configuration, in: repositoryURL)
-                    } catch {
-                        await MainActor.run {
-                            syncState.showError(error.localizedDescription)
-                        }
+                guard await authorizeGitFlowAccess() else { return false }
+                do {
+                    try await GitFlowPlanner().validate(configuration, in: repositoryURL)
+                    try await gitFlowConfigurationStore.save(configuration, in: repositoryURL)
+                    await MainActor.run {
+                        gitFlowConfiguration = configuration
+                        gitFlowConfigurationIssue = nil
                     }
+                    return true
+                } catch {
+                    await MainActor.run { syncState.showError(error.localizedDescription) }
+                    return false
                 }
             },
+            onAuthorizeGitFlowAccess: { await authorizeGitFlowAccess() },
             onCreateGitFlowDevelopBranch: { name, startingPoint in
+                guard await authorizeGitFlowAccess() else {
+                    throw GitError.commandFailed("Git Flow access is not available for this repository.")
+                }
                 let branch = try await GitFlowService().createDevelopBranch(
                     name: name,
                     startingPoint: startingPoint,

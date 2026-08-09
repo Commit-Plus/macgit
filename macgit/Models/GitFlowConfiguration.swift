@@ -19,6 +19,9 @@
 import Foundation
 
 struct GitFlowConfiguration: Codable, Equatable {
+    static let supportedSchemaVersion = 1
+
+    var schemaVersion: Int
     var isEnabled: Bool
     var mainBranch: String
     var developBranch: String
@@ -32,6 +35,7 @@ struct GitFlowConfiguration: Codable, Equatable {
     var createHotfixTagOnFinish: Bool
 
     init(
+        schemaVersion: Int = GitFlowConfiguration.supportedSchemaVersion,
         isEnabled: Bool = false,
         mainBranch: String = "main",
         developBranch: String = "develop",
@@ -44,6 +48,7 @@ struct GitFlowConfiguration: Codable, Equatable {
         createReleaseTagOnFinish: Bool = true,
         createHotfixTagOnFinish: Bool = true
     ) {
+        self.schemaVersion = schemaVersion
         self.isEnabled = isEnabled
         self.mainBranch = mainBranch
         self.developBranch = developBranch
@@ -59,6 +64,7 @@ struct GitFlowConfiguration: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
         mainBranch = try container.decodeIfPresent(String.self, forKey: .mainBranch) ?? "main"
         developBranch = try container.decodeIfPresent(String.self, forKey: .developBranch) ?? "develop"
@@ -111,6 +117,7 @@ struct GitFlowConfiguration: Codable, Equatable {
 
     func normalized() -> GitFlowConfiguration {
         GitFlowConfiguration(
+            schemaVersion: Self.supportedSchemaVersion,
             isEnabled: isEnabled,
             mainBranch: mainBranch.trimmingCharacters(in: .whitespacesAndNewlines),
             developBranch: developBranch.trimmingCharacters(in: .whitespacesAndNewlines),

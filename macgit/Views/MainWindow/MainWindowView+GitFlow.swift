@@ -27,19 +27,41 @@ extension MainWindowView {
                 configuration: gitFlowConfiguration
             ),
             operationInProgress: operationProgress.activeOperation != nil,
-            hasPendingFinish: gitFlowFinishCheckpoint != nil
+            hasPendingFinish: gitFlowFinishCheckpoint != nil,
+            hasInvalidRecoveryState: gitFlowRecoveryIssue != nil
         )
+    }
+
+    @MainActor
+    func authorizeGitFlowAccess(
+        forceRefresh: Bool = false,
+        presentNotice: Bool = true
+    ) async -> Bool {
+        let decision = await repositoryVisibilityController.accessDecision(
+            for: .gitFlow,
+            repositoryURL: repositoryURL,
+            accounts: providerAccountController.accounts,
+            entitlement: accountController.entitlement,
+            policy: featureAccessController.policy,
+            forceRefresh: forceRefresh
+        )
+        guard !Task.isCancelled else { return false }
+        if case .denied(let denial) = decision, presentNotice {
+            if denial == .requiresPro {
+                proUpgradeErrorMessage = nil
+                proUpgradePresentation = ProUpgradePresentation(feature: .gitFlow)
+            } else {
+                featureAccessNotice = FeatureAccessNotice(feature: .gitFlow, denial: denial)
+            }
+        }
+        return decision.isAllowed
     }
 
     func handleGitFlowMenuAction(_ action: GitFlowMenuAction) {
         guard operationProgress.activeOperation == nil else { return }
         switch action {
         case .start(let kind):
-            if gitFlowConfiguration.isEnabled {
-                pendingGitFlowTopicKind = kind
-            } else {
-                presentGitFlowSettings()
-            }
+            requestStartGitFlow(kind)
         case .finish(let kind):
             requestFinishGitFlow(kind)
         case .resumeFinish:
@@ -47,18 +69,38 @@ extension MainWindowView {
         case .abortFinish:
             abortGitFlowFinish()
         case .configure:
-            presentGitFlowSettings()
+            requestPresentGitFlowSettings()
         case .disable:
             disableGitFlow()
         }
     }
 
-    private func presentGitFlowSettings() {
-        initiallySelectGitFlowSettings = true
-        showingRepositorySettings = true
+    func requestPresentGitFlowSettings() {
+        Task {
+            guard await authorizeGitFlowAccess() else { return }
+            await MainActor.run {
+                initiallySelectGitFlowSettings = true
+                showingRepositorySettings = true
+            }
+        }
+    }
+
+    func requestStartGitFlow(_ kind: GitFlowTopicKind) {
+        Task {
+            guard await authorizeGitFlowAccess() else { return }
+            await MainActor.run {
+                if gitFlowConfiguration.isEnabled {
+                    pendingGitFlowTopicKind = kind
+                } else {
+                    initiallySelectGitFlowSettings = true
+                    showingRepositorySettings = true
+                }
+            }
+        }
     }
 
     func startGitFlow(_ plan: GitFlowStartPlan, openAfterCreate: Bool) async -> Bool {
+        guard await authorizeGitFlowAccess() else { return false }
         do {
             let result = try await GitFlowService().start(plan, in: repositoryURL)
             await MainActor.run {
@@ -122,6 +164,7 @@ extension MainWindowView {
             await MainActor.run {
                 syncState.showError(error.localizedDescription)
             }
+            await refreshAfterGitFlowMutation()
             return false
         }
     }
@@ -137,6 +180,7 @@ extension MainWindowView {
 
     func requestFinishGitFlow(_ kind: GitFlowTopicKind) {
         Task {
+            guard await authorizeGitFlowAccess() else { return }
             let currentBranch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
             do {
                 let plan = try GitFlowPlanner().finishPlan(
@@ -155,6 +199,7 @@ extension MainWindowView {
     }
 
     func finishGitFlow(_ plan: GitFlowFinishPlan) async -> Bool {
+        guard await authorizeGitFlowAccess() else { return false }
         do {
             let result = try await GitFlowService().finish(plan, in: repositoryURL)
             await registerCompletedGitFlowFinish(result)
@@ -208,6 +253,7 @@ extension MainWindowView {
                 await MainActor.run {
                     syncState.showError(error.localizedDescription)
                 }
+                await refreshAfterGitFlowMutation()
             }
         }
     }
@@ -367,11 +413,23 @@ extension MainWindowView {
     }
 
     private func refreshAfterGitFlowMutation() async {
-        let checkpoint = await GitFlowRecoveryStore().checkpoint(in: repositoryURL)
+        let loadResult = await GitFlowRecoveryStore().loadResult(in: repositoryURL)
+        let currentBranch = await GitStatusService.shared.currentBranch(in: repositoryURL) ?? ""
         await GitStatusService.shared.invalidateBranchListCache(in: repositoryURL)
         await syncState.refresh(repositoryURL: repositoryURL)
         await MainActor.run {
-            gitFlowFinishCheckpoint = checkpoint
+            gitFlowCurrentBranch = currentBranch
+            switch loadResult {
+            case .none:
+                gitFlowFinishCheckpoint = nil
+                gitFlowRecoveryIssue = nil
+            case .value(let checkpoint):
+                gitFlowFinishCheckpoint = checkpoint
+                gitFlowRecoveryIssue = nil
+            case .invalid(let issue):
+                gitFlowFinishCheckpoint = nil
+                gitFlowRecoveryIssue = issue
+            }
         }
         NotificationCenter.default.post(
             name: .repositoryDidChange,

@@ -132,6 +132,41 @@ struct GitFlowPlanner {
         guard Set(prefixes).count == prefixes.count else {
             throw GitFlowPlannerError.invalidConfiguration("Git Flow prefixes must be unique.")
         }
+        for prefix in prefixes {
+            guard !prefixes.contains(where: { other in
+                other != prefix && (prefix.hasPrefix(other) || other.hasPrefix(prefix))
+            }) else {
+                throw GitFlowPlannerError.invalidConfiguration(
+                    "Git Flow prefixes must not overlap. Choose clearly distinct prefix paths."
+                )
+            }
+        }
+    }
+
+    func validate(_ configuration: GitFlowConfiguration, in repositoryURL: URL) async throws {
+        let configuration = configuration.normalized()
+        try validate(configuration)
+        let git = GitStatusService.shared
+        let branches = await git.localBranches(in: repositoryURL)
+        guard branches.contains(configuration.mainBranch) else {
+            throw GitFlowPlannerError.invalidConfiguration("The selected Main branch does not exist.")
+        }
+        guard branches.contains(configuration.developBranch) else {
+            throw GitFlowPlannerError.invalidConfiguration("The selected Develop branch does not exist.")
+        }
+        for branch in [configuration.mainBranch, configuration.developBranch] {
+            guard await git.isValidBranchName(branch, in: repositoryURL) else {
+                throw GitFlowPlannerError.invalidConfiguration("'\(branch)' is not a valid Git branch name.")
+            }
+        }
+        for kind in GitFlowTopicKind.allCases {
+            let example = configuration.prefix(for: kind) + "topic"
+            guard await git.isValidBranchName(example, in: repositoryURL) else {
+                throw GitFlowPlannerError.invalidConfiguration(
+                    "The \(kind.displayName) prefix does not produce valid Git branch names."
+                )
+            }
+        }
     }
 
     private func versionName(from branch: String, prefix: String) -> String {

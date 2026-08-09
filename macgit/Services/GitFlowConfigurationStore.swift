@@ -26,11 +26,27 @@ struct GitFlowConfigurationStore {
     }
 
     func configuration(in repositoryURL: URL) async -> GitFlowConfiguration? {
-        guard let fileURL = try? await configurationURL(in: repositoryURL),
-              let data = try? Data(contentsOf: fileURL) else {
-            return nil
+        if case .value(let configuration) = await loadResult(in: repositoryURL) {
+            return configuration
         }
-        return try? JSONDecoder().decode(GitFlowConfiguration.self, from: data)
+        return nil
+    }
+
+    func loadResult(in repositoryURL: URL) async -> GitFlowLocalStateLoadResult<GitFlowConfiguration> {
+        guard let fileURL = try? await configurationURL(in: repositoryURL) else { return .invalid(.corrupt) }
+        guard fileManager.fileExists(atPath: fileURL.path) else { return .none }
+        guard let data = try? Data(contentsOf: fileURL) else { return .invalid(.corrupt) }
+        if let version = Self.schemaVersion(in: data), version > GitFlowConfiguration.supportedSchemaVersion {
+            return .invalid(.unsupportedVersion(version))
+        }
+        guard let configuration = try? JSONDecoder().decode(GitFlowConfiguration.self, from: data) else {
+            return .invalid(.corrupt)
+        }
+        return .value(configuration)
+    }
+
+    private static func schemaVersion(in data: Data) -> Int? {
+        (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["schemaVersion"] as? Int
     }
 
     func save(_ configuration: GitFlowConfiguration, in repositoryURL: URL) async throws {

@@ -34,6 +34,7 @@ struct BranchRowContent: View, Equatable {
     let headBadgeVisible: Bool
     let folderIsExpanded: Bool
     let isCurrentBranchPrefix: Bool
+    let gitFlowRole: GitFlowBranchRole?
 
     static func == (lhs: BranchRowContent, rhs: BranchRowContent) -> Bool {
         lhs.row == rhs.row
@@ -45,6 +46,7 @@ struct BranchRowContent: View, Equatable {
             && lhs.headBadgeVisible == rhs.headBadgeVisible
             && lhs.folderIsExpanded == rhs.folderIsExpanded
             && lhs.isCurrentBranchPrefix == rhs.isCurrentBranchPrefix
+            && lhs.gitFlowRole == rhs.gitFlowRole
     }
 
     var body: some View {
@@ -63,6 +65,10 @@ struct BranchRowContent: View, Equatable {
                 .fontWeight(isCurrentBranch && !row.isFolder || isCurrentBranchPrefix ? .semibold : .regular)
                 .foregroundStyle(isCurrentBranchPrefix ? Color.accentColor : .primary)
                 .lineLimit(1)
+
+            if let gitFlowRole, !row.isFolder {
+                GitFlowBranchRoleBadge(role: gitFlowRole)
+            }
 
             Spacer()
 

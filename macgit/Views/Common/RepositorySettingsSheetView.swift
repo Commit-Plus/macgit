@@ -55,10 +55,12 @@ struct RepositorySettingsSheetView: View {
     let initialSettings: RepoSettings
     let initialGitFlowConfiguration: GitFlowConfiguration
     let initiallySelectGitFlow: Bool
+    let hasInvalidGitFlowConfiguration: Bool
     let providerAccountResolver: GitProviderCredentialResolver
     let providerAccountPreferences: [String: String]
     let onSave: (RepoSettings) -> Void
-    let onSaveGitFlowConfiguration: (GitFlowConfiguration) -> Void
+    let onSaveGitFlowConfiguration: (GitFlowConfiguration) async -> Bool
+    let onAuthorizeGitFlowAccess: () async -> Bool
     let onCreateGitFlowDevelopBranch: (String, String) async throws -> String
     let onSaveProviderAccountPreferences: ([String: String?]) -> Void
     let onOpenGitIgnore: () -> Void
@@ -76,6 +78,8 @@ struct RepositorySettingsSheetView: View {
     @State private var selectedProviderAccountIDs: [String: String] = [:]
     @State private var gitFlowConfiguration = GitFlowConfiguration()
     @State private var showingCreateDevelopBranchSheet = false
+    @State private var isGitFlowTabAuthorized = false
+    @State private var isAuthorizingGitFlowTab = false
     private let settingsContentWidth: CGFloat = 500
 
     var body: some View {
@@ -94,7 +98,18 @@ struct RepositorySettingsSheetView: View {
                         case .pullFetch:
                             pullFetchTab
                         case .gitFlow:
-                            gitFlowTab
+                            if isGitFlowTabAuthorized {
+                                gitFlowTab
+                            } else {
+                                VStack(spacing: 10) {
+                                    ProgressView()
+                                    Text("Checking Git Flow access…")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 220)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel("Checking Git Flow access")
+                            }
                         case .advanced:
                             advancedTab
                         }
@@ -121,7 +136,12 @@ struct RepositorySettingsSheetView: View {
         .onAppear {
             if initiallySelectGitFlow {
                 selectedTab = .gitFlow
+                authorizeGitFlowTab(fallback: .remote)
             }
+        }
+        .onChange(of: selectedTab) { oldTab, newTab in
+            guard newTab == .gitFlow else { return }
+            authorizeGitFlowTab(fallback: oldTab)
         }
         .sheet(isPresented: $showingRemoteEditSheet) {
             RemoteEditSheetView(
@@ -140,6 +160,21 @@ struct RepositorySettingsSheetView: View {
                 onCreate: onCreateGitFlowDevelopBranch,
                 onCreated: selectCreatedDevelopBranch
             )
+        }
+    }
+
+    private func authorizeGitFlowTab(fallback: RepositorySettingsTab) {
+        guard !isGitFlowTabAuthorized, !isAuthorizingGitFlowTab else { return }
+        isAuthorizingGitFlowTab = true
+        Task {
+            let isAllowed = await onAuthorizeGitFlowAccess()
+            await MainActor.run {
+                isAuthorizingGitFlowTab = false
+                isGitFlowTabAuthorized = isAllowed
+                if !isAllowed, selectedTab == .gitFlow {
+                    selectedTab = fallback == .gitFlow ? .remote : fallback
+                }
+            }
         }
     }
 
@@ -171,18 +206,27 @@ struct RepositorySettingsSheetView: View {
             }
             .keyboardShortcut(.cancelAction)
 
-            Button("Save") {
-                guard let draft else { return }
-                onSave(draft.resolvedSettings)
-                onSaveGitFlowConfiguration(gitFlowConfiguration.normalized())
-                onSaveProviderAccountPreferences(providerAccountPreferenceChanges)
-                dismiss()
-            }
+            Button("Save", action: save)
             .keyboardShortcut(.defaultAction)
             .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 13))
             .disabled(!canSave)
         }
         .padding([.horizontal, .bottom], 24)
+    }
+
+    private func save() {
+        guard let draft else { return }
+        Task {
+            if (gitFlowConfiguration != initialGitFlowConfiguration || hasInvalidGitFlowConfiguration),
+               await onSaveGitFlowConfiguration(gitFlowConfiguration.normalized()) == false {
+                return
+            }
+            await MainActor.run {
+                onSave(draft.resolvedSettings)
+                onSaveProviderAccountPreferences(providerAccountPreferenceChanges)
+                dismiss()
+            }
+        }
     }
 
     @ViewBuilder
@@ -496,6 +540,8 @@ struct RepositorySettingsSheetView: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                     .frame(minWidth: 180)
+                    .accessibilityLabel("Default Git Flow start destination")
+                    .accessibilityValue(gitFlowConfiguration.defaultStartDestination.displayName)
                 }
 
                 Text("This is the default. You can change the destination for each flow from the Start sheet.")
@@ -517,6 +563,8 @@ struct RepositorySettingsSheetView: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                     .frame(minWidth: 180)
+                    .accessibilityLabel("Default Feature and Bugfix finish strategy")
+                    .accessibilityValue(gitFlowConfiguration.topicFinishStrategy.displayName)
                 }
 
                 Toggle(

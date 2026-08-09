@@ -1,8 +1,8 @@
 # Git Flow Lite Phase 6: UX Polish and Hardening
 
-Status: pending.
+Status: completed directly on `main`.
 
-**Implementation branch:** `codex/git-flow-lite-phase-6`
+**Implementation branch:** none; implemented directly on `main` per user instruction.
 
 ## Goal
 
@@ -175,3 +175,13 @@ This is a stabilization phase. It must not grow Git Flow Lite into a custom work
 - Run `xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build`.
 - Do not launch the app. If the full test host aborts during Firebase bootstrap, do not loop it; retain targeted-test and successful-build evidence.
 - Record any runtime-only visual QA still needed from the user instead of claiming it from a successful build.
+
+## Result
+
+- Local branch rows now resolve and display textual Main, Develop, Feature, Bugfix, Release, and Hotfix roles without changing remote-branch rendering or replacing HEAD/sync status.
+- The Git Flow sidebar shows valid paused Finish checkpoints inline with their current step and recovery actions; corrupt or unsupported recovery state is visible and blocks new mutations without deleting local recovery data.
+- Setup, configuration, Start, and Finish entry points share the Firebase-backed `.gitFlow` authorization coordinator and re-authorize at execution boundaries. Resume, Abort, and Disable remain available as recovery/local-safety actions.
+- Configuration and checkpoint stores distinguish missing, valid, corrupt, and unsupported payloads while retaining Phase 1-5 decoding and Git-common-directory sharing across linked worktrees.
+- Finish execution and Abort re-check source, target, tag, and worktree state with expected-ref guards before destructive recovery changes.
+- Git Flow controls include focused-field, picker, validation, badge, section, and recovery accessibility metadata; runtime visual density and VoiceOver reading order still require in-app QA.
+- Focused Phase 6 tests compiled successfully with the full test target. The targeted test run hit the documented Firebase bootstrap `Early unexpected exit` / `abort()` before executing tests and was not rerun.

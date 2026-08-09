@@ -60,7 +60,7 @@ struct GitFlowCommandMenuContent: View {
             Button("Configure Git Flow…") {
                 perform(.configure)
             }
-            .disabled(state.operationInProgress)
+            .disabled(!state.canConfigure)
 
             Button("Disable Git Flow") {
                 perform(.disable)
@@ -70,7 +70,7 @@ struct GitFlowCommandMenuContent: View {
             Button("Set Up Git Flow…") {
                 perform(.configure)
             }
-            .disabled(!hasOpenRepository || state?.operationInProgress == true)
+            .disabled(!hasOpenRepository || state?.canConfigure == false)
         }
     }
 }

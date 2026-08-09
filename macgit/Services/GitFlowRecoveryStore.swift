@@ -26,11 +26,27 @@ struct GitFlowRecoveryStore {
     }
 
     func checkpoint(in repositoryURL: URL) async -> GitFlowFinishCheckpoint? {
-        guard let fileURL = try? await checkpointURL(in: repositoryURL),
-              let data = try? Data(contentsOf: fileURL) else {
-            return nil
+        if case .value(let checkpoint) = await loadResult(in: repositoryURL) {
+            return checkpoint
         }
-        return try? JSONDecoder().decode(GitFlowFinishCheckpoint.self, from: data)
+        return nil
+    }
+
+    func loadResult(in repositoryURL: URL) async -> GitFlowLocalStateLoadResult<GitFlowFinishCheckpoint> {
+        guard let fileURL = try? await checkpointURL(in: repositoryURL) else { return .invalid(.corrupt) }
+        guard fileManager.fileExists(atPath: fileURL.path) else { return .none }
+        guard let data = try? Data(contentsOf: fileURL) else { return .invalid(.corrupt) }
+        if let version = Self.schemaVersion(in: data), version > GitFlowFinishCheckpoint.supportedSchemaVersion {
+            return .invalid(.unsupportedVersion(version))
+        }
+        guard let checkpoint = try? JSONDecoder().decode(GitFlowFinishCheckpoint.self, from: data) else {
+            return .invalid(.corrupt)
+        }
+        return .value(checkpoint)
+    }
+
+    private static func schemaVersion(in data: Data) -> Int? {
+        (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["schemaVersion"] as? Int
     }
 
     func save(_ checkpoint: GitFlowFinishCheckpoint, in repositoryURL: URL) async throws {

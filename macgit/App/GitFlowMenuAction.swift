@@ -32,21 +32,27 @@ struct GitFlowCommandState: Equatable {
     let currentKind: GitFlowTopicKind?
     let operationInProgress: Bool
     let hasPendingFinish: Bool
+    let hasInvalidRecoveryState: Bool
 
     func canStart(_ kind: GitFlowTopicKind) -> Bool {
-        isEnabled && !operationInProgress && !hasPendingFinish
+        isEnabled && !operationInProgress && !hasPendingFinish && !hasInvalidRecoveryState
     }
 
     func canFinish(_ kind: GitFlowTopicKind) -> Bool {
         isEnabled
             && !operationInProgress
             && !hasPendingFinish
+            && !hasInvalidRecoveryState
             && kind.supportsFinish
             && currentKind == kind
     }
 
     var canResumeOrAbortFinish: Bool {
         isEnabled && !operationInProgress && hasPendingFinish
+    }
+
+    var canConfigure: Bool {
+        !operationInProgress
     }
 }
 

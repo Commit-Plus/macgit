@@ -23,6 +23,7 @@ struct SidebarBranchesSection: View {
     let isExpanded: Bool
     let isLoading: Bool
     let currentBranch: String
+    let gitFlowConfiguration: GitFlowConfiguration
     let headHash: String
     let expandedFolders: Set<String>
     let branchSyncStatus: [String: BranchSyncStatus]
@@ -93,6 +94,7 @@ struct SidebarBranchesSection: View {
                         SidebarBranchRow(
                             row: row,
                             currentBranch: currentBranch,
+                            gitFlowConfiguration: gitFlowConfiguration,
                             currentBranchFallbackSyncStatus: currentBranchFallbackSyncStatus,
                             expandedFolders: expandedFolders,
                             isCurrentBranchDropTargeted: isCurrentBranchDropTargeted,

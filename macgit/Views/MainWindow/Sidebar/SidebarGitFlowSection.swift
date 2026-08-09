@@ -21,13 +21,24 @@ import SwiftUI
 struct SidebarGitFlowSection: View {
     let configuration: GitFlowConfiguration
     let currentBranch: String
-    let hasPendingFinish: Bool
+    let checkpoint: GitFlowFinishCheckpoint?
+    let recoveryIssue: GitFlowLocalStateIssue?
     let isExpanded: Bool
     let isOperationDisabled: Bool
     let actions: SidebarGitFlowActions
 
     private var currentKind: GitFlowTopicKind? {
         GitFlowPlanner().topicKind(for: currentBranch, configuration: configuration)
+    }
+
+    private var commandState: GitFlowCommandState {
+        GitFlowCommandState(
+            isEnabled: configuration.isEnabled,
+            currentKind: currentKind,
+            operationInProgress: isOperationDisabled,
+            hasPendingFinish: checkpoint != nil,
+            hasInvalidRecoveryState: recoveryIssue != nil
+        )
     }
 
     var body: some View {
@@ -48,8 +59,21 @@ struct SidebarGitFlowSection: View {
                         .disabled(isOperationDisabled)
                 }
             }
+            .accessibilityLabel("Git Flow section")
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint("Shows Git Flow start, finish, and recovery actions.")
 
             if isExpanded {
+                if checkpoint != nil || recoveryIssue != nil {
+                    GitFlowRecoveryCard(
+                        checkpoint: checkpoint,
+                        issue: recoveryIssue,
+                        actionsEnabled: commandState.canResumeOrAbortFinish,
+                        onResume: actions.resumeFinish,
+                        onAbort: actions.abortFinish
+                    )
+                    .padding(.leading, 6)
+                }
                 if configuration.isEnabled {
                     ForEach(GitFlowTopicKind.allCases) { kind in
                         Button {
@@ -59,7 +83,8 @@ struct SidebarGitFlowSection: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .buttonStyle(.plain)
-                        .disabled(isOperationDisabled || hasPendingFinish)
+                        .disabled(!commandState.canStart(kind))
+                        .accessibilityHint("Starts a new \(kind.displayName) flow.")
                         .padding(.leading, 6)
                     }
                 } else {
@@ -74,11 +99,11 @@ struct SidebarGitFlowSection: View {
 
     @ViewBuilder
     private var actionMenu: some View {
-        if hasPendingFinish {
+        if checkpoint != nil {
             Button("Resume Finish", action: actions.resumeFinish)
-                .disabled(isOperationDisabled)
+                .disabled(!commandState.canResumeOrAbortFinish)
             Button("Abort Finish", role: .destructive, action: actions.abortFinish)
-                .disabled(isOperationDisabled)
+                .disabled(!commandState.canResumeOrAbortFinish)
             Divider()
         }
 
@@ -97,17 +122,9 @@ struct SidebarGitFlowSection: View {
     @ViewBuilder
     private func flowMenuPair(_ kind: GitFlowTopicKind) -> some View {
         Button("Start \(kind.displayName)…") { actions.start(kind) }
-            .disabled(isOperationDisabled || hasPendingFinish)
+            .disabled(!commandState.canStart(kind))
         Button("Finish \(kind.displayName)…") { actions.finish(kind) }
-            .disabled(!canFinish(kind))
-    }
-
-    private func canFinish(_ kind: GitFlowTopicKind) -> Bool {
-        configuration.isEnabled
-            && !isOperationDisabled
-            && !hasPendingFinish
-            && kind.supportsFinish
-            && currentKind == kind
+            .disabled(!commandState.canFinish(kind))
     }
 }
 

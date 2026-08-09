@@ -131,6 +131,14 @@ final class FeatureAccessPolicyTests: XCTestCase {
             resolver.decision(
                 for: .gitFlow,
                 entitlement: .free,
+                repositoryVisibility: .local
+            ),
+            .allowed
+        )
+        XCTAssertEqual(
+            resolver.decision(
+                for: .gitFlow,
+                entitlement: .free,
                 repositoryVisibility: .private
             ),
             .denied(.requiresPro)
@@ -142,6 +150,14 @@ final class FeatureAccessPolicyTests: XCTestCase {
                 repositoryVisibility: .private
             ),
             .allowed
+        )
+        XCTAssertEqual(
+            resolver.decision(
+                for: .gitFlow,
+                entitlement: activePro,
+                repositoryVisibility: .unknown
+            ),
+            .denied(.repositoryVisibilityUnavailable)
         )
     }
 

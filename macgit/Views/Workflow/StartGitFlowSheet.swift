@@ -33,6 +33,7 @@ struct StartGitFlowSheet: View {
     @State private var worktreeLabel = ""
     @State private var openAfterCreate = true
     @State private var hasEditedWorktreePath = false
+    @FocusState private var isTopicNameFocused: Bool
 
     init(
         kind: GitFlowTopicKind,
@@ -106,6 +107,9 @@ struct StartGitFlowSheet: View {
                         .padding(.leading, 8)
 
                     TextField("branch-name", text: $topicName)
+                        .focused($isTopicNameFocused)
+                        .accessibilityLabel("\(kind.displayName) branch name")
+                        .accessibilityHint("The configured prefix is added automatically.")
                         .textFieldStyle(.plain)
                         .padding(.vertical, 6)
                         .padding(.trailing, 8)
@@ -135,6 +139,9 @@ struct StartGitFlowSheet: View {
                 .labelsHidden()
                 .pickerStyle(.radioGroup)
                 .padding(.leading, 2)
+                .accessibilityLabel("Start destination")
+                .accessibilityValue(destination.displayName)
+                .accessibilityHint("Choose the current working copy or a new linked worktree.")
             }
             .onChange(of: destination) { _, newDestination in
                 if newDestination == .newWorktree, worktreePath.isEmpty {
@@ -153,6 +160,7 @@ struct StartGitFlowSheet: View {
                             }
                         }
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Worktree path")
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
@@ -160,15 +168,18 @@ struct StartGitFlowSheet: View {
                             .font(.subheadline)
                         TextField("Task label", text: $worktreeLabel)
                             .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Worktree label")
                     }
 
                     Toggle("Open after create", isOn: $openAfterCreate)
                         .toggleStyle(.checkbox)
+                        .accessibilityHint("Opens the new linked worktree in a Commit+ window after creation.")
 
                     if let worktreePathError {
                         Label(worktreePathError, systemImage: "exclamationmark.triangle.fill")
                             .font(.subheadline)
                             .foregroundStyle(.orange)
+                            .accessibilityLabel("Worktree path error: \(worktreePathError)")
                     }
                 }
                 .padding(12)
@@ -209,6 +220,7 @@ struct StartGitFlowSheet: View {
         .padding(24)
         .frame(minWidth: 480, idealWidth: 520)
         .onAppear {
+            isTopicNameFocused = true
             if destination == .newWorktree, worktreePath.isEmpty {
                 worktreePath = suggestedWorktreePath
             }

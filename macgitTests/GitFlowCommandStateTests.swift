@@ -25,7 +25,8 @@ final class GitFlowCommandStateTests: XCTestCase {
             isEnabled: true,
             currentKind: .feature,
             operationInProgress: false,
-            hasPendingFinish: false
+            hasPendingFinish: false,
+            hasInvalidRecoveryState: false
         )
 
         XCTAssertTrue(state.canStart(.hotfix))
@@ -38,7 +39,8 @@ final class GitFlowCommandStateTests: XCTestCase {
             isEnabled: true,
             currentKind: .bugfix,
             operationInProgress: true,
-            hasPendingFinish: false
+            hasPendingFinish: false,
+            hasInvalidRecoveryState: false
         )
 
         XCTAssertFalse(state.canStart(.feature))
@@ -50,7 +52,8 @@ final class GitFlowCommandStateTests: XCTestCase {
             isEnabled: true,
             currentKind: .release,
             operationInProgress: false,
-            hasPendingFinish: true
+            hasPendingFinish: true,
+            hasInvalidRecoveryState: false
         )
 
         XCTAssertFalse(state.canStart(.feature))
