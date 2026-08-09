@@ -357,6 +357,33 @@ struct SidebarView: View {
         )
     }
 
+    private var gitFlowCommandState: GitFlowCommandState {
+        GitFlowCommandState(
+            isEnabled: gitFlowConfiguration.isEnabled,
+            currentKind: GitFlowPlanner().topicKind(for: currentBranch, configuration: gitFlowConfiguration),
+            operationInProgress: isGitFlowOperationDisabled,
+            hasPendingFinish: gitFlowFinishCheckpoint != nil,
+            hasInvalidRecoveryState: gitFlowRecoveryIssue != nil
+        )
+    }
+
+    private func performGitFlowAction(_ action: GitFlowMenuAction) {
+        switch action {
+        case .start(let kind):
+            onRequestStartGitFlow(kind)
+        case .finish(let kind):
+            onRequestFinishGitFlow(kind)
+        case .resumeFinish:
+            onRequestResumeGitFlowFinish()
+        case .abortFinish:
+            onRequestAbortGitFlowFinish()
+        case .configure:
+            onRequestEditGitFlow()
+        case .disable:
+            onRequestDisableGitFlow()
+        }
+    }
+
     var tagSectionActions: SidebarTagSectionActions {
         SidebarTagSectionActions(
             toggleSection: { toggleSection(.tags) },
@@ -642,27 +669,12 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var sidebarRows: some View {
-        SidebarWorkspaceSection(onRequestSearch: onRequestSearch)
-
-        if appState.showGitFlow {
-            SidebarGitFlowSection(
-                configuration: gitFlowConfiguration,
-                currentBranch: currentBranch,
-                checkpoint: gitFlowFinishCheckpoint,
-                recoveryIssue: gitFlowRecoveryIssue,
-                isExpanded: sectionStates.gitFlowExpanded,
-                isOperationDisabled: isGitFlowOperationDisabled,
-                actions: SidebarGitFlowActions(
-                    toggleSection: { toggleSection(.gitFlow) },
-                    start: onRequestStartGitFlow,
-                    finish: onRequestFinishGitFlow,
-                    resumeFinish: onRequestResumeGitFlowFinish,
-                    abortFinish: onRequestAbortGitFlowFinish,
-                    editWorkflow: onRequestEditGitFlow,
-                    disableWorkflow: onRequestDisableGitFlow
-                )
-            )
-        }
+        SidebarWorkspaceSection(
+            onRequestSearch: onRequestSearch,
+            showGitFlow: appState.showGitFlow,
+            gitFlowCommandState: gitFlowCommandState,
+            onGitFlowAction: performGitFlowAction
+        )
 
         SidebarBranchesSection(
             rows: visibleBranchRows,

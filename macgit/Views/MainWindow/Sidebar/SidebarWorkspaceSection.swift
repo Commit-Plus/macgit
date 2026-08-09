@@ -20,6 +20,9 @@ import SwiftUI
 
 struct SidebarWorkspaceSection: View {
     let onRequestSearch: () -> Void
+    let showGitFlow: Bool
+    let gitFlowCommandState: GitFlowCommandState
+    let onGitFlowAction: (GitFlowMenuAction) -> Void
 
     var body: some View {
         Section {
@@ -54,6 +57,22 @@ struct SidebarWorkspaceSection: View {
                         .padding(.leading, 6)
                         .tag(SidebarSelection.item(item))
                 }
+            }
+
+            if showGitFlow {
+                Label(SidebarItem.gitFlow.rawValue, systemImage: SidebarItem.gitFlow.icon)
+                    .padding(.leading, 6)
+                    .tag(SidebarSelection.item(.gitFlow))
+                    .contextMenu {
+                        GitFlowCommandMenuContent(
+                            state: gitFlowCommandState,
+                            hasOpenRepository: true,
+                            perform: onGitFlowAction
+                        )
+                    }
+                    .help("Open Git Flow actions")
+                    .accessibilityLabel("Git Flow")
+                    .accessibilityHint("Shows Git Flow actions and workflow status.")
             }
         }
     }

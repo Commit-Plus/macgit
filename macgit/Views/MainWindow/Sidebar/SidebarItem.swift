@@ -21,6 +21,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case history = "History"
     case pullRequests = "Pull Requests"
     case search = "Search"
+    case gitFlow = "Git Flow"
 
     var id: String { rawValue }
 
@@ -30,6 +31,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .history: return "clock.arrow.circlepath"
         case .pullRequests: return "arrow.triangle.pull"
         case .search: return "magnifyingglass"
+        case .gitFlow: return "point.3.connected.trianglepath.dotted"
         }
     }
 }

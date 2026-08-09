@@ -1005,6 +1005,15 @@ struct MainWindowView: View {
                 EmptyStateView(message: "Select a subtree action from the sidebar")
             case .item(.search):
                 SearchView(repositoryURL: repositoryURL)
+            case .item(.gitFlow):
+                GitFlowDashboardView(
+                    configuration: gitFlowConfiguration,
+                    currentBranch: gitFlowCurrentBranch,
+                    checkpoint: gitFlowFinishCheckpoint,
+                    recoveryIssue: gitFlowRecoveryIssue,
+                    commandState: gitFlowCommandState,
+                    perform: handleGitFlowMenuAction
+                )
             case .none:
                 EmptyStateView(message: "Select an item from the sidebar")
             }
