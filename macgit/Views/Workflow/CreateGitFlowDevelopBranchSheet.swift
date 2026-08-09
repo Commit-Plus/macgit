@@ -22,7 +22,7 @@ struct CreateGitFlowDevelopBranchSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let startingPoint: String
-    let onCreate: (String, String) async throws -> String
+    let onCreate: @MainActor (GitFlowDevelopBranchRequest) async throws -> String
     let onCreated: (String) -> Void
 
     @State private var branchName: String
@@ -32,7 +32,7 @@ struct CreateGitFlowDevelopBranchSheet: View {
     init(
         suggestedName: String,
         startingPoint: String,
-        onCreate: @escaping (String, String) async throws -> String,
+        onCreate: @escaping @MainActor (GitFlowDevelopBranchRequest) async throws -> String,
         onCreated: @escaping (String) -> Void
     ) {
         self.startingPoint = startingPoint
@@ -92,9 +92,13 @@ struct CreateGitFlowDevelopBranchSheet: View {
     private func createBranch() {
         errorMessage = nil
         isCreating = true
-        Task {
+        let request = GitFlowDevelopBranchRequest(
+            name: trimmedBranchName,
+            startingPoint: startingPoint
+        )
+        Task { [request] in
             do {
-                let createdBranch = try await onCreate(trimmedBranchName, startingPoint)
+                let createdBranch = try await onCreate(request)
                 await MainActor.run {
                     onCreated(createdBranch)
                     dismiss()

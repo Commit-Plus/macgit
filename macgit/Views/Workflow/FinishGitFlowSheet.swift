@@ -23,8 +23,8 @@ struct FinishGitFlowSheet: View {
 
     let initialPlan: GitFlowFinishPlan
     let onRunRepositoryOperation: RepositoryOperationRunner
-    let onValidateTag: (String) async -> String?
-    let onFinish: (GitFlowFinishPlan) async -> Bool
+    let onValidateTag: @MainActor (String) async -> String?
+    let onFinish: @MainActor (GitFlowFinishPlan) async -> Bool
 
     @State private var strategy: GitFlowTopicFinishStrategy
     @State private var createTag: Bool
@@ -37,8 +37,8 @@ struct FinishGitFlowSheet: View {
     init(
         plan: GitFlowFinishPlan,
         onRunRepositoryOperation: @escaping RepositoryOperationRunner,
-        onValidateTag: @escaping (String) async -> String?,
-        onFinish: @escaping (GitFlowFinishPlan) async -> Bool
+        onValidateTag: @escaping @MainActor (String) async -> String?,
+        onFinish: @escaping @MainActor (GitFlowFinishPlan) async -> Bool
     ) {
         initialPlan = plan
         self.onRunRepositoryOperation = onRunRepositoryOperation
@@ -189,11 +189,17 @@ struct FinishGitFlowSheet: View {
     }
 
     private func finish() {
-        var plan = initialPlan
-        plan.strategy = initialPlan.kind.requiresReleaseTag ? .mergeNoFastForward : strategy
-        plan.createTag = initialPlan.kind.requiresReleaseTag && createTag
-        plan.tagName = plan.createTag ? tagName.trimmingCharacters(in: .whitespacesAndNewlines) : nil
-        plan.deleteSourceBranch = deleteSourceBranch
+        let shouldCreateTag = initialPlan.kind.requiresReleaseTag && createTag
+        let plan = GitFlowFinishPlan(
+            kind: initialPlan.kind,
+            sourceBranch: initialPlan.sourceBranch,
+            targetBranch: initialPlan.primaryTargetBranch,
+            secondaryTargetBranch: initialPlan.secondaryTargetBranch,
+            tagName: shouldCreateTag ? tagName.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
+            createTag: shouldCreateTag,
+            deleteSourceBranch: deleteSourceBranch,
+            strategy: initialPlan.kind.requiresReleaseTag ? .mergeNoFastForward : strategy
+        )
         onRunRepositoryOperation("Finishing \(plan.sourceBranch)…") {
             if await onFinish(plan) {
                 await MainActor.run { dismiss() }

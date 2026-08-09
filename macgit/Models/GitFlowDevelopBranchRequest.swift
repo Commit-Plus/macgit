@@ -18,18 +18,12 @@
 
 import Foundation
 
-enum GitFlowTopicFinishStrategy: String, CaseIterable, Codable, Equatable, Identifiable, Sendable {
-    case mergeNoFastForward
-    case rebaseFastForward
+final class GitFlowDevelopBranchRequest: Sendable {
+    let name: String
+    let startingPoint: String
 
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .mergeNoFastForward:
-            return "Merge commit"
-        case .rebaseFastForward:
-            return "Rebase and fast-forward"
-        }
+    init(name: String, startingPoint: String) {
+        self.name = name
+        self.startingPoint = startingPoint
     }
 }

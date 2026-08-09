@@ -25,7 +25,7 @@ struct StartGitFlowSheet: View {
     let configuration: GitFlowConfiguration
     let worktreeRootURL: URL
     let onRunRepositoryOperation: RepositoryOperationRunner
-    let onStart: (GitFlowStartPlan, Bool) async -> Bool
+    let onStart: @MainActor (GitFlowStartPlan, Bool) async -> Bool
 
     @State private var topicName = ""
     @State private var destination: GitFlowStartDestination
@@ -40,7 +40,7 @@ struct StartGitFlowSheet: View {
         configuration: GitFlowConfiguration,
         worktreeRootURL: URL,
         onRunRepositoryOperation: @escaping RepositoryOperationRunner,
-        onStart: @escaping (GitFlowStartPlan, Bool) async -> Bool
+        onStart: @escaping @MainActor (GitFlowStartPlan, Bool) async -> Bool
     ) {
         self.kind = kind
         self.configuration = configuration

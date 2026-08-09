@@ -18,15 +18,15 @@
 
 import Foundation
 
-struct GitFlowFinishPlan: Identifiable, Codable, Equatable {
+final class GitFlowFinishPlan: Identifiable, Codable, Equatable, Sendable {
     let kind: GitFlowTopicKind
     let sourceBranch: String
     let primaryTargetBranch: String
     let secondaryTargetBranch: String?
-    var tagName: String?
-    var createTag: Bool
-    var deleteSourceBranch: Bool
-    var strategy: GitFlowTopicFinishStrategy
+    let tagName: String?
+    let createTag: Bool
+    let deleteSourceBranch: Bool
+    let strategy: GitFlowTopicFinishStrategy
 
     var id: String { "\(kind.rawValue):\(sourceBranch)" }
 
@@ -57,6 +57,32 @@ struct GitFlowFinishPlan: Identifiable, Codable, Equatable {
         self.createTag = createTag
         self.deleteSourceBranch = deleteSourceBranch
         self.strategy = kind.requiresReleaseTag ? .mergeNoFastForward : strategy
+    }
+
+    static func == (lhs: GitFlowFinishPlan, rhs: GitFlowFinishPlan) -> Bool {
+        lhs.kind == rhs.kind
+            && lhs.sourceBranch == rhs.sourceBranch
+            && lhs.primaryTargetBranch == rhs.primaryTargetBranch
+            && lhs.secondaryTargetBranch == rhs.secondaryTargetBranch
+            && lhs.tagName == rhs.tagName
+            && lhs.createTag == rhs.createTag
+            && lhs.deleteSourceBranch == rhs.deleteSourceBranch
+            && lhs.strategy == rhs.strategy
+    }
+
+    func normalizedForExecution() -> GitFlowFinishPlan {
+        GitFlowFinishPlan(
+            kind: kind,
+            sourceBranch: sourceBranch,
+            targetBranch: primaryTargetBranch,
+            secondaryTargetBranch: secondaryTargetBranch,
+            tagName: createTag
+                ? tagName?.trimmingCharacters(in: .whitespacesAndNewlines)
+                : nil,
+            createTag: createTag,
+            deleteSourceBranch: deleteSourceBranch,
+            strategy: strategy
+        )
     }
 
     private enum CodingKeys: String, CodingKey {

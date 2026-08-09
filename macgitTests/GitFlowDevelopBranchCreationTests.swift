@@ -20,6 +20,24 @@ import XCTest
 @testable import macgit
 
 final class GitFlowDevelopBranchCreationTests: XCTestCase {
+    @MainActor
+    func testDevelopSheetPreservesRequestAcrossAsyncCallbackConversion() async throws {
+        let request = GitFlowDevelopBranchRequest(name: "develop", startingPoint: "main")
+        let sheet = CreateGitFlowDevelopBranchSheet(
+            suggestedName: request.name,
+            startingPoint: request.startingPoint,
+            onCreate: { receivedRequest in
+                XCTAssertTrue(receivedRequest === request)
+                return receivedRequest.name
+            },
+            onCreated: { _ in }
+        )
+
+        let result = try await sheet.onCreate(request)
+
+        XCTAssertEqual(result, "develop")
+    }
+
     func testCreatesDevelopFromMainWithoutCheckingItOut() async throws {
         let repositoryURL = try makeRepository()
         defer { try? FileManager.default.removeItem(at: repositoryURL) }

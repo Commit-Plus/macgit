@@ -59,9 +59,9 @@ struct RepositorySettingsSheetView: View {
     let providerAccountResolver: GitProviderCredentialResolver
     let providerAccountPreferences: [String: String]
     let onSave: (RepoSettings) -> Void
-    let onSaveGitFlowConfiguration: (GitFlowConfiguration) async -> Bool
-    let onAuthorizeGitFlowAccess: () async -> Bool
-    let onCreateGitFlowDevelopBranch: (String, String) async throws -> String
+    let onSaveGitFlowConfiguration: @MainActor (GitFlowConfiguration) async -> Bool
+    let onAuthorizeGitFlowAccess: @MainActor () async -> Bool
+    let onCreateGitFlowDevelopBranch: @MainActor (GitFlowDevelopBranchRequest) async throws -> String
     let onSaveProviderAccountPreferences: ([String: String?]) -> Void
     let onOpenGitIgnore: () -> Void
     let onOpenGitConfig: () -> Void
@@ -618,7 +618,7 @@ struct RepositorySettingsSheetView: View {
                 .frame(minWidth: 180)
 
                 if showsCreateDevelopBranchButton {
-                    Button("Create Develop Branch…") {
+                    Button("Create New…") {
                         showingCreateDevelopBranchSheet = true
                     }
                     .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 11))

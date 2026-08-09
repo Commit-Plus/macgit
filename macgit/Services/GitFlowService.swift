@@ -134,15 +134,25 @@ struct GitFlowService {
         startingPoint: String,
         in repositoryURL: URL
     ) async throws -> String {
-        let branchName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        try await createDevelopBranch(
+            GitFlowDevelopBranchRequest(name: name, startingPoint: startingPoint),
+            in: repositoryURL
+        )
+    }
+
+    func createDevelopBranch(
+        _ request: GitFlowDevelopBranchRequest,
+        in repositoryURL: URL
+    ) async throws -> String {
+        let branchName = request.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !branchName.isEmpty else {
             throw GitFlowDevelopBranchCreationError.emptyBranchName
         }
 
         let git = GitStatusService.shared
         let branches = await git.localBranches(in: repositoryURL)
-        guard branches.contains(startingPoint) else {
-            throw GitFlowDevelopBranchCreationError.missingMainBranch(startingPoint)
+        guard branches.contains(request.startingPoint) else {
+            throw GitFlowDevelopBranchCreationError.missingMainBranch(request.startingPoint)
         }
         guard !branches.contains(branchName) else {
             throw GitFlowDevelopBranchCreationError.branchAlreadyExists(branchName)
@@ -154,7 +164,7 @@ struct GitFlowService {
         _ = try await git.createBranch(
             name: branchName,
             checkout: false,
-            commit: startingPoint,
+            commit: request.startingPoint,
             in: repositoryURL
         )
         return branchName
@@ -339,10 +349,7 @@ struct GitFlowService {
     }
 
     func finish(_ plan: GitFlowFinishPlan, in repositoryURL: URL) async throws -> GitFlowFinishResult {
-        var plan = plan
-        if plan.createTag {
-            plan.tagName = plan.tagName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
+        let plan = plan.normalizedForExecution()
         let git = GitStatusService.shared
         switch await recoveryStore.loadResult(in: repositoryURL) {
         case .none:

@@ -360,13 +360,12 @@ extension MainWindowView {
                 }
             },
             onAuthorizeGitFlowAccess: { await authorizeGitFlowAccess() },
-            onCreateGitFlowDevelopBranch: { name, startingPoint in
+            onCreateGitFlowDevelopBranch: { request in
                 guard await authorizeGitFlowAccess() else {
                     throw GitError.commandFailed("Git Flow access is not available for this repository.")
                 }
                 let branch = try await GitFlowService().createDevelopBranch(
-                    name: name,
-                    startingPoint: startingPoint,
+                    request,
                     in: repositoryURL
                 )
                 NotificationCenter.default.post(

@@ -18,7 +18,7 @@
 
 import Foundation
 
-enum GitFlowStartDestination: String, CaseIterable, Codable, Equatable, Identifiable {
+enum GitFlowStartDestination: String, CaseIterable, Codable, Equatable, Identifiable, Sendable {
     case currentWorkingCopy
     case newWorktree
 

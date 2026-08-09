@@ -18,7 +18,7 @@
 
 import Foundation
 
-struct GitFlowStartPlan: Equatable {
+final class GitFlowStartPlan: Equatable, Sendable {
     let kind: GitFlowTopicKind
     let branchName: String
     let baseBranch: String
@@ -40,6 +40,15 @@ struct GitFlowStartPlan: Equatable {
         self.destination = destination
         self.worktreePath = worktreePath
         self.worktreeLabel = worktreeLabel
+    }
+
+    static func == (lhs: GitFlowStartPlan, rhs: GitFlowStartPlan) -> Bool {
+        lhs.kind == rhs.kind
+            && lhs.branchName == rhs.branchName
+            && lhs.baseBranch == rhs.baseBranch
+            && lhs.destination == rhs.destination
+            && lhs.worktreePath == rhs.worktreePath
+            && lhs.worktreeLabel == rhs.worktreeLabel
     }
 }
 

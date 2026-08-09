@@ -18,7 +18,7 @@
 
 import Foundation
 
-enum GitFlowTopicKind: String, Codable, CaseIterable, Hashable, Identifiable {
+enum GitFlowTopicKind: String, Codable, CaseIterable, Hashable, Identifiable, Sendable {
     case feature
     case bugfix
     case release
