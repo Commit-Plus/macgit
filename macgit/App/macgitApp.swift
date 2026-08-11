@@ -30,9 +30,9 @@ struct macgitApp: App {
     @StateObject private var repositoryVisibilityController: RepositoryVisibilityController
     @StateObject private var repositoryBookmarkController: RepositoryBookmarkController
     @State private var showingAppSettings = false
-    @FocusedValue(\.gitFlowCommandState) private var gitFlowCommandState
 
     init() {
+        NSWindow.allowsAutomaticWindowTabbing = false
         let firebaseStatus = FirebaseBootstrap.configure()
         let appState = AppState.shared
         _appState = StateObject(wrappedValue: appState)
@@ -337,29 +337,13 @@ struct macgitApp: App {
                 .keyboardShortcut("f", modifiers: [.command, .shift])
             }
 
-            CommandMenu("Git Flow") {
-                GitFlowCommandMenuContent(
-                    state: gitFlowCommandState,
-                    hasOpenRepository: appState.hasOpenRepository,
-                    perform: performGitFlowMenuAction
-                )
-            }
+            GitFlowCommands(appState: appState)
 
             CommandMenu("Accounts") {
                 AccountMenuContent(controller: accountController)
             }
 
-            CommandGroup(before: .sidebar) {
-                Menu("Show Header Buttons") {
-                    Toggle("Branch", isOn: $appState.showHeaderBranchButton)
-                    Toggle("Merge", isOn: $appState.showHeaderMergeButton)
-                    Toggle("Stash", isOn: $appState.showHeaderStashButton)
-                    Toggle("Remote", isOn: $appState.showHeaderRemoteButton)
-                    Toggle("Finder", isOn: $appState.showHeaderFinderButton)
-                    Toggle("External Editor", isOn: $appState.showHeaderEditorButton)
-                    Toggle("Terminal", isOn: $appState.showHeaderTerminalButton)
-                }
-            }
+            HeaderButtonsCommands(appState: appState)
 
             CommandGroup(before: .toolbar) {
                 Toggle(isOn: $appState.showToolbarButtonText) {
@@ -377,13 +361,5 @@ struct macgitApp: App {
                 }
             }
         }
-    }
-
-    private func performGitFlowMenuAction(_ action: GitFlowMenuAction) {
-        NotificationCenter.default.post(
-            name: .gitFlowMenuAction,
-            object: nil,
-            userInfo: ["action": action]
-        )
     }
 }
