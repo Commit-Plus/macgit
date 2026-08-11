@@ -60,6 +60,12 @@ struct PendingTagMoveConfirmation: Identifiable, Equatable {
     let remotes: [String]
 }
 
+struct PendingForcePushTagConfirmation: Identifiable, Equatable {
+    let id = UUID()
+    let tag: String
+    let remote: String
+}
+
 struct PendingSubtreeOperation: Identifiable, Equatable {
     let operation: SubtreeOperation
     let entry: GitSubtreeEntry
@@ -156,6 +162,7 @@ struct MainWindowView: View {
     @State var pendingBranchDropConfirmation: PendingBranchDropConfirmation?
     @State var pendingPushBranchDropConfirmation: PendingPushBranchDropConfirmation?
     @State var pendingTagMoveConfirmation: PendingTagMoveConfirmation?
+    @State private var pendingForcePushTagConfirmation: PendingForcePushTagConfirmation?
     @State private var pendingSubtreeOperation: PendingSubtreeOperation?
     @State private var isPerformingBranchDropOperation = false
     @State private var showingExternalEditorChooser = false
@@ -255,6 +262,43 @@ struct MainWindowView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(pendingConfirmedUndo?.entry.confirmationMessage ?? "")
+            }
+            .confirmationDialog(
+                "Force Push Tag",
+                isPresented: Binding(
+                    get: { pendingForcePushTagConfirmation != nil },
+                    set: { isPresented in
+                        if !isPresented {
+                            pendingForcePushTagConfirmation = nil
+                        }
+                    }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Force Push", role: .destructive) {
+                    guard let confirmation = pendingForcePushTagConfirmation else { return }
+                    pendingForcePushTagConfirmation = nil
+                    runRemoteOperation(
+                        "Force-pushing \(confirmation.tag) to \(confirmation.remote)...",
+                        remotes: [confirmation.remote]
+                    ) { credentialResolver in
+                        await syncState.performPush(
+                            options: GitStatusService.PushOptions(
+                                remote: confirmation.remote,
+                                tags: [confirmation.tag],
+                                forceTags: true
+                            ),
+                            repositoryURL: repositoryURL,
+                            undoManager: undoManager,
+                            credentialResolver: credentialResolver
+                        )
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                if let confirmation = pendingForcePushTagConfirmation {
+                    Text("Replace tag '\(confirmation.tag)' on '\(confirmation.remote)' with the local tag target? This rewrites the published tag and may retrigger release automation.")
+                }
             }
             .sheet(isPresented: $showingCommitSheet) { commitSheet }
             .sheet(isPresented: $showingPullSheet) { pullSheet }
@@ -713,6 +757,12 @@ struct MainWindowView: View {
                         credentialResolver: credentialResolver
                     )
                 }
+            },
+            onRequestForcePushTagToRemote: { tag, remote in
+                pendingForcePushTagConfirmation = PendingForcePushTagConfirmation(
+                    tag: tag,
+                    remote: remote
+                )
             },
             onRequestDeleteTag: { tag in
                 tagPendingDeletion = tag

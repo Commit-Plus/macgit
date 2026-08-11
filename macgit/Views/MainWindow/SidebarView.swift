@@ -51,6 +51,7 @@ struct SidebarView: View {
     let onRequestTagDetails: (String) -> Void
     let onRequestDiffTagAgainstCurrent: (String) -> Void
     let onRequestPushTagToRemote: (String, String) -> Void
+    let onRequestForcePushTagToRemote: (String, String) -> Void
     let onRequestDeleteTag: (String) -> Void
     let onRequestRebaseOnto: (String) -> Void
     let onRequestMergeBranchIntoCurrent: (String) -> Void
@@ -197,6 +198,7 @@ struct SidebarView: View {
         onRequestTagDetails: @escaping (String) -> Void = { _ in },
         onRequestDiffTagAgainstCurrent: @escaping (String) -> Void = { _ in },
         onRequestPushTagToRemote: @escaping (String, String) -> Void = { _, _ in },
+        onRequestForcePushTagToRemote: @escaping (String, String) -> Void = { _, _ in },
         onRequestDeleteTag: @escaping (String) -> Void = { _ in },
         onRequestRebaseOnto: @escaping (String) -> Void = { _ in },
         onRequestMergeBranchIntoCurrent: @escaping (String) -> Void = { _ in },
@@ -260,6 +262,7 @@ struct SidebarView: View {
         self.onRequestTagDetails = onRequestTagDetails
         self.onRequestDiffTagAgainstCurrent = onRequestDiffTagAgainstCurrent
         self.onRequestPushTagToRemote = onRequestPushTagToRemote
+        self.onRequestForcePushTagToRemote = onRequestForcePushTagToRemote
         self.onRequestDeleteTag = onRequestDeleteTag
         self.onRequestRebaseOnto = onRequestRebaseOnto
         self.onRequestMergeBranchIntoCurrent = onRequestMergeBranchIntoCurrent
@@ -393,6 +396,7 @@ struct SidebarView: View {
             showDetails: onRequestTagDetails,
             diffAgainstCurrent: onRequestDiffTagAgainstCurrent,
             pushToRemote: onRequestPushTagToRemote,
+            forcePushToRemote: onRequestForcePushTagToRemote,
             delete: onRequestDeleteTag,
             setHeaderDropTargeted: updateTagsHeaderDropTarget,
             setTagDropTargeted: updateTagDropTarget,

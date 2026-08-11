@@ -36,6 +36,62 @@ final class GitTagPushServiceTests: XCTestCase {
         XCTAssertFalse(try refExists("refs/tags/v2.0.0", in: remoteURL))
     }
 
+    func testForcePushSelectedTagReplacesRemoteTagWithoutMovingOtherTags() async throws {
+        let sourceURL = try makeRepository()
+        let remoteURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macgit-tag-remote-\(UUID().uuidString).git", isDirectory: true)
+        try runGit(["init", "--bare", remoteURL.path], in: sourceURL)
+        try runGit(["remote", "add", "origin", remoteURL.path], in: sourceURL)
+        try runGit(["tag", "v1.0.0"], in: sourceURL)
+        try runGit(["tag", "v2.0.0"], in: sourceURL)
+        _ = try await GitStatusService.shared.push(
+            options: GitStatusService.PushOptions(remote: "origin", tags: ["v1.0.0", "v2.0.0"]),
+            in: sourceURL
+        )
+
+        try "fixed release\n".write(
+            to: sourceURL.appendingPathComponent("release.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try runGit(["add", "release.txt"], in: sourceURL)
+        try runGit(["commit", "-m", "Fix release"], in: sourceURL)
+        try runGit(["tag", "--force", "v1.0.0"], in: sourceURL)
+
+        let originalV2Hash = try runGit(["rev-parse", "refs/tags/v2.0.0^{commit}"], in: remoteURL)
+        _ = try await GitStatusService.shared.push(
+            options: GitStatusService.PushOptions(
+                remote: "origin",
+                tags: ["v1.0.0"],
+                forceTags: true
+            ),
+            in: sourceURL
+        )
+
+        XCTAssertEqual(
+            try runGit(["rev-parse", "refs/tags/v1.0.0^{commit}"], in: remoteURL),
+            try runGit(["rev-parse", "HEAD"], in: sourceURL)
+        )
+        XCTAssertEqual(
+            try runGit(["rev-parse", "refs/tags/v2.0.0^{commit}"], in: remoteURL),
+            originalV2Hash
+        )
+    }
+
+    func testRejectedTagPushSuggestsForcePushMenu() {
+        let options = GitStatusService.PushOptions(
+            remote: "origin",
+            tags: ["v1.0.4"]
+        )
+
+        let message = SyncState.pushErrorMessage(
+            GitError.commandFailed("! [rejected] v1.0.4 -> v1.0.4 (already exists)"),
+            options: options
+        )
+
+        XCTAssertTrue(message.contains("Force Push to → origin"))
+    }
+
     private func makeRepository() throws -> URL {
         let repositoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("macgit-tag-push-\(UUID().uuidString)", isDirectory: true)

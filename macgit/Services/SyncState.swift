@@ -226,8 +226,25 @@ class SyncState: ObservableObject {
                 }
             }
         } catch {
-            showError(error.localizedDescription)
+            showError(Self.pushErrorMessage(error, options: options))
         }
+    }
+
+    nonisolated static func pushErrorMessage(
+        _ error: Error,
+        options: GitStatusService.PushOptions
+    ) -> String {
+        let message = error.localizedDescription
+        let normalizedMessage = message.lowercased()
+        let isTagRejection = normalizedMessage.contains("already exists")
+            || normalizedMessage.contains("would clobber existing tag")
+        let includesTags = !options.tags.isEmpty || options.pushTags
+
+        guard includesTags, !options.forceTags, isTagRejection else {
+            return message
+        }
+
+        return "\(message)\n\nHint: Right-click the updated tag and choose Force Push to → \(options.remote) to replace the remote tag."
     }
 
     func performTrackRemoteBranch(branch: String, upstream: String?, repositoryURL: URL) async {

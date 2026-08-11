@@ -59,6 +59,19 @@ struct SidebarTagContextMenu: View {
         }
         .disabled(remoteNames.isEmpty)
 
+        Menu("Force Push to") {
+            if remoteNames.isEmpty {
+                Text("No remotes configured")
+            } else {
+                ForEach(remoteNames.sorted(), id: \.self) { remote in
+                    Button(remote, role: .destructive) {
+                        actions.forcePushToRemote(tag, remote)
+                    }
+                }
+            }
+        }
+        .disabled(remoteNames.isEmpty)
+
         Button("Delete \(tag)", role: .destructive) {
             actions.delete(tag)
         }
