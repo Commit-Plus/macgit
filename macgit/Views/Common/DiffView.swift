@@ -81,6 +81,7 @@ struct DiffView: View {
                         HunkView(
                             hunk: hunk,
                             file: file,
+                            fileExtension: syntaxFileExtension,
                             repositoryURL: repositoryURL,
                             undoManager: undoManager,
                             selectedLineIDs: $selectedLineIDs,
@@ -94,6 +95,14 @@ struct DiffView: View {
                 .padding(.horizontal, 12)
             }
         }
+    }
+
+    private var syntaxFileExtension: String {
+        if let file {
+            return file.fileExtension
+        }
+        guard let filePath else { return "" }
+        return URL(fileURLWithPath: filePath).pathExtension.lowercased()
     }
 
     @ViewBuilder
@@ -285,6 +294,7 @@ struct ReferenceDiffView: View {
 struct HunkView: View {
     let hunk: DiffHunk
     let file: StatusFile?
+    let fileExtension: String
     let repositoryURL: URL?
     let undoManager: GitUndoManager?
     @Binding var selectedLineIDs: Set<UUID>
@@ -363,6 +373,7 @@ struct HunkView: View {
                     ForEach(Array(hunk.lines.enumerated()), id: \.element.id) { index, line in
                         DiffLineView(
                             line: line,
+                            fileExtension: fileExtension,
                             isSelected: selectedLineIDs.contains(line.id)
                         )
                         .frame(minWidth: availableWidth, alignment: .leading)
@@ -637,6 +648,7 @@ struct HunkView: View {
 
 struct DiffLineView: View {
     let line: DiffLine
+    let fileExtension: String
     let isSelected: Bool
 
     var backgroundColor: Color {
@@ -707,9 +719,7 @@ struct DiffLineView: View {
             }
 
             // Content
-            Text(line.text)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(textColor)
+            Text(highlightedText)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
 
@@ -718,5 +728,16 @@ struct DiffLineView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
         .background(backgroundColor)
+    }
+
+    private var highlightedText: AttributedString {
+        var attributed = SyntaxHighlighter(fileExtension: fileExtension)
+            .attributedString(for: line.text, fontSize: 12)
+
+        // Keep diff metadata readable while allowing syntax colors in the code.
+        if line.type == .header || line.type == .conflictMarker {
+            attributed.foregroundColor = textColor
+        }
+        return attributed
     }
 }
