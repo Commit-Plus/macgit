@@ -9,6 +9,15 @@ BUILD_VERSION="${2:?usage: build-release-archive.sh <tag-version> <build-version
 : "${KEYCHAIN_PATH:?KEYCHAIN_PATH is required}"
 : "${PROVISIONING_PROFILE_UUID:?PROVISIONING_PROFILE_UUID is required}"
 : "${SPARKLE_PUBLIC_ED_KEY:?SPARKLE_PUBLIC_ED_KEY is required}"
+: "${COMMIT_PLUS_WEB_BASE_URL:?COMMIT_PLUS_WEB_BASE_URL is required}"
+
+if [[ "$COMMIT_PLUS_WEB_BASE_URL" != https://* ]] || \
+   [[ "$COMMIT_PLUS_WEB_BASE_URL" == *localhost* ]] || \
+   [[ "$COMMIT_PLUS_WEB_BASE_URL" == *127.0.0.1* ]] || \
+   [[ "$COMMIT_PLUS_WEB_BASE_URL" == *::1* ]]; then
+  echo "Invalid release web URL: $COMMIT_PLUS_WEB_BASE_URL" >&2
+  exit 1
+fi
 
 ARCHIVE_PATH="$RUNNER_TEMP/Commit+.xcarchive"
 EXPORT_PATH="$RUNNER_TEMP/CommitPlusExport"
@@ -27,6 +36,7 @@ xcodebuild archive \
   -archivePath "$ARCHIVE_PATH" \
   MARKETING_VERSION="$TAG_VERSION" \
   CURRENT_PROJECT_VERSION="$BUILD_VERSION" \
+  COMMIT_PLUS_WEB_BASE_URL="$COMMIT_PLUS_WEB_BASE_URL" \
   SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
   OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 

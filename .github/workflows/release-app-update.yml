@@ -54,6 +54,7 @@ jobs:
       - name: Build release archive
         run: scripts/release/build-release-archive.sh "$TAG_VERSION" "$BUILD_VERSION"
         env:
+          COMMIT_PLUS_WEB_BASE_URL: ${{ vars.COMMIT_PLUS_WEB_BASE_URL }}
           SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
 
       - name: Notarize and staple
@@ -63,7 +64,7 @@ jobs:
           APPSTORE_CONNECT_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
 
       - name: Verify release metadata
-        run: scripts/release/verify-release-metadata.sh "$APP_PATH" "$TAG_VERSION" "$BUILD_VERSION" "${{ vars.SPARKLE_FEED_URL }}"
+        run: scripts/release/verify-release-metadata.sh "$APP_PATH" "$TAG_VERSION" "$BUILD_VERSION" "${{ vars.SPARKLE_FEED_URL }}" "${{ vars.COMMIT_PLUS_WEB_BASE_URL }}"
 
       - name: Create DMG
         run: scripts/release/create-dmg.sh "$APP_PATH" "$TAG_VERSION"
