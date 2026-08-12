@@ -27,21 +27,26 @@ test("account deletion removes owned documents and auth user", async () => {
   const deletedUsers: string[] = [];
   const dependencies: AccountDeletionDependencies = {
     async deleteDocument(path) { deletedDocuments.push(path); },
+    async deleteCollection(path) { deletedCollections.push(path); },
     async deleteUser(uid) { deletedUsers.push(uid); },
   };
+  const deletedCollections: string[] = [];
 
   await deleteAccountData("user-a", dependencies);
 
   assert.deepEqual(deletedDocuments.sort(), [
     "entitlements/user-a",
+    "users/user-a/deviceAccess/summary",
     "users/user-a/settings/app",
   ]);
+  assert.deepEqual(deletedCollections, ["users/user-a/devices"]);
   assert.deepEqual(deletedUsers, ["user-a"]);
 });
 
 test("account deletion is idempotent when the auth user is already absent", async () => {
   const dependencies: AccountDeletionDependencies = {
     async deleteDocument() {},
+    async deleteCollection() {},
     async deleteUser() {
       throw { code: "auth/user-not-found" };
     },
@@ -53,6 +58,7 @@ test("account deletion is idempotent when the auth user is already absent", asyn
 test("unexpected auth deletion failures propagate", async () => {
   const dependencies: AccountDeletionDependencies = {
     async deleteDocument() {},
+    async deleteCollection() {},
     async deleteUser() {
       throw new Error("auth unavailable");
     },

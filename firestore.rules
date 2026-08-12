@@ -3,18 +3,32 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{uid}/settings/app {
-      allow read: if signedInAs(uid);
-      allow write: if signedInAs(uid) && validAppSettings();
+      allow read: if signedInCommitPlusDevice(uid);
+      allow write: if signedInCommitPlusDevice(uid) && validAppSettings();
     }
 
     match /users/{uid}/gitProviderAccounts/{connectionID} {
-      allow read, delete: if signedInAs(uid);
-      allow create, update: if signedInAs(uid) && validGitProviderAccount();
+      allow read, delete: if signedInCommitPlusDevice(uid);
+      allow create, update: if signedInCommitPlusDevice(uid) && validGitProviderAccount();
     }
 
     match /users/{uid}/repositoryBookmarks/{bookmarkID} {
-      allow read, delete: if signedInAs(uid);
-      allow create, update: if signedInAs(uid) && validRepositoryBookmark();
+      allow read, delete: if signedInCommitPlusDevice(uid);
+      allow create, update: if signedInCommitPlusDevice(uid) && validRepositoryBookmark();
+    }
+
+    match /users/{uid}/deviceAccess/{documentID} {
+      allow read, write: if false;
+    }
+
+    match /users/{uid}/devices/{deviceID} {
+      // The bound client may observe its own record so an active-to-revoked
+      // transition can end the Commit+ account session. Listing and every
+      // client write remain server-only.
+      allow get: if signedInAs(uid)
+        && validDeviceSessionClaim()
+        && request.auth.token.commitPlusDeviceID == deviceID;
+      allow list, write: if false;
     }
 
     function validAppSettings() {
@@ -157,7 +171,7 @@ service cloud.firestore {
     }
 
     match /entitlements/{uid} {
-      allow read: if signedInAs(uid);
+      allow read: if signedInCommitPlusDevice(uid);
       allow write: if false;
     }
 
@@ -172,6 +186,19 @@ service cloud.firestore {
 
     function signedInAs(uid) {
       return request.auth != null && request.auth.uid == uid;
+    }
+
+    function validDeviceSessionClaim() {
+      return request.auth != null
+        && request.auth.token.commitPlusDeviceID is string
+        && request.auth.token.commitPlusDeviceSessionVersion == 1;
+    }
+
+    function signedInCommitPlusDevice(uid) {
+      return signedInAs(uid)
+        && validDeviceSessionClaim()
+        && get(/databases/$(database)/documents/users/$(uid)/devices/$(request.auth.token.commitPlusDeviceID)).data.schemaVersion == 1
+        && get(/databases/$(database)/documents/users/$(uid)/devices/$(request.auth.token.commitPlusDeviceID)).data.status == 'active';
     }
   }
 }

@@ -73,7 +73,7 @@ test("admin script publishes the release feature policy", async () => {
   const fields = document.fields;
 
   assert.equal(fields.schemaVersion.integerValue, "1");
-  assert.equal(fields.revision.integerValue, "3");
+  assert.equal(fields.revision.integerValue, "4");
   assert.equal(
     fields.features.mapValue.fields.privateRepositories
       .mapValue.fields.plans.mapValue.fields.free

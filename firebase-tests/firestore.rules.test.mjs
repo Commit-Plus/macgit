@@ -1,12 +1,20 @@
 import { readFileSync } from "node:fs";
-import { after, afterEach, before, describe, test } from "node:test";
+import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   assertFails,
   assertSucceeds,
   initializeTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
 
 const projectId = "macgit-rules-test";
 let environment;
@@ -24,6 +32,26 @@ before(async () => {
 
 afterEach(async () => environment.clearFirestore());
 after(async () => environment.cleanup());
+
+const deviceIDs = {
+  "user-a": "00000000-0000-4000-8000-000000000001",
+  "user-b": "00000000-0000-4000-8000-000000000002",
+};
+
+beforeEach(async () => {
+  await environment.withSecurityRulesDisabled(async (admin) => {
+    for (const [uid, deviceID] of Object.entries(deviceIDs)) {
+      await setDoc(device(uid, deviceID, admin), validDeviceRecord());
+    }
+  });
+});
+
+function deviceContext(uid, deviceID = deviceIDs[uid]) {
+  return environment.authenticatedContext(uid, {
+    commitPlusDeviceID: deviceID,
+    commitPlusDeviceSessionVersion: 1,
+  });
+}
 
 function settings(uid, context) {
   return doc(context.firestore(), `users/${uid}/settings/app`);
@@ -43,6 +71,24 @@ function gitProviderAccount(uid, connectionID, context) {
 
 function repositoryBookmark(uid, bookmarkID, context) {
   return doc(context.firestore(), `users/${uid}/repositoryBookmarks/${bookmarkID}`);
+}
+
+function device(uid, deviceID, context) {
+  return doc(context.firestore(), `users/${uid}/devices/${deviceID}`);
+}
+
+function validDeviceRecord(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    status: "active",
+    platform: "macOS",
+    modelFamily: "MacBook Pro",
+    osVersion: "26.2",
+    appVersion: "1.0.4",
+    createdAt: serverTimestamp(),
+    lastSeenAt: serverTimestamp(),
+    ...overrides,
+  };
 }
 
 function validSettings() {
@@ -101,8 +147,8 @@ function validRepositoryBookmark() {
 
 describe("Firestore ownership rules", () => {
   test("a user can read and write only their own settings", async () => {
-    const userA = environment.authenticatedContext("user-a");
-    const userB = environment.authenticatedContext("user-b");
+    const userA = deviceContext("user-a");
+    const userB = deviceContext("user-b");
 
     await assertSucceeds(setDoc(settings("user-a", userA), validSettings()));
     await assertSucceeds(getDoc(settings("user-a", userA)));
@@ -111,7 +157,7 @@ describe("Firestore ownership rules", () => {
   });
 
   test("settings reject missing and unknown fields", async () => {
-    const userA = environment.authenticatedContext("user-a");
+    const userA = deviceContext("user-a");
     const optionalFields = new Set([
       "appearance",
       "showHeaderBranchButton",
@@ -141,7 +187,7 @@ describe("Firestore ownership rules", () => {
   });
 
   test("settings reject unsupported schema versions and every wrong field type", async () => {
-    const userA = environment.authenticatedContext("user-a");
+    const userA = deviceContext("user-a");
     const invalidValues = {
       schemaVersion: 2,
       appearance: true,
@@ -162,13 +208,13 @@ describe("Firestore ownership rules", () => {
   });
 
   test("settings accept optional settings fields", async () => {
-    const userA = environment.authenticatedContext("user-a");
+    const userA = deviceContext("user-a");
 
     await assertSucceeds(setDoc(settings("user-a", userA), validSettings()));
   });
 
   test("settings reject wrong type for optional settings fields", async () => {
-    const userA = environment.authenticatedContext("user-a");
+    const userA = deviceContext("user-a");
 
     for (const key of [
       "showHeaderBranchButton",
@@ -203,7 +249,7 @@ describe("Firestore ownership rules", () => {
   });
 
   test("settings accept legacy documents without header button fields", async () => {
-    const userA = environment.authenticatedContext("user-a");
+    const userA = deviceContext("user-a");
     const legacy = validSettings();
     for (const key of [
       "appearance",
@@ -233,16 +279,16 @@ describe("Firestore ownership rules", () => {
         billingStatus: "active",
       });
     });
-    const userA = environment.authenticatedContext("user-a");
-    const userB = environment.authenticatedContext("user-b");
+    const userA = deviceContext("user-a");
+    const userB = deviceContext("user-b");
 
     await assertSucceeds(getDoc(entitlement("user-a", userA)));
     await assertFails(getDoc(entitlement("user-a", userB)));
   });
 
   test("a user can read and write only their own Git provider metadata", async () => {
-    const userA = environment.authenticatedContext("user-a");
-    const userB = environment.authenticatedContext("user-b");
+    const userA = deviceContext("user-a");
+    const userB = deviceContext("user-b");
     const ownAccount = gitProviderAccount("user-a", "connection-1", userA);
 
     await assertSucceeds(setDoc(ownAccount, validGitProviderAccount()));
@@ -255,7 +301,7 @@ describe("Firestore ownership rules", () => {
   });
 
   test("Git provider metadata rejects secrets and unsupported providers", async () => {
-    const userA = environment.authenticatedContext("user-a");
+    const userA = deviceContext("user-a");
     const account = gitProviderAccount("user-a", "connection-1", userA);
 
     await assertFails(setDoc(account, {
@@ -269,7 +315,7 @@ describe("Firestore ownership rules", () => {
   });
 
   test("Git provider metadata accepts HTTPS and SSH transport protocols", async () => {
-    const userA = environment.authenticatedContext("user-a");
+    const userA = deviceContext("user-a");
 
     await assertSucceeds(setDoc(
       gitProviderAccount("user-a", "connection-https", userA),
@@ -288,8 +334,8 @@ describe("Firestore ownership rules", () => {
   });
 
   test("a user can read and write only their own repository bookmarks", async () => {
-    const userA = environment.authenticatedContext("user-a");
-    const userB = environment.authenticatedContext("user-b");
+    const userA = deviceContext("user-a");
+    const userB = deviceContext("user-b");
     const ownBookmark = repositoryBookmark("user-a", "bookmark-1", userA);
 
     await assertSucceeds(setDoc(ownBookmark, validRepositoryBookmark()));
@@ -303,7 +349,7 @@ describe("Firestore ownership rules", () => {
   });
 
   test("repository bookmarks reject local paths, secrets, and malformed metadata", async () => {
-    const userA = environment.authenticatedContext("user-a");
+    const userA = deviceContext("user-a");
     const bookmark = repositoryBookmark("user-a", "bookmark-1", userA);
 
     for (const invalid of [
@@ -318,7 +364,7 @@ describe("Firestore ownership rules", () => {
   });
 
   test("Git provider metadata rejects unsupported transport protocols", async () => {
-    const userA = environment.authenticatedContext("user-a");
+    const userA = deviceContext("user-a");
 
     await assertFails(setDoc(
       gitProviderAccount("user-a", "connection-1", userA),
@@ -330,7 +376,7 @@ describe("Firestore ownership rules", () => {
   });
 
   test("clients cannot create update or delete entitlements", async () => {
-    const userA = environment.authenticatedContext("user-a");
+    const userA = deviceContext("user-a");
     await assertFails(setDoc(entitlement("user-a", userA), { plan: "pro" }));
 
     await environment.withSecurityRulesDisabled(async (admin) => {
@@ -350,7 +396,7 @@ describe("Firestore ownership rules", () => {
       });
     });
 
-    const userA = environment.authenticatedContext("user-a");
+    const userA = deviceContext("user-a");
     const guest = environment.unauthenticatedContext();
 
     await assertSucceeds(getDoc(releaseFeaturePolicy(userA)));
@@ -364,5 +410,49 @@ describe("Firestore ownership rules", () => {
     const guest = environment.unauthenticatedContext();
     await assertFails(getDoc(settings("user-a", guest)));
     await assertFails(getDoc(entitlement("user-a", guest)));
+  });
+
+  test("plain and malformed Firebase sessions cannot access account cloud data", async () => {
+    const plain = environment.authenticatedContext("user-a");
+    const wrongDevice = deviceContext(
+      "user-a",
+      "00000000-0000-4000-8000-000000000099",
+    );
+    const wrongVersion = environment.authenticatedContext("user-a", {
+      commitPlusDeviceID: deviceIDs["user-a"],
+      commitPlusDeviceSessionVersion: 2,
+    });
+
+    for (const context of [plain, wrongDevice, wrongVersion]) {
+      await assertFails(getDoc(settings("user-a", context)));
+      await assertFails(getDoc(entitlement("user-a", context)));
+      await assertFails(setDoc(settings("user-a", context), validSettings()));
+    }
+  });
+
+  test("a revoked Mac can observe its own record but cannot access sync or entitlement", async () => {
+    await environment.withSecurityRulesDisabled(async (admin) => {
+      await setDoc(
+        device("user-a", deviceIDs["user-a"], admin),
+        validDeviceRecord({ status: "revoked", revokedReason: "replaced" }),
+      );
+    });
+    const userA = deviceContext("user-a");
+
+    await assertSucceeds(getDoc(device("user-a", deviceIDs["user-a"], userA)));
+    await assertFails(getDoc(settings("user-a", userA)));
+    await assertFails(getDoc(entitlement("user-a", userA)));
+  });
+
+  test("device records are server-owned, self-readable only, and never listable", async () => {
+    const userA = deviceContext("user-a");
+    const userB = deviceContext("user-b");
+    const ownDevice = device("user-a", deviceIDs["user-a"], userA);
+
+    await assertSucceeds(getDoc(ownDevice));
+    await assertFails(getDoc(device("user-a", deviceIDs["user-a"], userB)));
+    await assertFails(setDoc(ownDevice, validDeviceRecord({ modelFamily: "Forged Mac" })));
+    await assertFails(deleteDoc(ownDevice));
+    await assertFails(getDocs(collection(userA.firestore(), "users/user-a/devices")));
   });
 });
