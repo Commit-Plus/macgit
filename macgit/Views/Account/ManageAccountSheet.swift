@@ -20,7 +20,6 @@ import SwiftUI
 
 struct ManageAccountSheet: View {
     @ObservedObject var controller: AccountSessionController
-    @State private var deviceToRemove: AccountDevice?
 
     var body: some View {
         VStack(alignment: .leading) {
@@ -55,41 +54,6 @@ struct ManageAccountSheet: View {
                     }
                     LabeledContent("Git Provider Accounts") {
                         Button("Manage Connections...", action: controller.presentConnections)
-                    }
-                    Section("Signed-in Macs") {
-                        LabeledContent("Device usage", value: "\(controller.managedDevices.count) of \(controller.deviceLimit)")
-                        if controller.managedDevices.isEmpty {
-                            ProgressView("Loading Macs...")
-                                .controlSize(.small)
-                        } else {
-                            ForEach(controller.managedDevices) { device in
-                                HStack(spacing: 10) {
-                                    Image(systemName: "laptopcomputer")
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        HStack(spacing: 6) {
-                                            Text(device.modelFamily)
-                                            if controller.isCurrentDevice(device) {
-                                                Text("This Mac")
-                                                    .font(.caption2)
-                                                    .padding(.horizontal, 6)
-                                                    .padding(.vertical, 2)
-                                                    .background(.quaternary, in: Capsule())
-                                            }
-                                        }
-                                        Text("Last used \(device.lastSeenAt.formatted(date: .abbreviated, time: .shortened))")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    if !controller.isCurrentDevice(device) {
-                                        Button("Remove", role: .destructive) {
-                                            deviceToRemove = device
-                                        }
-                                        .disabled(controller.isUpdatingDeviceAccess)
-                                    }
-                                }
-                            }
-                        }
                     }
                     HStack {
                         Spacer()
@@ -172,22 +136,6 @@ struct ManageAccountSheet: View {
         }
         .padding()
         .frame(minWidth: 440, minHeight: 360)
-        .task { await controller.refreshManagedDevices() }
-        .confirmationDialog(
-            "Remove this Mac?",
-            isPresented: Binding(
-                get: { deviceToRemove != nil },
-                set: { if !$0 { deviceToRemove = nil } }
-            ),
-            presenting: deviceToRemove
-        ) { device in
-            Button("Remove \(device.modelFamily)", role: .destructive) {
-                remove(device)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { device in
-            Text("\(device.modelFamily) will lose Commit+ cloud access. Its local repositories and Git data stay untouched.")
-        }
     }
 
     @ViewBuilder
@@ -230,10 +178,6 @@ struct ManageAccountSheet: View {
         Task { await controller.openAccountOnWeb() }
     }
 
-    private func remove(_ device: AccountDevice) {
-        deviceToRemove = nil
-        Task { await controller.revokeManagedDevice(device) }
-    }
 }
 
 struct SettingsSyncConflictSheet: View {

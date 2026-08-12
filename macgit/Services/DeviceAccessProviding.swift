@@ -24,11 +24,6 @@ enum AccountDeviceObservationState: Equatable, Sendable {
     case missing
 }
 
-struct AccountDeviceList: Equatable, Sendable {
-    let limit: Int
-    let devices: [AccountDevice]
-}
-
 struct DeviceAccessError: LocalizedError, Equatable {
     let message: String
 
@@ -37,15 +32,8 @@ struct DeviceAccessError: LocalizedError, Equatable {
 
 @MainActor
 protocol DeviceAccessProviding {
-    func claim(_ metadata: AccountDeviceMetadata) async throws -> DeviceActivationResult
-    func replace(
-        replacing deviceID: String,
-        with metadata: AccountDeviceMetadata
-    ) async throws -> DeviceActivationResult
-    func releaseCurrentDevice() async throws
-    func revoke(deviceID: String) async throws
-    func heartbeat(_ metadata: AccountDeviceMetadata) async throws
-    func listDevices() async throws -> AccountDeviceList
+    func claim(uid: String, metadata: AccountDeviceMetadata) async throws -> DeviceActivationResult
+    func release(uid: String, deviceID: String) async throws
     func observeCurrentDevice(
         uid: String,
         deviceID: String,

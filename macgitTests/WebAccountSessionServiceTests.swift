@@ -45,4 +45,17 @@ final class WebAccountSessionServiceTests: XCTestCase {
             "https://commit-plus.com/session?next=/pricing#token=test-token"
         )
     }
+
+    func testDevicesURLUsesProfileDeviceSection() throws {
+        let url = try WebAccountSignInURLBuilder.signInURL(
+            baseURL: XCTUnwrap(URL(string: "https://commit-plus.com")),
+            customToken: "test-token",
+            destination: .devices
+        )
+
+        XCTAssertEqual(
+            url.absoluteString,
+            "https://commit-plus.com/session?next=/profile?section%3Ddevices#token=test-token"
+        )
+    }
 }

@@ -61,8 +61,6 @@ protocol AccountAuthenticating {
     func createAccount(email: String, password: String) async throws -> AccountSnapshot
     func signInWithGoogle() async throws -> AccountSnapshot
     func completePendingLink(email: String, password: String) async throws -> AccountSnapshot
-    func signIn(withCustomToken token: String) async throws -> AccountSnapshot
-    func deviceSessionClaims(forceRefresh: Bool) async throws -> AccountDeviceSessionClaims?
     func sendPasswordReset(email: String) async throws
     func deleteAccount() async throws
     func signOut() throws
@@ -76,13 +74,6 @@ extension AccountAuthenticating {
         return currentAccount
     }
 
-    func signIn(withCustomToken token: String) async throws -> AccountSnapshot {
-        throw AccountAuthError.message("This authentication service cannot activate a device session.")
-    }
-
-    func deviceSessionClaims(forceRefresh: Bool) async throws -> AccountDeviceSessionClaims? {
-        nil
-    }
 }
 
 enum AccountSessionState: Equatable {

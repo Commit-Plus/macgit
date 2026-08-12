@@ -3,32 +3,30 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{uid}/settings/app {
-      allow read: if signedInCommitPlusDevice(uid);
-      allow write: if signedInCommitPlusDevice(uid) && validAppSettings();
+      allow read: if signedInAs(uid);
+      allow write: if signedInAs(uid) && validAppSettings();
     }
 
     match /users/{uid}/gitProviderAccounts/{connectionID} {
-      allow read, delete: if signedInCommitPlusDevice(uid);
-      allow create, update: if signedInCommitPlusDevice(uid) && validGitProviderAccount();
+      allow read, delete: if signedInAs(uid);
+      allow create, update: if signedInAs(uid) && validGitProviderAccount();
     }
 
     match /users/{uid}/repositoryBookmarks/{bookmarkID} {
-      allow read, delete: if signedInCommitPlusDevice(uid);
-      allow create, update: if signedInCommitPlusDevice(uid) && validRepositoryBookmark();
+      allow read, delete: if signedInAs(uid);
+      allow create, update: if signedInAs(uid) && validRepositoryBookmark();
     }
 
-    match /users/{uid}/deviceAccess/{documentID} {
-      allow read, write: if false;
+    match /users/{uid}/deviceAccess/summary {
+      allow read: if signedInAs(uid);
+      allow create, update: if signedInAs(uid) && validDeviceAccessSummary(uid);
+      allow delete: if false;
     }
 
     match /users/{uid}/devices/{deviceID} {
-      // The bound client may observe its own record so an active-to-revoked
-      // transition can end the Commit+ account session. Listing and every
-      // client write remain server-only.
-      allow get: if signedInAs(uid)
-        && validDeviceSessionClaim()
-        && request.auth.token.commitPlusDeviceID == deviceID;
-      allow list, write: if false;
+      allow read: if signedInAs(uid);
+      allow create, update: if signedInAs(uid) && validDevice(deviceID);
+      allow delete: if false;
     }
 
     function validAppSettings() {
@@ -171,7 +169,7 @@ service cloud.firestore {
     }
 
     match /entitlements/{uid} {
-      allow read: if signedInCommitPlusDevice(uid);
+      allow read: if signedInAs(uid);
       allow write: if false;
     }
 
@@ -188,17 +186,48 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
-    function validDeviceSessionClaim() {
-      return request.auth != null
-        && request.auth.token.commitPlusDeviceID is string
-        && request.auth.token.commitPlusDeviceSessionVersion == 1;
+    function deviceLimit(uid) {
+      let path = /databases/$(database)/documents/entitlements/$(uid);
+      return exists(path)
+        && get(path).data.plan == 'pro'
+        && get(path).data.access == 'active'
+        ? 3
+        : 1;
     }
 
-    function signedInCommitPlusDevice(uid) {
-      return signedInAs(uid)
-        && validDeviceSessionClaim()
-        && get(/databases/$(database)/documents/users/$(uid)/devices/$(request.auth.token.commitPlusDeviceID)).data.schemaVersion == 1
-        && get(/databases/$(database)/documents/users/$(uid)/devices/$(request.auth.token.commitPlusDeviceID)).data.status == 'active';
+    function validDeviceAccessSummary(uid) {
+      let ids = request.resource.data.activeDeviceIDs;
+      return request.resource.data.keys().hasOnly(['schemaVersion', 'activeDeviceIDs', 'updatedAt'])
+        && request.resource.data.schemaVersion == 1
+        && ids is list
+        && ids.size() <= deviceLimit(uid)
+        && (ids.size() < 1 || ids[0] is string)
+        && (ids.size() < 2 || ids[1] is string)
+        && (ids.size() < 3 || ids[2] is string)
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validDevice(deviceID) {
+      return request.resource.data.keys().hasOnly([
+          'schemaVersion', 'deviceID', 'platform', 'modelFamily', 'osVersion',
+          'appVersion', 'status', 'createdAt', 'lastSeenAt', 'revokedAt', 'revokedReason'
+        ])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.deviceID == deviceID
+        && request.resource.data.platform == 'macOS'
+        && request.resource.data.modelFamily is string
+        && request.resource.data.modelFamily.size() > 0
+        && request.resource.data.modelFamily.size() <= 80
+        && request.resource.data.osVersion is string
+        && request.resource.data.osVersion.size() <= 40
+        && request.resource.data.appVersion is string
+        && request.resource.data.appVersion.size() <= 40
+        && request.resource.data.status in ['active', 'revoked']
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.lastSeenAt is timestamp
+        && (!('revokedAt' in request.resource.data) || request.resource.data.revokedAt is timestamp)
+        && (!('revokedReason' in request.resource.data)
+          || request.resource.data.revokedReason in ['signedOut', 'replaced', 'planDowngrade', 'userRevoked']);
     }
   }
 }

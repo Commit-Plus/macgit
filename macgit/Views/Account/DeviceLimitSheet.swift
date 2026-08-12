@@ -20,25 +20,35 @@ import SwiftUI
 
 struct DeviceLimitSheet: View {
     @ObservedObject var controller: AccountSessionController
-    @State private var deviceToReplace: AccountDevice?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Label("Device Limit Reached", systemImage: "laptopcomputer.trianglebadge.exclamationmark")
+            Label("Signed-in Mac Limit Reached", systemImage: "laptopcomputer.trianglebadge.exclamationmark")
                 .font(.title2.bold())
 
-            if let details = controller.deviceAccessState.limitReachedDetails {
-                Text("This Commit+ account is using \(details.devices.count) of \(details.limit) available Mac \(details.limit == 1 ? "slot" : "slots"). Replace one of the Macs below to continue signing in here.")
+            if let limit = controller.deviceAccessState.reachedLimit {
+                Text("This Commit+ account already uses all \(limit) signed-in Mac \(limit == 1 ? "slot" : "slots"). Remove a Mac from your web profile, then try again here.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                deviceList(details.devices)
+                Label(
+                    "Guest mode and all local Git data remain available on every Mac.",
+                    systemImage: "externaldrive.badge.checkmark"
+                )
+                .foregroundStyle(.secondary)
 
-                if details.limit == 1 {
-                    Button(action: openPricing) {
-                        Label("Get Commit+ Pro for up to 3 Macs", systemImage: "star.fill")
-                    }
-                    .disabled(controller.isOpeningAccountOnWeb || controller.isUpdatingDeviceAccess)
+                Button(action: manageDevicesOnWeb) {
+                    Label("Manage Devices on Web", systemImage: "arrow.up.right.square")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.roundedRectangle(radius: 12))
+                .controlSize(.large)
+                .disabled(controller.isOpeningAccountOnWeb || controller.isUpdatingDeviceAccess)
+
+                if limit == 1 {
+                    Button("View Commit+ Pro Plans", systemImage: "star.fill", action: openPricing)
+                        .disabled(controller.isOpeningAccountOnWeb || controller.isUpdatingDeviceAccess)
                 }
             } else {
                 Text(controller.errorMessage ?? "Commit+ could not verify this Mac. Check your connection and try again.")
@@ -59,65 +69,24 @@ struct DeviceLimitSheet: View {
                 if controller.isUpdatingDeviceAccess {
                     ProgressView()
                         .controlSize(.small)
-                        .accessibilityLabel("Updating device access")
+                        .accessibilityLabel("Checking signed-in Mac access")
                 }
                 Button("Try Again", action: retry)
+                    .keyboardShortcut(.defaultAction)
                     .disabled(controller.isUpdatingDeviceAccess)
             }
         }
         .padding(24)
-        .frame(minWidth: 520, minHeight: 320)
+        .frame(minWidth: 500)
         .interactiveDismissDisabled(controller.isUpdatingDeviceAccess)
-        .confirmationDialog(
-            "Replace this Mac?",
-            isPresented: Binding(
-                get: { deviceToReplace != nil },
-                set: { if !$0 { deviceToReplace = nil } }
-            ),
-            presenting: deviceToReplace
-        ) { device in
-            Button("Replace \(device.modelFamily)", role: .destructive) {
-                replace(device)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { device in
-            Text("\(device.modelFamily) will be signed out of Commit+ cloud features. Local repositories and Git data on that Mac are not changed.")
-        }
-    }
-
-    private func deviceList(_ devices: [AccountDevice]) -> some View {
-        VStack(spacing: 0) {
-            ForEach(devices) { device in
-                HStack(spacing: 12) {
-                    Image(systemName: "laptopcomputer")
-                        .font(.title3)
-                        .frame(width: 28)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(device.modelFamily)
-                            .fontWeight(.medium)
-                        Text("macOS \(device.osVersion) · Commit+ \(device.appVersion) · Last used \(device.lastSeenAt.formatted(date: .abbreviated, time: .shortened))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Replace") { deviceToReplace = device }
-                        .disabled(controller.isUpdatingDeviceAccess)
-                }
-                .padding(.vertical, 11)
-                if device.id != devices.last?.id { Divider() }
-            }
-        }
-        .padding(.horizontal, 12)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func retry() {
         Task { await controller.retryDeviceActivation() }
     }
 
-    private func replace(_ device: AccountDevice) {
-        deviceToReplace = nil
-        Task { await controller.replaceDevice(device) }
+    private func manageDevicesOnWeb() {
+        Task { await controller.openDeviceManagementOnWeb() }
     }
 
     private func openPricing() {
