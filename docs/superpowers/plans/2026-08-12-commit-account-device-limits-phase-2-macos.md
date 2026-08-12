@@ -1,6 +1,6 @@
 # Commit+ Account Device Limits Phase 2: macOS Session Activation and Limit Recovery UX
 
-**Status:** pending
+**Status:** completed locally; release and production deployment pending
 
 **Implementation branch:** `codex/account-device-limits-phase-2`
 
@@ -152,3 +152,12 @@ Add a native `DeviceLimitSheet` presented after a temporary Firebase sign-in rea
 - Run `xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build`.
 - Do not launch the app. Record limit-sheet geometry, focus, and live revocation as runtime QA still required.
 - If Firebase XCTest bootstrapping aborts, do not repeat the same run; retain compile/build evidence and any pure tests that executed.
+
+## Result
+
+- Added a random per-installation UUID in ThisDeviceOnly Keychain plus generic Mac/app/OS metadata; no serial number, MAC address, Firebase Installation ID, or fingerprint is read or uploaded.
+- All Firebase authentication paths now stop at a server-backed activation gate before `AccountSessionController.account` becomes available. Accepted devices exchange the callable token, verify its device claim, then start entitlement and sync lifecycle.
+- Added Free/Pro capacity recovery with active-device listing, atomic replacement, pricing/retry/cancel actions, and destructive copy that explicitly preserves local repositories and Git data.
+- Added current-device Firestore observation, definitive revocation handling, local-first cached startup, bounded heartbeat refresh, remote-slot release on sign-out, and self-service listing/removal in Manage Account.
+- Added a separate bound-session revoke callable for removing another Mac; production Functions and enforcing Firestore rules remain undeployed.
+- Verification: Functions tests passed 17/17; focused macOS device/account/entitlement/settings tests passed 36/36; `xcodebuild ... build` passed. The app was not launched. Sheet geometry, focus order, VoiceOver flow, offline transition, and cross-Mac live revocation still require runtime QA.

@@ -53,7 +53,7 @@ users/{uid}/devices/{deviceID}
 ## Phases
 
 - [completed] [Phase 1: Backend registry and atomic slot enforcement](2026-08-12-commit-account-device-limits-phase-1-backend.md) (branch: `codex/account-device-limits-phase-1`; production deployment pending)
-- [pending] [Phase 2: macOS session activation and limit recovery UX](2026-08-12-commit-account-device-limits-phase-2-macos.md)
+- [completed] [Phase 2: macOS session activation and limit recovery UX](2026-08-12-commit-account-device-limits-phase-2-macos.md) (branch: `codex/account-device-limits-phase-2`; release pending)
 - [pending] [Phase 3: Device management, downgrade, privacy, and production rollout](2026-08-12-commit-account-device-limits-phase-3-rollout.md)
 
 ## Recommended order

@@ -143,6 +143,26 @@ export const releaseCommitPlusDevice = onCall({ invoker: "public" }, async (requ
   }
 });
 
+export const revokeCommitPlusDevice = onCall({ invoker: "public" }, async (request) => {
+  const uid = authenticatedUID(request.auth?.uid);
+  const claimedDeviceID = request.auth?.token.commitPlusDeviceID;
+  if (typeof claimedDeviceID !== "string") {
+    throw new HttpsError("permission-denied", "This Commit+ session is not bound to a Mac.");
+  }
+  await requireActiveBoundDevice(uid, claimedDeviceID);
+
+  const deviceID = (request.data as { deviceID?: unknown } | undefined)?.deviceID;
+  if (typeof deviceID !== "string") {
+    throw new HttpsError("invalid-argument", "Choose an active Mac to remove.");
+  }
+  try {
+    await releaseDeviceSlot(uid, deviceID, "userRevoked");
+    return { revoked: true };
+  } catch (error) {
+    throw deviceAccessHttpsError(error);
+  }
+});
+
 export const heartbeatCommitPlusDevice = onCall({ invoker: "public" }, async (request) => {
   const uid = authenticatedUID(request.auth?.uid);
   const claimedDeviceID = request.auth?.token.commitPlusDeviceID;
@@ -160,12 +180,25 @@ export const heartbeatCommitPlusDevice = onCall({ invoker: "public" }, async (re
 
 export const listCommitPlusDevices = onCall({ invoker: "public" }, async (request) => {
   const uid = authenticatedUID(request.auth?.uid);
+  const claimedDeviceID = request.auth?.token.commitPlusDeviceID;
+  if (typeof claimedDeviceID !== "string") {
+    throw new HttpsError("permission-denied", "This Commit+ session is not bound to a Mac.");
+  }
+  await requireActiveBoundDevice(uid, claimedDeviceID);
   try {
     return await listAccountDevices(uid);
   } catch (error) {
     throw deviceAccessHttpsError(error);
   }
 });
+
+async function requireActiveBoundDevice(uid: string, deviceID: string): Promise<void> {
+  const snapshot = await getFirestore().doc(`users/${uid}/deviceAccess/summary`).get();
+  const activeDeviceIDs = snapshot.data()?.activeDeviceIDs;
+  if (!Array.isArray(activeDeviceIDs) || !activeDeviceIDs.includes(deviceID)) {
+    throw new HttpsError("permission-denied", "This Mac is no longer active for the account.");
+  }
+}
 
 export const reconcileCommitPlusDeviceLimit = onDocumentWritten(
   "entitlements/{uid}",

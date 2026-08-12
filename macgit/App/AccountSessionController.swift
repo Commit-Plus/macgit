@@ -36,6 +36,10 @@ final class AccountSessionController: ObservableObject {
     @Published private(set) var entitlementLastUpdatedAt: Date?
     @Published private(set) var isUsingCachedEntitlement = false
     @Published private(set) var settingsSyncStatus: SettingsSyncStatus = .off
+    @Published private(set) var deviceAccessState: AccountDeviceAccessState = .unavailable
+    @Published private(set) var isUpdatingDeviceAccess = false
+    @Published private(set) var managedDevices: [AccountDevice] = []
+    @Published private(set) var deviceLimit = 1
 
     let cloudFeaturesAvailable: Bool
 
@@ -46,8 +50,14 @@ final class AccountSessionController: ObservableObject {
     private let openWebURL: (URL) -> Bool
     private let appState: AppState
     private let settingsSyncService: SettingsSyncService?
+    private let deviceIdentity: DeviceIdentityProviding?
+    private let deviceAccessProvider: DeviceAccessProviding?
+    private let deviceSessionCache: AccountDeviceSessionCaching?
     private var entitlementObservation: ObservationToken?
+    private var deviceObservation: ObservationToken?
     private var settingsEligibilityTask: Task<Void, Never>?
+    private var pendingTemporaryAccount: AccountSnapshot?
+    private var currentDeviceMetadata: AccountDeviceMetadata?
     private var cancellables = Set<AnyCancellable>()
 
     var account: AccountSnapshot? {
@@ -109,12 +119,18 @@ final class AccountSessionController: ObservableObject {
         webAccountSessionProvider: WebAccountSessionProviding? = nil,
         openWebURL: @escaping (URL) -> Bool = { _ in false },
         appState: AppState? = nil,
-        settingsStore: CloudSettingsStore? = nil
+        settingsStore: CloudSettingsStore? = nil,
+        deviceIdentity: DeviceIdentityProviding? = nil,
+        deviceAccessProvider: DeviceAccessProviding? = nil,
+        deviceSessionCache: AccountDeviceSessionCaching? = nil
     ) {
         self.auth = auth
         self.entitlementProvider = entitlementProvider
         self.entitlementCache = entitlementCache
         self.webAccountSessionProvider = webAccountSessionProvider
+        self.deviceIdentity = deviceIdentity
+        self.deviceAccessProvider = deviceAccessProvider
+        self.deviceSessionCache = deviceSessionCache
         self.openWebURL = openWebURL
         let resolvedAppState = appState ?? AppState.shared
         self.appState = resolvedAppState
@@ -130,17 +146,25 @@ final class AccountSessionController: ObservableObject {
         }
         cloudFeaturesAvailable = bootstrapStatus == .configured
         let initialAccount = cloudFeaturesAvailable ? auth.currentAccount : nil
-        if let initialAccount {
+        if initialAccount != nil, deviceAccessProvider != nil, deviceIdentity != nil {
+            state = .loading
+            deviceAccessState = .unverified
+        } else if let initialAccount {
             state = .authenticated(initialAccount)
         } else {
             state = .guest
         }
 
         bindSettingsSync()
-        if let initialAccount {
+        if let initialAccount, deviceAccessProvider == nil {
             startEntitlementObservation(for: initialAccount.uid)
         }
         scheduleSettingsSyncEligibilityUpdate()
+        if let initialAccount, deviceAccessProvider != nil, deviceIdentity != nil {
+            Task { [weak self] in
+                await self?.restoreInitialDeviceSession(for: initialAccount)
+            }
+        }
     }
 
     func presentAuthentication(_ mode: AuthenticationMode) {
@@ -203,16 +227,34 @@ final class AccountSessionController: ObservableObject {
     }
 
     func signOut() {
-        do {
-            try auth.signOut()
-            stopEntitlementObservation()
-            state = .guest
-            presentedSheet = nil
-            errorMessage = nil
-            pendingLinkEmail = nil
-            scheduleSettingsSyncEligibilityUpdate()
-        } catch {
-            errorMessage = Self.message(for: error)
+        guard !isUpdatingDeviceAccess else { return }
+        guard deviceAccessProvider != nil, currentDeviceMetadata != nil else {
+            finishLocalSignOut()
+            return
+        }
+        isUpdatingDeviceAccess = true
+        Task { [weak self] in
+            guard let self else { return }
+            var releaseWarning: String?
+            if let deviceAccessProvider, currentDeviceMetadata != nil {
+                do {
+                    try await deviceAccessProvider.releaseCurrentDevice()
+                } catch {
+                    releaseWarning = "Signed out on this Mac, but Commit+ could not release the remote slot. You can replace this Mac the next time you sign in. \(Self.message(for: error))"
+                }
+            }
+            finishLocalSignOut()
+            errorMessage = releaseWarning
+            isUpdatingDeviceAccess = false
+        }
+    }
+
+    func applicationDidBecomeActive() {
+        guard let account,
+              let metadata = currentDeviceMetadata,
+              shouldRefreshHeartbeat(uid: account.uid) else { return }
+        Task { [weak self] in
+            await self?.refreshCurrentDeviceSession(metadata: metadata)
         }
     }
 
@@ -226,6 +268,8 @@ final class AccountSessionController: ObservableObject {
 
         do {
             try await auth.deleteAccount()
+            stopDeviceObservation()
+            deviceSessionCache?.removeSession(for: deletedUID)
             stopEntitlementObservation()
             entitlementCache?.removeEntitlement(for: deletedUID)
             state = .guest
@@ -253,7 +297,8 @@ final class AccountSessionController: ObservableObject {
     }
 
     private func openAuthenticatedWebPage(_ destination: WebAccountDestination) async {
-        guard account != nil, let webAccountSessionProvider else { return }
+        guard account != nil || pendingTemporaryAccount != nil,
+              let webAccountSessionProvider else { return }
         openingWebDestination = destination
         isOpeningAccountOnWeb = true
         errorMessage = nil
@@ -321,12 +366,12 @@ final class AccountSessionController: ObservableObject {
         passwordResetMessage = nil
         do {
             let account = try await operation()
-            state = .authenticated(account)
-            startEntitlementObservation(for: account.uid)
-            requiresRecentAuthentication = false
-            pendingLinkEmail = nil
-            presentedSheet = nil
-            scheduleSettingsSyncEligibilityUpdate()
+            if deviceAccessProvider != nil, deviceIdentity != nil {
+                pendingTemporaryAccount = account
+                await claimAndActivate(account: account)
+            } else {
+                completeAuthentication(account)
+            }
         } catch let error as AccountAuthError {
             state = previousState == .loading ? .guest : previousState
             if case .needsExistingMethod(let email, _) = error {
@@ -337,6 +382,309 @@ final class AccountSessionController: ObservableObject {
             state = previousState == .loading ? .guest : previousState
             errorMessage = Self.message(for: error)
         }
+    }
+
+    func retryDeviceActivation() async {
+        guard let pendingTemporaryAccount, !isUpdatingDeviceAccess else { return }
+        await claimAndActivate(account: pendingTemporaryAccount)
+    }
+
+    func replaceDevice(_ device: AccountDevice) async {
+        guard let pendingTemporaryAccount,
+              let deviceAccessProvider,
+              let metadata = try? resolveCurrentDeviceMetadata(),
+              !isUpdatingDeviceAccess else { return }
+        isUpdatingDeviceAccess = true
+        errorMessage = nil
+        deviceAccessState = .verifying
+        defer { isUpdatingDeviceAccess = false }
+
+        do {
+            let result = try await deviceAccessProvider.replace(
+                replacing: device.id,
+                with: metadata
+            )
+            await finishActivationResult(result, temporaryAccount: pendingTemporaryAccount)
+        } catch {
+            let message = Self.message(for: error)
+            deviceAccessState = .failed(message: message, mayRetry: true)
+            errorMessage = message
+            presentedSheet = .deviceLimit
+        }
+    }
+
+    func cancelDeviceActivation() {
+        pendingTemporaryAccount = nil
+        try? auth.signOut()
+        state = .guest
+        deviceAccessState = .unverified
+        presentedSheet = nil
+        errorMessage = nil
+        scheduleSettingsSyncEligibilityUpdate()
+    }
+
+    func refreshManagedDevices() async {
+        guard let deviceAccessProvider, account != nil, !isUpdatingDeviceAccess else { return }
+        isUpdatingDeviceAccess = true
+        errorMessage = nil
+        defer { isUpdatingDeviceAccess = false }
+        do {
+            let result = try await deviceAccessProvider.listDevices()
+            deviceLimit = result.limit
+            managedDevices = result.devices
+        } catch {
+            errorMessage = Self.message(for: error)
+        }
+    }
+
+    func revokeManagedDevice(_ device: AccountDevice) async {
+        guard let metadata = currentDeviceMetadata, device.id != metadata.deviceID,
+              let deviceAccessProvider, !isUpdatingDeviceAccess else { return }
+        isUpdatingDeviceAccess = true
+        errorMessage = nil
+        defer { isUpdatingDeviceAccess = false }
+        do {
+            try await deviceAccessProvider.revoke(deviceID: device.id)
+            await refreshManagedDevicesAfterMutation()
+        } catch {
+            errorMessage = Self.message(for: error)
+        }
+    }
+
+    func isCurrentDevice(_ device: AccountDevice) -> Bool {
+        currentDeviceMetadata?.deviceID == device.id
+    }
+
+    private func restoreInitialDeviceSession(for initialAccount: AccountSnapshot) async {
+        pendingTemporaryAccount = initialAccount
+        do {
+            let metadata = try resolveCurrentDeviceMetadata()
+            let claims = try await auth.deviceSessionClaims(forceRefresh: false)
+            if claims?.matches(metadata) == true {
+                let cached = deviceSessionCache?.session(for: initialAccount.uid)
+                let verification: AccountDeviceVerification = cached?.deviceID == metadata.deviceID
+                    ? .cached
+                    : .live
+                let placeholder = Self.currentDevice(from: metadata)
+                deviceAccessState = .active(limit: 1, device: placeholder, verification: verification)
+                completeAuthentication(initialAccount)
+                startDeviceObservation(uid: initialAccount.uid, metadata: metadata)
+                if shouldRefreshHeartbeat(uid: initialAccount.uid) {
+                    await refreshCurrentDeviceSession(metadata: metadata)
+                }
+                return
+            }
+            await claimAndActivate(account: initialAccount)
+        } catch {
+            if let metadata = currentDeviceMetadata,
+               deviceSessionCache?.session(for: initialAccount.uid)?.deviceID == metadata.deviceID {
+                let placeholder = Self.currentDevice(from: metadata)
+                deviceAccessState = .active(limit: 1, device: placeholder, verification: .cached)
+                completeAuthentication(initialAccount)
+                startDeviceObservation(uid: initialAccount.uid, metadata: metadata)
+            } else {
+                let message = Self.message(for: error)
+                state = .guest
+                deviceAccessState = .failed(message: message, mayRetry: true)
+                errorMessage = message
+            }
+        }
+    }
+
+    private func claimAndActivate(account: AccountSnapshot) async {
+        guard let deviceAccessProvider, !isUpdatingDeviceAccess else { return }
+        isUpdatingDeviceAccess = true
+        errorMessage = nil
+        deviceAccessState = .verifying
+        defer { isUpdatingDeviceAccess = false }
+
+        do {
+            let metadata = try resolveCurrentDeviceMetadata()
+            let result = try await deviceAccessProvider.claim(metadata)
+            await finishActivationResult(result, temporaryAccount: account)
+        } catch {
+            state = .guest
+            let message = Self.message(for: error)
+            deviceAccessState = .failed(message: message, mayRetry: true)
+            errorMessage = message
+            presentedSheet = .deviceLimit
+        }
+    }
+
+    private func finishActivationResult(
+        _ result: DeviceActivationResult,
+        temporaryAccount: AccountSnapshot
+    ) async {
+        switch result {
+        case .limitReached(let limit, let devices):
+            state = .guest
+            deviceLimit = limit
+            managedDevices = devices
+            deviceAccessState = .limitReached(limit: limit, devices: devices)
+            presentedSheet = .deviceLimit
+        case .active(let limit, let device, let devices, let customToken):
+            do {
+                let activatedAccount = try await auth.signIn(withCustomToken: customToken)
+                guard activatedAccount.uid == temporaryAccount.uid,
+                      let metadata = currentDeviceMetadata,
+                      try await auth.deviceSessionClaims(forceRefresh: true)?.matches(metadata) == true else {
+                    throw DeviceAccessError(message: "Commit+ could not verify this Mac's device session.")
+                }
+                deviceLimit = limit
+                managedDevices = devices
+                deviceAccessState = .active(limit: limit, device: device, verification: .live)
+                deviceSessionCache?.save(
+                    CachedAccountDeviceSession(
+                        uid: activatedAccount.uid,
+                        deviceID: metadata.deviceID,
+                        verifiedAt: .now
+                    )
+                )
+                pendingTemporaryAccount = nil
+                completeAuthentication(activatedAccount)
+                startDeviceObservation(uid: activatedAccount.uid, metadata: metadata)
+            } catch {
+                try? auth.signOut()
+                state = .guest
+                let message = Self.message(for: error)
+                deviceAccessState = .failed(message: message, mayRetry: true)
+                errorMessage = message
+                presentedSheet = .deviceLimit
+            }
+        }
+    }
+
+    private func completeAuthentication(_ account: AccountSnapshot) {
+        state = .authenticated(account)
+        startEntitlementObservation(for: account.uid)
+        requiresRecentAuthentication = false
+        pendingLinkEmail = nil
+        presentedSheet = nil
+        scheduleSettingsSyncEligibilityUpdate()
+    }
+
+    private func resolveCurrentDeviceMetadata() throws -> AccountDeviceMetadata {
+        if let currentDeviceMetadata { return currentDeviceMetadata }
+        guard let deviceIdentity else {
+            throw DeviceAccessError(message: "Commit+ device identity is unavailable.")
+        }
+        let metadata = try deviceIdentity.currentDevice()
+        currentDeviceMetadata = metadata
+        return metadata
+    }
+
+    private func refreshCurrentDeviceSession(metadata: AccountDeviceMetadata) async {
+        guard let deviceAccessProvider, let account else { return }
+        do {
+            try await deviceAccessProvider.heartbeat(metadata)
+            let result = try await deviceAccessProvider.listDevices()
+            guard self.account?.uid == account.uid else { return }
+            deviceLimit = result.limit
+            managedDevices = result.devices
+            if let device = result.devices.first(where: { $0.id == metadata.deviceID }) {
+                deviceAccessState = .active(limit: result.limit, device: device, verification: .live)
+                deviceSessionCache?.save(
+                    CachedAccountDeviceSession(uid: account.uid, deviceID: metadata.deviceID, verifiedAt: .now)
+                )
+            }
+        } catch {
+            // A valid cached token keeps local-first startup usable. The live document
+            // observer remains authoritative once connectivity returns.
+        }
+    }
+
+    private func startDeviceObservation(uid: String, metadata: AccountDeviceMetadata) {
+        stopDeviceObservation()
+        guard let deviceAccessProvider else { return }
+        deviceObservation = deviceAccessProvider.observeCurrentDevice(
+            uid: uid,
+            deviceID: metadata.deviceID,
+            onChange: { [weak self] observation in
+                guard let self, account?.uid == uid else { return }
+                switch observation {
+                case .active(let device):
+                    deviceAccessState = .active(limit: deviceLimit, device: device, verification: .live)
+                    deviceSessionCache?.save(
+                        CachedAccountDeviceSession(uid: uid, deviceID: metadata.deviceID, verifiedAt: .now)
+                    )
+                case .revoked(let reason):
+                    handleDeviceRevocation(reason, uid: uid)
+                case .missing:
+                    handleDeviceRevocation(nil, uid: uid)
+                }
+            },
+            onError: { [weak self] message in
+                guard self?.account?.uid == uid else { return }
+                self?.errorMessage = message
+            }
+        )
+    }
+
+    private func handleDeviceRevocation(_ reason: AccountDeviceRevocationReason?, uid: String) {
+        stopDeviceObservation()
+        stopEntitlementObservation()
+        deviceSessionCache?.removeSession(for: uid)
+        try? auth.signOut()
+        state = .guest
+        deviceAccessState = .revoked(reason)
+        errorMessage = reason?.message ?? "This Mac no longer has access to the Commit+ account."
+        presentedSheet = nil
+        scheduleSettingsSyncEligibilityUpdate()
+    }
+
+    private func finishLocalSignOut() {
+        let uid = account?.uid ?? pendingTemporaryAccount?.uid
+        do {
+            try auth.signOut()
+            if let uid { deviceSessionCache?.removeSession(for: uid) }
+            stopDeviceObservation()
+            stopEntitlementObservation()
+            pendingTemporaryAccount = nil
+            state = .guest
+            deviceAccessState = deviceAccessProvider == nil ? .unavailable : .unverified
+            presentedSheet = nil
+            errorMessage = nil
+            pendingLinkEmail = nil
+            scheduleSettingsSyncEligibilityUpdate()
+        } catch {
+            errorMessage = Self.message(for: error)
+        }
+    }
+
+    private func stopDeviceObservation() {
+        deviceObservation?.cancel()
+        deviceObservation = nil
+    }
+
+    private func refreshManagedDevicesAfterMutation() async {
+        guard let deviceAccessProvider else { return }
+        do {
+            let result = try await deviceAccessProvider.listDevices()
+            deviceLimit = result.limit
+            managedDevices = result.devices
+        } catch {
+            errorMessage = Self.message(for: error)
+        }
+    }
+
+    private func shouldRefreshHeartbeat(uid: String, now: Date = .now) -> Bool {
+        guard let cached = deviceSessionCache?.session(for: uid),
+              cached.deviceID == currentDeviceMetadata?.deviceID else { return true }
+        return now.timeIntervalSince(cached.verifiedAt) >= 24 * 60 * 60
+    }
+
+    private static func currentDevice(from metadata: AccountDeviceMetadata) -> AccountDevice {
+        AccountDevice(
+            id: metadata.deviceID,
+            modelFamily: metadata.modelFamily,
+            osVersion: metadata.osVersion,
+            appVersion: metadata.appVersion,
+            status: .active,
+            createdAt: .distantPast,
+            lastSeenAt: .now,
+            revokedAt: nil,
+            revokedReason: nil
+        )
     }
 
     private func startEntitlementObservation(for uid: String) {

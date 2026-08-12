@@ -94,6 +94,8 @@ struct ContentView: View {
                 )
             case .settingsConflict:
                 SettingsSyncConflictSheet(controller: accountController)
+            case .deviceLimit:
+                DeviceLimitSheet(controller: accountController)
             }
         }
         .alert("Current Repository is Open", isPresented: $showingKeepCurrentAlert) {

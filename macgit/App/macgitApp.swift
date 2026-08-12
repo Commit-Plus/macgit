@@ -51,7 +51,14 @@ struct macgitApp: App {
             appState: appState,
             settingsStore: firebaseStatus == .configured
                 ? FirestoreSettingsStore()
-                : nil
+                : nil,
+            deviceIdentity: firebaseStatus == .configured
+                ? CommitPlusDeviceIdentityProvider()
+                : nil,
+            deviceAccessProvider: firebaseStatus == .configured
+                ? FirebaseDeviceAccessService()
+                : nil,
+            deviceSessionCache: UserDefaultsAccountDeviceSessionCache()
         )
         _accountController = StateObject(wrappedValue: accountController)
         let featureAccessController = FeatureAccessController(
@@ -182,6 +189,9 @@ struct macgitApp: App {
                         selectedAppSettingsSection = .general
                     }
                     showingAppSettings = true
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    accountController.applicationDidBecomeActive()
                 }
                 .sheet(isPresented: $showingAppSettings) {
                     AppSettingsView(
