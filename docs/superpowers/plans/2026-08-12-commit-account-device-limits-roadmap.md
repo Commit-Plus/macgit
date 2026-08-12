@@ -1,6 +1,6 @@
 # Commit+ Account Device Limits Roadmap
 
-**Status:** implementation completed; production rollout pending
+**Status:** implementation merged; Firebase rollout completed; landing deployment and macOS release pending
 
 **Goal:** Limit official Commit+ cloud sessions to one signed-in Mac for Free accounts and three for active Pro accounts, without affecting guest use or local Git.
 
@@ -67,7 +67,8 @@ Firestore rules keep these documents owner-scoped, validate their schema and ser
 - [completed] Polar downgrade reconciliation.
 - [completed] simplified Firestore rules and emulator coverage.
 - [completed] removal of claim/replace/release/revoke/heartbeat/list/reconcile device Functions from source.
-- [pending] merge both implementation branches, deploy landing, deploy Firestore rules, and delete the seven obsolete production Functions.
+- [completed] Merge both implementation branches, deploy Firestore rules, verify the active source, and delete the seven obsolete production Functions.
+- [pending] Deploy the landing page and release the compatible macOS build.
 
 ## Acceptance criteria
 
@@ -94,4 +95,3 @@ Firestore rules keep these documents owner-scoped, validate their schema and ser
 - No device list/revoke/replace UI inside the macOS app.
 - No background heartbeat, inactivity expiry, analytics, or repository telemetry.
 - No deletion or remote modification of local repositories, settings, credentials, or Git data.
-

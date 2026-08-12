@@ -1,6 +1,6 @@
 # Commit+ Account Device Limits Phase 3: Web Management and Simplified Rollout
 
-**Status:** implementation completed; production rollout pending
+**Status:** implementation and Firebase rollout completed; landing deployment and macOS release pending
 
 ## Architecture revision
 
@@ -29,10 +29,10 @@ The final implementation keeps only the existing app-to-web custom-token Functio
 
 ## Production rollout
 
-1. Merge both implementation branches to their local `main` branches.
-2. Deploy the landing page so web management exists before an official app release relies on it.
-3. Deploy the simplified Firestore rules and verify the active source.
-4. Delete the obsolete production Functions:
+1. [completed] Merge both implementation branches to their local `main` branches.
+2. [pending] Deploy the landing page so web management exists before an official app release relies on it.
+3. [completed] Deploy the simplified Firestore rules and verify the active source.
+4. [completed] Delete the obsolete production Functions:
    - `claimCommitPlusDevice`
    - `replaceCommitPlusDevice`
    - `releaseCommitPlusDevice`
@@ -40,8 +40,8 @@ The final implementation keeps only the existing app-to-web custom-token Functio
    - `heartbeatCommitPlusDevice`
    - `listCommitPlusDevices`
    - `reconcileCommitPlusDeviceLimit`
-5. Confirm `createWebSignInToken` and `deleteAccount` remain deployed.
-6. Release the compatible macOS build and exercise live Free/Pro limits plus web revocation.
+5. [completed] Confirm `createWebSignInToken` and `deleteAccount` remain deployed.
+6. [pending] Release the compatible macOS build and exercise live Free/Pro limits plus web revocation.
 
 ## Verification record
 
@@ -50,6 +50,8 @@ The final implementation keeps only the existing app-to-web custom-token Functio
 - macOS: focused account/device/web-session tests and build must pass; do not launch the app.
 - landing: TypeScript and production Next.js build must pass.
 - Runtime multi-Mac behavior and deployed landing UI remain explicit production smoke tests.
+- Production Firestore ruleset `026984a8-4101-41e4-a169-7f0614588620` matched the local source after deployment.
+- The production Functions inventory contains only `createWebSignInToken` and `deleteAccount` after cleanup.
 
 ## Non-goals
 
