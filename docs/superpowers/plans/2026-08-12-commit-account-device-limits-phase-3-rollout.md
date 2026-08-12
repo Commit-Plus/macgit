@@ -1,6 +1,6 @@
 # Commit+ Account Device Limits Phase 3: Management, Downgrade, Privacy, and Production Rollout
 
-**Status:** pending
+**Status:** implementation completed locally; release and production rollout pending
 
 **Implementation branches:**
 
@@ -149,3 +149,13 @@ In `/Users/thanhtran/Project/Commit+/landing-page`:
 - Run `xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build` without launching the app.
 - After separately authorized deployment, fetch active Functions revisions and Firestore rules source and record live allowed/denied smoke-test evidence.
 - Keep runtime UI/manual QA explicit for sheet geometry, focus, VoiceOver order, offline transition, and live cross-Mac revocation.
+
+## Result
+
+- Self-service active-Mac count, current-device marker, refresh, and confirmed removal are available in Manage Account. The limit-recovery sheet provides atomic replacement when the current Mac has no slot.
+- Backend downgrade reconciliation remains deterministic and account deletion clears device-owned records. List/revoke callables require an active bound Mac session.
+- Firestore source rules and emulator tests enforce active device claims for entitlement and synced settings/provider/bookmark data, while the public release feature policy remains outside device quota.
+- Landing pricing now says `1 signed-in Mac` and `up to 3 signed-in Macs`; FAQ, Terms, and Privacy explicitly separate optional official Commit+ cloud sessions from guest/local Git and self-operated AGPL source.
+- Privacy copy discloses Firebase account/entitlement/sync data and the random app-generated UUID plus generic Mac/app/OS metadata, while excluding repository contents, paths, Git history/activity, and credentials from the device registry.
+- Local verification: Functions tests 17/17, Firestore emulator rules tests 21/21 from Phase 1, focused macOS regression tests 36/36, macOS build passed, and landing production build passed. Landing lint is unavailable because the repository declares `eslint .` but does not include ESLint in its dependencies.
+- Not performed: app release, Functions deploy, Firestore rules deploy, landing deploy, active-production source verification, or live multi-Mac/runtime UI QA.
