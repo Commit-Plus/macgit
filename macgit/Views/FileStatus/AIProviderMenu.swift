@@ -24,7 +24,15 @@ struct AIProviderMenu: View {
         Menu {
             ForEach(controller.descriptors) { descriptor in
                 Button {
-                    controller.selectProvider(descriptor.id)
+                    if requiresConfiguration(descriptor) {
+                        NotificationCenter.default.post(
+                            name: .showAppSettings,
+                            object: nil,
+                            userInfo: ["section": AppSettingsSection.aiProviders.rawValue]
+                        )
+                    } else {
+                        controller.selectProvider(descriptor.id)
+                    }
                 } label: {
                     Label {
                         Text(menuTitle(for: descriptor))
@@ -61,10 +69,17 @@ struct AIProviderMenu: View {
     }
 
     private func menuTitle(for descriptor: AIProviderDescriptor) -> String {
-        let availability = controller.availability(for: descriptor.id)
         if descriptor.id == .appleIntelligence {
             return "\(descriptor.displayName) — On-device"
         }
-        return "\(descriptor.displayName) — \(availability.isAvailable ? descriptor.detail.replacing("Cloud · ", with: "") : availability.detail)"
+        if requiresConfiguration(descriptor) {
+            return "\(descriptor.displayName) — Config"
+        }
+        return "\(descriptor.displayName) — \(descriptor.detail.replacing("Cloud · ", with: ""))"
+    }
+
+    private func requiresConfiguration(_ descriptor: AIProviderDescriptor) -> Bool {
+        descriptor.dataProcessing == .cloud
+            && !controller.isAPIKeyConfigured(for: descriptor.id)
     }
 }

@@ -24,6 +24,7 @@ struct AppSettingsDetailView: View {
     @ObservedObject var providerAccountController: GitProviderAccountController
     @ObservedObject var aiProviderController: AIProviderController
     @ObservedObject var appUpdateController: AppUpdateController
+    @Binding var aiProviderKeyDrafts: [AIProviderAPIKeyDraft]
 
     var body: some View {
         switch section {
@@ -41,7 +42,10 @@ struct AppSettingsDetailView: View {
         case .integrations:
             IntegrationsSettingsView(appState: appState)
         case .aiProviders:
-            AIProvidersSettingsView(controller: aiProviderController)
+            AIProvidersSettingsView(
+                controller: aiProviderController,
+                apiKeyDrafts: $aiProviderKeyDrafts
+            )
         case .update:
             UpdateSettingsView(updateController: appUpdateController)
         case .advanced:

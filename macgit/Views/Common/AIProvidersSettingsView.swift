@@ -19,6 +19,7 @@ import SwiftUI
 
 struct AIProvidersSettingsView: View {
     @ObservedObject var controller: AIProviderController
+    @Binding var apiKeyDrafts: [AIProviderAPIKeyDraft]
 
     var body: some View {
         Form {
@@ -41,11 +42,15 @@ struct AIProvidersSettingsView: View {
                 Text("Commit+ processes staged changes on this Mac. Source code is not uploaded to an AI service.")
             }
 
-            ForEach(controller.descriptors.filter { $0.dataProcessing == .cloud }) { descriptor in
-                CloudAIProviderSettingsSection(
-                    descriptor: descriptor,
-                    controller: controller
-                )
+            ForEach($apiKeyDrafts) { $draft in
+                let descriptor = controller.descriptors.first { $0.id == draft.id }
+                if let descriptor {
+                    CloudAIProviderSettingsSection(
+                        descriptor: descriptor,
+                        controller: controller,
+                        draft: $draft
+                    )
+                }
             }
         }
         .formStyle(.grouped)

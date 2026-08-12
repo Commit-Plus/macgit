@@ -111,6 +111,16 @@ final class AIProviderController: ObservableObject {
         }
     }
 
+    func applyAPIKeyChanges(_ drafts: [AIProviderAPIKeyDraft]) throws {
+        for draft in drafts {
+            if !draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                try saveAPIKey(draft.apiKey, for: draft.id)
+            } else if draft.shouldRemove {
+                try removeAPIKey(for: draft.id)
+            }
+        }
+    }
+
     func refreshAvailability() async {
         for provider in registry.providers {
             availabilityByProviderID[provider.descriptor.id] = await provider.availability()

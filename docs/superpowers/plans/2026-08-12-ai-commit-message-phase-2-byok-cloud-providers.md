@@ -32,7 +32,7 @@
 - OpenAI uses the Responses API with GPT-4o mini, no reasoning, and strict JSON schema output.
 - Claude uses the Messages API with Claude Haiku 4.5 and `output_config.format` JSON schema output.
 - Gemini uses `generateContent` with Gemini 3.5 Flash-Lite, minimal thinking, and structured JSON output.
-- Cloud provider keys support save, replace, and remove operations through device-local Keychain items.
+- Cloud provider keys support save, replace, and remove operations through device-local Keychain items; Settings stages every key edit and applies them together from the sheet's Done button.
 - The existing expanded commit-bar menu selects all four providers and shows missing-key availability inline.
 - Cloud output passes through the existing bounded context, Conventional Commit formatter, and source-fingerprint validation.
 - App build and test-target compilation pass. The focused test runner hit the known Firebase host-bootstrap `abort()` before establishing a test connection, so it was not re-run.

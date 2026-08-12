@@ -47,6 +47,53 @@ final class CloudAIProviderTests: XCTestCase {
         XCTAssertEqual(controller.selectedProviderID, .appleIntelligence)
     }
 
+    @MainActor
+    func testControllerAppliesAllDraftedAPIKeyChangesTogether() throws {
+        let credentialStore = InMemoryAIProviderCredentialStore(keys: [
+            .openAI: "old-openai-key",
+            .googleGemini: "old-gemini-key",
+        ])
+        let controller = AIProviderController(
+            registry: .live(credentialStore: credentialStore),
+            snapshotLoader: StubCloudCommitChangeSnapshotLoader(),
+            defaults: makeDefaults(),
+            credentialStore: credentialStore
+        )
+
+        try controller.applyAPIKeyChanges([
+            AIProviderAPIKeyDraft(id: .openAI, apiKey: " new-openai-key ", shouldRemove: true),
+            AIProviderAPIKeyDraft(id: .anthropic, apiKey: "anthropic-key"),
+            AIProviderAPIKeyDraft(id: .googleGemini, shouldRemove: true),
+        ])
+
+        XCTAssertEqual(try credentialStore.apiKey(for: .openAI), "new-openai-key")
+        XCTAssertEqual(try credentialStore.apiKey(for: .anthropic), "anthropic-key")
+        XCTAssertNil(try credentialStore.apiKey(for: .googleGemini))
+        XCTAssertTrue(controller.isAPIKeyConfigured(for: .openAI))
+        XCTAssertTrue(controller.isAPIKeyConfigured(for: .anthropic))
+        XCTAssertFalse(controller.isAPIKeyConfigured(for: .googleGemini))
+    }
+
+    @MainActor
+    func testControllerLeavesConfiguredKeyUnchangedWhenDraftIsEmpty() throws {
+        let credentialStore = InMemoryAIProviderCredentialStore(keys: [
+            .openAI: "existing-openai-key",
+        ])
+        let controller = AIProviderController(
+            registry: .live(credentialStore: credentialStore),
+            snapshotLoader: StubCloudCommitChangeSnapshotLoader(),
+            defaults: makeDefaults(),
+            credentialStore: credentialStore
+        )
+
+        try controller.applyAPIKeyChanges([
+            AIProviderAPIKeyDraft(id: .openAI),
+        ])
+
+        XCTAssertEqual(try credentialStore.apiKey(for: .openAI), "existing-openai-key")
+        XCTAssertTrue(controller.isAPIKeyConfigured(for: .openAI))
+    }
+
     func testOpenAIRequestUsesBearerKeyAndParsesStructuredResponse() async throws {
         let store = InMemoryAIProviderCredentialStore(keys: [.openAI: "openai-secret"])
         let client = StubAIProviderHTTPClient(responseBody: """

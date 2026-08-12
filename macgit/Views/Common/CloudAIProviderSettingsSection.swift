@@ -21,14 +21,16 @@ import SwiftUI
 struct CloudAIProviderSettingsSection: View {
     let descriptor: AIProviderDescriptor
     @ObservedObject var controller: AIProviderController
+    @Binding var draft: AIProviderAPIKeyDraft
 
-    @State private var apiKey = ""
-    @State private var errorMessage: String?
-    @State private var isShowingError = false
     @State private var isRemovingKey = false
 
     private var isConfigured: Bool {
         controller.isAPIKeyConfigured(for: descriptor.id)
+    }
+
+    private var hasPendingKey: Bool {
+        !draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -38,71 +40,81 @@ struct CloudAIProviderSettingsSection: View {
                     .foregroundStyle(.secondary)
             }
 
-            SecureField(
-                isConfigured ? "Enter a replacement API key" : "API key",
-                text: $apiKey
-            )
-            .textContentType(.password)
-            .onSubmit(saveAPIKey)
+            if !isConfigured || draft.shouldRemove {
+                SecureField(
+                    isConfigured ? "Enter a replacement API key" : "API key",
+                    text: $draft.apiKey
+                )
+            }
 
             HStack {
                 Label(
-                    isConfigured ? "Configured in Keychain" : "API key required",
-                    systemImage: isConfigured ? "checkmark.circle.fill" : "key"
+                    statusText,
+                    systemImage: statusImage
                 )
-                .foregroundStyle(isConfigured ? .primary : .secondary)
+                .foregroundStyle(statusStyle)
 
                 Spacer()
 
-                if isConfigured {
-                    Button("Remove Key", role: .destructive) {
+                if draft.shouldRemove {
+                    Button("Keep Existing Key", action: keepExistingKey)
+                } else if isConfigured {
+                    Button("Remove API Key", systemImage: "trash", role: .destructive) {
                         isRemovingKey = true
                     }
+                    .labelStyle(.iconOnly)
+                    .help("Remove API key")
+                    .confirmationDialog(
+                        "Remove \(descriptor.displayName) API Key?",
+                        isPresented: $isRemovingKey
+                    ) {
+                        Button("Remove API Key", role: .destructive, action: stageRemoval)
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("Enter a replacement key, or leave the field empty to remove the current key when you click Done.")
+                    }
                 }
-
-                Button(isConfigured ? "Replace API Key" : "Save API Key", action: saveAPIKey)
-                    .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         } header: {
             Label(descriptor.displayName, systemImage: descriptor.systemImage)
         } footer: {
-            Text("The key stays in this Mac's Keychain. When selected, bounded change context is sent directly to \(descriptor.displayName).")
-        }
-        .alert("Couldn’t Update API Key", isPresented: $isShowingError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(errorMessage ?? "An unknown error occurred.")
-        }
-        .confirmationDialog(
-            "Remove \(descriptor.displayName) API Key?",
-            isPresented: $isRemovingKey
-        ) {
-            Button("Remove API Key", role: .destructive, action: removeAPIKey)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Commit+ will no longer be able to use \(descriptor.displayName) until a new key is saved.")
+            Text("Use the trash button before replacing a configured key. Changes are saved to this Mac's Keychain when you click Done.")
         }
     }
 
-    private func saveAPIKey() {
-        do {
-            try controller.saveAPIKey(apiKey, for: descriptor.id)
-            apiKey = ""
-            Task { await controller.refreshAvailability() }
-        } catch {
-            errorMessage = error.localizedDescription
-            isShowingError = true
+    private var statusText: String {
+        if hasPendingKey {
+            isConfigured ? "Replacement ready" : "Ready to save"
+        } else if draft.shouldRemove {
+            "Will be removed"
+        } else {
+            isConfigured ? "Configured in Keychain" : "API key required"
         }
     }
 
-    private func removeAPIKey() {
-        do {
-            try controller.removeAPIKey(for: descriptor.id)
-            apiKey = ""
-            Task { await controller.refreshAvailability() }
-        } catch {
-            errorMessage = error.localizedDescription
-            isShowingError = true
+    private var statusImage: String {
+        if hasPendingKey {
+            "checkmark.circle.fill"
+        } else if draft.shouldRemove {
+            "trash"
+        } else if isConfigured {
+            "checkmark.circle.fill"
+        } else {
+            "key"
         }
+    }
+
+    private var statusStyle: HierarchicalShapeStyle {
+        !hasPendingKey && (draft.shouldRemove || !isConfigured) ? .secondary : .primary
+    }
+
+    private func stageRemoval() {
+        draft.apiKey = ""
+        draft.shouldRemove = true
+    }
+
+    private func keepExistingKey() {
+        draft.apiKey = ""
+        draft.shouldRemove = false
     }
 }

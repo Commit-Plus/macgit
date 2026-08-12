@@ -30,6 +30,7 @@ struct macgitApp: App {
     @StateObject private var repositoryVisibilityController: RepositoryVisibilityController
     @StateObject private var repositoryBookmarkController: RepositoryBookmarkController
     @State private var showingAppSettings = false
+    @State private var selectedAppSettingsSection: AppSettingsSection = .general
 
     init() {
         NSWindow.allowsAutomaticWindowTabbing = false
@@ -173,13 +174,23 @@ struct macgitApp: App {
                 .task {
                     appUpdateController.start()
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .showAppSettings)) { notification in
+                    if let rawSection = notification.userInfo?["section"] as? String,
+                       let section = AppSettingsSection(rawValue: rawSection) {
+                        selectedAppSettingsSection = section
+                    } else {
+                        selectedAppSettingsSection = .general
+                    }
+                    showingAppSettings = true
+                }
                 .sheet(isPresented: $showingAppSettings) {
                     AppSettingsView(
                         appState: appState,
                         accountController: accountController,
                         providerAccountController: providerAccountController,
                         aiProviderController: aiProviderController,
-                        appUpdateController: appUpdateController
+                        appUpdateController: appUpdateController,
+                        selectedSection: $selectedAppSettingsSection
                     )
                         .preferredColorScheme(appState.appearance.colorScheme)
                 }
@@ -192,6 +203,7 @@ struct macgitApp: App {
                 }
 
                 Button("Settings...") {
+                    selectedAppSettingsSection = .general
                     showingAppSettings = true
                 }
                 .keyboardShortcut(",", modifiers: .command)

@@ -76,3 +76,7 @@ enum AppSettingsSection: String, CaseIterable, Identifiable {
         }
     }
 }
+
+extension Notification.Name {
+    static let showAppSettings = Notification.Name("showAppSettings")
+}
