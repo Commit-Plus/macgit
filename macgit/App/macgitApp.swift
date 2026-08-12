@@ -56,7 +56,7 @@ struct macgitApp: App {
                 ? CommitPlusDeviceIdentityProvider()
                 : nil,
             deviceAccessProvider: firebaseStatus == .configured
-                ? FirebaseDeviceAccessService()
+                ? FirestoreDeviceAccessService()
                 : nil,
             deviceSessionCache: UserDefaultsAccountDeviceSessionCache()
         )
@@ -189,9 +189,6 @@ struct macgitApp: App {
                         selectedAppSettingsSection = .general
                     }
                     showingAppSettings = true
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                    accountController.applicationDidBecomeActive()
                 }
                 .sheet(isPresented: $showingAppSettings) {
                     AppSettingsView(

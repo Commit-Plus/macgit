@@ -118,29 +118,6 @@ final class FirebaseAuthService: AccountAuthenticating {
         }
     }
 
-    func signIn(withCustomToken token: String) async throws -> AccountSnapshot {
-        do {
-            let result = try await Auth.auth().signIn(withCustomToken: token)
-            return Self.snapshot(result.user)
-        } catch {
-            throw map(error)
-        }
-    }
-
-    func deviceSessionClaims(forceRefresh: Bool) async throws -> AccountDeviceSessionClaims? {
-        guard let user = Auth.auth().currentUser else { return nil }
-        do {
-            let result = try await user.getIDTokenResult(forcingRefresh: forceRefresh)
-            guard let deviceID = result.claims["commitPlusDeviceID"] as? String,
-                  let version = (result.claims["commitPlusDeviceSessionVersion"] as? NSNumber)?.intValue else {
-                return nil
-            }
-            return AccountDeviceSessionClaims(deviceID: deviceID, version: version)
-        } catch {
-            throw map(error)
-        }
-    }
-
     func sendPasswordReset(email: String) async throws {
         do {
             try await Auth.auth().sendPasswordReset(withEmail: email)

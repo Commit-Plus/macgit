@@ -47,13 +47,13 @@ final class DeviceIdentityStoreTests: XCTestCase {
         let metadata = try makeProvider(store: MemoryDeviceIdentifierStore()).currentDevice()
 
         XCTAssertEqual(
-            Set(metadata.callablePayload.keys),
+            Set(metadata.firestorePayload.keys),
             ["deviceID", "platform", "modelFamily", "osVersion", "appVersion"]
         )
         XCTAssertEqual(metadata.modelFamily, "MacBook Pro")
-        XCTAssertFalse(metadata.callablePayload.keys.contains("serial"))
-        XCTAssertFalse(metadata.callablePayload.keys.contains("macAddress"))
-        XCTAssertFalse(metadata.callablePayload.keys.contains("fingerprint"))
+        XCTAssertFalse(metadata.firestorePayload.keys.contains("serial"))
+        XCTAssertFalse(metadata.firestorePayload.keys.contains("macAddress"))
+        XCTAssertFalse(metadata.firestorePayload.keys.contains("fingerprint"))
     }
 
     private func makeProvider(store: MemoryDeviceIdentifierStore) -> CommitPlusDeviceIdentityProvider {

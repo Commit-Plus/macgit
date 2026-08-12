@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { after, afterEach, before, beforeEach, describe, test } from "node:test";
+import { after, afterEach, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   assertFails,
@@ -7,11 +7,9 @@ import {
   initializeTestEnvironment,
 } from "@firebase/rules-unit-testing";
 import {
-  collection,
   deleteDoc,
   doc,
   getDoc,
-  getDocs,
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
@@ -38,19 +36,8 @@ const deviceIDs = {
   "user-b": "00000000-0000-4000-8000-000000000002",
 };
 
-beforeEach(async () => {
-  await environment.withSecurityRulesDisabled(async (admin) => {
-    for (const [uid, deviceID] of Object.entries(deviceIDs)) {
-      await setDoc(device(uid, deviceID, admin), validDeviceRecord());
-    }
-  });
-});
-
-function deviceContext(uid, deviceID = deviceIDs[uid]) {
-  return environment.authenticatedContext(uid, {
-    commitPlusDeviceID: deviceID,
-    commitPlusDeviceSessionVersion: 1,
-  });
+function deviceContext(uid) {
+  return environment.authenticatedContext(uid);
 }
 
 function settings(uid, context) {
@@ -77,9 +64,14 @@ function device(uid, deviceID, context) {
   return doc(context.firestore(), `users/${uid}/devices/${deviceID}`);
 }
 
+function deviceSummary(uid, context) {
+  return doc(context.firestore(), `users/${uid}/deviceAccess/summary`);
+}
+
 function validDeviceRecord(overrides = {}) {
   return {
     schemaVersion: 1,
+    deviceID: deviceIDs["user-a"],
     status: "active",
     platform: "macOS",
     modelFamily: "MacBook Pro",
@@ -412,47 +404,62 @@ describe("Firestore ownership rules", () => {
     await assertFails(getDoc(entitlement("user-a", guest)));
   });
 
-  test("plain and malformed Firebase sessions cannot access account cloud data", async () => {
+  test("plain Firebase sessions can access their own account cloud data", async () => {
     const plain = environment.authenticatedContext("user-a");
-    const wrongDevice = deviceContext(
-      "user-a",
-      "00000000-0000-4000-8000-000000000099",
-    );
-    const wrongVersion = environment.authenticatedContext("user-a", {
-      commitPlusDeviceID: deviceIDs["user-a"],
-      commitPlusDeviceSessionVersion: 2,
-    });
-
-    for (const context of [plain, wrongDevice, wrongVersion]) {
-      await assertFails(getDoc(settings("user-a", context)));
-      await assertFails(getDoc(entitlement("user-a", context)));
-      await assertFails(setDoc(settings("user-a", context), validSettings()));
-    }
+    await assertSucceeds(setDoc(settings("user-a", plain), validSettings()));
+    await assertSucceeds(getDoc(settings("user-a", plain)));
   });
 
-  test("a revoked Mac can observe its own record but cannot access sync or entitlement", async () => {
-    await environment.withSecurityRulesDisabled(async (admin) => {
-      await setDoc(
-        device("user-a", deviceIDs["user-a"], admin),
-        validDeviceRecord({ status: "revoked", revokedReason: "replaced" }),
-      );
-    });
+  test("Free accounts can claim one device but not two", async () => {
     const userA = deviceContext("user-a");
+    const firstID = deviceIDs["user-a"];
+    const secondID = "00000000-0000-4000-8000-000000000099";
 
-    await assertSucceeds(getDoc(device("user-a", deviceIDs["user-a"], userA)));
-    await assertFails(getDoc(settings("user-a", userA)));
-    await assertFails(getDoc(entitlement("user-a", userA)));
+    await assertSucceeds(setDoc(deviceSummary("user-a", userA), {
+      schemaVersion: 1,
+      activeDeviceIDs: [firstID],
+      updatedAt: serverTimestamp(),
+    }));
+    await assertSucceeds(setDoc(device("user-a", firstID, userA), validDeviceRecord()));
+    await assertFails(setDoc(deviceSummary("user-a", userA), {
+      schemaVersion: 1,
+      activeDeviceIDs: [firstID, secondID],
+      updatedAt: serverTimestamp(),
+    }));
   });
 
-  test("device records are server-owned, self-readable only, and never listable", async () => {
+  test("active Pro accounts can claim up to three devices", async () => {
+    const userA = deviceContext("user-a");
+    const ids = [
+      deviceIDs["user-a"],
+      "00000000-0000-4000-8000-000000000098",
+      "00000000-0000-4000-8000-000000000099",
+    ];
+    await environment.withSecurityRulesDisabled(async (admin) => {
+      await setDoc(entitlement("user-a", admin), { plan: "pro", access: "active" });
+    });
+
+    await assertSucceeds(setDoc(deviceSummary("user-a", userA), {
+      schemaVersion: 1,
+      activeDeviceIDs: ids,
+      updatedAt: serverTimestamp(),
+    }));
+    await assertFails(setDoc(deviceSummary("user-a", userA), {
+      schemaVersion: 1,
+      activeDeviceIDs: [...ids, "00000000-0000-4000-8000-000000000100"],
+      updatedAt: serverTimestamp(),
+    }));
+  });
+
+  test("device records are owner-scoped and schema validated", async () => {
     const userA = deviceContext("user-a");
     const userB = deviceContext("user-b");
     const ownDevice = device("user-a", deviceIDs["user-a"], userA);
 
+    await assertSucceeds(setDoc(ownDevice, validDeviceRecord()));
     await assertSucceeds(getDoc(ownDevice));
     await assertFails(getDoc(device("user-a", deviceIDs["user-a"], userB)));
-    await assertFails(setDoc(ownDevice, validDeviceRecord({ modelFamily: "Forged Mac" })));
+    await assertFails(setDoc(ownDevice, validDeviceRecord({ serial: "secret" })));
     await assertFails(deleteDoc(ownDevice));
-    await assertFails(getDocs(collection(userA.firestore(), "users/user-a/devices")));
   });
 });

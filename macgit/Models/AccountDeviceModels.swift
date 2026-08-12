@@ -24,7 +24,7 @@ struct AccountDeviceMetadata: Equatable, Sendable {
     let osVersion: String
     let appVersion: String
 
-    var callablePayload: [String: String] {
+    var firestorePayload: [String: Any] {
         [
             "deviceID": deviceID,
             "platform": "macOS",
@@ -79,25 +79,9 @@ struct AccountDevice: Identifiable, Equatable, Sendable {
     }
 }
 
-struct AccountDeviceSessionClaims: Equatable, Sendable {
-    static let supportedVersion = 1
-
-    let deviceID: String
-    let version: Int
-
-    func matches(_ metadata: AccountDeviceMetadata) -> Bool {
-        deviceID == metadata.deviceID && version == Self.supportedVersion
-    }
-}
-
 enum DeviceActivationResult: Equatable, Sendable {
-    case active(
-        limit: Int,
-        device: AccountDevice,
-        devices: [AccountDevice],
-        customToken: String
-    )
-    case limitReached(limit: Int, devices: [AccountDevice])
+    case active(limit: Int, device: AccountDevice)
+    case limitReached(limit: Int)
 }
 
 enum AccountDeviceVerification: Equatable, Sendable {
@@ -110,13 +94,18 @@ enum AccountDeviceAccessState: Equatable, Sendable {
     case unverified
     case verifying
     case active(limit: Int, device: AccountDevice, verification: AccountDeviceVerification)
-    case limitReached(limit: Int, devices: [AccountDevice])
+    case limitReached(limit: Int)
     case revoked(AccountDeviceRevocationReason?)
     case failed(message: String, mayRetry: Bool)
 
-    var limitReachedDetails: (limit: Int, devices: [AccountDevice])? {
-        guard case .limitReached(let limit, let devices) = self else { return nil }
-        return (limit, devices)
+    var reachedLimit: Int? {
+        guard case .limitReached(let limit) = self else { return nil }
+        return limit
+    }
+
+    var activeLimit: Int? {
+        guard case .active(let limit, _, _) = self else { return nil }
+        return limit
     }
 }
 

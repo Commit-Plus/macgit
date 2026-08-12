@@ -202,17 +202,13 @@ final class AccountSessionControllerTests: XCTestCase {
         XCTAssertNil(controller.errorMessage)
     }
 
-    func testDeviceBoundSignInPublishesAccountOnlyAfterActivation() async {
+    func testDeviceClaimPublishesAccountOnlyAfterFirestoreActivation() async {
         let account = Self.account
         let metadata = Self.metadata
         let device = Self.device(metadata: metadata)
-        let auth = FakeAccountAuth(
-            signInResult: account,
-            customTokenResult: account,
-            deviceClaims: AccountDeviceSessionClaims(deviceID: metadata.deviceID, version: 1)
-        )
+        let auth = FakeAccountAuth(signInResult: account)
         let access = FakeDeviceAccessProvider(
-            claimResult: .active(limit: 1, device: device, devices: [device], customToken: "bound-token")
+            claimResult: .active(limit: 1, device: device)
         )
         let controller = AccountSessionController(
             auth: auth,
@@ -226,20 +222,19 @@ final class AccountSessionControllerTests: XCTestCase {
 
         XCTAssertEqual(controller.state, .authenticated(account))
         XCTAssertEqual(access.claimedMetadata, [metadata])
-        XCTAssertEqual(auth.customTokens, ["bound-token"])
-        XCTAssertEqual(controller.deviceLimit, 1)
+        XCTAssertEqual(access.claimedUIDs, [account.uid])
+        XCTAssertEqual(controller.deviceAccessState, .active(limit: 1, device: device, verification: .live))
     }
 
     func testDeviceLimitDoesNotExposeAuthenticatedAccount() async {
         let account = Self.account
         let metadata = Self.metadata
-        let existing = Self.device(id: "11111111-1111-4111-8111-111111111111")
         let controller = AccountSessionController(
             auth: FakeAccountAuth(signInResult: account),
             bootstrapStatus: .configured,
             deviceIdentity: FakeDeviceIdentity(metadata: metadata),
             deviceAccessProvider: FakeDeviceAccessProvider(
-                claimResult: .limitReached(limit: 1, devices: [existing])
+                claimResult: .limitReached(limit: 1)
             ),
             deviceSessionCache: FakeDeviceSessionCache()
         )
@@ -249,41 +244,63 @@ final class AccountSessionControllerTests: XCTestCase {
         XCTAssertNil(controller.account)
         XCTAssertEqual(controller.state, .guest)
         XCTAssertEqual(controller.presentedSheet, .deviceLimit)
-        XCTAssertEqual(controller.deviceAccessState, .limitReached(limit: 1, devices: [existing]))
+        XCTAssertEqual(controller.deviceAccessState, .limitReached(limit: 1))
     }
 
-    func testReplacingDeviceCompletesActivation() async {
+    func testDeviceLimitCanOpenAuthenticatedWebManagement() async throws {
         let account = Self.account
-        let metadata = Self.metadata
-        let existing = Self.device(id: "11111111-1111-4111-8111-111111111111")
-        let replacement = Self.device(metadata: metadata)
-        let auth = FakeAccountAuth(
-            signInResult: account,
-            customTokenResult: account,
-            deviceClaims: AccountDeviceSessionClaims(deviceID: metadata.deviceID, version: 1)
+        let profileURL = try XCTUnwrap(
+            URL(string: "https://commit-plus.com/session?next=/profile?section%3Ddevices#token=test")
         )
-        let access = FakeDeviceAccessProvider(
-            claimResult: .limitReached(limit: 1, devices: [existing]),
-            replaceResult: .active(
-                limit: 1,
-                device: replacement,
-                devices: [replacement],
-                customToken: "replacement-token"
-            )
-        )
+        let webProvider = FakeWebAccountSessionProvider(urls: [.devices: profileURL])
+        var openedURLs: [URL] = []
         let controller = AccountSessionController(
-            auth: auth,
+            auth: FakeAccountAuth(signInResult: account),
             bootstrapStatus: .configured,
-            deviceIdentity: FakeDeviceIdentity(metadata: metadata),
-            deviceAccessProvider: access,
+            webAccountSessionProvider: webProvider,
+            openWebURL: { openedURLs.append($0); return true },
+            deviceIdentity: FakeDeviceIdentity(metadata: Self.metadata),
+            deviceAccessProvider: FakeDeviceAccessProvider(claimResult: .limitReached(limit: 1)),
             deviceSessionCache: FakeDeviceSessionCache()
         )
 
         await controller.signIn(email: "a@example.com", password: "secret12")
-        await controller.replaceDevice(existing)
+        await controller.openDeviceManagementOnWeb()
+
+        XCTAssertEqual(webProvider.requestedDestinations, [.devices])
+        XCTAssertEqual(openedURLs, [profileURL])
+        XCTAssertNil(controller.account)
+    }
+
+    func testInitialOfflineFailureRestoresPreviouslyVerifiedDeviceCache() async {
+        let account = Self.account
+        let cache = FakeDeviceSessionCache()
+        cache.save(
+            CachedAccountDeviceSession(
+                uid: account.uid,
+                deviceID: Self.metadata.deviceID,
+                verifiedAt: .now
+            )
+        )
+        let controller = AccountSessionController(
+            auth: FakeAccountAuth(current: account),
+            bootstrapStatus: .configured,
+            deviceIdentity: FakeDeviceIdentity(metadata: Self.metadata),
+            deviceAccessProvider: FakeDeviceAccessProvider(
+                claimError: DeviceAccessError(message: "Offline")
+            ),
+            deviceSessionCache: cache
+        )
+
+        for _ in 0..<10 where controller.account == nil {
+            await Task.yield()
+        }
 
         XCTAssertEqual(controller.state, .authenticated(account))
-        XCTAssertEqual(access.replacedDeviceIDs, [existing.id])
+        guard case .active(limit: 1, _, verification: .cached) = controller.deviceAccessState else {
+            return XCTFail("Expected cached device access after an offline startup failure.")
+        }
+        XCTAssertNil(controller.errorMessage)
         XCTAssertNil(controller.presentedSheet)
     }
 
@@ -291,13 +308,9 @@ final class AccountSessionControllerTests: XCTestCase {
         let account = Self.account
         let metadata = Self.metadata
         let device = Self.device(metadata: metadata)
-        let auth = FakeAccountAuth(
-            signInResult: account,
-            customTokenResult: account,
-            deviceClaims: AccountDeviceSessionClaims(deviceID: metadata.deviceID, version: 1)
-        )
+        let auth = FakeAccountAuth(signInResult: account)
         let access = FakeDeviceAccessProvider(
-            claimResult: .active(limit: 1, device: device, devices: [device], customToken: "token")
+            claimResult: .active(limit: 1, device: device)
         )
         let controller = AccountSessionController(
             auth: auth,
@@ -382,22 +395,15 @@ private final class FakeAccountAuth: AccountAuthenticating {
     var deleteAccountCallCount = 0
 
     private let signInResult: AccountSnapshot?
-    private let customTokenResult: AccountSnapshot?
-    private let deviceClaims: AccountDeviceSessionClaims?
     private let error: AccountAuthError?
-    private(set) var customTokens: [String] = []
 
     init(
         current: AccountSnapshot? = nil,
         signInResult: AccountSnapshot? = nil,
-        customTokenResult: AccountSnapshot? = nil,
-        deviceClaims: AccountDeviceSessionClaims? = nil,
         error: AccountAuthError? = nil
     ) {
         currentAccount = current
         self.signInResult = signInResult
-        self.customTokenResult = customTokenResult
-        self.deviceClaims = deviceClaims
         self.error = error
     }
 
@@ -422,19 +428,6 @@ private final class FakeAccountAuth: AccountAuthenticating {
         if let error { throw error }
     }
 
-    func signIn(withCustomToken token: String) async throws -> AccountSnapshot {
-        if let error { throw error }
-        customTokens.append(token)
-        let account = try XCTUnwrap(customTokenResult ?? signInResult)
-        currentAccount = account
-        return account
-    }
-
-    func deviceSessionClaims(forceRefresh: Bool) async throws -> AccountDeviceSessionClaims? {
-        if let error { throw error }
-        return deviceClaims
-    }
-
     func deleteAccount() async throws {
         if let error { throw error }
         deleteAccountCallCount += 1
@@ -457,39 +450,32 @@ private struct FakeDeviceIdentity: DeviceIdentityProviding {
 
 @MainActor
 private final class FakeDeviceAccessProvider: DeviceAccessProviding {
-    let claimResult: DeviceActivationResult
-    let replaceResult: DeviceActivationResult?
+    let claimResult: DeviceActivationResult?
+    let claimError: Error?
     private(set) var claimedMetadata: [AccountDeviceMetadata] = []
-    private(set) var replacedDeviceIDs: [String] = []
+    private(set) var claimedUIDs: [String] = []
+    private(set) var releasedDeviceIDs: [String] = []
     private var onChange: (@MainActor (AccountDeviceObservationState) -> Void)?
 
-    init(claimResult: DeviceActivationResult, replaceResult: DeviceActivationResult? = nil) {
+    init(claimResult: DeviceActivationResult) {
         self.claimResult = claimResult
-        self.replaceResult = replaceResult
+        claimError = nil
     }
 
-    func claim(_ metadata: AccountDeviceMetadata) async throws -> DeviceActivationResult {
+    init(claimError: Error) {
+        claimResult = nil
+        self.claimError = claimError
+    }
+
+    func claim(uid: String, metadata: AccountDeviceMetadata) async throws -> DeviceActivationResult {
+        claimedUIDs.append(uid)
         claimedMetadata.append(metadata)
-        return claimResult
+        if let claimError { throw claimError }
+        return try XCTUnwrap(claimResult)
     }
 
-    func replace(
-        replacing deviceID: String,
-        with metadata: AccountDeviceMetadata
-    ) async throws -> DeviceActivationResult {
-        replacedDeviceIDs.append(deviceID)
-        return try XCTUnwrap(replaceResult)
-    }
-
-    func releaseCurrentDevice() async throws {}
-    func revoke(deviceID: String) async throws {}
-    func heartbeat(_ metadata: AccountDeviceMetadata) async throws {}
-
-    func listDevices() async throws -> AccountDeviceList {
-        switch replaceResult ?? claimResult {
-        case .active(let limit, _, let devices, _), .limitReached(let limit, let devices):
-            return AccountDeviceList(limit: limit, devices: devices)
-        }
+    func release(uid: String, deviceID: String) async throws {
+        releasedDeviceIDs.append(deviceID)
     }
 
     func observeCurrentDevice(

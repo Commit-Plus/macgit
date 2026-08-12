@@ -20,12 +20,15 @@ import Foundation
 
 enum WebAccountDestination: Hashable {
     case profile
+    case devices
     case pricing
 
     var path: String {
         switch self {
         case .profile:
             "/profile"
+        case .devices:
+            "/profile?section=devices"
         case .pricing:
             "/pricing"
         }
