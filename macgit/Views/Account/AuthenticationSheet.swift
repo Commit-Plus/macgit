@@ -24,6 +24,7 @@ struct AuthenticationSheet: View {
     @State private var mode: AuthenticationMode
     @State private var email = ""
     @State private var password = ""
+    @State private var showingDeviceRecovery = false
 
     init(controller: AccountSessionController, mode: AuthenticationMode) {
         self.controller = controller
@@ -145,6 +146,17 @@ struct AuthenticationSheet: View {
             if accountUID != nil {
                 dismiss()
             }
+        }
+        .onChange(of: controller.deviceAccessState) { _, state in
+            switch state {
+            case .limitReached, .failed:
+                showingDeviceRecovery = true
+            default:
+                showingDeviceRecovery = false
+            }
+        }
+        .sheet(isPresented: $showingDeviceRecovery) {
+            DeviceLimitSheet(controller: controller)
         }
     }
 
