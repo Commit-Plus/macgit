@@ -74,16 +74,17 @@ final class AICommitMessageTests: XCTestCase {
     }
 
     @MainActor
-    func testLiveRegistryKeepsCloudProvidersAsUnselectablePlaceholders() async {
-        let registry = AIProviderRegistry.live()
+    func testLiveRegistryProvidesCredentialBackedCloudProviders() async {
+        let credentialStore = InMemoryAIProviderCredentialStore()
+        let registry = AIProviderRegistry.live(credentialStore: credentialStore)
         let ids = registry.descriptors.map(\.id)
 
         XCTAssertEqual(ids, [.appleIntelligence, .openAI, .anthropic, .googleGemini])
         for id in [AIProviderID.openAI, .anthropic, .googleGemini] {
             let provider = registry.provider(for: id)
             let availability = await provider?.availability()
-            XCTAssertEqual(availability, .comingSoon)
-            XCTAssertEqual(provider?.descriptor.isImplemented, false)
+            XCTAssertEqual(availability, .unavailable("Add an API key in Settings → AI Providers."))
+            XCTAssertEqual(provider?.descriptor.isImplemented, true)
         }
     }
 

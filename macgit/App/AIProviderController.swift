@@ -21,30 +21,36 @@ import Foundation
 @MainActor
 final class AIProviderController: ObservableObject {
     @Published private(set) var availabilityByProviderID: [AIProviderID: AIProviderAvailability] = [:]
+    @Published private(set) var configuredProviderIDs: Set<AIProviderID> = []
     @Published private(set) var isGenerating = false
     @Published private(set) var selectedProviderID: AIProviderID
 
     private let registry: AIProviderRegistry
     private let snapshotLoader: any CommitChangeSnapshotLoading
     private let defaults: UserDefaults
+    private let credentialStore: any AIProviderCredentialStore
     private let selectedProviderDefaultsKey = "ai.commitMessage.selectedProvider"
 
     convenience init() {
+        let credentialStore = KeychainAIProviderCredentialStore()
         self.init(
-            registry: .live(),
+            registry: .live(credentialStore: credentialStore),
             snapshotLoader: GitStatusService.shared,
-            defaults: .standard
+            defaults: .standard,
+            credentialStore: credentialStore
         )
     }
 
     init(
         registry: AIProviderRegistry,
         snapshotLoader: any CommitChangeSnapshotLoading,
-        defaults: UserDefaults
+        defaults: UserDefaults,
+        credentialStore: any AIProviderCredentialStore = KeychainAIProviderCredentialStore()
     ) {
         self.registry = registry
         self.snapshotLoader = snapshotLoader
         self.defaults = defaults
+        self.credentialStore = credentialStore
         let storedID = defaults.string(forKey: selectedProviderDefaultsKey).map(AIProviderID.init(rawValue:))
         if let storedID, registry.provider(for: storedID)?.descriptor.isImplemented == true {
             selectedProviderID = storedID
@@ -54,6 +60,10 @@ final class AIProviderController: ObservableObject {
 
         for descriptor in registry.descriptors {
             availabilityByProviderID[descriptor.id] = descriptor.isImplemented ? .checking : .comingSoon
+            if descriptor.dataProcessing == .cloud,
+               (try? credentialStore.apiKey(for: descriptor.id)) != nil {
+                configuredProviderIDs.insert(descriptor.id)
+            }
         }
     }
 
@@ -78,6 +88,27 @@ final class AIProviderController: ObservableObject {
         guard registry.provider(for: id)?.descriptor.isImplemented == true else { return }
         selectedProviderID = id
         defaults.set(id.rawValue, forKey: selectedProviderDefaultsKey)
+    }
+
+    func isAPIKeyConfigured(for id: AIProviderID) -> Bool {
+        configuredProviderIDs.contains(id)
+    }
+
+    func saveAPIKey(_ apiKey: String, for id: AIProviderID) throws {
+        let normalizedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedKey.isEmpty else {
+            throw CommitMessageGenerationError.providerRequestFailed("Enter an API key before saving.")
+        }
+        try credentialStore.saveAPIKey(normalizedKey, for: id)
+        configuredProviderIDs.insert(id)
+    }
+
+    func removeAPIKey(for id: AIProviderID) throws {
+        try credentialStore.deleteAPIKey(for: id)
+        configuredProviderIDs.remove(id)
+        if selectedProviderID == id {
+            selectProvider(.appleIntelligence)
+        }
     }
 
     func refreshAvailability() async {

@@ -41,46 +41,17 @@ struct AIProvidersSettingsView: View {
                 Text("Commit+ processes staged changes on this Mac. Source code is not uploaded to an AI service.")
             }
 
-            placeholderProviderSection(
-                title: "OpenAI",
-                keyPlaceholder: "OpenAI API key"
-            )
-            placeholderProviderSection(
-                title: "Claude",
-                keyPlaceholder: "Anthropic API key"
-            )
-            placeholderProviderSection(
-                title: "Gemini",
-                keyPlaceholder: "Google AI API key"
-            )
+            ForEach(controller.descriptors.filter { $0.dataProcessing == .cloud }) { descriptor in
+                CloudAIProviderSettingsSection(
+                    descriptor: descriptor,
+                    controller: controller
+                )
+            }
         }
         .formStyle(.grouped)
         .navigationTitle("AI Providers")
         .task {
             await controller.refreshAvailability()
-        }
-    }
-
-    @ViewBuilder
-    private func placeholderProviderSection(
-        title: String,
-        keyPlaceholder: String
-    ) -> some View {
-        Section {
-            SecureField(keyPlaceholder, text: .constant(""))
-                .disabled(true)
-
-            HStack {
-                Label("Coming soon", systemImage: "clock")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Save API Key") {}
-                    .disabled(true)
-            }
-        } header: {
-            Label(title, systemImage: "cloud")
-        } footer: {
-            Text("API key configuration is a placeholder. No key is stored or transmitted in this phase.")
         }
     }
 

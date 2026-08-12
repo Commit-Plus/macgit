@@ -59,6 +59,8 @@ enum CommitMessageGenerationError: LocalizedError, Equatable {
     case noChanges(CommitChangeSource)
     case providerUnavailable(String)
     case providerNotImplemented
+    case missingAPIKey(String)
+    case providerRequestFailed(String)
     case contextTooLarge
     case invalidResponse
     case changesChanged(CommitChangeSource)
@@ -71,8 +73,12 @@ enum CommitMessageGenerationError: LocalizedError, Equatable {
             reason
         case .providerNotImplemented:
             "This AI provider is not available yet."
+        case .missingAPIKey(let providerName):
+            "Add a \(providerName) API key in Settings → AI Providers."
+        case .providerRequestFailed(let message):
+            message
         case .contextTooLarge:
-            "The changes are too large for Apple Intelligence. Try generating from a smaller change."
+            "The changes are too large for the selected AI model. Try generating from a smaller change."
         case .invalidResponse:
             "The AI provider did not return a valid commit message."
         case .changesChanged(let source):

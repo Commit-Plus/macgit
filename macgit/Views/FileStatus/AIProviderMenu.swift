@@ -65,6 +65,6 @@ struct AIProviderMenu: View {
         if descriptor.id == .appleIntelligence {
             return "\(descriptor.displayName) — On-device"
         }
-        return "\(descriptor.displayName) — \(availability.detail)"
+        return "\(descriptor.displayName) — \(availability.isAvailable ? descriptor.detail.replacing("Cloud · ", with: "") : availability.detail)"
     }
 }

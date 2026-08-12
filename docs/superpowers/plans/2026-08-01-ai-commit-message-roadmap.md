@@ -7,7 +7,7 @@ Generate editable commit messages from staged changes through a provider-neutral
 ## Phases
 
 - [completed] [Phase 1: Apple Intelligence and provider placeholders](2026-08-01-ai-commit-message-phase-1-apple-intelligence.md)
-- [pending] Phase 2: Cloud provider implementations and secure credential-backed requests
+- [completed] [Phase 2: BYOK cloud providers](2026-08-12-ai-commit-message-phase-2-byok-cloud-providers.md)
 
 ## Shared constraints
 

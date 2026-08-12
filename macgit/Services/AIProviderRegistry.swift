@@ -28,37 +28,15 @@ struct AIProviderRegistry: Sendable {
         providers.first { $0.descriptor.id == id }
     }
 
-    static func live() -> Self {
+    static func live(
+        credentialStore: any AIProviderCredentialStore = KeychainAIProviderCredentialStore(),
+        httpClient: any AIProviderHTTPClient = URLSessionAIProviderHTTPClient()
+    ) -> Self {
         Self(providers: [
             AppleIntelligenceCommitMessageProvider(),
-            PlaceholderCommitMessageAIProvider(descriptor: AIProviderDescriptor(
-                id: .openAI,
-                displayName: "OpenAI",
-                systemImage: "cloud",
-                detail: "Cloud provider",
-                dataProcessing: .cloud,
-                inputCharacterBudget: 0,
-                isImplemented: false
-            )),
-            PlaceholderCommitMessageAIProvider(descriptor: AIProviderDescriptor(
-                id: .anthropic,
-                displayName: "Claude",
-                systemImage: "cloud",
-                detail: "Cloud provider",
-                dataProcessing: .cloud,
-                inputCharacterBudget: 0,
-                isImplemented: false
-            )),
-            PlaceholderCommitMessageAIProvider(descriptor: AIProviderDescriptor(
-                id: .googleGemini,
-                displayName: "Gemini",
-                systemImage: "cloud",
-                detail: "Cloud provider",
-                dataProcessing: .cloud,
-                inputCharacterBudget: 0,
-                isImplemented: false
-            )),
+            OpenAICommitMessageProvider(credentialStore: credentialStore, httpClient: httpClient),
+            AnthropicCommitMessageProvider(credentialStore: credentialStore, httpClient: httpClient),
+            GeminiCommitMessageProvider(credentialStore: credentialStore, httpClient: httpClient),
         ])
     }
 }
-
