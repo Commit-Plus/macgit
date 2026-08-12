@@ -133,11 +133,10 @@ struct RepositorySettingsSheetView: View {
         .task {
             await loadOptions()
         }
-        .onAppear {
-            if initiallySelectGitFlow {
-                selectedTab = .gitFlow
-                authorizeGitFlowTab(fallback: .remote)
-            }
+        .onChange(of: initiallySelectGitFlow, initial: true) { _, shouldSelectGitFlow in
+            guard shouldSelectGitFlow else { return }
+            selectedTab = .gitFlow
+            authorizeGitFlowTab(fallback: .remote)
         }
         .onChange(of: selectedTab) { oldTab, newTab in
             guard newTab == .gitFlow else { return }

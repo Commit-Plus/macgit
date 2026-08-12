@@ -74,7 +74,6 @@ struct GitFlowDashboardView: View {
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .navigationTitle("Git Flow")
     }
 
     private var header: some View {
