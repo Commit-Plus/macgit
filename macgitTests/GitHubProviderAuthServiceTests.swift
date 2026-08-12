@@ -24,6 +24,7 @@ final class GitHubProviderAuthServiceTests: XCTestCase {
         let configuration = GitHubProviderAuthConfiguration.appConfiguration(bundle: Bundle(for: Self.self))
 
         XCTAssertEqual(configuration.clientID, "Ov23lictC3FXsN0kjsbs")
+        XCTAssertEqual(configuration.scopes, ["repo", "read:user", "workflow"])
     }
 
     func testDeviceAuthorizationRequestsUserCodeWithClientIDAndScopes() async throws {
@@ -43,7 +44,7 @@ final class GitHubProviderAuthServiceTests: XCTestCase {
         XCTAssertEqual(request.url?.absoluteString, "https://github.com/login/device/code")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
         XCTAssertTrue(body.contains("client_id=github-client-id"))
-        XCTAssertTrue(body.contains("scope=repo%20read:user"))
+        XCTAssertTrue(body.contains("scope=repo%20read:user%20workflow"))
         XCTAssertEqual(authorization.deviceCode, "device-code")
         XCTAssertEqual(authorization.userCode, "ABCD-EFGH")
         XCTAssertEqual(authorization.verificationURI, URL(string: "https://github.com/login/device"))
@@ -151,7 +152,7 @@ final class GitHubProviderAuthServiceTests: XCTestCase {
         GitHubProviderAuthService(
             configuration: GitHubProviderAuthConfiguration(
                 clientID: "github-client-id",
-                scopes: ["repo", "read:user"]
+                scopes: ["repo", "read:user", "workflow"]
             ),
             httpClient: httpClient,
             deviceEndpoint: URL(string: "https://github.com/login/device/code")!,

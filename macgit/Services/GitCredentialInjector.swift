@@ -75,6 +75,7 @@ struct TemporaryGitCredentialInjector: GitCredentialInjecting {
         environment["GIT_ASKPASS"] = helperURL.path
         environment["MACGIT_GIT_USERNAME_FILE"] = usernameURL.path
         environment["MACGIT_GIT_TOKEN_FILE"] = tokenURL.path
+        appendGitConfiguration(key: "credential.helper", value: "", to: &environment)
 
         return GitCredentialInjection(environment: environment) {
             try? fileManager.removeItem(at: directory)
@@ -87,6 +88,17 @@ struct TemporaryGitCredentialInjector: GitCredentialInjecting {
             [.posixPermissions: executable ? 0o700 : 0o600],
             ofItemAtPath: url.path
         )
+    }
+
+    private func appendGitConfiguration(
+        key: String,
+        value: String,
+        to environment: inout [String: String]
+    ) {
+        let count = Int(environment["GIT_CONFIG_COUNT"] ?? "") ?? 0
+        environment["GIT_CONFIG_KEY_\(count)"] = key
+        environment["GIT_CONFIG_VALUE_\(count)"] = value
+        environment["GIT_CONFIG_COUNT"] = String(count + 1)
     }
 
     private var helperScript: String {

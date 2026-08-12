@@ -56,7 +56,7 @@ struct GitHubProviderAuthConfiguration: Equatable {
             : configuredClientID
         return GitHubProviderAuthConfiguration(
             clientID: clientID,
-            scopes: ["repo", "read:user"]
+            scopes: ["repo", "read:user", "workflow"]
         )
     }
 }

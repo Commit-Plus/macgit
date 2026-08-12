@@ -28,6 +28,16 @@ final class GitCredentialInjectorTests: XCTestCase {
         XCTAssertNotNil(injection.environment["GIT_ASKPASS"])
     }
 
+    func testEnvironmentDisablesConfiguredCredentialHelpers() throws {
+        let injection = try makeInjection()
+        defer { injection.cleanup() }
+
+        let count = try XCTUnwrap(Int(try XCTUnwrap(injection.environment["GIT_CONFIG_COUNT"])))
+        let index = count - 1
+        XCTAssertEqual(injection.environment["GIT_CONFIG_KEY_\(index)"], "credential.helper")
+        XCTAssertEqual(injection.environment["GIT_CONFIG_VALUE_\(index)"], "")
+    }
+
     func testAskpassHelperDoesNotContainTokenInFileName() throws {
         let injection = try makeInjection(token: "secret-token-123")
         defer { injection.cleanup() }
