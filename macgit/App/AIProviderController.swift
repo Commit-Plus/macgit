@@ -111,7 +111,18 @@ final class AIProviderController: ObservableObject {
         }
     }
 
-    func applyAPIKeyChanges(_ drafts: [AIProviderAPIKeyDraft]) throws {
+    func applyAPIKeyChanges(
+        _ drafts: [AIProviderAPIKeyDraft],
+        restrictedProviderAccess: FeatureAccessDecision
+    ) throws {
+        for draft in drafts where !draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let descriptor = registry.provider(for: draft.id)?.descriptor else { continue }
+            if descriptor.requiresProToConfigureAPIKey,
+               !restrictedProviderAccess.isAllowed {
+                throw AIProviderConfigurationError.requiresPro(providerName: descriptor.displayName)
+            }
+        }
+
         for draft in drafts {
             if !draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 try saveAPIKey(draft.apiKey, for: draft.id)

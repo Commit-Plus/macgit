@@ -80,12 +80,24 @@ final class AICommitMessageTests: XCTestCase {
         let ids = registry.descriptors.map(\.id)
 
         XCTAssertEqual(ids, [.appleIntelligence, .openAI, .anthropic, .googleGemini])
+        XCTAssertEqual(registry.provider(for: .appleIntelligence)?.descriptor.billing, .none)
         for id in [AIProviderID.openAI, .anthropic, .googleGemini] {
             let provider = registry.provider(for: id)
             let availability = await provider?.availability()
             XCTAssertEqual(availability, .unavailable("Add an API key in Settings → AI Providers."))
             XCTAssertEqual(provider?.descriptor.isImplemented, true)
+            XCTAssertEqual(provider?.descriptor.billing, .bringYourOwnKey)
+            XCTAssertFalse(provider?.descriptor.billing.requiresProAccess ?? true)
         }
+        XCTAssertFalse(registry.provider(for: .openAI)?.descriptor.requiresProToConfigureAPIKey ?? true)
+        XCTAssertFalse(registry.provider(for: .googleGemini)?.descriptor.requiresProToConfigureAPIKey ?? true)
+        XCTAssertTrue(registry.provider(for: .anthropic)?.descriptor.requiresProToConfigureAPIKey ?? false)
+    }
+
+    func testOnlyCommitPlusFundedProvidersRequireProAccess() {
+        XCTAssertFalse(AIProviderBilling.none.requiresProAccess)
+        XCTAssertFalse(AIProviderBilling.bringYourOwnKey.requiresProAccess)
+        XCTAssertTrue(AIProviderBilling.commitPlus.requiresProAccess)
     }
 
     @MainActor
@@ -155,6 +167,8 @@ private struct StubCommitMessageProvider: CommitMessageAIProvider {
         systemImage: "sparkles",
         detail: "On-device",
         dataProcessing: .onDevice,
+        billing: .none,
+        requiresProToConfigureAPIKey: false,
         inputCharacterBudget: 7_000,
         isImplemented: true
     )

@@ -22,6 +22,7 @@ struct AICommitMessageAccessGateModifier: ViewModifier {
     @EnvironmentObject private var accountController: AccountSessionController
     @EnvironmentObject private var featureAccessController: FeatureAccessController
     @Binding var isRequested: Bool
+    let requiresProAccess: Bool
     let onAuthorized: () -> Void
 
     @State private var showingLoginRequired = false
@@ -59,6 +60,11 @@ struct AICommitMessageAccessGateModifier: ViewModifier {
     }
 
     private func authorizeRequest() {
+        guard requiresProAccess else {
+            onAuthorized()
+            return
+        }
+
         guard accountController.account != nil else {
             showingLoginRequired = true
             return
@@ -108,10 +114,12 @@ struct AICommitMessageAccessGateModifier: ViewModifier {
 extension View {
     func aiCommitMessageAccessGate(
         isRequested: Binding<Bool>,
+        requiresProAccess: Bool,
         onAuthorized: @escaping () -> Void
     ) -> some View {
         modifier(AICommitMessageAccessGateModifier(
             isRequested: isRequested,
+            requiresProAccess: requiresProAccess,
             onAuthorized: onAuthorized
         ))
     }

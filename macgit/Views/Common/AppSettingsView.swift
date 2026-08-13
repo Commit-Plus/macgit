@@ -21,6 +21,7 @@ struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var appState: AppState
     @ObservedObject var accountController: AccountSessionController
+    @ObservedObject var featureAccessController: FeatureAccessController
     @ObservedObject var providerAccountController: GitProviderAccountController
     @ObservedObject var aiProviderController: AIProviderController
     @ObservedObject var appUpdateController: AppUpdateController
@@ -32,6 +33,7 @@ struct AppSettingsView: View {
     init(
         appState: AppState,
         accountController: AccountSessionController,
+        featureAccessController: FeatureAccessController,
         providerAccountController: GitProviderAccountController,
         aiProviderController: AIProviderController,
         appUpdateController: AppUpdateController,
@@ -39,6 +41,7 @@ struct AppSettingsView: View {
     ) {
         self.appState = appState
         self.accountController = accountController
+        self.featureAccessController = featureAccessController
         self.providerAccountController = providerAccountController
         self.aiProviderController = aiProviderController
         self.appUpdateController = appUpdateController
@@ -65,6 +68,7 @@ struct AppSettingsView: View {
                     providerAccountController: providerAccountController,
                     aiProviderController: aiProviderController,
                     appUpdateController: appUpdateController,
+                    restrictedAIProviderAccess: restrictedAIProviderAccess,
                     aiProviderKeyDrafts: $aiProviderKeyDrafts
                 )
 
@@ -94,12 +98,22 @@ struct AppSettingsView: View {
 
     private func saveChangesAndDismiss() {
         do {
-            try aiProviderController.applyAPIKeyChanges(aiProviderKeyDrafts)
+            try aiProviderController.applyAPIKeyChanges(
+                aiProviderKeyDrafts,
+                restrictedProviderAccess: restrictedAIProviderAccess
+            )
             Task { await aiProviderController.refreshAvailability() }
             dismiss()
         } catch {
             saveErrorMessage = error.localizedDescription
             isShowingSaveError = true
         }
+    }
+
+    private var restrictedAIProviderAccess: FeatureAccessDecision {
+        featureAccessController.decision(
+            for: .aiBringYourOwnKey,
+            entitlement: accountController.entitlement
+        )
     }
 }

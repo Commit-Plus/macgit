@@ -68,6 +68,8 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
         systemImage: "apple.intelligence",
         detail: "On-device · Private · Offline",
         dataProcessing: .onDevice,
+        billing: .none,
+        requiresProToConfigureAPIKey: false,
         inputCharacterBudget: 7_000,
         isImplemented: true
     )

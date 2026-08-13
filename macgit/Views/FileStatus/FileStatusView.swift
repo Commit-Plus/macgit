@@ -966,7 +966,10 @@ struct FileStatusView: View {
         .task {
             await aiProviderController.refreshAvailability()
         }
-        .aiCommitMessageAccessGate(isRequested: $isAIGenerationRequested) {
+        .aiCommitMessageAccessGate(
+            isRequested: $isAIGenerationRequested,
+            requiresProAccess: aiProviderController.selectedDescriptor.billing.requiresProAccess
+        ) {
             Task {
                 await generateCommitMessage()
             }

@@ -25,6 +25,8 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
         systemImage: "cloud",
         detail: "Cloud · Claude Haiku 4.5",
         dataProcessing: .cloud,
+        billing: .bringYourOwnKey,
+        requiresProToConfigureAPIKey: true,
         inputCharacterBudget: 12_000,
         isImplemented: true
     )

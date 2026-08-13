@@ -22,12 +22,24 @@ enum AIDataProcessing: Sendable {
     case cloud
 }
 
+enum AIProviderBilling: Equatable, Sendable {
+    case none
+    case bringYourOwnKey
+    case commitPlus
+
+    var requiresProAccess: Bool {
+        self == .commitPlus
+    }
+}
+
 struct AIProviderDescriptor: Identifiable, Sendable {
     let id: AIProviderID
     let displayName: String
     let systemImage: String
     let detail: String
     let dataProcessing: AIDataProcessing
+    let billing: AIProviderBilling
+    let requiresProToConfigureAPIKey: Bool
     let inputCharacterBudget: Int
     let isImplemented: Bool
 }
@@ -55,4 +67,3 @@ enum AIProviderAvailability: Equatable, Sendable {
         }
     }
 }
-

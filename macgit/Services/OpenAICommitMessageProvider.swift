@@ -25,6 +25,8 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
         systemImage: "cloud",
         detail: "Cloud · GPT-4o mini",
         dataProcessing: .cloud,
+        billing: .bringYourOwnKey,
+        requiresProToConfigureAPIKey: false,
         inputCharacterBudget: 12_000,
         isImplemented: true
     )

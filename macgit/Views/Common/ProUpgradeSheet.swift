@@ -34,7 +34,7 @@ struct ProUpgradeSheet: View {
 
     private static let comparisonRows = [
         (feature: "Number of devices", free: "1", pro: "3"),
-        (feature: "AI tools", free: "—", pro: "Full"),
+        (feature: "BYOK AI providers", free: "OpenAI & Gemini", pro: "Full"),
         (feature: "View and manage PRs", free: "Public repositories", pro: "Full"),
         (feature: "Git Flow", free: "Public & local repositories", pro: "Full"),
         (feature: "Git provider accounts", free: "1", pro: "Unlimited"),

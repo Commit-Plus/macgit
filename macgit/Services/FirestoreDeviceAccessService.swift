@@ -155,19 +155,38 @@ final class FirestoreDeviceAccessService: DeviceAccessProviding {
                         onError(error.localizedDescription)
                         return
                     }
-                    guard let snapshot, snapshot.exists, let data = snapshot.data() else {
+
+                    guard let snapshot else {
+                        onError("Commit+ could not read this Mac's device access state.")
+                        return
+                    }
+
+                    guard snapshot.exists else {
+                        // A newly claimed device may not be present in the first
+                        // local-cache snapshot. Only a server-confirmed missing
+                        // document should revoke the active account session.
+                        guard !snapshot.metadata.isFromCache else { return }
                         onChange(.missing)
+                        return
+                    }
+
+                    guard let data = snapshot.data() else {
+                        onError("Commit+ received invalid device information.")
                         return
                     }
                     do {
                         let device = try Self.decodeDevice(
                             data.merging(["deviceID": deviceID]) { value, _ in value }
                         )
-                        onChange(
-                            device.status == .active
-                                ? .active(device)
-                                : .revoked(device.revokedReason)
-                        )
+                        if device.status == .active {
+                            onChange(.active(device))
+                        } else {
+                            // The local cache can still contain the revoked
+                            // record from a previous sign-out while a new claim
+                            // has already reactivated it on the server.
+                            guard !snapshot.metadata.isFromCache else { return }
+                            onChange(.revoked(device.revokedReason))
+                        }
                     } catch {
                         onError(error.localizedDescription)
                     }

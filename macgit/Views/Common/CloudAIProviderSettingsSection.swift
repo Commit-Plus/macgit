@@ -21,7 +21,11 @@ import SwiftUI
 struct CloudAIProviderSettingsSection: View {
     let descriptor: AIProviderDescriptor
     @ObservedObject var controller: AIProviderController
+    @ObservedObject var accountController: AccountSessionController
     @Binding var draft: AIProviderAPIKeyDraft
+    let restrictedProviderAccess: FeatureAccessDecision
+    let isOpeningAccess: Bool
+    let onAccessAction: () -> Void
 
     @State private var isRemovingKey = false
 
@@ -33,6 +37,10 @@ struct CloudAIProviderSettingsSection: View {
         !draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var canConfigureKey: Bool {
+        !descriptor.requiresProToConfigureAPIKey || restrictedProviderAccess.isAllowed
+    }
+
     var body: some View {
         Section {
             LabeledContent("Model") {
@@ -40,7 +48,7 @@ struct CloudAIProviderSettingsSection: View {
                     .foregroundStyle(.secondary)
             }
 
-            if !isConfigured || draft.shouldRemove {
+            if (!isConfigured || draft.shouldRemove) && canConfigureKey {
                 SecureField(
                     isConfigured ? "Enter a replacement API key" : "API key",
                     text: $draft.apiKey
@@ -73,12 +81,20 @@ struct CloudAIProviderSettingsSection: View {
                     } message: {
                         Text("Enter a replacement key, or leave the field empty to remove the current key when you click Done.")
                     }
+                } else if !canConfigureKey,
+                          restrictedProviderAccess == .denied(.requiresPro) {
+                    Button(accessActionTitle, action: onAccessAction)
+                        .buttonStyle(.link)
+                        .disabled(
+                            isOpeningAccess
+                                || accountController.openingWebDestination == .pricing
+                        )
                 }
             }
         } header: {
             Label(descriptor.displayName, systemImage: descriptor.systemImage)
         } footer: {
-            Text("Use the trash button before replacing a configured key. Changes are saved to this Mac's Keychain when you click Done.")
+            Text(footerText)
         }
     }
 
@@ -87,6 +103,10 @@ struct CloudAIProviderSettingsSection: View {
             isConfigured ? "Replacement ready" : "Ready to save"
         } else if draft.shouldRemove {
             "Will be removed"
+        } else if !canConfigureKey {
+            restrictedProviderAccess == .denied(.requiresPro)
+                ? "Commit+ Pro required to add this provider"
+                : "Provider configuration is currently unavailable"
         } else {
             isConfigured ? "Configured in Keychain" : "API key required"
         }
@@ -106,6 +126,26 @@ struct CloudAIProviderSettingsSection: View {
 
     private var statusStyle: HierarchicalShapeStyle {
         !hasPendingKey && (draft.shouldRemove || !isConfigured) ? .secondary : .primary
+    }
+
+    private var footerText: String {
+        if !canConfigureKey, isConfigured {
+            return "This existing key remains available for AI generation. You can remove it, but adding or replacing this provider requires Commit+ Pro."
+        }
+        if !canConfigureKey {
+            return "OpenAI and Gemini keys are available on the Free plan. Commit+ Pro unlocks Claude and additional AI providers."
+        }
+        return "Use the trash button before replacing a configured key. Changes are saved to this Mac's Keychain when you click Done."
+    }
+
+    private var accessActionTitle: String {
+        if isOpeningAccess {
+            return "Opening…"
+        }
+        if accountController.openingWebDestination == .pricing {
+            return "Opening…"
+        }
+        return accountController.account == nil ? "Sign In" : "View Pro"
     }
 
     private func stageRemoval() {

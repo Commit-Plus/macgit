@@ -19,7 +19,11 @@ import SwiftUI
 
 struct AIProvidersSettingsView: View {
     @ObservedObject var controller: AIProviderController
+    @ObservedObject var accountController: AccountSessionController
+    let restrictedProviderAccess: FeatureAccessDecision
     @Binding var apiKeyDrafts: [AIProviderAPIKeyDraft]
+    @State private var authenticationMode: AuthenticationMode?
+    @State private var isOpeningRestrictedProviderAccess = false
 
     var body: some View {
         Form {
@@ -48,15 +52,42 @@ struct AIProvidersSettingsView: View {
                     CloudAIProviderSettingsSection(
                         descriptor: descriptor,
                         controller: controller,
-                        draft: $draft
+                        accountController: accountController,
+                        draft: $draft,
+                        restrictedProviderAccess: restrictedProviderAccess,
+                        isOpeningAccess: isOpeningRestrictedProviderAccess,
+                        onAccessAction: presentRestrictedProviderAccess
                     )
                 }
             }
         }
         .formStyle(.grouped)
         .navigationTitle("AI Providers")
+        .sheet(item: $authenticationMode) { mode in
+            AuthenticationSheet(controller: accountController, mode: mode)
+        }
+        .onChange(of: accountController.account?.uid) { _, accountUID in
+            if accountUID != nil {
+                authenticationMode = nil
+            }
+        }
         .task {
             await controller.refreshAvailability()
+        }
+    }
+
+    private func presentRestrictedProviderAccess() {
+        if accountController.account == nil {
+            accountController.errorMessage = nil
+            authenticationMode = .signIn
+        } else {
+            guard !isOpeningRestrictedProviderAccess,
+                  accountController.openingWebDestination != .pricing else { return }
+            isOpeningRestrictedProviderAccess = true
+            Task {
+                await accountController.openPricingOnWeb()
+                isOpeningRestrictedProviderAccess = false
+            }
         }
     }
 

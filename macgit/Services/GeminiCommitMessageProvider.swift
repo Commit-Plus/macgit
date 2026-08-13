@@ -25,6 +25,8 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         systemImage: "cloud",
         detail: "Cloud · Gemini 3.5 Flash-Lite",
         dataProcessing: .cloud,
+        billing: .bringYourOwnKey,
+        requiresProToConfigureAPIKey: false,
         inputCharacterBudget: 12_000,
         isImplemented: true
     )

@@ -95,7 +95,10 @@ struct CommitSheetView: View {
         } message: {
             Text(errorMessage ?? "An unknown error occurred.")
         }
-        .aiCommitMessageAccessGate(isRequested: $isAIGenerationRequested) {
+        .aiCommitMessageAccessGate(
+            isRequested: $isAIGenerationRequested,
+            requiresProAccess: aiProviderController.selectedDescriptor.billing.requiresProAccess
+        ) {
             Task {
                 await generateCommitMessage()
             }

@@ -64,7 +64,7 @@ final class CloudAIProviderTests: XCTestCase {
             AIProviderAPIKeyDraft(id: .openAI, apiKey: " new-openai-key ", shouldRemove: true),
             AIProviderAPIKeyDraft(id: .anthropic, apiKey: "anthropic-key"),
             AIProviderAPIKeyDraft(id: .googleGemini, shouldRemove: true),
-        ])
+        ], restrictedProviderAccess: .allowed)
 
         XCTAssertEqual(try credentialStore.apiKey(for: .openAI), "new-openai-key")
         XCTAssertEqual(try credentialStore.apiKey(for: .anthropic), "anthropic-key")
@@ -88,10 +88,56 @@ final class CloudAIProviderTests: XCTestCase {
 
         try controller.applyAPIKeyChanges([
             AIProviderAPIKeyDraft(id: .openAI),
-        ])
+        ], restrictedProviderAccess: .allowed)
 
         XCTAssertEqual(try credentialStore.apiKey(for: .openAI), "existing-openai-key")
         XCTAssertTrue(controller.isAPIKeyConfigured(for: .openAI))
+    }
+
+    @MainActor
+    func testFreeAccessCanConfigureOpenAIAndGeminiButNotAnthropic() throws {
+        let credentialStore = InMemoryAIProviderCredentialStore()
+        let controller = AIProviderController(
+            registry: .live(credentialStore: credentialStore),
+            snapshotLoader: StubCloudCommitChangeSnapshotLoader(),
+            defaults: makeDefaults(),
+            credentialStore: credentialStore
+        )
+
+        try controller.applyAPIKeyChanges([
+            AIProviderAPIKeyDraft(id: .openAI, apiKey: "openai-key"),
+            AIProviderAPIKeyDraft(id: .googleGemini, apiKey: "gemini-key"),
+        ], restrictedProviderAccess: .denied(.requiresPro))
+
+        XCTAssertEqual(try credentialStore.apiKey(for: .openAI), "openai-key")
+        XCTAssertEqual(try credentialStore.apiKey(for: .googleGemini), "gemini-key")
+
+        XCTAssertThrowsError(try controller.applyAPIKeyChanges([
+            AIProviderAPIKeyDraft(id: .anthropic, apiKey: "anthropic-key"),
+        ], restrictedProviderAccess: .denied(.requiresPro))) { error in
+            XCTAssertEqual(
+                error as? AIProviderConfigurationError,
+                .requiresPro(providerName: "Claude")
+            )
+        }
+        XCTAssertNil(try credentialStore.apiKey(for: .anthropic))
+    }
+
+    @MainActor
+    func testFreeAccessCanRemoveExistingRestrictedProviderKey() throws {
+        let credentialStore = InMemoryAIProviderCredentialStore(keys: [.anthropic: "existing-key"])
+        let controller = AIProviderController(
+            registry: .live(credentialStore: credentialStore),
+            snapshotLoader: StubCloudCommitChangeSnapshotLoader(),
+            defaults: makeDefaults(),
+            credentialStore: credentialStore
+        )
+
+        try controller.applyAPIKeyChanges([
+            AIProviderAPIKeyDraft(id: .anthropic, shouldRemove: true),
+        ], restrictedProviderAccess: .denied(.requiresPro))
+
+        XCTAssertNil(try credentialStore.apiKey(for: .anthropic))
     }
 
     func testOpenAIRequestUsesBearerKeyAndParsesStructuredResponse() async throws {

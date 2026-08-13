@@ -85,7 +85,7 @@ extension PlanFeature {
         case .aiConflictResolution:
             "AI conflict resolution"
         case .aiBringYourOwnKey:
-            "Bring Your Own Key"
+            "Additional AI providers"
         case .multipleProviderAccounts:
             "Multiple Git provider accounts"
         }

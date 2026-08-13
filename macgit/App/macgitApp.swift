@@ -194,11 +194,13 @@ struct macgitApp: App {
                     AppSettingsView(
                         appState: appState,
                         accountController: accountController,
+                        featureAccessController: featureAccessController,
                         providerAccountController: providerAccountController,
                         aiProviderController: aiProviderController,
                         appUpdateController: appUpdateController,
                         selectedSection: $selectedAppSettingsSection
                     )
+                        .environmentObject(featureAccessController)
                         .preferredColorScheme(appState.appearance.colorScheme)
                 }
         }
