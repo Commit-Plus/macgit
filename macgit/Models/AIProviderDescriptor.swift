@@ -40,6 +40,7 @@ struct AIProviderDescriptor: Identifiable, Sendable {
     let dataProcessing: AIDataProcessing
     let billing: AIProviderBilling
     let requiresProToConfigureAPIKey: Bool
+    let defaultModel: String?
     let inputCharacterBudget: Int
     let isImplemented: Bool
 }

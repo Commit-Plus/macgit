@@ -27,25 +27,26 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
         dataProcessing: .cloud,
         billing: .bringYourOwnKey,
         requiresProToConfigureAPIKey: true,
+        defaultModel: "claude-haiku-4-5",
         inputCharacterBudget: 12_000,
         isImplemented: true
     )
 
     private let credentialStore: any AIProviderCredentialStore
+    private let modelStore: any AIProviderModelStore
     private let httpClient: any AIProviderHTTPClient
     private let endpoint: URL
-    private let model: String
 
     init(
         credentialStore: any AIProviderCredentialStore,
+        modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore(),
         httpClient: any AIProviderHTTPClient = URLSessionAIProviderHTTPClient(),
-        endpoint: URL = URL(string: "https://api.anthropic.com/v1/messages")!,
-        model: String = "claude-haiku-4-5"
+        endpoint: URL = URL(string: "https://api.anthropic.com/v1/messages")!
     ) {
         self.credentialStore = credentialStore
+        self.modelStore = modelStore
         self.httpClient = httpClient
         self.endpoint = endpoint
-        self.model = model
     }
 
     func availability() async -> AIProviderAvailability {
@@ -56,6 +57,9 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
         request: CommitMessageGenerationRequest
     ) async throws -> GeneratedCommitMessage {
         let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("Claude model is not configured.")
+        }
         var urlRequest = URLRequest(url: endpoint)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue(apiKey, forHTTPHeaderField: "x-api-key")

@@ -22,6 +22,7 @@ import Foundation
 final class AIProviderController: ObservableObject {
     @Published private(set) var availabilityByProviderID: [AIProviderID: AIProviderAvailability] = [:]
     @Published private(set) var configuredProviderIDs: Set<AIProviderID> = []
+    @Published private(set) var customModelsByProviderID: [AIProviderID: String] = [:]
     @Published private(set) var isGenerating = false
     @Published private(set) var selectedProviderID: AIProviderID
 
@@ -29,15 +30,18 @@ final class AIProviderController: ObservableObject {
     private let snapshotLoader: any CommitChangeSnapshotLoading
     private let defaults: UserDefaults
     private let credentialStore: any AIProviderCredentialStore
+    private let modelStore: any AIProviderModelStore
     private let selectedProviderDefaultsKey = "ai.commitMessage.selectedProvider"
 
     convenience init() {
         let credentialStore = KeychainAIProviderCredentialStore()
+        let modelStore = UserDefaultsAIProviderModelStore()
         self.init(
-            registry: .live(credentialStore: credentialStore),
+            registry: .live(credentialStore: credentialStore, modelStore: modelStore),
             snapshotLoader: GitStatusService.shared,
             defaults: .standard,
-            credentialStore: credentialStore
+            credentialStore: credentialStore,
+            modelStore: modelStore
         )
     }
 
@@ -45,12 +49,14 @@ final class AIProviderController: ObservableObject {
         registry: AIProviderRegistry,
         snapshotLoader: any CommitChangeSnapshotLoading,
         defaults: UserDefaults,
-        credentialStore: any AIProviderCredentialStore = KeychainAIProviderCredentialStore()
+        credentialStore: any AIProviderCredentialStore = KeychainAIProviderCredentialStore(),
+        modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore()
     ) {
         self.registry = registry
         self.snapshotLoader = snapshotLoader
         self.defaults = defaults
         self.credentialStore = credentialStore
+        self.modelStore = modelStore
         let storedID = defaults.string(forKey: selectedProviderDefaultsKey).map(AIProviderID.init(rawValue:))
         if let storedID, registry.provider(for: storedID)?.descriptor.isImplemented == true {
             selectedProviderID = storedID
@@ -63,6 +69,9 @@ final class AIProviderController: ObservableObject {
             if descriptor.dataProcessing == .cloud,
                (try? credentialStore.apiKey(for: descriptor.id)) != nil {
                 configuredProviderIDs.insert(descriptor.id)
+            }
+            if let customModel = modelStore.customModel(for: descriptor.id) {
+                customModelsByProviderID[descriptor.id] = customModel
             }
         }
     }
@@ -94,6 +103,18 @@ final class AIProviderController: ObservableObject {
         configuredProviderIDs.contains(id)
     }
 
+    func model(for descriptor: AIProviderDescriptor) -> String? {
+        customModelsByProviderID[descriptor.id] ?? descriptor.defaultModel
+    }
+
+    func configurationDrafts() -> [AIProviderConfigurationDraft] {
+        descriptors.compactMap { descriptor in
+            guard descriptor.dataProcessing == .cloud,
+                  let model = model(for: descriptor) else { return nil }
+            return AIProviderConfigurationDraft(id: descriptor.id, model: model)
+        }
+    }
+
     func saveAPIKey(_ apiKey: String, for id: AIProviderID) throws {
         let normalizedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedKey.isEmpty else {
@@ -111,8 +132,8 @@ final class AIProviderController: ObservableObject {
         }
     }
 
-    func applyAPIKeyChanges(
-        _ drafts: [AIProviderAPIKeyDraft],
+    func applyProviderChanges(
+        _ drafts: [AIProviderConfigurationDraft],
         restrictedProviderAccess: FeatureAccessDecision
     ) throws {
         for draft in drafts where !draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -126,8 +147,19 @@ final class AIProviderController: ObservableObject {
         for draft in drafts {
             if !draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 try saveAPIKey(draft.apiKey, for: draft.id)
-            } else if draft.shouldRemove {
+            } else if draft.shouldRemoveAPIKey {
                 try removeAPIKey(for: draft.id)
+            }
+
+            guard let descriptor = registry.provider(for: draft.id)?.descriptor,
+                  let defaultModel = descriptor.defaultModel else { continue }
+            let normalizedModel = draft.model.trimmingCharacters(in: .whitespacesAndNewlines)
+            if normalizedModel.isEmpty || normalizedModel == defaultModel {
+                modelStore.resetModel(for: draft.id)
+                customModelsByProviderID.removeValue(forKey: draft.id)
+            } else {
+                modelStore.saveCustomModel(normalizedModel, for: draft.id)
+                customModelsByProviderID[draft.id] = normalizedModel
             }
         }
     }

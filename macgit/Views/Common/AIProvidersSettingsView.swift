@@ -21,7 +21,7 @@ struct AIProvidersSettingsView: View {
     @ObservedObject var controller: AIProviderController
     @ObservedObject var accountController: AccountSessionController
     let restrictedProviderAccess: FeatureAccessDecision
-    @Binding var apiKeyDrafts: [AIProviderAPIKeyDraft]
+    @Binding var drafts: [AIProviderConfigurationDraft]
     @State private var authenticationMode: AuthenticationMode?
     @State private var isOpeningRestrictedProviderAccess = false
 
@@ -46,7 +46,7 @@ struct AIProvidersSettingsView: View {
                 Text("Commit+ processes staged changes on this Mac. Source code is not uploaded to an AI service.")
             }
 
-            ForEach($apiKeyDrafts) { $draft in
+            ForEach($drafts) { $draft in
                 let descriptor = controller.descriptors.first { $0.id == draft.id }
                 if let descriptor {
                     CloudAIProviderSettingsSection(

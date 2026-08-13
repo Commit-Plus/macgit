@@ -25,7 +25,7 @@ struct AppSettingsDetailView: View {
     @ObservedObject var aiProviderController: AIProviderController
     @ObservedObject var appUpdateController: AppUpdateController
     let restrictedAIProviderAccess: FeatureAccessDecision
-    @Binding var aiProviderKeyDrafts: [AIProviderAPIKeyDraft]
+    @Binding var aiProviderDrafts: [AIProviderConfigurationDraft]
 
     var body: some View {
         switch section {
@@ -47,7 +47,7 @@ struct AppSettingsDetailView: View {
                 controller: aiProviderController,
                 accountController: accountController,
                 restrictedProviderAccess: restrictedAIProviderAccess,
-                apiKeyDrafts: $aiProviderKeyDrafts
+                drafts: $aiProviderDrafts
             )
         case .update:
             UpdateSettingsView(updateController: appUpdateController)

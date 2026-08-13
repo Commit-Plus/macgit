@@ -30,13 +30,26 @@ struct AIProviderRegistry: Sendable {
 
     static func live(
         credentialStore: any AIProviderCredentialStore = KeychainAIProviderCredentialStore(),
+        modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore(),
         httpClient: any AIProviderHTTPClient = URLSessionAIProviderHTTPClient()
     ) -> Self {
         Self(providers: [
             AppleIntelligenceCommitMessageProvider(),
-            OpenAICommitMessageProvider(credentialStore: credentialStore, httpClient: httpClient),
-            AnthropicCommitMessageProvider(credentialStore: credentialStore, httpClient: httpClient),
-            GeminiCommitMessageProvider(credentialStore: credentialStore, httpClient: httpClient),
+            OpenAICommitMessageProvider(
+                credentialStore: credentialStore,
+                modelStore: modelStore,
+                httpClient: httpClient
+            ),
+            AnthropicCommitMessageProvider(
+                credentialStore: credentialStore,
+                modelStore: modelStore,
+                httpClient: httpClient
+            ),
+            GeminiCommitMessageProvider(
+                credentialStore: credentialStore,
+                modelStore: modelStore,
+                httpClient: httpClient
+            ),
         ])
     }
 }

@@ -22,7 +22,7 @@ struct CloudAIProviderSettingsSection: View {
     let descriptor: AIProviderDescriptor
     @ObservedObject var controller: AIProviderController
     @ObservedObject var accountController: AccountSessionController
-    @Binding var draft: AIProviderAPIKeyDraft
+    @Binding var draft: AIProviderConfigurationDraft
     let restrictedProviderAccess: FeatureAccessDecision
     let isOpeningAccess: Bool
     let onAccessAction: () -> Void
@@ -41,14 +41,27 @@ struct CloudAIProviderSettingsSection: View {
         !descriptor.requiresProToConfigureAPIKey || restrictedProviderAccess.isAllowed
     }
 
+    private var canConfigureModel: Bool {
+        canConfigureKey || isConfigured
+    }
+
+    private var isUsingDefaultModel: Bool {
+        draft.model.trimmingCharacters(in: .whitespacesAndNewlines) == descriptor.defaultModel
+    }
+
     var body: some View {
         Section {
             LabeledContent("Model") {
-                Text(descriptor.detail.replacing("Cloud · ", with: ""))
-                    .foregroundStyle(.secondary)
+                TextField("", text: $draft.model)
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 360)
+                    .disabled(!canConfigureModel)
+                    .accessibilityLabel("\(descriptor.displayName) model ID")
             }
 
-            if (!isConfigured || draft.shouldRemove) && canConfigureKey {
+            if (!isConfigured || draft.shouldRemoveAPIKey) && canConfigureKey {
                 SecureField(
                     isConfigured ? "Enter a replacement API key" : "API key",
                     text: $draft.apiKey
@@ -64,7 +77,7 @@ struct CloudAIProviderSettingsSection: View {
 
                 Spacer()
 
-                if draft.shouldRemove {
+                if draft.shouldRemoveAPIKey {
                     Button("Keep Existing Key", action: keepExistingKey)
                 } else if isConfigured {
                     Button("Remove API Key", systemImage: "trash", role: .destructive) {
@@ -92,7 +105,17 @@ struct CloudAIProviderSettingsSection: View {
                 }
             }
         } header: {
-            Label(descriptor.displayName, systemImage: descriptor.systemImage)
+            HStack {
+                Label(descriptor.displayName, systemImage: descriptor.systemImage)
+
+                Spacer()
+
+                if canConfigureModel, !isUsingDefaultModel {
+                    Button("Reset to Default", action: resetModel)
+                        .buttonStyle(.link)
+                        .controlSize(.small)
+                }
+            }
         } footer: {
             Text(footerText)
         }
@@ -101,7 +124,7 @@ struct CloudAIProviderSettingsSection: View {
     private var statusText: String {
         if hasPendingKey {
             isConfigured ? "Replacement ready" : "Ready to save"
-        } else if draft.shouldRemove {
+        } else if draft.shouldRemoveAPIKey {
             "Will be removed"
         } else if !canConfigureKey {
             restrictedProviderAccess == .denied(.requiresPro)
@@ -115,7 +138,7 @@ struct CloudAIProviderSettingsSection: View {
     private var statusImage: String {
         if hasPendingKey {
             "checkmark.circle.fill"
-        } else if draft.shouldRemove {
+        } else if draft.shouldRemoveAPIKey {
             "trash"
         } else if isConfigured {
             "checkmark.circle.fill"
@@ -125,17 +148,17 @@ struct CloudAIProviderSettingsSection: View {
     }
 
     private var statusStyle: HierarchicalShapeStyle {
-        !hasPendingKey && (draft.shouldRemove || !isConfigured) ? .secondary : .primary
+        !hasPendingKey && (draft.shouldRemoveAPIKey || !isConfigured) ? .secondary : .primary
     }
 
     private var footerText: String {
         if !canConfigureKey, isConfigured {
-            return "This existing key remains available for AI generation. You can remove it, but adding or replacing this provider requires Commit+ Pro."
+            return "This existing key remains available for AI generation. You can change its model or remove it, but adding or replacing this provider requires Commit+ Pro."
         }
         if !canConfigureKey {
             return "OpenAI and Gemini keys are available on the Free plan. Commit+ Pro unlocks Claude and additional AI providers."
         }
-        return "Use the trash button before replacing a configured key. Changes are saved to this Mac's Keychain when you click Done."
+        return "Enter a model ID supported by this provider's Commit+ API integration. API key changes are saved to this Mac's Keychain when you click Done."
     }
 
     private var accessActionTitle: String {
@@ -150,11 +173,15 @@ struct CloudAIProviderSettingsSection: View {
 
     private func stageRemoval() {
         draft.apiKey = ""
-        draft.shouldRemove = true
+        draft.shouldRemoveAPIKey = true
     }
 
     private func keepExistingKey() {
         draft.apiKey = ""
-        draft.shouldRemove = false
+        draft.shouldRemoveAPIKey = false
+    }
+
+    private func resetModel() {
+        draft.model = descriptor.defaultModel ?? ""
     }
 }

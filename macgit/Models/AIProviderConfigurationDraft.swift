@@ -18,8 +18,9 @@
 
 import Foundation
 
-struct AIProviderAPIKeyDraft: Identifiable {
+struct AIProviderConfigurationDraft: Identifiable {
     let id: AIProviderID
     var apiKey = ""
-    var shouldRemove = false
+    var shouldRemoveAPIKey = false
+    var model = ""
 }

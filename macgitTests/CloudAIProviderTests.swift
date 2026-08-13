@@ -60,10 +60,14 @@ final class CloudAIProviderTests: XCTestCase {
             credentialStore: credentialStore
         )
 
-        try controller.applyAPIKeyChanges([
-            AIProviderAPIKeyDraft(id: .openAI, apiKey: " new-openai-key ", shouldRemove: true),
-            AIProviderAPIKeyDraft(id: .anthropic, apiKey: "anthropic-key"),
-            AIProviderAPIKeyDraft(id: .googleGemini, shouldRemove: true),
+        try controller.applyProviderChanges([
+            AIProviderConfigurationDraft(
+                id: .openAI,
+                apiKey: " new-openai-key ",
+                shouldRemoveAPIKey: true
+            ),
+            AIProviderConfigurationDraft(id: .anthropic, apiKey: "anthropic-key"),
+            AIProviderConfigurationDraft(id: .googleGemini, shouldRemoveAPIKey: true),
         ], restrictedProviderAccess: .allowed)
 
         XCTAssertEqual(try credentialStore.apiKey(for: .openAI), "new-openai-key")
@@ -86,8 +90,8 @@ final class CloudAIProviderTests: XCTestCase {
             credentialStore: credentialStore
         )
 
-        try controller.applyAPIKeyChanges([
-            AIProviderAPIKeyDraft(id: .openAI),
+        try controller.applyProviderChanges([
+            AIProviderConfigurationDraft(id: .openAI),
         ], restrictedProviderAccess: .allowed)
 
         XCTAssertEqual(try credentialStore.apiKey(for: .openAI), "existing-openai-key")
@@ -104,16 +108,16 @@ final class CloudAIProviderTests: XCTestCase {
             credentialStore: credentialStore
         )
 
-        try controller.applyAPIKeyChanges([
-            AIProviderAPIKeyDraft(id: .openAI, apiKey: "openai-key"),
-            AIProviderAPIKeyDraft(id: .googleGemini, apiKey: "gemini-key"),
+        try controller.applyProviderChanges([
+            AIProviderConfigurationDraft(id: .openAI, apiKey: "openai-key"),
+            AIProviderConfigurationDraft(id: .googleGemini, apiKey: "gemini-key"),
         ], restrictedProviderAccess: .denied(.requiresPro))
 
         XCTAssertEqual(try credentialStore.apiKey(for: .openAI), "openai-key")
         XCTAssertEqual(try credentialStore.apiKey(for: .googleGemini), "gemini-key")
 
-        XCTAssertThrowsError(try controller.applyAPIKeyChanges([
-            AIProviderAPIKeyDraft(id: .anthropic, apiKey: "anthropic-key"),
+        XCTAssertThrowsError(try controller.applyProviderChanges([
+            AIProviderConfigurationDraft(id: .anthropic, apiKey: "anthropic-key"),
         ], restrictedProviderAccess: .denied(.requiresPro))) { error in
             XCTAssertEqual(
                 error as? AIProviderConfigurationError,
@@ -133,19 +137,52 @@ final class CloudAIProviderTests: XCTestCase {
             credentialStore: credentialStore
         )
 
-        try controller.applyAPIKeyChanges([
-            AIProviderAPIKeyDraft(id: .anthropic, shouldRemove: true),
+        try controller.applyProviderChanges([
+            AIProviderConfigurationDraft(id: .anthropic, shouldRemoveAPIKey: true),
         ], restrictedProviderAccess: .denied(.requiresPro))
 
         XCTAssertNil(try credentialStore.apiKey(for: .anthropic))
     }
 
+    @MainActor
+    func testExistingRestrictedProviderCanCustomizeAndResetModelOnFreePlan() throws {
+        let credentialStore = InMemoryAIProviderCredentialStore(keys: [.anthropic: "existing-key"])
+        let modelStore = InMemoryAIProviderModelStore()
+        let controller = AIProviderController(
+            registry: .live(credentialStore: credentialStore, modelStore: modelStore),
+            snapshotLoader: StubCloudCommitChangeSnapshotLoader(),
+            defaults: makeDefaults(),
+            credentialStore: credentialStore,
+            modelStore: modelStore
+        )
+        let descriptor = try XCTUnwrap(controller.descriptors.first { $0.id == .anthropic })
+
+        try controller.applyProviderChanges([
+            AIProviderConfigurationDraft(id: .anthropic, model: "  claude-custom  "),
+        ], restrictedProviderAccess: .denied(.requiresPro))
+
+        XCTAssertEqual(modelStore.customModel(for: .anthropic), "claude-custom")
+        XCTAssertEqual(controller.model(for: descriptor), "claude-custom")
+
+        try controller.applyProviderChanges([
+            AIProviderConfigurationDraft(id: .anthropic, model: "claude-haiku-4-5"),
+        ], restrictedProviderAccess: .denied(.requiresPro))
+
+        XCTAssertNil(modelStore.customModel(for: .anthropic))
+        XCTAssertEqual(controller.model(for: descriptor), "claude-haiku-4-5")
+    }
+
     func testOpenAIRequestUsesBearerKeyAndParsesStructuredResponse() async throws {
         let store = InMemoryAIProviderCredentialStore(keys: [.openAI: "openai-secret"])
+        let modelStore = InMemoryAIProviderModelStore(models: [.openAI: "gpt-custom"])
         let client = StubAIProviderHTTPClient(responseBody: """
             {"output":[{"content":[{"type":"output_text","text":"{\\"type\\":\\"feat\\",\\"subject\\":\\"Configure cloud AI providers\\",\\"body\\":\\"\\"}"}]}]}
             """)
-        let provider = OpenAICommitMessageProvider(credentialStore: store, httpClient: client)
+        let provider = OpenAICommitMessageProvider(
+            credentialStore: store,
+            modelStore: modelStore,
+            httpClient: client
+        )
 
         let result = try await provider.generateCommitMessage(request: makeRequest())
         let receivedRequest = await client.receivedRequest()
@@ -155,17 +192,22 @@ final class CloudAIProviderTests: XCTestCase {
         XCTAssertEqual(request.url?.absoluteString, "https://api.openai.com/v1/responses")
         XCTAssertEqual(result.text, "feat: Configure cloud AI providers")
         let body = try requestJSONObject(request)
-        XCTAssertEqual(body["model"] as? String, "gpt-4o-mini")
+        XCTAssertEqual(body["model"] as? String, "gpt-custom")
         XCTAssertNil(body["reasoning"])
         XCTAssertEqual((body["store"] as? Bool), false)
     }
 
     func testAnthropicRequestUsesRequiredHeadersAndParsesResponse() async throws {
         let store = InMemoryAIProviderCredentialStore(keys: [.anthropic: "anthropic-secret"])
+        let modelStore = InMemoryAIProviderModelStore(models: [.anthropic: "claude-custom"])
         let client = StubAIProviderHTTPClient(responseBody: """
             {"content":[{"type":"text","text":"{\\"type\\":\\"fix\\",\\"subject\\":\\"Handle provider API errors\\",\\"body\\":\\"Surface actionable failures to users.\\"}"}]}
             """)
-        let provider = AnthropicCommitMessageProvider(credentialStore: store, httpClient: client)
+        let provider = AnthropicCommitMessageProvider(
+            credentialStore: store,
+            modelStore: modelStore,
+            httpClient: client
+        )
 
         let result = try await provider.generateCommitMessage(request: makeRequest())
         let receivedRequest = await client.receivedRequest()
@@ -176,16 +218,21 @@ final class CloudAIProviderTests: XCTestCase {
         XCTAssertEqual(result.subject, "fix: Handle provider API errors")
         XCTAssertEqual(result.body, "Surface actionable failures to users.")
         let body = try requestJSONObject(request)
-        XCTAssertEqual(body["model"] as? String, "claude-haiku-4-5")
+        XCTAssertEqual(body["model"] as? String, "claude-custom")
         XCTAssertNotNil(body["output_config"])
     }
 
     func testGeminiRequestUsesHeaderKeyAndStructuredOutputSchema() async throws {
         let store = InMemoryAIProviderCredentialStore(keys: [.googleGemini: "gemini-secret"])
+        let modelStore = InMemoryAIProviderModelStore(models: [.googleGemini: "gemini-custom"])
         let client = StubAIProviderHTTPClient(responseBody: """
             {"candidates":[{"content":{"parts":[{"thought":true,"text":"internal reasoning"},{"text":"{\\"type\\":\\"chore\\",\\"subject\\":\\"Store AI keys in Keychain\\",\\"body\\":\\"\\"}"}]},"finishReason":"STOP"}]}
             """)
-        let provider = GeminiCommitMessageProvider(credentialStore: store, httpClient: client)
+        let provider = GeminiCommitMessageProvider(
+            credentialStore: store,
+            modelStore: modelStore,
+            httpClient: client
+        )
 
         let result = try await provider.generateCommitMessage(request: makeRequest())
         let receivedRequest = await client.receivedRequest()
@@ -201,7 +248,7 @@ final class CloudAIProviderTests: XCTestCase {
         XCTAssertNil(generationConfig["responseSchema"])
         XCTAssertEqual(
             request.url?.absoluteString,
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-custom:generateContent"
         )
         XCTAssertEqual(generationConfig["maxOutputTokens"] as? Int, 512)
         let thinkingConfig = try XCTUnwrap(generationConfig["thinkingConfig"] as? [String: Any])
@@ -294,6 +341,27 @@ final class InMemoryAIProviderCredentialStore: AIProviderCredentialStore, @unche
 
     func deleteAPIKey(for providerID: AIProviderID) throws {
         lock.withLock { keys.removeValue(forKey: providerID) }
+    }
+}
+
+final class InMemoryAIProviderModelStore: AIProviderModelStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var models: [AIProviderID: String]
+
+    init(models: [AIProviderID: String] = [:]) {
+        self.models = models
+    }
+
+    func customModel(for providerID: AIProviderID) -> String? {
+        lock.withLock { models[providerID] }
+    }
+
+    func saveCustomModel(_ model: String, for providerID: AIProviderID) {
+        lock.withLock { models[providerID] = model }
+    }
+
+    func resetModel(for providerID: AIProviderID) {
+        lock.withLock { models.removeValue(forKey: providerID) }
     }
 }
 

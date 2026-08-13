@@ -27,22 +27,26 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         dataProcessing: .cloud,
         billing: .bringYourOwnKey,
         requiresProToConfigureAPIKey: false,
+        defaultModel: "gemini-3.5-flash-lite",
         inputCharacterBudget: 12_000,
         isImplemented: true
     )
 
     private let credentialStore: any AIProviderCredentialStore
+    private let modelStore: any AIProviderModelStore
     private let httpClient: any AIProviderHTTPClient
-    private let endpoint: URL
+    private let modelsEndpoint: URL
 
     init(
         credentialStore: any AIProviderCredentialStore,
+        modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore(),
         httpClient: any AIProviderHTTPClient = URLSessionAIProviderHTTPClient(),
-        endpoint: URL = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent")!
+        modelsEndpoint: URL = URL(string: "https://generativelanguage.googleapis.com/v1beta/models")!
     ) {
         self.credentialStore = credentialStore
+        self.modelStore = modelStore
         self.httpClient = httpClient
-        self.endpoint = endpoint
+        self.modelsEndpoint = modelsEndpoint
     }
 
     func availability() async -> AIProviderAvailability {
@@ -53,6 +57,10 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         request: CommitMessageGenerationRequest
     ) async throws -> GeneratedCommitMessage {
         let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("Gemini model is not configured.")
+        }
+        let endpoint = modelsEndpoint.appending(path: "\(model):generateContent")
         var urlRequest = URLRequest(url: endpoint)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")

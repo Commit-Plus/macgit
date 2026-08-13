@@ -169,6 +169,7 @@ private struct StubCommitMessageProvider: CommitMessageAIProvider {
         dataProcessing: .onDevice,
         billing: .none,
         requiresProToConfigureAPIKey: false,
+        defaultModel: nil,
         inputCharacterBudget: 7_000,
         isImplemented: true
     )

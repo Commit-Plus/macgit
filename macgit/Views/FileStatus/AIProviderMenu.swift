@@ -65,6 +65,9 @@ struct AIProviderMenu: View {
     private var providerHelp: String {
         let descriptor = controller.selectedDescriptor
         let availability = controller.selectedProviderAvailability
+        if let model = controller.model(for: descriptor) {
+            return "Cloud · \(model) · \(availability.detail)"
+        }
         return "\(descriptor.detail) · \(availability.detail)"
     }
 
@@ -75,7 +78,7 @@ struct AIProviderMenu: View {
         if requiresConfiguration(descriptor) {
             return "\(descriptor.displayName) — Config"
         }
-        return "\(descriptor.displayName) — \(descriptor.detail.replacing("Cloud · ", with: ""))"
+        return "\(descriptor.displayName) — \(controller.model(for: descriptor) ?? "Default")"
     }
 
     private func requiresConfiguration(_ descriptor: AIProviderDescriptor) -> Bool {
