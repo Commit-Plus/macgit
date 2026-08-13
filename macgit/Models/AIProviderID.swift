@@ -28,5 +28,6 @@ struct AIProviderID: RawRepresentable, Hashable, Codable, Sendable {
     static let openAI = Self(rawValue: "openai")
     static let anthropic = Self(rawValue: "anthropic")
     static let googleGemini = Self(rawValue: "google-gemini")
+    static let deepSeek = Self(rawValue: "deepseek")
+    static let openRouter = Self(rawValue: "openrouter")
 }
-

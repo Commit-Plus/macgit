@@ -156,7 +156,7 @@ struct CloudAIProviderSettingsSection: View {
             return "This existing key remains available for AI generation. You can change its model or remove it, but adding or replacing this provider requires Commit+ Pro."
         }
         if !canConfigureKey {
-            return "OpenAI and Gemini keys are available on the Free plan. Commit+ Pro unlocks Claude and additional AI providers."
+            return "OpenAI and Gemini keys are available on the Free plan. Commit+ Pro unlocks Claude, DeepSeek, OpenRouter, and additional AI providers."
         }
         return "Enter a model ID supported by this provider's Commit+ API integration. API key changes are saved to this Mac's Keychain when you click Done."
     }

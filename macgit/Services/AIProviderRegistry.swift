@@ -50,6 +50,16 @@ struct AIProviderRegistry: Sendable {
                 modelStore: modelStore,
                 httpClient: httpClient
             ),
+            DeepSeekCommitMessageProvider(
+                credentialStore: credentialStore,
+                modelStore: modelStore,
+                httpClient: httpClient
+            ),
+            OpenRouterCommitMessageProvider(
+                credentialStore: credentialStore,
+                modelStore: modelStore,
+                httpClient: httpClient
+            ),
         ])
     }
 }

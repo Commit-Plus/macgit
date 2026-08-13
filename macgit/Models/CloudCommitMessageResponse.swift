@@ -23,26 +23,50 @@ struct CloudCommitMessageResponse: Decodable, Sendable {
     let subject: String
     let body: String
 
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case subject
+        case body
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(String.self, forKey: .type)
+        subject = try container.decode(String.self, forKey: .subject)
+        body = try container.decodeIfPresent(String.self, forKey: .body) ?? ""
+    }
+
     static func decode(from text: String) throws -> Self {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let json: String
-        if trimmed.hasPrefix("```") {
-            let lines = trimmed.components(separatedBy: .newlines)
-            json = lines.dropFirst().dropLast().joined(separator: "\n")
-        } else {
-            json = trimmed
+        let candidates = [trimmed, fencedJSON(in: trimmed), embeddedJSONObject(in: trimmed)]
+            .compactMap { $0 }
+
+        for candidate in candidates {
+            guard let data = candidate.data(using: .utf8) else { continue }
+            if let response = try? JSONDecoder().decode(Self.self, from: data) {
+                return response
+            }
         }
-        guard let data = json.data(using: .utf8) else {
-            throw CommitMessageGenerationError.invalidResponse
-        }
-        do {
-            return try JSONDecoder().decode(Self.self, from: data)
-        } catch {
-            throw CommitMessageGenerationError.invalidResponse
-        }
+        throw CommitMessageGenerationError.invalidResponse
     }
 
     func formatted() throws -> GeneratedCommitMessage {
         try ConventionalCommitMessageFormatter.format(type: type, subject: subject, body: body)
+    }
+
+    private static func fencedJSON(in text: String) -> String? {
+        guard text.hasPrefix("```") else { return nil }
+        let lines = text.components(separatedBy: .newlines)
+        guard lines.count >= 3, lines.last?.trimmingCharacters(in: .whitespaces) == "```" else {
+            return nil
+        }
+        return lines.dropFirst().dropLast().joined(separator: "\n")
+    }
+
+    private static func embeddedJSONObject(in text: String) -> String? {
+        guard let start = text.firstIndex(of: "{"),
+              let end = text.lastIndex(of: "}"),
+              start <= end else { return nil }
+        return String(text[start...end])
     }
 }

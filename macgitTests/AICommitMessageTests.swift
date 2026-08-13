@@ -79,9 +79,12 @@ final class AICommitMessageTests: XCTestCase {
         let registry = AIProviderRegistry.live(credentialStore: credentialStore)
         let ids = registry.descriptors.map(\.id)
 
-        XCTAssertEqual(ids, [.appleIntelligence, .openAI, .anthropic, .googleGemini])
+        XCTAssertEqual(
+            ids,
+            [.appleIntelligence, .openAI, .anthropic, .googleGemini, .deepSeek, .openRouter]
+        )
         XCTAssertEqual(registry.provider(for: .appleIntelligence)?.descriptor.billing, .none)
-        for id in [AIProviderID.openAI, .anthropic, .googleGemini] {
+        for id in [AIProviderID.openAI, .anthropic, .googleGemini, .deepSeek, .openRouter] {
             let provider = registry.provider(for: id)
             let availability = await provider?.availability()
             XCTAssertEqual(availability, .unavailable("Add an API key in Settings → AI Providers."))
@@ -92,6 +95,8 @@ final class AICommitMessageTests: XCTestCase {
         XCTAssertFalse(registry.provider(for: .openAI)?.descriptor.requiresProToConfigureAPIKey ?? true)
         XCTAssertFalse(registry.provider(for: .googleGemini)?.descriptor.requiresProToConfigureAPIKey ?? true)
         XCTAssertTrue(registry.provider(for: .anthropic)?.descriptor.requiresProToConfigureAPIKey ?? false)
+        XCTAssertTrue(registry.provider(for: .deepSeek)?.descriptor.requiresProToConfigureAPIKey ?? false)
+        XCTAssertTrue(registry.provider(for: .openRouter)?.descriptor.requiresProToConfigureAPIKey ?? false)
     }
 
     func testOnlyCommitPlusFundedProvidersRequireProAccess() {

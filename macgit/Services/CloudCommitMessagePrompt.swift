@@ -43,6 +43,12 @@ enum CloudCommitMessagePrompt {
         "required": ["type", "subject", "body"],
     ]
 
+    static let jsonInstructions = """
+        \(instructions)
+        Return only JSON with exactly these fields: type, subject, and body.
+        Example: {"type":"feat","subject":"Add provider support","body":""}
+        """
+
     static func userPrompt(for request: CommitMessageGenerationRequest) -> String {
         let recentStyle = request.recentCommitSubjects.isEmpty
             ? "No recent commit examples are available."

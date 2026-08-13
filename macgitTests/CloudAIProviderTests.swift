@@ -99,7 +99,7 @@ final class CloudAIProviderTests: XCTestCase {
     }
 
     @MainActor
-    func testFreeAccessCanConfigureOpenAIAndGeminiButNotAnthropic() throws {
+    func testFreeAccessCanConfigureOpenAIAndGeminiButNotRestrictedProviders() throws {
         let credentialStore = InMemoryAIProviderCredentialStore()
         let controller = AIProviderController(
             registry: .live(credentialStore: credentialStore),
@@ -125,6 +125,18 @@ final class CloudAIProviderTests: XCTestCase {
             )
         }
         XCTAssertNil(try credentialStore.apiKey(for: .anthropic))
+
+        for (id, name) in [(AIProviderID.deepSeek, "DeepSeek"), (.openRouter, "OpenRouter")] {
+            XCTAssertThrowsError(try controller.applyProviderChanges([
+                AIProviderConfigurationDraft(id: id, apiKey: "restricted-key"),
+            ], restrictedProviderAccess: .denied(.requiresPro))) { error in
+                XCTAssertEqual(
+                    error as? AIProviderConfigurationError,
+                    .requiresPro(providerName: name)
+                )
+            }
+            XCTAssertNil(try credentialStore.apiKey(for: id))
+        }
     }
 
     @MainActor
@@ -272,6 +284,101 @@ final class CloudAIProviderTests: XCTestCase {
                 error,
                 .providerRequestFailed(
                     "Gemini reached its output limit before returning a commit message. Try generating from a smaller change."
+                )
+            )
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testDeepSeekRequestUsesBearerKeyAndJSONMode() async throws {
+        let store = InMemoryAIProviderCredentialStore(keys: [.deepSeek: "deepseek-secret"])
+        let modelStore = InMemoryAIProviderModelStore(models: [.deepSeek: "deepseek-custom"])
+        let client = StubAIProviderHTTPClient(responseBody: """
+            {"choices":[{"message":{"role":"assistant","content":"{\\"type\\":\\"feat\\",\\"subject\\":\\"Add DeepSeek generation\\",\\"body\\":\\"\\"}"}}]}
+            """)
+        let provider = DeepSeekCommitMessageProvider(
+            credentialStore: store,
+            modelStore: modelStore,
+            httpClient: client
+        )
+
+        let result = try await provider.generateCommitMessage(request: makeRequest())
+        let receivedRequest = await client.receivedRequest()
+        let request = try XCTUnwrap(receivedRequest)
+
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer deepseek-secret")
+        XCTAssertEqual(request.url?.absoluteString, "https://api.deepseek.com/chat/completions")
+        XCTAssertEqual(result.text, "feat: Add DeepSeek generation")
+        let body = try requestJSONObject(request)
+        XCTAssertEqual(body["model"] as? String, "deepseek-custom")
+        XCTAssertEqual((body["response_format"] as? [String: Any])?["type"] as? String, "json_object")
+        XCTAssertEqual((body["thinking"] as? [String: Any])?["type"] as? String, "disabled")
+    }
+
+    func testOpenRouterRequestUsesBearerKeyAndStructuredOutput() async throws {
+        let store = InMemoryAIProviderCredentialStore(keys: [.openRouter: "openrouter-secret"])
+        let modelStore = InMemoryAIProviderModelStore(models: [.openRouter: "vendor/model"])
+        let client = StubAIProviderHTTPClient(responseBody: """
+            {"choices":[{"message":{"role":"assistant","content":"{\\"type\\":\\"fix\\",\\"subject\\":\\"Route commit generation\\",\\"body\\":\\"Require structured output support.\\"}"}}]}
+            """)
+        let provider = OpenRouterCommitMessageProvider(
+            credentialStore: store,
+            modelStore: modelStore,
+            httpClient: client
+        )
+
+        let result = try await provider.generateCommitMessage(request: makeRequest())
+        let receivedRequest = await client.receivedRequest()
+        let request = try XCTUnwrap(receivedRequest)
+
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer openrouter-secret")
+        XCTAssertEqual(request.url?.absoluteString, "https://openrouter.ai/api/v1/chat/completions")
+        XCTAssertEqual(result.subject, "fix: Route commit generation")
+        XCTAssertEqual(result.body, "Require structured output support.")
+        let body = try requestJSONObject(request)
+        XCTAssertEqual(body["model"] as? String, "vendor/model")
+        let responseFormat = try XCTUnwrap(body["response_format"] as? [String: Any])
+        XCTAssertEqual(responseFormat["type"] as? String, "json_schema")
+        let providerRouting = try XCTUnwrap(body["provider"] as? [String: Any])
+        XCTAssertEqual(providerRouting["require_parameters"] as? Bool, true)
+        let plugins = try XCTUnwrap(body["plugins"] as? [[String: Any]])
+        XCTAssertEqual(plugins.first?["id"] as? String, "response-healing")
+    }
+
+    func testOpenRouterParsesTextPartsAndEmbeddedJSON() async throws {
+        let store = InMemoryAIProviderCredentialStore(keys: [.openRouter: "openrouter-secret"])
+        let client = StubAIProviderHTTPClient(responseBody: """
+            {"choices":[{"message":{"role":"assistant","content":[{"type":"text","text":"Commit message:\\n```json\\n{\\"type\\":\\"feat\\",\\"subject\\":\\"Parse OpenRouter content parts\\",\\"body\\":null}\\n```"}]}}]}
+            """)
+        let provider = OpenRouterCommitMessageProvider(
+            credentialStore: store,
+            httpClient: client
+        )
+
+        let result = try await provider.generateCommitMessage(request: makeRequest())
+
+        XCTAssertEqual(result.text, "feat: Parse OpenRouter content parts")
+    }
+
+    func testOpenRouterSurfacesEmbeddedProviderError() async {
+        let store = InMemoryAIProviderCredentialStore(keys: [.openRouter: "openrouter-secret"])
+        let client = StubAIProviderHTTPClient(responseBody: """
+            {"choices":[{"finish_reason":"error","message":{"role":"assistant","content":""},"error":{"code":502,"message":"Provider disconnected mid-stream"}}]}
+            """)
+        let provider = OpenRouterCommitMessageProvider(
+            credentialStore: store,
+            httpClient: client
+        )
+
+        do {
+            _ = try await provider.generateCommitMessage(request: makeRequest())
+            XCTFail("Expected the embedded OpenRouter error")
+        } catch let error as CommitMessageGenerationError {
+            XCTAssertEqual(
+                error,
+                .providerRequestFailed(
+                    "OpenRouter request failed: Provider disconnected mid-stream"
                 )
             )
         } catch {
