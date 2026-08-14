@@ -281,6 +281,47 @@ final class GitProviderAccountControllerTests: XCTestCase {
         XCTAssertEqual(controller.accounts, [providerAccount])
     }
 
+    func testConnectBitbucketStoresAPITokenBeforeMetadataAndPublishesAccount() async throws {
+        let events = EventRecorder()
+        let store = FakeGitProviderAccountStore(events: events)
+        let vault = FakeGitProviderTokenVault(events: events)
+        let controller = GitProviderAccountController(store: store, tokenVault: vault)
+        await controller.updateMacgitAccount(makeMacgitAccount(uid: "macgit-user-1"))
+        events.values.removeAll()
+
+        await controller.connectBitbucket(
+            username: "Trantienthanh2412",
+            apiToken: "bitbucket-api-token"
+        )
+
+        let account = try XCTUnwrap(controller.accounts.first)
+        XCTAssertEqual(account.provider, .bitbucket)
+        XCTAssertEqual(account.hostURL, GitProviderHost.bitbucketDotOrg.baseURL)
+        XCTAssertEqual(account.username, "Trantienthanh2412")
+        XCTAssertEqual(account.transportProtocol, .https)
+        XCTAssertEqual(events.values, ["save-token", "save-metadata"])
+        XCTAssertEqual(
+            try controller.credentialResolver().credential(
+                for: "https://Trantienthanh2412@bitbucket.org/workspace/project.git"
+            ),
+            GitCredential(username: "Trantienthanh2412", token: "bitbucket-api-token")
+        )
+    }
+
+    func testConnectBitbucketRejectsEmptyTokenWithoutSavingAccount() async {
+        let events = EventRecorder()
+        let controller = GitProviderAccountController(
+            store: FakeGitProviderAccountStore(events: events),
+            tokenVault: FakeGitProviderTokenVault(events: events)
+        )
+
+        await controller.connectBitbucket(username: "Trantienthanh2412", apiToken: "  ")
+
+        XCTAssertEqual(controller.errorMessage, "Enter a Bitbucket API token.")
+        XCTAssertTrue(controller.accounts.isEmpty)
+        XCTAssertTrue(events.values.isEmpty)
+    }
+
     func testConnectSSHCreatesProviderAccountAndStoresKey() async throws {
         let events = EventRecorder()
         let store = FakeGitProviderAccountStore(events: events)
@@ -453,11 +494,9 @@ final class GitProviderAccountControllerTests: XCTestCase {
             id: id,
             macgitUID: macgitUID,
             provider: provider,
-            hostURL: provider == .github
-                ? URL(string: "https://github.com")!
-                : URL(string: "https://gitlab.com")!,
+            hostURL: hostURL(for: provider),
             providerUserID: providerUserID,
-            username: provider == .github ? "octocat" : "tanuki",
+            username: username(for: provider),
             displayName: nil,
             avatarURL: nil,
             scopes: [],
@@ -467,6 +506,22 @@ final class GitProviderAccountControllerTests: XCTestCase {
             connectedAt: Date(timeIntervalSince1970: 1_700_000_000),
             lastValidatedAt: nil
         )
+    }
+
+    private func hostURL(for provider: GitProviderKind) -> URL {
+        switch provider {
+        case .github: URL(string: "https://github.com")!
+        case .gitlab: URL(string: "https://gitlab.com")!
+        case .bitbucket: URL(string: "https://bitbucket.org")!
+        }
+    }
+
+    private func username(for provider: GitProviderKind) -> String {
+        switch provider {
+        case .github: "octocat"
+        case .gitlab: "tanuki"
+        case .bitbucket: "Trantienthanh2412"
+        }
     }
 
     private func makeConfiguration() -> GitHubProviderAuthConfiguration {

@@ -109,12 +109,72 @@ final class GitProviderAccountController: ObservableObject {
         await startGitLabDeviceAuthorization(host: GitProviderHost(kind: .gitlab, baseURL: hostURL).normalized)
     }
 
+    func connectBitbucket(
+        username: String,
+        apiToken: String,
+        replacing existingAccount: GitProviderAccount? = nil
+    ) async {
+        errorMessage = nil
+        let normalizedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedToken = apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedUsername.isEmpty else {
+            errorMessage = "Enter your case-sensitive Bitbucket username."
+            return
+        }
+        guard !normalizedToken.isEmpty else {
+            errorMessage = "Enter a Bitbucket API token."
+            return
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        let account = GitProviderAccount(
+            id: existingAccount?.id ?? sshAccountID(
+                macgitUID: accountOwnerID,
+                provider: .bitbucket,
+                hostURL: GitProviderHost.bitbucketDotOrg.baseURL,
+                username: normalizedUsername
+            ),
+            macgitUID: accountOwnerID,
+            provider: .bitbucket,
+            hostURL: GitProviderHost.bitbucketDotOrg.baseURL,
+            providerUserID: normalizedUsername,
+            username: normalizedUsername,
+            displayName: nil,
+            avatarURL: nil,
+            scopes: ["read:repository:bitbucket", "write:repository:bitbucket"],
+            permissions: [:],
+            tokenStatus: .valid,
+            transportProtocol: .https,
+            connectedAt: existingAccount?.connectedAt ?? .now,
+            lastValidatedAt: nil
+        )
+
+        do {
+            try validateAccountCreation(for: account)
+            try await saveAuthorizedAccount(
+                account,
+                token: GitProviderToken(
+                    accessToken: normalizedToken,
+                    refreshToken: nil,
+                    expiresAt: nil,
+                    tokenType: "Basic"
+                )
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func reconnect(_ account: GitProviderAccount) async {
         switch account.provider {
         case .github:
             await startGitHubDeviceAuthorization()
         case .gitlab:
             await startGitLabDeviceAuthorization(host: GitProviderHost(kind: .gitlab, baseURL: account.hostURL))
+        case .bitbucket:
+            errorMessage = "Enter a new Bitbucket API token to reconnect this account."
         }
     }
 
@@ -241,8 +301,15 @@ final class GitProviderAccountController: ObservableObject {
         }
     }
 
-    func connectSSH(host: GitProviderHost, key: GitProviderSSHKey) async {
-        guard authorizeNewAccountCreation() else { return }
+    func connectSSH(
+        host: GitProviderHost,
+        key: GitProviderSSHKey,
+        username usernameOverride: String? = nil,
+        replacing existingAccount: GitProviderAccount? = nil
+    ) async {
+        if existingAccount == nil, !authorizeNewAccountCreation() {
+            return
+        }
         let macgitUID = accountOwnerID
 
         isLoading = true
@@ -252,26 +319,32 @@ final class GitProviderAccountController: ObservableObject {
         let normalizedHost = host.normalized
         do {
             let authentication = try await sshAuthService.authenticate(host: normalizedHost, keyPath: key.path)
+            let username = usernameOverride?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let resolvedUsername = username?.isEmpty == false ? username : authentication.username,
+                  !resolvedUsername.isEmpty else {
+                throw GitProviderCredentialError.sshKeyUnavailable(username: "Bitbucket")
+            }
             let account = GitProviderAccount(
-                id: sshAccountID(
+                id: existingAccount?.id ?? sshAccountID(
                     macgitUID: macgitUID,
                     provider: normalizedHost.kind,
                     hostURL: normalizedHost.baseURL,
-                    username: authentication.username
+                    username: resolvedUsername
                 ),
                 macgitUID: macgitUID,
                 provider: normalizedHost.kind,
                 hostURL: normalizedHost.baseURL,
-                providerUserID: authentication.username,
-                username: authentication.username,
+                providerUserID: resolvedUsername,
+                username: resolvedUsername,
                 displayName: nil,
                 avatarURL: nil,
                 scopes: [],
                 permissions: [:],
                 tokenStatus: .valid,
                 transportProtocol: .ssh,
-                connectedAt: Date(),
-                lastValidatedAt: Date()
+                connectedAt: existingAccount?.connectedAt ?? .now,
+                lastValidatedAt: .now
             )
 
             try validateAccountCreation(for: account)

@@ -80,6 +80,28 @@ final class GitRemoteIdentityResolverTests: XCTestCase {
         XCTAssertEqual(identity.repositoryName, "app")
     }
 
+    func testParsesHttpsBitbucketRemote() throws {
+        let identity = try XCTUnwrap(GitRemoteIdentityResolver.identity(
+            from: "https://trantienthanh2412@bitbucket.org/workspace/project.git"
+        ))
+
+        XCTAssertEqual(identity.provider, .bitbucket)
+        XCTAssertEqual(identity.hostURL.absoluteString, "https://bitbucket.org")
+        XCTAssertEqual(identity.ownerPath, "workspace")
+        XCTAssertEqual(identity.repositoryName, "project")
+        XCTAssertEqual(identity.canonicalHTTPSURL.absoluteString, "https://bitbucket.org/workspace/project.git")
+    }
+
+    func testParsesSshBitbucketRemote() throws {
+        let identity = try XCTUnwrap(GitRemoteIdentityResolver.identity(
+            from: "git@bitbucket.org:workspace/project.git"
+        ))
+
+        XCTAssertEqual(identity.provider, .bitbucket)
+        XCTAssertEqual(identity.ownerPath, "workspace")
+        XCTAssertEqual(identity.repositoryName, "project")
+    }
+
     func testUnsupportedHostReturnsNil() {
         XCTAssertNil(GitRemoteIdentityResolver.identity(from: "https://example.com/octocat/Hello-World.git"))
     }

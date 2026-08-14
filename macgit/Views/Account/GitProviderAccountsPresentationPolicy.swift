@@ -109,13 +109,25 @@ enum GitProviderAddAccountPresentationPolicy {
     static let hostOptions: [GitProviderAddAccountOption<GitProviderAddAccountHost>] = [
         GitProviderAddAccountOption(id: .github, title: "GitHub", isEnabled: true),
         GitProviderAddAccountOption(id: .gitlab, title: "GitLab", isEnabled: true),
-        GitProviderAddAccountOption(id: .bitbucket, title: "Bitbucket", isEnabled: false)
+        GitProviderAddAccountOption(id: .bitbucket, title: "Bitbucket", isEnabled: true)
     ]
 
-    static let authTypeOptions: [GitProviderAddAccountOption<GitProviderAddAccountAuthType>] = [
-        GitProviderAddAccountOption(id: .oauth, title: "OAuth", isEnabled: true),
-        GitProviderAddAccountOption(id: .personalAccessToken, title: "Personal Access Token", isEnabled: false)
-    ]
+    static func authTypeOptions(
+        for host: GitProviderAddAccountHost
+    ) -> [GitProviderAddAccountOption<GitProviderAddAccountAuthType>] {
+        [
+            GitProviderAddAccountOption(id: .oauth, title: "OAuth", isEnabled: host != .bitbucket),
+            GitProviderAddAccountOption(
+                id: .personalAccessToken,
+                title: "API Token",
+                isEnabled: host == .bitbucket
+            )
+        ]
+    }
+
+    static func canSelectAuthType(for host: GitProviderAddAccountHost) -> Bool {
+        authTypeOptions(for: host).count { $0.isEnabled } > 1
+    }
 
     static let protocolOptions: [GitProviderAddAccountOption<GitProviderAddAccountProtocol>] = [
         GitProviderAddAccountOption(id: .https, title: "HTTPS", isEnabled: true),
@@ -127,7 +139,15 @@ enum GitProviderAddAccountPresentationPolicy {
         authType: GitProviderAddAccountAuthType,
         protocol selectedProtocol: GitProviderAddAccountProtocol
     ) -> Bool {
-        host != .bitbucket && authType == .oauth
+        if selectedProtocol == .ssh {
+            return true
+        }
+        switch host {
+        case .github, .gitlab:
+            return authType == .oauth
+        case .bitbucket:
+            return authType == .personalAccessToken
+        }
     }
 
     static func canSave(
@@ -166,6 +186,7 @@ enum GitProviderAddAccountPresentationPolicy {
         switch account.provider {
         case .github: .github
         case .gitlab: .gitlab
+        case .bitbucket: .bitbucket
         }
     }
 

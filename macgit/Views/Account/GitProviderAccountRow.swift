@@ -102,23 +102,17 @@ struct GitProviderAccountRow: View {
     }
 
     private var providerAssetName: String {
-        switch account.provider {
-        case .github: "github"
-        case .gitlab: "gitlab"
-        }
+        account.provider.rawValue
     }
 
     private var providerName: String {
-        switch account.provider {
-        case .github: "GitHub"
-        case .gitlab: "GitLab"
-        }
+        account.provider.displayName
     }
 
     private var protocolDescription: String {
         switch account.transportProtocol {
         case .https:
-            "HTTPS (OAuth)"
+            account.provider == .bitbucket ? "HTTPS (API Token)" : "HTTPS (OAuth)"
         case .ssh:
             "SSH"
         }

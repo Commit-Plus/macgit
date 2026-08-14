@@ -24,6 +24,10 @@ final class GitProviderAccountModelsTests: XCTestCase {
         XCTAssertEqual(GitProviderHost.githubDotCom.baseURL.absoluteString, "https://github.com")
     }
 
+    func testBitbucketDotOrgHostNormalizesToHttpsBaseURL() {
+        XCTAssertEqual(GitProviderHost.bitbucketDotOrg.baseURL.absoluteString, "https://bitbucket.org")
+    }
+
     func testSelfHostedGitLabHostPreservesHost() throws {
         let baseURL = try XCTUnwrap(URL(string: "https://git.company.com/"))
         let host = GitProviderHost(kind: .gitlab, baseURL: baseURL)

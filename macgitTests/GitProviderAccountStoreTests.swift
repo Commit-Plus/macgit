@@ -38,11 +38,30 @@ final class GitProviderAccountStoreTests: XCTestCase {
 
     func testFirestoreDocumentRejectsMalformedMetadata() {
         var data = GitProviderAccountDocument.encode(makeAccount())
-        data["provider"] = "bitbucket"
+        data["provider"] = "unsupported"
 
         XCTAssertThrowsError(
             try GitProviderAccountDocument.decode(data, id: "connection-1", macgitUID: "macgit-user-1")
         )
+    }
+
+    func testFirestoreDocumentRoundTripsBitbucketMetadata() throws {
+        var account = makeAccount()
+        account.provider = .bitbucket
+        account.hostURL = URL(string: "https://bitbucket.org")!
+        account.providerUserID = "Trantienthanh2412"
+        account.username = "Trantienthanh2412"
+        account.scopes = ["read:repository:bitbucket", "write:repository:bitbucket"]
+
+        let data = GitProviderAccountDocument.encode(account)
+        let decoded = try GitProviderAccountDocument.decode(
+            data,
+            id: account.id,
+            macgitUID: account.macgitUID
+        )
+
+        XCTAssertEqual(decoded, account)
+        XCTAssertNil(data["accessToken"])
     }
 
     private func makeAccount() -> GitProviderAccount {

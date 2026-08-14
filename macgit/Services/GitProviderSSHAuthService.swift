@@ -73,6 +73,8 @@ struct GitProviderSSHAuthService: GitProviderSSHAuthenticating {
             return capture(in: output, pattern: #"Hi ([^!]+)!"#)
         case .gitlab:
             return capture(in: output, pattern: #"Welcome to GitLab, @([^!\s]+)"#)
+        case .bitbucket:
+            return output.localizedCaseInsensitiveContains("authenticated via ssh key") ? "git" : nil
         }
     }
 

@@ -44,13 +44,13 @@ final class GitProviderAccountsSectionTests: XCTestCase {
         )
     }
 
-    func testAddAccountHostOptionsExposeUnsupportedBitbucketAsDisabled() {
+    func testAddAccountHostOptionsEnableBitbucket() {
         XCTAssertEqual(
             GitProviderAddAccountPresentationPolicy.hostOptions,
             [
                 GitProviderAddAccountOption(id: .github, title: "GitHub", isEnabled: true),
                 GitProviderAddAccountOption(id: .gitlab, title: "GitLab", isEnabled: true),
-                GitProviderAddAccountOption(id: .bitbucket, title: "Bitbucket", isEnabled: false)
+                GitProviderAddAccountOption(id: .bitbucket, title: "Bitbucket", isEnabled: true)
             ]
         )
     }
@@ -93,14 +93,34 @@ final class GitProviderAccountsSectionTests: XCTestCase {
         )
     }
 
-    func testAddAccountAuthOptionsDisablePersonalAccessTokenUntilSupported() {
+    func testAddAccountAuthOptionsUseOAuthForGitHubAndGitLab() {
         XCTAssertEqual(
-            GitProviderAddAccountPresentationPolicy.authTypeOptions,
+            GitProviderAddAccountPresentationPolicy.authTypeOptions(for: .github),
             [
                 GitProviderAddAccountOption(id: .oauth, title: "OAuth", isEnabled: true),
-                GitProviderAddAccountOption(id: .personalAccessToken, title: "Personal Access Token", isEnabled: false)
+                GitProviderAddAccountOption(id: .personalAccessToken, title: "API Token", isEnabled: false)
             ]
         )
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.authTypeOptions(for: .gitlab),
+            GitProviderAddAccountPresentationPolicy.authTypeOptions(for: .github)
+        )
+    }
+
+    func testAddAccountAuthOptionsUseAPITokenForBitbucket() {
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.authTypeOptions(for: .bitbucket),
+            [
+                GitProviderAddAccountOption(id: .oauth, title: "OAuth", isEnabled: false),
+                GitProviderAddAccountOption(id: .personalAccessToken, title: "API Token", isEnabled: true)
+            ]
+        )
+    }
+
+    func testAuthTypePickerIsDisabledWhenProviderSupportsOnlyOneAuthType() {
+        XCTAssertFalse(GitProviderAddAccountPresentationPolicy.canSelectAuthType(for: .github))
+        XCTAssertFalse(GitProviderAddAccountPresentationPolicy.canSelectAuthType(for: .gitlab))
+        XCTAssertFalse(GitProviderAddAccountPresentationPolicy.canSelectAuthType(for: .bitbucket))
     }
 
     func testAddAccountProtocolOptionsEnableSSH() {
@@ -135,6 +155,13 @@ final class GitProviderAccountsSectionTests: XCTestCase {
                 protocol: .https
             )
         )
+        XCTAssertTrue(
+            GitProviderAddAccountPresentationPolicy.canConnect(
+                host: .bitbucket,
+                authType: .personalAccessToken,
+                protocol: .https
+            )
+        )
         XCTAssertFalse(
             GitProviderAddAccountPresentationPolicy.canConnect(
                 host: .github,
@@ -146,6 +173,13 @@ final class GitProviderAccountsSectionTests: XCTestCase {
             GitProviderAddAccountPresentationPolicy.canConnect(
                 host: .github,
                 authType: .oauth,
+                protocol: .ssh
+            )
+        )
+        XCTAssertTrue(
+            GitProviderAddAccountPresentationPolicy.canConnect(
+                host: .bitbucket,
+                authType: .personalAccessToken,
                 protocol: .ssh
             )
         )
@@ -272,6 +306,10 @@ final class GitProviderAccountsSectionTests: XCTestCase {
             GitProviderAddAccountPresentationPolicy.host(for: makeAccount(provider: .gitlab, tokenStatus: .valid)),
             .gitlab
         )
+        XCTAssertEqual(
+            GitProviderAddAccountPresentationPolicy.host(for: makeAccount(provider: .bitbucket, tokenStatus: .valid)),
+            .bitbucket
+        )
     }
 
     private func makeAccount(
@@ -282,9 +320,7 @@ final class GitProviderAccountsSectionTests: XCTestCase {
             id: "connection-1",
             macgitUID: "macgit-user-1",
             provider: provider,
-            hostURL: provider == .github
-                ? URL(string: "https://github.com")!
-                : URL(string: "https://gitlab.com")!,
+            hostURL: hostURL(for: provider),
             providerUserID: "583231",
             username: "octocat",
             displayName: "The Octocat",
@@ -295,5 +331,13 @@ final class GitProviderAccountsSectionTests: XCTestCase {
             connectedAt: Date(timeIntervalSince1970: 1_700_000_000),
             lastValidatedAt: nil
         )
+    }
+
+    private func hostURL(for provider: GitProviderKind) -> URL {
+        switch provider {
+        case .github: URL(string: "https://github.com")!
+        case .gitlab: URL(string: "https://gitlab.com")!
+        case .bitbucket: URL(string: "https://bitbucket.org")!
+        }
     }
 }

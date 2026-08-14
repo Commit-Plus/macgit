@@ -302,8 +302,24 @@ describe("Firestore ownership rules", () => {
     }));
     await assertFails(setDoc(account, {
       ...validGitProviderAccount(),
-      provider: "bitbucket",
+      provider: "unsupported",
     }));
+  });
+
+  test("Git provider metadata accepts Bitbucket without storing its API token", async () => {
+    const userA = deviceContext("user-a");
+
+    await assertSucceeds(setDoc(
+      gitProviderAccount("user-a", "bitbucket-connection", userA),
+      {
+        ...validGitProviderAccount(),
+        provider: "bitbucket",
+        hostURL: "https://bitbucket.org",
+        providerUserID: "Trantienthanh2412",
+        username: "Trantienthanh2412",
+        scopes: ["read:repository:bitbucket", "write:repository:bitbucket"],
+      },
+    ));
   });
 
   test("Git provider metadata accepts HTTPS and SSH transport protocols", async () => {

@@ -84,7 +84,7 @@ enum GitRemoteIdentityResolver {
         guard !repositoryName.isEmpty else { return nil }
 
         let ownerComponents = Array(pathComponents.dropLast())
-        if provider == .github, ownerComponents.count != 1 {
+        if provider != .gitlab, ownerComponents.count != 1 {
             return nil
         }
 
@@ -114,6 +114,8 @@ enum GitRemoteIdentityResolver {
             return .github
         case "gitlab.com":
             return .gitlab
+        case "bitbucket.org":
+            return .bitbucket
         default:
             return knownGitLabHosts.contains(host) || host.contains("gitlab") ? .gitlab : nil
         }

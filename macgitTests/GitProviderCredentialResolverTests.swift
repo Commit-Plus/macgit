@@ -32,6 +32,20 @@ final class GitProviderCredentialResolverTests: XCTestCase {
         XCTAssertEqual(credential, GitCredential(username: "octocat", token: "secret"))
     }
 
+    func testReturnsCredentialForMatchingBitbucketAccount() throws {
+        let account = makeProviderAccount(provider: .bitbucket, username: "Trantienthanh2412")
+        let resolver = GitProviderCredentialResolver(
+            accounts: [account],
+            tokenVault: FakeCredentialTokenVault(tokensByAccountID: [account.id: makeToken("api-token")])
+        )
+
+        let credential = try resolver.credential(
+            for: "https://Trantienthanh2412@bitbucket.org/workspace/project.git"
+        )
+
+        XCTAssertEqual(credential, GitCredential(username: "Trantienthanh2412", token: "api-token"))
+    }
+
     func testUnsupportedRemoteReturnsNil() throws {
         let resolver = GitProviderCredentialResolver(
             accounts: [makeProviderAccount()],
@@ -141,14 +155,17 @@ final class GitProviderCredentialResolverTests: XCTestCase {
 
     private func makeProviderAccount(
         id: String = "connection-1",
+        provider: GitProviderKind = .github,
         username: String = "octocat",
         transportProtocol: GitProviderTransportProtocol = .https
     ) -> GitProviderAccount {
         GitProviderAccount(
             id: id,
             macgitUID: "macgit-user-1",
-            provider: .github,
-            hostURL: URL(string: "https://github.com")!,
+            provider: provider,
+            hostURL: provider == .bitbucket
+                ? URL(string: "https://bitbucket.org")!
+                : URL(string: "https://github.com")!,
             providerUserID: id,
             username: username,
             displayName: nil,

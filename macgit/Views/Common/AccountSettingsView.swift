@@ -166,7 +166,7 @@ struct AccountSettingsView: View {
             } header: {
                 Label("Git Provider Accounts", systemImage: "network")
             } footer: {
-                Text("GitHub and GitLab are available with HTTPS or SSH. Bitbucket support is coming later.")
+                Text("GitHub and GitLab use OAuth. Bitbucket Cloud uses an API token. All providers support HTTPS or SSH Git operations.")
             }
         }
         .formStyle(.grouped)

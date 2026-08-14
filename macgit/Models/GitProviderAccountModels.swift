@@ -21,6 +21,7 @@ import Foundation
 enum GitProviderKind: String, Codable, CaseIterable, Identifiable {
     case github
     case gitlab
+    case bitbucket
 
     var id: String { rawValue }
 
@@ -28,6 +29,7 @@ enum GitProviderKind: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .github: "GitHub"
         case .gitlab: "GitLab"
+        case .bitbucket: "Bitbucket"
         }
     }
 }
@@ -44,6 +46,11 @@ struct GitProviderHost: Hashable, Codable {
     static let gitlabDotCom = GitProviderHost(
         kind: .gitlab,
         baseURL: URL(string: "https://gitlab.com")!
+    )
+
+    static let bitbucketDotOrg = GitProviderHost(
+        kind: .bitbucket,
+        baseURL: URL(string: "https://bitbucket.org")!
     )
 
     var normalized: GitProviderHost {

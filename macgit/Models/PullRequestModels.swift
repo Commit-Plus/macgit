@@ -225,7 +225,7 @@ struct PullRequestDraftSeed: Equatable {
 extension GitRepositoryIdentity {
     var browserURL: URL? {
         switch provider {
-        case .github, .gitlab:
+        case .github, .gitlab, .bitbucket:
             hostURL
                 .appendingPathComponent(owner)
                 .appendingPathComponent(name)
