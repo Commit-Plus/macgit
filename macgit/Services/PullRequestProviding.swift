@@ -33,6 +33,12 @@ protocol PullRequestProviding {
         number: Int
     ) async throws -> PullRequestDetail
 
+    func pullRequestChanges(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken,
+        number: Int
+    ) async throws -> [PullRequestChangedFile]
+
     func createPullRequest(
         _ draft: PullRequestDraft,
         token: GitProviderToken

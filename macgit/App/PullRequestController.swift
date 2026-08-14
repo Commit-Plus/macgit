@@ -33,6 +33,12 @@ private struct PullRequestDetailCacheKey: Hashable {
     let number: Int
 }
 
+private struct PullRequestChangesCacheKey: Hashable {
+    let repository: GitRepositoryIdentityKey
+    let accountID: String
+    let number: Int
+}
+
 private struct GitRepositoryIdentityKey: Hashable {
     let provider: GitProviderKind
     let host: String
@@ -57,6 +63,11 @@ private struct CachedPullRequestDetail {
     let expiresAt: Date
 }
 
+private struct CachedPullRequestChanges {
+    let value: [PullRequestChangedFile]
+    let expiresAt: Date
+}
+
 @MainActor
 final class PullRequestController: ObservableObject {
     @Published private(set) var items: [PullRequestSummary] = []
@@ -71,6 +82,9 @@ final class PullRequestController: ObservableObject {
     @Published private(set) var selectedProviderAccountID: String?
     @Published private(set) var selectedDetail: PullRequestDetail?
     @Published private(set) var isLoadingDetail = false
+    @Published private(set) var selectedChanges: [PullRequestChangedFile] = []
+    @Published private(set) var isLoadingChanges = false
+    @Published private(set) var changesErrorMessage: String?
     @Published private(set) var createDraftSeed: PullRequestDraftSeed?
     @Published private(set) var createDraftChangedFileCount: Int?
     @Published private(set) var isLoadingCreateDraftChanges = false
@@ -97,10 +111,13 @@ final class PullRequestController: ObservableObject {
     private let pullRequestPageSize = 30
     private let listCacheTTL: TimeInterval = 45
     private let detailCacheTTL: TimeInterval = 300
+    private let changesCacheTTL: TimeInterval = 300
     private let commentRefreshAttempts = 3
     private let commentRefreshDelayNanoseconds: UInt64 = 300_000_000
     private var listCache: [PullRequestListCacheKey: CachedPullRequestListPage] = [:]
     private var detailCache: [PullRequestDetailCacheKey: CachedPullRequestDetail] = [:]
+    private var changesCache: [PullRequestChangesCacheKey: CachedPullRequestChanges] = [:]
+    private var changesLoadID = UUID()
     private var createDraftChangesLoadID = UUID()
 
     init(
@@ -390,6 +407,64 @@ final class PullRequestController: ObservableObject {
 
     func clearSelectedDetail() {
         selectedDetail = nil
+        selectedChanges = []
+        changesErrorMessage = nil
+        isLoadingChanges = false
+        changesLoadID = UUID()
+    }
+
+    func loadPullRequestChanges(_ summary: PullRequestSummary, forceRefresh: Bool = false) async {
+        guard let repository = activeRepository,
+              let token = activeToken,
+              let service = services[repository.provider] else {
+            changesErrorMessage = "Pull request changes are unavailable."
+            return
+        }
+
+        let loadID = UUID()
+        changesLoadID = loadID
+        isLoadingChanges = true
+        changesErrorMessage = nil
+        defer {
+            if changesLoadID == loadID {
+                isLoadingChanges = false
+            }
+        }
+
+        let cacheKey = PullRequestChangesCacheKey(
+            repository: GitRepositoryIdentityKey(repository),
+            accountID: selectedProviderAccountID ?? "",
+            number: summary.number
+        )
+        if !forceRefresh,
+           let cached = changesCache[cacheKey] {
+            if cached.expiresAt > Date() {
+                guard changesLoadID == loadID,
+                      selectedDetail?.summary.number == summary.number else { return }
+                selectedChanges = cached.value
+                return
+            }
+            changesCache.removeValue(forKey: cacheKey)
+        }
+
+        do {
+            let changes = try await service.pullRequestChanges(
+                repository: repository,
+                token: token,
+                number: summary.number
+            )
+            changesCache[cacheKey] = CachedPullRequestChanges(
+                value: changes,
+                expiresAt: Date().addingTimeInterval(changesCacheTTL)
+            )
+            guard changesLoadID == loadID,
+                  selectedDetail?.summary.number == summary.number else { return }
+            selectedChanges = changes
+        } catch {
+            guard changesLoadID == loadID,
+                  selectedDetail?.summary.number == summary.number else { return }
+            changesErrorMessage = error.localizedDescription
+        }
     }
 
     func openChangesInBrowser(_ detail: PullRequestDetail) {
@@ -624,9 +699,14 @@ final class PullRequestController: ObservableObject {
         detailCache = detailCache.filter { $0.key.number != number }
     }
 
+    private func invalidateChangesCache() {
+        changesCache.removeAll()
+    }
+
     func clearSessionCaches() {
         invalidateListCache()
         invalidateDetailCache()
+        invalidateChangesCache()
     }
 
     private func apiCredential(for accounts: [GitProviderAccount]) -> (

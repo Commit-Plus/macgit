@@ -411,6 +411,61 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(controller.selectedDetail, detail)
     }
 
+    func testLoadPullRequestChangesPublishesAndCachesFiles() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let summary = makeSummary()
+        let detail = PullRequestDetail(
+            summary: summary,
+            body: "Description",
+            assignees: [],
+            comments: [],
+            changesURL: summary.webURL.appendingPathComponent("files")
+        )
+        let changes = [
+            PullRequestChangedFile(
+                path: "macgit/App.swift",
+                previousPath: nil,
+                status: .modified,
+                additions: 2,
+                deletions: 1,
+                patch: "@@ -1 +1 @@\n-old\n+new",
+                patchUnavailableReason: nil
+            )
+        ]
+        let service = FakePullRequestProvider(
+            result: .success([summary]),
+            detailResult: .success(detail),
+            changesResult: .success(changes)
+        )
+        let vault = FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: vault
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: vault,
+            services: [.github: service]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "https://github.com/octocat/Hello-World.git")
+        await controller.loadPullRequestDetail(summary)
+        await controller.loadPullRequestChanges(summary)
+        await controller.loadPullRequestChanges(summary)
+
+        XCTAssertEqual(controller.selectedChanges, changes)
+        XCTAssertNil(controller.changesErrorMessage)
+        XCTAssertEqual(service.changesCallCount, 1)
+        XCTAssertEqual(service.receivedChangesNumber, 12)
+    }
+
     func testCommentRetriesDetailRefreshUntilNewCommentIsVisible() async throws {
         let account = makeAccount()
         let token = makeToken()
@@ -901,6 +956,7 @@ private final class FakePullRequestProvider: PullRequestProviding {
     private var detailResults: [Result<PullRequestDetail, PullRequestProviderError>]
     private let createResult: Result<PullRequestSummary, PullRequestProviderError>
     private let commentResult: Result<Void, PullRequestProviderError>
+    private let changesResult: Result<[PullRequestChangedFile], PullRequestProviderError>
     private let hasPreviousPage: Bool
     private let hasNextPage: Bool
     private(set) var receivedRepository: GitRepositoryIdentity?
@@ -909,8 +965,10 @@ private final class FakePullRequestProvider: PullRequestProviding {
     private(set) var receivedPage: Int?
     private(set) var receivedPerPage: Int?
     private(set) var receivedDetailNumber: Int?
+    private(set) var receivedChangesNumber: Int?
     private(set) var listCallCount = 0
     private(set) var detailCallCount = 0
+    private(set) var changesCallCount = 0
     private(set) var createdDraft: PullRequestDraft?
     private(set) var createdCommentBody: String?
 
@@ -918,6 +976,7 @@ private final class FakePullRequestProvider: PullRequestProviding {
         result: Result<[PullRequestSummary], PullRequestProviderError> = .success([]),
         detailResult: Result<PullRequestDetail, PullRequestProviderError> = .failure(.providerMessage("No detail")),
         detailResults: [Result<PullRequestDetail, PullRequestProviderError>]? = nil,
+        changesResult: Result<[PullRequestChangedFile], PullRequestProviderError> = .success([]),
         createResult: Result<PullRequestSummary, PullRequestProviderError> = .failure(.providerMessage("No create")),
         commentResult: Result<Void, PullRequestProviderError> = .success(()),
         hasPreviousPage: Bool = false,
@@ -925,6 +984,7 @@ private final class FakePullRequestProvider: PullRequestProviding {
     ) {
         self.result = result
         self.detailResults = detailResults ?? [detailResult]
+        self.changesResult = changesResult
         self.createResult = createResult
         self.commentResult = commentResult
         self.hasPreviousPage = hasPreviousPage
@@ -966,6 +1026,18 @@ private final class FakePullRequestProvider: PullRequestProviding {
             ? Result<PullRequestDetail, PullRequestProviderError>.failure(.providerMessage("No detail"))
             : detailResults.removeFirst()
         return try result.get()
+    }
+
+    func pullRequestChanges(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken,
+        number: Int
+    ) async throws -> [PullRequestChangedFile] {
+        changesCallCount += 1
+        receivedRepository = repository
+        receivedToken = token
+        receivedChangesNumber = number
+        return try changesResult.get()
     }
 
     func createPullRequest(

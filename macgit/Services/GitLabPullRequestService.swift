@@ -106,6 +106,44 @@ struct GitLabPullRequestService: PullRequestProviding {
         }
     }
 
+    func pullRequestChanges(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken,
+        number: Int
+    ) async throws -> [PullRequestChangedFile] {
+        guard repository.provider == .gitlab else {
+            throw PullRequestProviderError.unsupportedProvider
+        }
+
+        var files: [PullRequestChangedFile] = []
+        var page = 1
+
+        while true {
+            let url = try projectURL(
+                repository: repository,
+                pathComponents: ["merge_requests", String(number), "diffs"],
+                queryItems: [
+                    URLQueryItem(name: "per_page", value: "100"),
+                    URLQueryItem(name: "page", value: String(page)),
+                    URLQueryItem(name: "unidiff", value: "true"),
+                ]
+            )
+            let (data, response) = try await httpClient.data(for: makeRequest(url: url, token: token))
+            try validate(response: response, data: data)
+            do {
+                let payloads = try decoder.decode([GitLabMergeRequestDiffResponse].self, from: data)
+                files.append(contentsOf: payloads.map(\.changedFile))
+            } catch {
+                throw PullRequestProviderError.providerMessage("GitLab returned an invalid merge request diffs response.")
+            }
+
+            guard hasPaginationHeader("X-Next-Page", in: response) else { break }
+            page += 1
+        }
+
+        return files
+    }
+
     func createPullRequest(
         _ draft: PullRequestDraft,
         token: GitProviderToken
@@ -305,6 +343,61 @@ private struct GitLabCreateMergeRequestPayload: Encodable {
 
 private struct GitLabMergeRequestNotePayload: Encodable {
     var body: String
+}
+
+private struct GitLabMergeRequestDiffResponse: Decodable {
+    var oldPath: String
+    var newPath: String
+    var diff: String
+    var newFile: Bool
+    var renamedFile: Bool
+    var deletedFile: Bool
+    var collapsed: Bool?
+    var tooLarge: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case oldPath = "old_path"
+        case newPath = "new_path"
+        case diff
+        case newFile = "new_file"
+        case renamedFile = "renamed_file"
+        case deletedFile = "deleted_file"
+        case collapsed
+        case tooLarge = "too_large"
+    }
+
+    var changedFile: PullRequestChangedFile {
+        let normalizedPatch = collapsed == true || tooLarge == true || diff.isEmpty ? nil : diff
+        return PullRequestChangedFile(
+            path: newPath,
+            previousPath: renamedFile || oldPath != newPath ? oldPath : nil,
+            status: fileStatus,
+            additions: nil,
+            deletions: nil,
+            patch: normalizedPatch,
+            patchUnavailableReason: unavailableReason(for: normalizedPatch)
+        )
+    }
+
+    private var fileStatus: CommitFileStatus {
+        if newFile { return .added }
+        if deletedFile { return .deleted }
+        if renamedFile { return .renamed }
+        return .modified
+    }
+
+    private func unavailableReason(for patch: String?) -> String? {
+        if tooLarge == true {
+            return "GitLab marked this diff as too large to display."
+        }
+        if collapsed == true {
+            return "GitLab collapsed this diff because of its size."
+        }
+        if patch == nil {
+            return "GitLab did not provide a text patch for this file. It may be binary."
+        }
+        return nil
+    }
 }
 
 private struct GitLabMergeRequestResponse: Decodable {

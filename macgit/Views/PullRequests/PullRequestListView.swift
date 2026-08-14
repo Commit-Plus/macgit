@@ -201,6 +201,21 @@ struct PullRequestListView: View {
                         guard await authorizeAction() else { return }
                         await controller.comment(on: detail.summary, body: body)
                     }
+                },
+                changes: controller.selectedChanges,
+                isLoadingChanges: controller.isLoadingChanges,
+                changesErrorMessage: controller.changesErrorMessage,
+                onLoadChanges: {
+                    Task {
+                        guard await authorizeAction() else { return }
+                        await controller.loadPullRequestChanges(detail.summary)
+                    }
+                },
+                onRefreshChanges: {
+                    Task {
+                        guard await authorizeAction() else { return }
+                        await controller.loadPullRequestChanges(detail.summary, forceRefresh: true)
+                    }
                 }
             )
         } else {
@@ -478,6 +493,12 @@ private struct PullRequestDetailPane: View {
     let onRefreshDetail: () -> Void
     let isSubmittingComment: Bool
     let onSubmitComment: (String) -> Void
+    let changes: [PullRequestChangedFile]
+    let isLoadingChanges: Bool
+    let changesErrorMessage: String?
+    let onLoadChanges: () -> Void
+    let onRefreshChanges: () -> Void
+    @State private var selectedTab: PullRequestDetailTab = .overview
     @State private var isCommentBarExpanded = false
     @State private var commentText = ""
     @FocusState private var isCommentFocused: Bool
@@ -486,18 +507,29 @@ private struct PullRequestDetailPane: View {
         VStack(spacing: 0) {
             header
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    metadata
-                    description
-                    assignees
-                    comments
+            if selectedTab == .overview {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        metadata
+                        description
+                        assignees
+                        comments
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(20)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
+
+                commentComposer
+            } else {
+                PullRequestChangesView(
+                    files: changes,
+                    isLoading: isLoadingChanges,
+                    errorMessage: changesErrorMessage,
+                    onRefresh: onRefreshChanges,
+                    onOpenChanges: onOpenChanges
+                )
             }
 
-            commentComposer
             footer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -512,13 +544,30 @@ private struct PullRequestDetailPane: View {
             }
         }
         .onChange(of: detail.id) { _, _ in
+            selectedTab = .overview
             isCommentBarExpanded = false
             commentText = ""
         }
+        .onChange(of: selectedTab) { _, tab in
+            if tab == .changes {
+                onLoadChanges()
+            }
+        }
+    }
+
+    private var tabPicker: some View {
+        Picker("Pull request detail section", selection: $selectedTab) {
+            ForEach(PullRequestDetailTab.allCases) { tab in
+                Text(tab.rawValue).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(width: 180)
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(detail.summary.title)
                     .font(.title3.weight(.semibold))
@@ -527,7 +576,12 @@ private struct PullRequestDetailPane: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            Spacer(minLength: 8)
+            .layoutPriority(1)
+
+            Spacer(minLength: 12)
+
+            tabPicker
+
             Button("Close detail", systemImage: "xmark", action: onClose)
                 .buttonStyle(.borderless)
                 .labelStyle(.iconOnly)

@@ -371,6 +371,58 @@ final class GitHubPullRequestServiceTests: XCTestCase {
         XCTAssertEqual(summary.title, "Add provider-backed pull request actions")
     }
 
+    func testPullRequestChangesLoadsAllPagesAndDecodesPatches() async throws {
+        let client = StubPullRequestHTTPClient(responses: [
+            .json(statusCode: 200, body: """
+            [
+              {
+                "filename": "macgit/App.swift",
+                "status": "modified",
+                "additions": 2,
+                "deletions": 1,
+                "patch": "@@ -1,2 +1,3 @@\\n-old\\n+new\\n context"
+              }
+            ]
+            """, headers: [
+                "Link": "<https://api.github.com/repos/octocat/Hello-World/pulls/12/files?per_page=100&page=2>; rel=\"next\""
+            ]),
+            .json(statusCode: 200, body: """
+            [
+              {
+                "filename": "Assets/logo.png",
+                "previous_filename": "Assets/old-logo.png",
+                "status": "renamed",
+                "additions": 0,
+                "deletions": 0,
+                "patch": null
+              }
+            ]
+            """)
+        ])
+        let service = GitHubPullRequestService(httpClient: client)
+
+        let files = try await service.pullRequestChanges(
+            repository: makeRepository(),
+            token: makeToken(),
+            number: 12
+        )
+
+        XCTAssertEqual(files.count, 2)
+        XCTAssertEqual(files[0].path, "macgit/App.swift")
+        XCTAssertEqual(files[0].status, .modified)
+        XCTAssertEqual(files[0].additions, 2)
+        XCTAssertEqual(files[0].deletions, 1)
+        XCTAssertEqual(files[0].diffHunks.count, 1)
+        XCTAssertEqual(files[1].previousPath, "Assets/old-logo.png")
+        XCTAssertEqual(files[1].status, .renamed)
+        XCTAssertNil(files[1].patch)
+        XCTAssertNotNil(files[1].patchUnavailableReason)
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, [
+            "https://api.github.com/repos/octocat/Hello-World/pulls/12/files?per_page=100&page=1",
+            "https://api.github.com/repos/octocat/Hello-World/pulls/12/files?per_page=100&page=2",
+        ])
+    }
+
     func testCreatePullRequestPermissionDeniedMapsToUserFacingError() async throws {
         let client = StubPullRequestHTTPClient(responses: [
             .json(statusCode: 403, body: #"{"message":"Resource not accessible by integration"}"#)

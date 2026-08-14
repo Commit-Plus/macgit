@@ -124,6 +124,53 @@ struct GitHubPullRequestService: PullRequestProviding {
         }
     }
 
+    func pullRequestChanges(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken,
+        number: Int
+    ) async throws -> [PullRequestChangedFile] {
+        guard repository.provider == .github else {
+            throw PullRequestProviderError.unsupportedProvider
+        }
+
+        var files: [PullRequestChangedFile] = []
+        var page = 1
+
+        while page <= 30 {
+            var components = URLComponents(
+                url: apiBaseURL
+                    .appendingPathComponent("repos")
+                    .appendingPathComponent(repository.owner)
+                    .appendingPathComponent(repository.name)
+                    .appendingPathComponent("pulls")
+                    .appendingPathComponent(String(number))
+                    .appendingPathComponent("files"),
+                resolvingAgainstBaseURL: false
+            )
+            components?.queryItems = [
+                URLQueryItem(name: "per_page", value: "100"),
+                URLQueryItem(name: "page", value: String(page)),
+            ]
+            guard let url = components?.url else {
+                throw PullRequestProviderError.repositoryUnavailable
+            }
+
+            let (data, response) = try await httpClient.data(for: makeRequest(url: url, token: token))
+            try validate(response: response, data: data)
+            do {
+                let payloads = try decoder.decode([GitHubPullRequestFileResponse].self, from: data)
+                files.append(contentsOf: payloads.map(\.changedFile))
+            } catch {
+                throw PullRequestProviderError.providerMessage("GitHub returned an invalid pull request files response.")
+            }
+
+            guard hasLinkRelation("next", in: response) else { break }
+            page += 1
+        }
+
+        return files
+    }
+
     func createPullRequest(
         _ draft: PullRequestDraft,
         token: GitProviderToken
@@ -412,6 +459,49 @@ private struct GitHubCreatePullRequestPayload: Encodable {
     var body: String?
     var head: String
     var base: String
+}
+
+private struct GitHubPullRequestFileResponse: Decodable {
+    var filename: String
+    var previousFilename: String?
+    var status: String
+    var additions: Int
+    var deletions: Int
+    var patch: String?
+
+    enum CodingKeys: String, CodingKey {
+        case filename
+        case previousFilename = "previous_filename"
+        case status
+        case additions
+        case deletions
+        case patch
+    }
+
+    var changedFile: PullRequestChangedFile {
+        let normalizedPatch = patch?.isEmpty == false ? patch : nil
+        return PullRequestChangedFile(
+            path: filename,
+            previousPath: previousFilename,
+            status: fileStatus,
+            additions: additions,
+            deletions: deletions,
+            patch: normalizedPatch,
+            patchUnavailableReason: normalizedPatch == nil
+                ? "GitHub did not provide a text patch for this file. It may be binary or too large to display."
+                : nil
+        )
+    }
+
+    private var fileStatus: CommitFileStatus {
+        switch status {
+        case "added": .added
+        case "removed": .deleted
+        case "renamed": .renamed
+        case "copied": .copied
+        default: .modified
+        }
+    }
 }
 
 private struct GitHubIssueCommentCreatePayload: Encodable {

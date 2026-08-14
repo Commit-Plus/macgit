@@ -194,6 +194,52 @@ final class GitLabPullRequestServiceTests: XCTestCase {
         )
     }
 
+    func testPullRequestChangesDecodesUnifiedDiffAndUnavailableStates() async throws {
+        let client = StubGitLabPullRequestHTTPClient(responses: [
+            .json(statusCode: 200, body: """
+            [
+              {
+                "old_path": "Sources/App.swift",
+                "new_path": "Sources/App.swift",
+                "diff": "@@ -1 +1 @@\\n-old\\n+new",
+                "new_file": false,
+                "renamed_file": false,
+                "deleted_file": false,
+                "collapsed": false,
+                "too_large": false
+              },
+              {
+                "old_path": "Generated/Large.swift",
+                "new_path": "Generated/Large.swift",
+                "diff": "",
+                "new_file": false,
+                "renamed_file": false,
+                "deleted_file": false,
+                "collapsed": true,
+                "too_large": false
+              }
+            ]
+            """)
+        ])
+        let service = GitLabPullRequestService(httpClient: client)
+
+        let files = try await service.pullRequestChanges(
+            repository: makeRepository(),
+            token: makeToken(),
+            number: 7
+        )
+
+        XCTAssertEqual(files.count, 2)
+        XCTAssertEqual(files[0].status, .modified)
+        XCTAssertEqual(files[0].diffHunks.count, 1)
+        XCTAssertNil(files[1].patch)
+        XCTAssertEqual(files[1].patchUnavailableReason, "GitLab collapsed this diff because of its size.")
+        XCTAssertEqual(
+            client.requests.first?.url?.absoluteString,
+            "https://gitlab.com/api/v4/projects/group%2Fsubgroup%2Fproject/merge_requests/7/diffs?per_page=100&page=1&unidiff=true"
+        )
+    }
+
     func testForbiddenMapsToPermissionDenied() async throws {
         let client = StubGitLabPullRequestHTTPClient(responses: [
             .json(statusCode: 403, body: #"{"message":"403 Forbidden"}"#)
