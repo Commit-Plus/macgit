@@ -847,6 +847,12 @@ struct MainWindowView: View {
             onRequestCreateTag: {
                 showingNewTagSheet = true
             },
+            onRequestCreatePullRequestFromWorkspace: {
+                runRepositoryOperation("Preparing pull request...") {
+                    guard await authorizePullRequestAccess() else { return }
+                    await pullRequestController.presentCreatePullRequest()
+                }
+            },
             onRequestShowSubtreeInFinder: { path in
                 NSWorkspace.shared.activateFileViewerSelecting([path])
             },

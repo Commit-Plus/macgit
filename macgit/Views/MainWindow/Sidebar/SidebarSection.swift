@@ -16,6 +16,8 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+import SwiftUI
+
 enum SidebarSection: String, CaseIterable {
     case workspace = "WORKSPACE"
     case gitFlow = "GIT FLOW"
@@ -47,6 +49,29 @@ enum SidebarSection: String, CaseIterable {
             return "shippingbox"
         case .subtrees:
             return "square.stack.3d.up"
+        }
+    }
+
+    var iconColor: Color {
+        switch self {
+        case .workspace:
+            return .blue
+        case .branches:
+            return .purple
+        case .worktrees:
+            return .orange
+        case .tags:
+            return .yellow
+        case .remotes:
+            return .cyan
+        case .stashes:
+            return .brown
+        case .submodules:
+            return .green
+        case .subtrees:
+            return .pink
+        case .gitFlow:
+            return .secondary
         }
     }
 

@@ -30,6 +30,7 @@ struct SidebarSectionHeader<Trailing: View>: View {
             HStack(spacing: 6) {
                 Image(systemName: section.icon)
                     .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(section.iconColor)
 
                 Text(section.rawValue)
                     .font(.system(size: 11))

@@ -20,6 +20,7 @@ import SwiftUI
 
 struct SidebarWorkspaceSection: View {
     let onRequestSearch: () -> Void
+    let onRequestCreatePullRequest: () -> Void
     let showGitFlow: Bool
     let gitFlowCommandState: GitFlowCommandState
     let onGitFlowAction: (GitFlowMenuAction) -> Void
@@ -30,6 +31,7 @@ struct SidebarWorkspaceSection: View {
                 HStack(spacing: 6) {
                     Image(systemName: SidebarSection.workspace.icon)
                         .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(SidebarSection.workspace.iconColor)
 
                     Text(SidebarSection.workspace.rawValue)
                         .font(.system(size: 11))
@@ -56,6 +58,11 @@ struct SidebarWorkspaceSection: View {
                     Label(item.rawValue, systemImage: item.icon)
                         .padding(.leading, 6)
                         .tag(SidebarSelection.item(item))
+                        .contextMenu {
+                            if item == .pullRequests {
+                                Button("Create Pull Request...", systemImage: "arrow.triangle.pull", action: onRequestCreatePullRequest)
+                            }
+                        }
                 }
             }
 

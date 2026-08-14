@@ -69,6 +69,7 @@ struct SidebarView: View {
     let onRequestAddLinkSubtree: () -> Void
     let onRequestCreateBranch: () -> Void
     let onRequestCreateTag: () -> Void
+    let onRequestCreatePullRequestFromWorkspace: () -> Void
     let onRequestShowSubtreeInFinder: (URL) -> Void
     let onRequestOpenSubtreeInTerminal: (URL) -> Void
     let onRequestPullSubtree: (GitSubtreeEntry) -> Void
@@ -216,6 +217,7 @@ struct SidebarView: View {
         onRequestAddLinkSubtree: @escaping () -> Void = {},
         onRequestCreateBranch: @escaping () -> Void = {},
         onRequestCreateTag: @escaping () -> Void = {},
+        onRequestCreatePullRequestFromWorkspace: @escaping () -> Void = {},
         onRequestShowSubtreeInFinder: @escaping (URL) -> Void = { _ in },
         onRequestOpenSubtreeInTerminal: @escaping (URL) -> Void = { _ in },
         onRequestPullSubtree: @escaping (GitSubtreeEntry) -> Void = { _ in },
@@ -280,6 +282,7 @@ struct SidebarView: View {
         self.onRequestAddLinkSubtree = onRequestAddLinkSubtree
         self.onRequestCreateBranch = onRequestCreateBranch
         self.onRequestCreateTag = onRequestCreateTag
+        self.onRequestCreatePullRequestFromWorkspace = onRequestCreatePullRequestFromWorkspace
         self.onRequestShowSubtreeInFinder = onRequestShowSubtreeInFinder
         self.onRequestOpenSubtreeInTerminal = onRequestOpenSubtreeInTerminal
         self.onRequestPullSubtree = onRequestPullSubtree
@@ -675,6 +678,7 @@ struct SidebarView: View {
     private var sidebarRows: some View {
         SidebarWorkspaceSection(
             onRequestSearch: onRequestSearch,
+            onRequestCreatePullRequest: onRequestCreatePullRequestFromWorkspace,
             showGitFlow: appState.showGitFlow,
             gitFlowCommandState: gitFlowCommandState,
             onGitFlowAction: performGitFlowAction
