@@ -28,22 +28,22 @@ struct AIProvidersSettingsView: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("Status") {
-                    Label(
-                        controller.availability(for: .appleIntelligence).detail,
-                        systemImage: appleStatusImage
+                LabeledContent("Provider") {
+                    AIProviderMenu(
+                        controller: controller,
+                        restrictedProviderAccess: restrictedProviderAccess,
+                        showsConfigureAction: false
                     )
-                    .foregroundStyle(appleStatusStyle)
                 }
 
-                LabeledContent("Processing") {
-                    Text("On-device")
+                LabeledContent("Model") {
+                    Text(controller.model(for: controller.selectedDescriptor) ?? "On-device")
                         .foregroundStyle(.secondary)
                 }
             } header: {
-                Label("Apple Intelligence", systemImage: "apple.intelligence")
+                Label("Default AI Provider", systemImage: "sparkles")
             } footer: {
-                Text("Commit+ processes staged changes on this Mac. Source code is not uploaded to an AI service.")
+                Text("This provider is used for AI features throughout Commit+. It currently powers commit-message generation and will also be used by future AI actions.")
             }
 
             ForEach($drafts) { $draft in
@@ -51,6 +51,7 @@ struct AIProvidersSettingsView: View {
                 if let descriptor {
                     CloudAIProviderSettingsSection(
                         descriptor: descriptor,
+                        showsConfigurationHeading: draft.id == drafts.first?.id,
                         controller: controller,
                         accountController: accountController,
                         draft: $draft,
@@ -91,16 +92,4 @@ struct AIProvidersSettingsView: View {
         }
     }
 
-    private var appleStatusImage: String {
-        switch controller.availability(for: .appleIntelligence) {
-        case .available: "checkmark.circle.fill"
-        case .checking: "clock"
-        case .unavailable: "exclamationmark.triangle.fill"
-        case .comingSoon: "clock"
-        }
-    }
-
-    private var appleStatusStyle: HierarchicalShapeStyle {
-        controller.availability(for: .appleIntelligence).isAvailable ? .primary : .secondary
-    }
 }

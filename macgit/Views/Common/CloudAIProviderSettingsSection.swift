@@ -20,6 +20,7 @@ import SwiftUI
 
 struct CloudAIProviderSettingsSection: View {
     let descriptor: AIProviderDescriptor
+    let showsConfigurationHeading: Bool
     @ObservedObject var controller: AIProviderController
     @ObservedObject var accountController: AccountSessionController
     @Binding var draft: AIProviderConfigurationDraft
@@ -62,10 +63,18 @@ struct CloudAIProviderSettingsSection: View {
             }
 
             if (!isConfigured || draft.shouldRemoveAPIKey) && canConfigureKey {
-                SecureField(
-                    isConfigured ? "Enter a replacement API key" : "API key",
-                    text: $draft.apiKey
-                )
+                LabeledContent("API key") {
+                    SecureField(
+                        "",
+                        text: $draft.apiKey,
+                        prompt: Text(isConfigured ? "Enter a replacement API key" : "Enter API key")
+                    )
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 360)
+                    .accessibilityLabel("\(descriptor.displayName) API key")
+                }
             }
 
             HStack {
@@ -105,19 +114,50 @@ struct CloudAIProviderSettingsSection: View {
                 }
             }
         } header: {
-            HStack {
-                Label(descriptor.displayName, systemImage: descriptor.systemImage)
+            VStack(alignment: .leading, spacing: 16) {
+                if showsConfigurationHeading {
+                    Label("Provider Configuration", systemImage: "key")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
 
-                Spacer()
+                    Divider()
+                }
 
-                if canConfigureModel, !isUsingDefaultModel {
-                    Button("Reset to Default", action: resetModel)
-                        .buttonStyle(.link)
-                        .controlSize(.small)
+                HStack {
+                    HStack(spacing: 8) {
+                        if let logoAssetName = descriptor.logoAssetName {
+                            Image(logoAssetName)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 22, height: 22)
+                                .accessibilityHidden(true)
+                        } else {
+                            Image(systemName: descriptor.systemImage)
+                                .accessibilityHidden(true)
+                        }
+
+                        Text(descriptor.displayName)
+                    }
+
+                    Spacer()
+
+                    if canConfigureModel, !isUsingDefaultModel {
+                        Button("Reset to Default", action: resetModel)
+                            .buttonStyle(.link)
+                            .controlSize(.small)
+                    }
                 }
             }
         } footer: {
-            Text(footerText)
+            VStack(alignment: .leading) {
+                Text(footerText)
+
+                if descriptor.id == .openRouter {
+                    Text("Do not use openrouter/free.")
+                        .bold()
+                    + Text(" The Free Models Router can select different models that return incompatible responses.")
+                }
+            }
         }
     }
 
@@ -147,8 +187,8 @@ struct CloudAIProviderSettingsSection: View {
         }
     }
 
-    private var statusStyle: HierarchicalShapeStyle {
-        !hasPendingKey && (draft.shouldRemoveAPIKey || !isConfigured) ? .secondary : .primary
+    private var statusStyle: Color {
+        !hasPendingKey && (draft.shouldRemoveAPIKey || !isConfigured) ? .secondary : .green
     }
 
     private var footerText: String {

@@ -19,20 +19,14 @@ import SwiftUI
 
 struct AIProviderMenu: View {
     @ObservedObject var controller: AIProviderController
+    let restrictedProviderAccess: FeatureAccessDecision
+    let showsConfigureAction: Bool
 
     var body: some View {
         Menu {
             ForEach(controller.descriptors) { descriptor in
                 Button {
-                    if requiresConfiguration(descriptor) {
-                        NotificationCenter.default.post(
-                            name: .showAppSettings,
-                            object: nil,
-                            userInfo: ["section": AppSettingsSection.aiProviders.rawValue]
-                        )
-                    } else {
-                        controller.selectProvider(descriptor.id)
-                    }
+                    controller.selectProvider(descriptor.id)
                 } label: {
                     Label {
                         Text(menuTitle(for: descriptor))
@@ -42,8 +36,19 @@ struct AIProviderMenu: View {
                             : descriptor.systemImage)
                     }
                 }
-                .disabled(!descriptor.isImplemented || controller.isGenerating)
-                .help(controller.availability(for: descriptor.id).detail)
+                .disabled(
+                    !controller.canSelect(
+                        descriptor,
+                        restrictedProviderAccess: restrictedProviderAccess
+                    ) || controller.isGenerating
+                )
+                .help(menuHelp(for: descriptor))
+            }
+
+            if showsConfigureAction {
+                Divider()
+
+                Button("Configure", systemImage: "gearshape", action: openAIProviderSettings)
             }
         } label: {
             HStack(spacing: 4) {
@@ -75,14 +80,32 @@ struct AIProviderMenu: View {
         if descriptor.id == .appleIntelligence {
             return "\(descriptor.displayName) — On-device"
         }
-        if requiresConfiguration(descriptor) {
-            return "\(descriptor.displayName) — Config"
-        }
         return "\(descriptor.displayName) — \(controller.model(for: descriptor) ?? "Default")"
     }
 
-    private func requiresConfiguration(_ descriptor: AIProviderDescriptor) -> Bool {
-        descriptor.dataProcessing == .cloud
-            && !controller.isAPIKeyConfigured(for: descriptor.id)
+    private func menuHelp(for descriptor: AIProviderDescriptor) -> String {
+        if controller.canSelect(
+            descriptor,
+            restrictedProviderAccess: restrictedProviderAccess
+        ) {
+            return controller.availability(for: descriptor.id).detail
+        }
+        if descriptor.requiresProToConfigureAPIKey,
+           !restrictedProviderAccess.isAllowed {
+            return "Commit+ Pro required to use this provider."
+        }
+        if descriptor.dataProcessing == .cloud,
+           !controller.isAPIKeyConfigured(for: descriptor.id) {
+            return "Configure an API key in Settings → AI Providers."
+        }
+        return controller.availability(for: descriptor.id).detail
+    }
+
+    private func openAIProviderSettings() {
+        NotificationCenter.default.post(
+            name: .showAppSettings,
+            object: nil,
+            userInfo: ["section": AppSettingsSection.aiProviders.rawValue]
+        )
     }
 }

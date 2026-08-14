@@ -43,6 +43,25 @@ struct AIProviderDescriptor: Identifiable, Sendable {
     let defaultModel: String?
     let inputCharacterBudget: Int
     let isImplemented: Bool
+
+    var logoAssetName: String? {
+        switch id {
+        case .appleIntelligence:
+            nil
+        case .openAI:
+            "chatgpt"
+        case .anthropic:
+            "claude-icon"
+        case .googleGemini:
+            "gemini"
+        case .deepSeek:
+            "deepseek"
+        case .openRouter:
+            "openrouter"
+        default:
+            nil
+        }
+    }
 }
 
 enum AIProviderAvailability: Equatable, Sendable {

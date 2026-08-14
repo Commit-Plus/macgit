@@ -52,7 +52,12 @@ struct AppSettingsView: View {
     var body: some View {
         NavigationSplitView {
             List(AppSettingsSection.allCases, selection: $selectedSection) { section in
-                Label(section.title, systemImage: section.systemImage)
+                Label {
+                    Text(section.title)
+                } icon: {
+                    Image(systemName: section.systemImage)
+                        .foregroundStyle(section.iconColor)
+                }
                     .tag(section)
             }
             .listStyle(.sidebar)
@@ -73,10 +78,10 @@ struct AppSettingsView: View {
                 Divider()
 
                 HStack {
+                    Spacer()
+
                     Button("Cancel", action: dismiss.callAsFunction)
                         .keyboardShortcut(.cancelAction)
-
-                    Spacer()
 
                     Button("Done", action: saveChangesAndDismiss)
                         .keyboardShortcut(.defaultAction)

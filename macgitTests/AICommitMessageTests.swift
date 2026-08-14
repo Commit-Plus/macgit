@@ -81,7 +81,7 @@ final class AICommitMessageTests: XCTestCase {
 
         XCTAssertEqual(
             ids,
-            [.appleIntelligence, .openAI, .anthropic, .googleGemini, .deepSeek, .openRouter]
+            [.appleIntelligence, .openAI, .googleGemini, .anthropic, .deepSeek, .openRouter]
         )
         XCTAssertEqual(registry.provider(for: .appleIntelligence)?.descriptor.billing, .none)
         for id in [AIProviderID.openAI, .anthropic, .googleGemini, .deepSeek, .openRouter] {

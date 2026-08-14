@@ -26,6 +26,8 @@ import UniformTypeIdentifiers
 struct FileStatusView: View {
     let repositoryURL: URL
     @ObservedObject var aiProviderController: AIProviderController
+    @EnvironmentObject private var accountController: AccountSessionController
+    @EnvironmentObject private var featureAccessController: FeatureAccessController
     var syncState: SyncState? = nil
     var undoManager: GitUndoManager? = nil
     var onRequestApplyStash: (String) -> Void = { _ in }
@@ -884,7 +886,11 @@ struct FileStatusView: View {
                 }
                 .buttonStyle(GlassButtonStyle(tint: .secondary, fontSize: 10))
 
-                AIProviderMenu(controller: aiProviderController)
+                AIProviderMenu(
+                    controller: aiProviderController,
+                    restrictedProviderAccess: aiProviderAccessDecision,
+                    showsConfigureAction: true
+                )
             }
 
             // Message editor
@@ -979,6 +985,13 @@ struct FileStatusView: View {
     private var canGenerateCommitMessage: Bool {
         (!gitStatus.staged.isEmpty || !changedFiles.isEmpty)
             && !aiProviderController.isGenerating
+    }
+
+    private var aiProviderAccessDecision: FeatureAccessDecision {
+        featureAccessController.decision(
+            for: .aiBringYourOwnKey,
+            entitlement: accountController.entitlement
+        )
     }
 
     private var generateCommitMessageHelp: String {

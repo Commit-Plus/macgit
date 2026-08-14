@@ -40,12 +40,13 @@ struct AIProviderRegistry: Sendable {
                 modelStore: modelStore,
                 httpClient: httpClient
             ),
-            AnthropicCommitMessageProvider(
+            GeminiCommitMessageProvider(
                 credentialStore: credentialStore,
                 modelStore: modelStore,
                 httpClient: httpClient
             ),
-            GeminiCommitMessageProvider(
+            // Providers requiring Commit+ Pro are listed after the Free-plan providers.
+            AnthropicCommitMessageProvider(
                 credentialStore: credentialStore,
                 modelStore: modelStore,
                 httpClient: httpClient

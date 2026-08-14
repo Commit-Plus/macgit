@@ -15,7 +15,7 @@
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-import Foundation
+import SwiftUI
 
 enum AppSettingsSection: String, CaseIterable, Identifiable {
     case general
@@ -52,6 +52,19 @@ enum AppSettingsSection: String, CaseIterable, Identifiable {
         case .aiProviders: "sparkles"
         case .update: "arrow.triangle.2.circlepath"
         case .advanced: "wrench.and.screwdriver"
+        }
+    }
+
+    var iconColor: Color {
+        switch self {
+        case .general: .blue
+        case .appearance: .orange
+        case .git: .green
+        case .accounts: .indigo
+        case .integrations: .teal
+        case .aiProviders: .purple
+        case .update: .cyan
+        case .advanced: .brown
         }
     }
 

@@ -103,6 +103,25 @@ final class AIProviderController: ObservableObject {
         configuredProviderIDs.contains(id)
     }
 
+    func canSelect(
+        _ descriptor: AIProviderDescriptor,
+        restrictedProviderAccess: FeatureAccessDecision
+    ) -> Bool {
+        guard descriptor.isImplemented,
+              availability(for: descriptor.id).isAvailable else {
+            return false
+        }
+        if descriptor.dataProcessing == .cloud,
+           !isAPIKeyConfigured(for: descriptor.id) {
+            return false
+        }
+        if descriptor.requiresProToConfigureAPIKey,
+           !restrictedProviderAccess.isAllowed {
+            return false
+        }
+        return true
+    }
+
     func model(for descriptor: AIProviderDescriptor) -> String? {
         customModelsByProviderID[descriptor.id] ?? descriptor.defaultModel
     }
