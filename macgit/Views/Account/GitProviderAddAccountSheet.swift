@@ -88,6 +88,8 @@ struct GitProviderAddAccountSheet: View {
                         Text("Requires read:repository:bitbucket and write:repository:bitbucket scopes.")
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                        Button("Get API Token", action: openBitbucketAPITokenPage)
+                            .buttonStyle(.link)
                     }
                 } else {
                     LabeledContent("Username") {
@@ -162,9 +164,8 @@ struct GitProviderAddAccountSheet: View {
             }
 
             HStack {
-                Button("Need help logging into your account?") {}
+                Button("Need help logging into your account?", action: openGitProviderHelpPage)
                     .buttonStyle(.link)
-                    .disabled(true)
 
                 Spacer()
 
@@ -312,6 +313,26 @@ struct GitProviderAddAccountSheet: View {
     private func copyToPasteboard(_ value: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
+    }
+
+    private func openBitbucketAPITokenPage() {
+        guard let url = URL(string: "https://id.atlassian.com/manage-profile/security/api-tokens") else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func openGitProviderHelpPage() {
+        do {
+            let url = try CommitPlusWebConfiguration.baseURL()
+                .appending(path: "blog")
+                .appending(path: "connect-git-provider-accounts")
+            guard NSWorkspace.shared.open(url) else {
+                throw WebAccountSessionError.unableToOpenBrowser
+            }
+        } catch {
+            controller.errorMessage = error.localizedDescription
+        }
     }
 
     private func loadExistingSSHKey() {
