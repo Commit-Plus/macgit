@@ -93,6 +93,7 @@ struct MainWindowView: View {
     @EnvironmentObject var accountController: AccountSessionController
     @EnvironmentObject var featureAccessController: FeatureAccessController
     @EnvironmentObject var repositoryVisibilityController: RepositoryVisibilityController
+    @EnvironmentObject var gitFlowConfigurationSyncController: GitFlowConfigurationSyncController
     @Environment(\.openWindow) private var openWindow
     let repoSettingsStore = RepoSettingsStore.shared
     let gitFlowConfigurationStore = GitFlowConfigurationStore()
@@ -153,6 +154,7 @@ struct MainWindowView: View {
     @State var gitFlowFinishCheckpoint: GitFlowFinishCheckpoint?
     @State var gitFlowRecoveryIssue: GitFlowLocalStateIssue?
     @State var gitFlowConfigurationIssue: GitFlowLocalStateIssue?
+    @State private var didPerformInitialLoad = false
     @State var pendingGitFlowTopicKind: GitFlowTopicKind?
     @State var pendingGitFlowFinishPlan: GitFlowFinishPlan?
     @State var gitFlowCurrentBranch = ""
@@ -537,6 +539,9 @@ struct MainWindowView: View {
         .focusedSceneValue(\.gitFlowCommandState, gitFlowCommandState)
         .frame(minWidth: 900, minHeight: 600)
             .task { await performInitialLoad() }
+            .task(id: gitFlowConfigurationSyncTaskID) {
+                await reconcileGitFlowConfigurationWithCloud()
+            }
             .task(id: pullRequestAccessTaskID) {
                 guard selectedItem == .item(.pullRequests) else { return }
                 pullRequestAccessDecision = nil
@@ -1315,6 +1320,9 @@ struct MainWindowView: View {
             gitFlowWorktreeRootURL = gitCommonDirectory?.deletingLastPathComponent()
         }
         await syncState.refresh(repositoryURL: repositoryURL)
+        await MainActor.run {
+            didPerformInitialLoad = true
+        }
         syncState.startBackgroundSync(
             repositoryURL: repositoryURL,
             settings: loadedSettings,
@@ -1326,6 +1334,26 @@ struct MainWindowView: View {
             if syncState.commitBadgeCount == 0, selectedItem == .item(.fileStatus) {
                 selectedItem = .item(.history)
             }
+        }
+    }
+
+    private var gitFlowConfigurationSyncTaskID: String {
+        "\(didPerformInitialLoad)|\(accountController.account?.uid ?? "signed-out")"
+    }
+
+    private func reconcileGitFlowConfigurationWithCloud() async {
+        guard didPerformInitialLoad else { return }
+        let outcome = await gitFlowConfigurationSyncController.reconcile(
+            repositoryURL: repositoryURL,
+            fallbackConfiguration: gitFlowConfiguration,
+            uid: accountController.account?.uid
+        )
+        if let configuration = outcome.configuration {
+            gitFlowConfiguration = configuration
+            gitFlowConfigurationIssue = nil
+        }
+        if let warningMessage = outcome.warningMessage {
+            syncState.showError(warningMessage)
         }
     }
 

@@ -444,7 +444,16 @@ extension MainWindowView {
         gitFlowConfiguration = configuration
         Task {
             do {
-                try await gitFlowConfigurationStore.save(configuration, in: repositoryURL)
+                let syncWarning = try await gitFlowConfigurationSyncController.save(
+                    configuration,
+                    repositoryURL: repositoryURL,
+                    uid: accountController.account?.uid
+                )
+                if let syncWarning {
+                    await MainActor.run {
+                        syncState.showError(syncWarning)
+                    }
+                }
             } catch {
                 await MainActor.run {
                     syncState.showError(error.localizedDescription)

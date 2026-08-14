@@ -60,6 +60,10 @@ function repositoryBookmark(uid, bookmarkID, context) {
   return doc(context.firestore(), `users/${uid}/repositoryBookmarks/${bookmarkID}`);
 }
 
+function gitFlowConfiguration(uid, repositoryID, context) {
+  return doc(context.firestore(), `users/${uid}/gitFlowConfigurations/${repositoryID}`);
+}
+
 function device(uid, deviceID, context) {
   return doc(context.firestore(), `users/${uid}/devices/${deviceID}`);
 }
@@ -133,6 +137,24 @@ function validRepositoryBookmark() {
     ownerPath: "openai",
     remoteURL: "https://github.com/openai/codex.git",
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+}
+
+function validGitFlowConfiguration() {
+  return {
+    schemaVersion: 1,
+    canonicalKey: "github.com/openai/codex",
+    isEnabled: true,
+    mainBranch: "main",
+    developBranch: "develop",
+    featurePrefix: "feature/",
+    bugfixPrefix: "bugfix/",
+    releasePrefix: "release/",
+    hotfixPrefix: "hotfix/",
+    topicFinishStrategy: "mergeNoFastForward",
+    createReleaseTagOnFinish: true,
+    createHotfixTagOnFinish: true,
     updatedAt: serverTimestamp(),
   };
 }
@@ -368,6 +390,51 @@ describe("Firestore ownership rules", () => {
       { ...validRepositoryBookmark(), name: "" },
     ]) {
       await assertFails(setDoc(bookmark, invalid));
+    }
+  });
+
+  test("a user can read and write only their own Git Flow configurations", async () => {
+    const userA = deviceContext("user-a");
+    const userB = deviceContext("user-b");
+    const ownConfiguration = gitFlowConfiguration("user-a", "repository-1", userA);
+
+    await assertSucceeds(setDoc(ownConfiguration, validGitFlowConfiguration()));
+    await assertSucceeds(getDoc(ownConfiguration));
+    await assertFails(getDoc(gitFlowConfiguration("user-a", "repository-1", userB)));
+    await assertFails(setDoc(
+      gitFlowConfiguration("user-a", "repository-1", userB),
+      validGitFlowConfiguration(),
+    ));
+    await assertFails(deleteDoc(ownConfiguration));
+  });
+
+  test("Git Flow configurations reject local state, unknown fields, and malformed values", async () => {
+    const userA = deviceContext("user-a");
+    const configuration = gitFlowConfiguration("user-a", "repository-1", userA);
+
+    for (const invalid of [
+      { ...validGitFlowConfiguration(), repositoryPath: "/Users/test/Project/codex" },
+      { ...validGitFlowConfiguration(), recoveryCheckpoint: { phase: "primaryMerge" } },
+      { ...validGitFlowConfiguration(), defaultStartDestination: "newWorktree" },
+      { ...validGitFlowConfiguration(), accessToken: "must-not-be-stored" },
+      { ...validGitFlowConfiguration(), schemaVersion: 2 },
+      { ...validGitFlowConfiguration(), mainBranch: "" },
+      { ...validGitFlowConfiguration(), topicFinishStrategy: "squash" },
+      { ...validGitFlowConfiguration(), createReleaseTagOnFinish: "true" },
+      { ...validGitFlowConfiguration(), updatedAt: "now" },
+    ]) {
+      await assertFails(setDoc(configuration, invalid));
+    }
+  });
+
+  test("Git Flow configurations require every approved field", async () => {
+    const userA = deviceContext("user-a");
+    const configuration = gitFlowConfiguration("user-a", "repository-1", userA);
+
+    for (const key of Object.keys(validGitFlowConfiguration())) {
+      const missingField = validGitFlowConfiguration();
+      delete missingField[key];
+      await assertFails(setDoc(configuration, missingField));
     }
   });
 

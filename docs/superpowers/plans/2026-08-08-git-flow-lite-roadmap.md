@@ -12,17 +12,18 @@ Deliver a safe, repository-local Git Flow experience for Feature, Bugfix, Releas
 - [completed] [Phase 4: Worktree-aware Start flows with repository-local default, safe cleanup, and guarded Undo/Redo](2026-08-08-git-flow-lite-phase-4-worktree-aware-start.md), implemented on `codex/git-flow-lite-phase-4`
 - [completed] [Phase 5: Finish preferences for Feature/Bugfix Merge or Rebase and Release/Hotfix annotated tags](2026-08-08-git-flow-lite-phase-5-finish-preferences.md), implemented on `codex/git-flow-lite-phase-5`
 - [completed] [Phase 6: UX polish, branch-role badges, accessibility, feature-access enforcement, and recovery hardening](2026-08-08-git-flow-lite-phase-6-polish-and-hardening.md), implemented directly on `main`
+- [completed] [Phase 7: Account-scoped repository configuration sync](2026-08-14-git-flow-lite-phase-7-cloud-configuration-sync.md), implemented on `codex/git-flow-cloud-sync`; production Firestore rules deployed and active source verified
 
 ## Shared constraints
 
 - Use native Git commands through `GitStatusService`; do not require a `git-flow` executable.
-- Keep configuration repository-local and out of Firebase and tracked working-tree files.
+- Keep a Git-common-dir configuration as the offline/runtime source. When signed in and the repository has a canonical remote identity, mirror only durable workflow configuration to the user's Firebase account; keep it out of tracked working-tree files.
 - Feature and Bugfix share an execution policy but remain separate user-facing types.
 - Through Phase 4, Finish uses `--no-ff` only. Phase 5 may add Rebase and fast-forward for Feature/Bugfix; Release/Hotfix keep the two-target merge policy. Squash and custom workflow graphs remain out of scope.
 - Do not automatically push or delete remote refs.
 - Views remain rendering and callback surfaces; orchestration belongs in `MainWindowView`, planning in a pure planner, and Git execution in services.
 - Register Undo only after the original operation succeeds and refresh `SyncState` plus `.repositoryDidChange` after mutations.
-- Keep Git Flow configuration and recovery repository-local in the Git common directory. Repository paths, branch names, and checkpoints never sync to Firebase.
+- Keep recovery, worktree paths, current operation state, and Undo/Redo repository-local in the Git common directory. Firebase may sync durable branch-role configuration and Finish preferences, but never machine paths or in-progress checkpoints.
 - Route Git Flow access through the existing feature-policy resolver: Free public/local-only, active Pro private, and unresolved visibility fails closed. Resume/Abort remain available as recovery actions.
 - Do not launch the app. Focused tests and a successful macOS build are the verification boundary.
 

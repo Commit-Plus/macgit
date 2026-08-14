@@ -17,6 +17,12 @@ service cloud.firestore {
       allow create, update: if signedInAs(uid) && validRepositoryBookmark();
     }
 
+    match /users/{uid}/gitFlowConfigurations/{repositoryID} {
+      allow read: if signedInAs(uid);
+      allow create, update: if signedInAs(uid) && validGitFlowConfiguration();
+      allow delete: if false;
+    }
+
     match /users/{uid}/deviceAccess/summary {
       allow read: if signedInAs(uid);
       allow create, update: if signedInAs(uid) && validDeviceAccessSummary(uid);
@@ -166,6 +172,60 @@ service cloud.firestore {
         && request.resource.data.remoteURL.matches('^https://.+')
         && request.resource.data.createdAt is timestamp
         && request.resource.data.updatedAt is timestamp;
+    }
+
+    function validGitFlowConfiguration() {
+      return request.resource.data.keys().hasOnly([
+          'schemaVersion',
+          'canonicalKey',
+          'isEnabled',
+          'mainBranch',
+          'developBranch',
+          'featurePrefix',
+          'bugfixPrefix',
+          'releasePrefix',
+          'hotfixPrefix',
+          'topicFinishStrategy',
+          'createReleaseTagOnFinish',
+          'createHotfixTagOnFinish',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'schemaVersion',
+          'canonicalKey',
+          'isEnabled',
+          'mainBranch',
+          'developBranch',
+          'featurePrefix',
+          'bugfixPrefix',
+          'releasePrefix',
+          'hotfixPrefix',
+          'topicFinishStrategy',
+          'createReleaseTagOnFinish',
+          'createHotfixTagOnFinish',
+          'updatedAt'
+        ])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.canonicalKey is string
+        && request.resource.data.canonicalKey.size() > 0
+        && request.resource.data.canonicalKey.size() <= 1024
+        && request.resource.data.isEnabled is bool
+        && validGitFlowName(request.resource.data.mainBranch, false)
+        && validGitFlowName(request.resource.data.developBranch, false)
+        && validGitFlowName(request.resource.data.featurePrefix, true)
+        && validGitFlowName(request.resource.data.bugfixPrefix, true)
+        && validGitFlowName(request.resource.data.releasePrefix, true)
+        && validGitFlowName(request.resource.data.hotfixPrefix, true)
+        && request.resource.data.topicFinishStrategy in ['mergeNoFastForward', 'rebaseFastForward']
+        && request.resource.data.createReleaseTagOnFinish is bool
+        && request.resource.data.createHotfixTagOnFinish is bool
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    function validGitFlowName(value, allowsEmpty) {
+      return value is string
+        && value.size() <= 255
+        && (allowsEmpty || value.size() > 0);
     }
 
     match /entitlements/{uid} {

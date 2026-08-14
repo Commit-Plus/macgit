@@ -348,10 +348,17 @@ extension MainWindowView {
                 guard await authorizeGitFlowAccess() else { return false }
                 do {
                     try await GitFlowPlanner().validate(configuration, in: repositoryURL)
-                    try await gitFlowConfigurationStore.save(configuration, in: repositoryURL)
+                    let syncWarning = try await gitFlowConfigurationSyncController.save(
+                        configuration,
+                        repositoryURL: repositoryURL,
+                        uid: accountController.account?.uid
+                    )
                     await MainActor.run {
                         gitFlowConfiguration = configuration
                         gitFlowConfigurationIssue = nil
+                        if let syncWarning {
+                            syncState.showError(syncWarning)
+                        }
                     }
                     return true
                 } catch {

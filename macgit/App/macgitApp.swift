@@ -29,6 +29,7 @@ struct macgitApp: App {
     @StateObject private var featureAccessController: FeatureAccessController
     @StateObject private var repositoryVisibilityController: RepositoryVisibilityController
     @StateObject private var repositoryBookmarkController: RepositoryBookmarkController
+    @StateObject private var gitFlowConfigurationSyncController: GitFlowConfigurationSyncController
     @State private var showingAppSettings = false
     @State private var selectedAppSettingsSection: AppSettingsSection = .general
 
@@ -110,6 +111,13 @@ struct macgitApp: App {
                     : nil
             )
         )
+        _gitFlowConfigurationSyncController = StateObject(
+            wrappedValue: GitFlowConfigurationSyncController(
+                cloudStore: firebaseStatus == .configured
+                    ? FirestoreGitFlowConfigurationStore()
+                    : nil
+            )
+        )
     }
 
     private func performUndoMenuAction(_ action: GitUndoMenuAction) {
@@ -169,6 +177,7 @@ struct macgitApp: App {
                 .environmentObject(featureAccessController)
                 .environmentObject(repositoryVisibilityController)
                 .environmentObject(repositoryBookmarkController)
+                .environmentObject(gitFlowConfigurationSyncController)
                 .preferredColorScheme(appState.appearance.colorScheme)
                 .onOpenURL { url in
                     Task { @MainActor in
