@@ -46,7 +46,7 @@ final class PushSheetViewTests: XCTestCase {
         XCTAssertEqual(infos.map(\.local), ["feature", "local-only", "main"])
         XCTAssertEqual(infos.map(\.remote), ["feature", "", "main"])
         XCTAssertEqual(infos.map(\.isTracked), [false, false, true])
-        XCTAssertEqual(infos.map(\.isSelected), [false, false, false])
+        XCTAssertEqual(infos.map(\.isSelected), [true, false, false])
     }
 
     func testBranchPushInfoBuilderPrefersUpstreamOverMatchingRemoteBranch() {
@@ -102,5 +102,30 @@ final class PushSheetViewTests: XCTestCase {
         )
 
         XCTAssertEqual(infos.map(\.local), ["feature/x", "alpha", "develop", "main"])
+    }
+
+    func testBranchPushInfoBuilderAutoSelectsCurrentBranchWithMatchingRemoteBranch() {
+        let infos = BranchPushInfoBuilder.build(
+            localBranches: ["main", "feature/abctest", "local-only"],
+            upstreams: ["main": "origin/main"],
+            currentBranch: "feature/abctest",
+            remoteBranches: ["main", "feature/abctest"]
+        )
+
+        XCTAssertEqual(infos.map(\.local), ["feature/abctest", "local-only", "main"])
+        XCTAssertEqual(infos.map(\.remote), ["feature/abctest", "", "main"])
+        XCTAssertEqual(infos.map(\.isTracked), [false, false, true])
+        XCTAssertEqual(infos.map(\.isSelected), [true, false, false])
+    }
+
+    func testBranchPushInfoBuilderDoesNotSelectCurrentBranchWithoutRemoteBranch() {
+        let infos = BranchPushInfoBuilder.build(
+            localBranches: ["main", "feature/abctest"],
+            upstreams: ["main": "origin/main"],
+            currentBranch: "feature/abctest",
+            remoteBranches: ["main"]
+        )
+
+        XCTAssertEqual(infos.map(\.isSelected), [false, false])
     }
 }

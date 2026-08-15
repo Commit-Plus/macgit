@@ -64,7 +64,7 @@ enum BranchPushInfoBuilder {
             return BranchPushInfo(
                 local: branch,
                 remote: resolvedRemote,
-                isSelected: branch == currentBranch && isTracked,
+                isSelected: branch == currentBranch && !resolvedRemote.isEmpty,
                 isTracked: isTracked
             )
         }
