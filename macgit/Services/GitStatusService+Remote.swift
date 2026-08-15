@@ -352,6 +352,15 @@ extension GitStatusService {
         return url
     }
 
+    func defaultBranch(in repositoryURL: URL, remote: String) async -> String? {
+        let output = try? await runGit(
+            arguments: ["symbolic-ref", "--quiet", "--short", "refs/remotes/\(remote)/HEAD"],
+            in: repositoryURL
+        )
+        let branch = output?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return branch?.isEmpty == false ? branch : nil
+    }
+
     func addRemote(name: String, url: String, in repositoryURL: URL) async throws {
         _ = try await runGit(arguments: ["remote", "add", name, url], in: repositoryURL)
     }

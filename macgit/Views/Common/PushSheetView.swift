@@ -34,15 +34,36 @@ enum BranchPushInfoBuilder {
     static func build(
         localBranches: [String],
         upstreams: [String: String],
-        currentBranch: String
+        currentBranch: String,
+        remoteBranches: Set<String> = [],
+        defaultBranch: String? = nil
     ) -> [BranchPushInfo] {
-        localBranches.map { branch in
+        let prioritizedBranches = localBranches.sorted { lhs, rhs in
+            func rank(_ branch: String) -> Int {
+                if branch == currentBranch { return 0 }
+                if branch == defaultBranch { return 1 }
+                return 2
+            }
+            let lhsRank = rank(lhs)
+            let rhsRank = rank(rhs)
+            if lhsRank != rhsRank { return lhsRank < rhsRank }
+            return lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+        }
+        return prioritizedBranches.map { branch in
             let upstream = upstreams[branch]
             let isTracked = upstream != nil
-            let remoteName = upstream?.components(separatedBy: "/").dropFirst().joined(separator: "/") ?? branch
+            let upstreamRemoteName = upstream?.components(separatedBy: "/").dropFirst().joined(separator: "/")
+            let resolvedRemote: String
+            if let upstreamRemoteName, !upstreamRemoteName.isEmpty {
+                resolvedRemote = upstreamRemoteName
+            } else if remoteBranches.contains(branch) {
+                resolvedRemote = branch
+            } else {
+                resolvedRemote = ""
+            }
             return BranchPushInfo(
                 local: branch,
-                remote: isTracked ? remoteName : "",
+                remote: resolvedRemote,
                 isSelected: branch == currentBranch && isTracked,
                 isTracked: isTracked
             )
@@ -64,69 +85,76 @@ struct PushSheetView: View {
     @State private var pushTags: Bool = false
 
     @State private var isLoading = false
+    @State private var isSubmitting = false
 
     private var selectedBranches: [BranchPushInfo] {
         branches.filter { $0.isSelected }
     }
 
     private var canPush: Bool {
-        !selectedBranches.isEmpty && !selectedRemote.isEmpty
+        !selectedBranches.isEmpty && !selectedRemote.isEmpty && !isSubmitting
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Remote repository
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Push to repository:")
-                            .font(.system(size: 13))
-                        HStack(spacing: 8) {
-                            Picker("", selection: $selectedRemote) {
-                                ForEach(remotes, id: \.self) { remote in
-                                    Text(remote).tag(remote)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .onChange(of: selectedRemote) { _, newValue in
-                                Task { await loadRemoteURL(remote: newValue) }
-                            }
-
-                            if !remoteURL.isEmpty {
-                                Text(remoteURL)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
+        VStack(alignment: .leading, spacing: 0) {
+            // Remote repository
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Push to repository:")
+                    .font(.system(size: 13))
+                HStack(spacing: 8) {
+                    Picker("", selection: $selectedRemote) {
+                        ForEach(remotes, id: \.self) { remote in
+                            Text(remote).tag(remote)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: selectedRemote) { _, newValue in
+                        Task {
+                            await loadRemoteURL(remote: newValue)
+                            await loadBranches(remote: newValue)
                         }
                     }
 
-                    // Branches to push
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Branches to push")
-                            .font(.system(size: 13, weight: .semibold))
+                    if !remoteURL.isEmpty {
+                        Text(remoteURL)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 16)
 
-                        // Header row
-                        HStack(spacing: 0) {
-                            Text("Push")
-                                .font(.system(size: 11, weight: .medium))
-                                .frame(width: 40, alignment: .leading)
-                            Text("Local branch")
-                                .font(.system(size: 11, weight: .medium))
-                                .frame(minWidth: 120, alignment: .leading)
-                            Spacer()
-                            Text("Remote branch")
-                                .font(.system(size: 11, weight: .medium))
-                                .frame(minWidth: 100, alignment: .leading)
-                            Text("Track?")
-                                .font(.system(size: 11, weight: .medium))
-                                .frame(width: 50, alignment: .center)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.quaternary.opacity(0.3))
+            // Branches to push
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Branches to push")
+                    .font(.system(size: 13, weight: .semibold))
 
-                        // Branch rows
+                // Header row
+                HStack(spacing: 0) {
+                    Text("Push")
+                        .font(.system(size: 11, weight: .medium))
+                        .frame(width: 40, alignment: .leading)
+                    Text("Local branch")
+                        .font(.system(size: 11, weight: .medium))
+                        .frame(minWidth: 120, alignment: .leading)
+                    Spacer()
+                    Text("Remote branch")
+                        .font(.system(size: 11, weight: .medium))
+                        .frame(minWidth: 100, alignment: .leading)
+                    Text("Track?")
+                        .font(.system(size: 11, weight: .medium))
+                        .frame(width: 50, alignment: .center)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.quaternary.opacity(0.3))
+
+                // Branch rows
+                ScrollView {
+                    LazyVStack(spacing: 0) {
                         ForEach($branches) { $branch in
                             HStack(spacing: 0) {
                                 Toggle("", isOn: Binding(
@@ -144,7 +172,9 @@ struct PushSheetView: View {
 
                                 Text(branch.local)
                                     .font(.system(size: 12))
-                                    .frame(minWidth: 120, alignment: .leading)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .frame(minWidth: 120, maxWidth: .infinity, alignment: .leading)
 
                                 Spacer()
 
@@ -152,12 +182,14 @@ struct PushSheetView: View {
                                     Text(branch.remote)
                                         .font(.system(size: 12))
                                         .foregroundStyle(.secondary)
-                                        .frame(minWidth: 100, alignment: .leading)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                        .frame(minWidth: 100, maxWidth: .infinity, alignment: .leading)
                                 } else {
                                     Text("—")
                                         .font(.system(size: 12))
                                         .foregroundStyle(.tertiary)
-                                        .frame(minWidth: 100, alignment: .leading)
+                                        .frame(minWidth: 100, maxWidth: .infinity, alignment: .leading)
                                 }
 
                                 if branch.isTracked {
@@ -183,39 +215,43 @@ struct PushSheetView: View {
                             .padding(.vertical, 3)
                             .background(branch.isSelected ? Color.accentColor.opacity(0.08) : Color.clear)
                         }
-
-                        // Select All
-                        HStack {
-                            Toggle("Select All", isOn: Binding(
-                                get: { selectAll },
-                                set: { newValue in
-                                    selectAll = newValue
-                                    for index in branches.indices {
-                                        branches[index].isSelected = newValue
-                                        if newValue && branches[index].remote.isEmpty {
-                                            branches[index].remote = branches[index].local
-                                        }
-                                    }
-                                }
-                            ))
-                            .toggleStyle(.checkbox)
-                            .font(.system(size: 12))
-                            Spacer()
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.top, 4)
                     }
-                    .padding(12)
-                    .background(.quaternary.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                    // Push all tags
-                    Toggle("Push all tags", isOn: $pushTags)
-                        .font(.system(size: 12))
-                        .toggleStyle(.checkbox)
                 }
-                .padding(24)
+                .frame(minHeight: 240)
+
+                // Select All
+                HStack {
+                    Toggle("Select All", isOn: Binding(
+                        get: { selectAll },
+                        set: { newValue in
+                            selectAll = newValue
+                            for index in branches.indices {
+                                branches[index].isSelected = newValue
+                                if newValue && branches[index].remote.isEmpty {
+                                    branches[index].remote = branches[index].local
+                                }
+                            }
+                        }
+                    ))
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12))
+                    Spacer()
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 4)
             }
+            .padding(12)
+            .background(.quaternary.opacity(0.15))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(.horizontal, 24)
+            .frame(maxHeight: .infinity)
+
+            // Push all tags
+            Toggle("Push all tags", isOn: $pushTags)
+                .font(.system(size: 12))
+                .toggleStyle(.checkbox)
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
 
             // Buttons
             HStack(spacing: 12) {
@@ -225,27 +261,27 @@ struct PushSheetView: View {
                 }
                 .keyboardShortcut(.cancelAction)
 
-                Button("OK") {
-                    dismiss()
-                    let mappings = selectedBranches.reduce(into: [:]) { result, branch in
-                        result[branch.local] = branch.remote
+                Button {
+                    Task { await performPushIfNeeded() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isSubmitting {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text("OK")
                     }
-                    let options = GitStatusService.PushOptions(
-                        remote: selectedRemote,
-                        branches: selectedBranches.map(\.local),
-                        branchMappings: mappings,
-                        pushTags: pushTags
-                    )
-                    onPush(options)
+                    .frame(minWidth: 40)
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 13))
                 .disabled(!canPush)
             }
             .padding([.horizontal, .bottom], 24)
+            .padding(.top, 16)
         }
-        .frame(minWidth: 520, idealWidth: 560, maxWidth: 600)
-        .frame(minHeight: 380, idealHeight: 420)
+        .frame(minWidth: 640, idealWidth: 680, maxWidth: 720)
+        .frame(minHeight: 480, idealHeight: 540)
         .task {
             await loadData()
         }
@@ -255,34 +291,45 @@ struct PushSheetView: View {
         isLoading = true
         defer { isLoading = false }
 
-        async let remotesTask = GitStatusService.shared.remotes(in: repositoryURL)
-        async let branchesTask = GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
-        async let currentBranchTask = GitStatusService.shared.currentBranch(in: repositoryURL)
-        async let upstreamsTask = GitStatusService.shared.localBranchUpstreams(in: repositoryURL)
-
-        let currentRemotes = await remotesTask
-        let currentBranches = await branchesTask
+        let currentRemotes = await GitStatusService.shared.remotes(in: repositoryURL)
         let currentRemote = currentRemotes.first ?? ""
-        let currentBranch = await currentBranchTask ?? ""
-        let upstreams = await upstreamsTask
 
         await MainActor.run {
             remotes = currentRemotes
             selectedRemote = currentRemote
         }
 
+        if !currentRemote.isEmpty {
+            await loadRemoteURL(remote: currentRemote)
+        }
+        await loadBranches(remote: currentRemote)
+    }
+
+    private func loadBranches(remote: String) async {
+        async let branchesTask = GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
+        async let currentBranchTask = GitStatusService.shared.currentBranch(in: repositoryURL)
+        async let upstreamsTask = GitStatusService.shared.localBranchUpstreams(in: repositoryURL)
+        async let defaultBranchTask = remote.isEmpty ? nil : GitStatusService.shared.defaultBranch(in: repositoryURL, remote: remote)
+
+        let currentBranches = await branchesTask
+        let currentBranch = await currentBranchTask ?? ""
+        let upstreams = await upstreamsTask
+        let defaultBranch = await defaultBranchTask
+
+        let remoteBranchNames = remote.isEmpty
+            ? []
+            : await GitStatusService.shared.cachedRemoteBranches(remote: remote, in: repositoryURL)
+
         let branchInfos = BranchPushInfoBuilder.build(
             localBranches: currentBranches,
             upstreams: upstreams,
-            currentBranch: currentBranch
+            currentBranch: currentBranch,
+            remoteBranches: Set(remoteBranchNames),
+            defaultBranch: defaultBranch
         )
 
         await MainActor.run {
             branches = branchInfos
-        }
-
-        if !currentRemote.isEmpty {
-            await loadRemoteURL(remote: currentRemote)
         }
     }
 
@@ -304,6 +351,52 @@ struct PushSheetView: View {
         } catch {
             // Silently ignore upstream set failures
         }
+    }
+
+    @MainActor
+    private func performPushIfNeeded() async {
+        guard !isSubmitting else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
+
+        let branchSupport = GitBranchUndoSupport()
+        let remoteSupport = GitRemoteUndoSupport()
+
+        var branchesToPush: [BranchPushInfo] = []
+        for branch in selectedBranches {
+            let remoteBranchName = branch.remote.isEmpty ? branch.local : branch.remote
+            do {
+                let localHash = try await branchSupport.tip(of: branch.local, in: repositoryURL)
+                let remoteHash = try await remoteSupport.remoteHash(
+                    remote: selectedRemote,
+                    branch: remoteBranchName,
+                    in: repositoryURL
+                )
+                if let remoteHash, remoteHash == localHash {
+                    continue
+                }
+            } catch {
+                // Pre-flight check failed; keep the branch so git reports the real error.
+            }
+            branchesToPush.append(branch)
+        }
+
+        if branchesToPush.isEmpty && !pushTags {
+            dismiss()
+            return
+        }
+
+        dismiss()
+        let mappings = branchesToPush.reduce(into: [:]) { result, branch in
+            result[branch.local] = branch.remote
+        }
+        let options = GitStatusService.PushOptions(
+            remote: selectedRemote,
+            branches: branchesToPush.map(\.local),
+            branchMappings: mappings,
+            pushTags: pushTags
+        )
+        onPush(options)
     }
 }
 

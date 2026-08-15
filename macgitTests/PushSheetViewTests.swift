@@ -34,4 +34,73 @@ final class PushSheetViewTests: XCTestCase {
         XCTAssertEqual(infos.map(\.isTracked), [true, true, false])
         XCTAssertEqual(infos.map(\.isSelected), [true, false, false])
     }
+
+    func testBranchPushInfoBuilderShowsExistingRemoteBranchWithoutUpstream() {
+        let infos = BranchPushInfoBuilder.build(
+            localBranches: ["main", "feature", "local-only"],
+            upstreams: ["main": "origin/main"],
+            currentBranch: "feature",
+            remoteBranches: ["main", "feature"]
+        )
+
+        XCTAssertEqual(infos.map(\.local), ["feature", "local-only", "main"])
+        XCTAssertEqual(infos.map(\.remote), ["feature", "", "main"])
+        XCTAssertEqual(infos.map(\.isTracked), [false, false, true])
+        XCTAssertEqual(infos.map(\.isSelected), [false, false, false])
+    }
+
+    func testBranchPushInfoBuilderPrefersUpstreamOverMatchingRemoteBranch() {
+        let infos = BranchPushInfoBuilder.build(
+            localBranches: ["feature"],
+            upstreams: ["feature": "origin/release/feature-new"],
+            currentBranch: "feature",
+            remoteBranches: ["feature", "release/feature-new"]
+        )
+
+        XCTAssertEqual(infos.map(\.remote), ["release/feature-new"])
+        XCTAssertEqual(infos.map(\.isTracked), [true])
+    }
+
+    func testBranchPushInfoBuilderPutsCurrentAndDefaultBranchFirst() {
+        let infos = BranchPushInfoBuilder.build(
+            localBranches: ["feature/x", "develop", "zeta", "main", "alpha"],
+            upstreams: ["main": "origin/main", "develop": "origin/develop"],
+            currentBranch: "feature/x",
+            defaultBranch: "main"
+        )
+
+        XCTAssertEqual(infos.map(\.local), ["feature/x", "main", "alpha", "develop", "zeta"])
+    }
+
+    func testBranchPushInfoBuilderUsesRepositoryDefaultBranchName() {
+        let infos = BranchPushInfoBuilder.build(
+            localBranches: ["master", "feature/x", "develop", "alpha"],
+            upstreams: ["master": "origin/master"],
+            currentBranch: "feature/x",
+            defaultBranch: "master"
+        )
+
+        XCTAssertEqual(infos.map(\.local), ["feature/x", "master", "alpha", "develop"])
+    }
+
+    func testBranchPushInfoBuilderPrioritizesCurrentBeforeDefaultBranch() {
+        let infos = BranchPushInfoBuilder.build(
+            localBranches: ["main", "develop", "feature/x", "alpha"],
+            upstreams: [:],
+            currentBranch: "develop",
+            defaultBranch: "main"
+        )
+
+        XCTAssertEqual(infos.map(\.local), ["develop", "main", "alpha", "feature/x"])
+    }
+
+    func testBranchPushInfoBuilderSortsAlphabeticallyWithoutDefaultBranch() {
+        let infos = BranchPushInfoBuilder.build(
+            localBranches: ["main", "feature/x", "develop", "alpha"],
+            upstreams: [:],
+            currentBranch: "feature/x"
+        )
+
+        XCTAssertEqual(infos.map(\.local), ["feature/x", "alpha", "develop", "main"])
+    }
 }
