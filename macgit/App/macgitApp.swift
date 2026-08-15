@@ -21,6 +21,7 @@ import SwiftUI
 
 @main
 struct macgitApp: App {
+    @NSApplicationDelegateAdaptor(MacgitApplicationDelegate.self) private var applicationDelegate
     @StateObject private var appState: AppState
     @StateObject private var appUpdateController = AppUpdateController(updater: SparkleAppUpdater())
     @StateObject private var accountController: AccountSessionController
@@ -32,9 +33,10 @@ struct macgitApp: App {
     @StateObject private var gitFlowConfigurationSyncController: GitFlowConfigurationSyncController
     @State private var showingAppSettings = false
     @State private var selectedAppSettingsSection: AppSettingsSection = .general
+    @FocusedValue(\.repositoryWindowCommandState) private var repositoryWindowCommandState
 
     init() {
-        NSWindow.allowsAutomaticWindowTabbing = false
+        NSWindow.allowsAutomaticWindowTabbing = true
         let firebaseStatus = FirebaseBootstrap.configure()
         let appState = AppState.shared
         _appState = StateObject(wrappedValue: appState)
@@ -122,9 +124,8 @@ struct macgitApp: App {
 
     private func performUndoMenuAction(_ action: GitUndoMenuAction) {
         guard let commandContext = ConflictUndoCommandContext.identifier(for: NSApp.keyWindow) else {
-            NotificationCenter.default.post(
+            WindowScopedNotification.post(
                 name: .gitUndoAction,
-                object: nil,
                 userInfo: ["action": action]
             )
             return
@@ -141,6 +142,17 @@ struct macgitApp: App {
                 "action": action,
                 "commandContext": commandContext,
             ]
+        )
+    }
+
+    private var hasOpenRepository: Bool {
+        repositoryWindowCommandState?.hasOpenRepository == true
+    }
+
+    private func performToolbarAction(_ action: ToolbarAction) {
+        WindowScopedNotification.post(
+            name: .toolbarAction,
+            userInfo: ["action": action]
         )
     }
 
@@ -166,8 +178,9 @@ struct macgitApp: App {
     }
 
     var body: some Scene {
-        WindowGroup(id: "main") {
+        WindowGroup(id: "main", for: RepositoryWindowRequest.self) { request in
             ContentView(
+                request: request.wrappedValue,
                 accountController: accountController,
                 providerAccountController: providerAccountController,
                 aiProviderController: aiProviderController
@@ -215,6 +228,8 @@ struct macgitApp: App {
         }
         .defaultSize(width: 860, height: 680)
         .commands {
+            RepositoryFileCommands()
+
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates...") {
                     appUpdateController.checkForUpdates()
@@ -227,147 +242,112 @@ struct macgitApp: App {
                 .keyboardShortcut(",", modifiers: .command)
             }
 
-            CommandGroup(replacing: .newItem) {
-                Button("Clone new repo") {
-                    appState.fileMenuAction = .new
-                }
-                .keyboardShortcut("n", modifiers: .command)
-
-                Button("Open a repo") {
-                    appState.fileMenuAction = .open
-                }
-                .keyboardShortcut("o", modifiers: .command)
-            }
-
-            CommandGroup(after: .newItem) {
-                Menu("Open Recent") {
-                    let recents = Array(RecentRepositoriesStore.shared.repositories.prefix(10))
-                    if recents.isEmpty {
-                        Text("No Recent Repositories")
-                    } else {
-                        ForEach(recents) { repo in
-                            Button(repo.name) {
-                                appState.fileMenuAction = .openRecent(repo.url)
-                            }
-                        }
-                    }
-                }
-
-                Divider()
-
-                Button("Close") {
-                    appState.fileMenuAction = .close
-                }
-                .keyboardShortcut("w", modifiers: .command)
-                .disabled(!appState.hasOpenRepository)
-            }
-
             CommandGroup(replacing: .undoRedo) {
                 Button("Undo Git Action") {
                     performUndoMenuAction(.undo)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
                 .keyboardShortcut("z", modifiers: .command)
 
                 Button("Redo Git Action") {
                     performUndoMenuAction(.redo)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
                 .keyboardShortcut("z", modifiers: [.command, .shift])
             }
 
             CommandMenu("Actions") {
                 Button("Commit...") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.commit])
+                    performToolbarAction(.commit)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
                 .keyboardShortcut("c", modifiers: [.command, .shift])
 
                 Button("Pull") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.pull])
+                    performToolbarAction(.pull)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
                 .keyboardShortcut("p", modifiers: [.command, .shift])
 
                 Button("Push") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.push])
+                    performToolbarAction(.push)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
                 .keyboardShortcut("p", modifiers: [.command, .option])
 
                 Button("Fetch") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.fetch])
+                    performToolbarAction(.fetch)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
                 .keyboardShortcut("f", modifiers: [.command, .option])
 
                 Button("Add Submodule...") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.addSubmodule])
+                    performToolbarAction(.addSubmodule)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
 
                 Button("Add/Link Subtree...") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.addLinkSubtree])
+                    performToolbarAction(.addLinkSubtree)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
 
                 Divider()
 
                 Button("Branch...") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.branch])
+                    performToolbarAction(.branch)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
                 .keyboardShortcut("b", modifiers: [.command, .shift])
 
                 Button("Merge...") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.merge])
+                    performToolbarAction(.merge)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
                 .keyboardShortcut("m", modifiers: [.command, .shift])
 
                 Button("Stash...") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.stash])
+                    performToolbarAction(.stash)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
                 .keyboardShortcut("s", modifiers: [.command, .shift])
 
                 Divider()
 
                 Button("Remote") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.remote])
+                    performToolbarAction(.remote)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
 
                 Button("Show in Finder") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.finder])
+                    performToolbarAction(.finder)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
 
                 Button("Open in External Editor") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.editor])
+                    performToolbarAction(.editor)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
 
                 Button("Open in Terminal") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.terminal])
+                    performToolbarAction(.terminal)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
 
                 Button("Repository Settings...") {
-                    NotificationCenter.default.post(name: .toolbarAction, object: nil, userInfo: ["action": ToolbarAction.repositorySettings])
+                    performToolbarAction(.repositorySettings)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
 
                 Divider()
 
                 Button("Search...") {
-                    NotificationCenter.default.post(name: .showSearchModal, object: nil)
+                    WindowScopedNotification.post(name: .showSearchModal)
                 }
-                .disabled(!appState.hasOpenRepository)
+                .disabled(!hasOpenRepository)
                 .keyboardShortcut("f", modifiers: [.command, .shift])
             }
 
-            GitFlowCommands(appState: appState)
+            GitFlowCommands()
 
             CommandMenu("Accounts") {
                 AccountMenuContent(controller: accountController)

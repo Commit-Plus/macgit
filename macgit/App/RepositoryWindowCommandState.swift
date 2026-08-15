@@ -18,23 +18,18 @@
 
 import SwiftUI
 
-struct GitFlowCommands: Commands {
-    @FocusedValue(\.gitFlowCommandState) private var commandState
+struct RepositoryWindowCommandState: Equatable {
+    let hasOpenRepository: Bool
+    let hasActiveOperation: Bool
+}
 
-    var body: some Commands {
-        CommandMenu("Git Flow") {
-            GitFlowCommandMenuContent(
-                state: commandState,
-                hasOpenRepository: commandState != nil,
-                perform: perform
-            )
-        }
-    }
+struct RepositoryWindowCommandStateKey: FocusedValueKey {
+    typealias Value = RepositoryWindowCommandState
+}
 
-    private func perform(_ action: GitFlowMenuAction) {
-        WindowScopedNotification.post(
-            name: .gitFlowMenuAction,
-            userInfo: ["action": action]
-        )
+extension FocusedValues {
+    var repositoryWindowCommandState: RepositoryWindowCommandState? {
+        get { self[RepositoryWindowCommandStateKey.self] }
+        set { self[RepositoryWindowCommandStateKey.self] = newValue }
     }
 }

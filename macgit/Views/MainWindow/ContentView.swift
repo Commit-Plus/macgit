@@ -18,7 +18,6 @@
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var repositoryBookmarkController: RepositoryBookmarkController
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var accountController: AccountSessionController
@@ -31,7 +30,26 @@ struct ContentView: View {
     @State private var showingKeepCurrentAlert = false
     @State private var pendingAction: FileMenuAction?
     @State private var shouldFitScreenWhenRepositoryOpens = false
+    @State private var windowContext = RepositoryWindowContext()
     @StateObject private var operationProgress = RepositoryOperationProgress()
+
+    init(
+        request: RepositoryWindowRequest?,
+        accountController: AccountSessionController,
+        providerAccountController: GitProviderAccountController,
+        aiProviderController: AIProviderController
+    ) {
+        self.accountController = accountController
+        self.providerAccountController = providerAccountController
+        self.aiProviderController = aiProviderController
+        _repositoryURL = State(initialValue: request?.repositoryURL)
+        _showingCloneSheet = State(
+            initialValue: request?.initialPresentation == .cloneRepository
+        )
+        _shouldFitScreenWhenRepositoryOpens = State(
+            initialValue: request?.shouldFitVisibleScreen == true
+        )
+    }
 
     var body: some View {
         Group {
@@ -41,6 +59,7 @@ struct ContentView: View {
                     providerAccountController: providerAccountController,
                     aiProviderController: aiProviderController,
                     onOpenConnections: accountController.presentConnections,
+                    windowContext: windowContext,
                     operationProgress: operationProgress
                 )
                 .environmentObject(accountController)
@@ -55,12 +74,6 @@ struct ContentView: View {
                     onRepositoryOpened: { url in
                         openRepository(url, inNewWindow: false)
                     }
-                )
-                .background(
-                    WindowInitialContentSizeModifier(
-                        width: 860,
-                        height: 680
-                    )
                 )
             }
         }
@@ -109,79 +122,88 @@ struct ContentView: View {
         } message: {
             Text("Do you want to keep the current repository open?")
         }
-        .onChange(of: appState.fileMenuAction) { _, newValue in
-            guard let action = newValue else { return }
-            appState.fileMenuAction = nil
-
-            switch action {
-            case .new:
-                if repositoryURL == nil {
-                    showingCloneSheet = true
-                } else {
-                    appState.openWindowWithCloneSheet = true
-                    openWindow(id: "main")
-                }
-            case .open, .openRecent:
-                if repositoryURL != nil {
-                    pendingAction = action
-                    showingKeepCurrentAlert = true
-                } else {
-                    performAction(action, inNewWindow: false)
-                }
-            case .close:
-                repositoryURL = nil
-            }
+        .onReceive(NotificationCenter.default.publisher(for: .fileMenuAction)) { notification in
+            guard windowContext.owns(notification),
+                  let action = notification.userInfo?["action"] as? FileMenuAction else { return }
+            handleFileMenuAction(action)
         }
-        .onChange(of: repositoryURL) { _, newValue in
-            appState.hasOpenRepository = newValue != nil
-        }
-        .onAppear {
-            appState.hasOpenRepository = repositoryURL != nil
-        }
-        .task {
-            await handlePendingWindowFlags()
+        .onReceive(NotificationCenter.default.publisher(for: .newRepositoryTab)) { notification in
+            guard windowContext.owns(notification) else { return }
+            openWindow(
+                id: "main",
+                value: RepositoryWindowRequest.repositoryPicker()
+            )
         }
         .task(id: accountController.account?.uid) {
             await providerAccountController.updateMacgitAccount(accountController.account)
             await repositoryBookmarkController.updateAccount(accountController.account)
         }
-        .overlay(
-            WindowCloseButtonModifier(isVisible: repositoryURL == nil)
+        .background(
+            RepositoryWindowReader(
+                repositoryWindowContext: windowContext,
+                title: repositoryURL?.lastPathComponent ?? "Commit+"
+            )
+        )
+        .focusedSceneValue(
+            \.repositoryWindowCommandState,
+            RepositoryWindowCommandState(
+                hasOpenRepository: repositoryURL != nil,
+                hasActiveOperation: operationProgress.activeOperation != nil
+            )
+        )
+        .windowDismissBehavior(
+            operationProgress.activeOperation == nil ? .automatic : .disabled
         )
     }
 
-    private func handlePendingWindowFlags() async {
-        if let url = appState.newWindowRepoURL {
-            let shouldFitScreen = appState.newWindowRepoShouldFitScreen
-            appState.newWindowRepoURL = nil
-            appState.newWindowRepoShouldFitScreen = false
-            shouldFitScreenWhenRepositoryOpens = shouldFitScreen
-            openRepository(url, inNewWindow: false)
-        }
-        if appState.openWindowWithCloneSheet {
-            appState.openWindowWithCloneSheet = false
-            showingCloneSheet = true
+    private func handleFileMenuAction(_ action: FileMenuAction) {
+        switch action {
+        case .cloneRepository:
+            if repositoryURL == nil {
+                showingCloneSheet = true
+            } else {
+                openWindow(
+                    id: "main",
+                    value: RepositoryWindowRequest.cloneRepository()
+                )
+            }
+        case .openRepository, .openRecent:
+            if repositoryURL != nil {
+                pendingAction = action
+                showingKeepCurrentAlert = true
+            } else {
+                performAction(action, inNewWindow: false)
+            }
+        case .closeRepository:
+            repositoryURL = nil
+            showingRepoPickerSheet = false
+            showingCloneSheet = false
         }
     }
 
     private func performAction(_ action: FileMenuAction, inNewWindow: Bool) {
         switch action {
-        case .new:
+        case .cloneRepository:
             if inNewWindow {
-                appState.openWindowWithCloneSheet = true
-                openWindow(id: "main")
+                openWindow(
+                    id: "main",
+                    value: RepositoryWindowRequest.cloneRepository()
+                )
             } else {
                 showingCloneSheet = true
             }
-        case .open:
+        case .openRepository:
             if inNewWindow {
-                openWindow(id: "main")
+                openWindow(
+                    id: "main",
+                    value: RepositoryWindowRequest.repositoryPicker()
+                )
             } else {
                 showingRepoPickerSheet = true
             }
         case .openRecent(let url):
             openRepository(url, inNewWindow: inNewWindow)
-        case .close:
+        case .closeRepository:
             repositoryURL = nil
         }
     }
@@ -203,51 +225,18 @@ struct ContentView: View {
 
     private func openRepository(_ url: URL, inNewWindow: Bool) {
         if inNewWindow {
-            appState.newWindowRepoShouldFitScreen = true
-            appState.newWindowRepoURL = url
-            openWindow(id: "main")
+            openWindow(
+                id: "main",
+                value: RepositoryWindowRequest.repository(
+                    url,
+                    shouldFitVisibleScreen: true
+                )
+            )
         } else {
             shouldFitScreenWhenRepositoryOpens = true
             showingRepoPickerSheet = false
             showingCloneSheet = false
             repositoryURL = url
-        }
-    }
-}
-
-struct WindowCloseButtonModifier: NSViewRepresentable {
-    let isVisible: Bool
-    
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        view.isHidden = true
-        DispatchQueue.main.async {
-            context.coordinator.update(window: view.window)
-        }
-        return view
-    }
-    
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.update(window: nsView.window)
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(isVisible: isVisible)
-    }
-    
-    class Coordinator {
-        var isVisible: Bool
-        
-        init(isVisible: Bool) {
-            self.isVisible = isVisible
-        }
-        
-        func update(window: NSWindow?) {
-            guard let window = window else { return }
-            if let closeButton = window.standardWindowButton(.closeButton) {
-                closeButton.isHidden = !isVisible
-                closeButton.isEnabled = isVisible
-            }
         }
     }
 }

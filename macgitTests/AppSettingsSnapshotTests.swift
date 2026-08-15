@@ -94,8 +94,6 @@ final class AppSettingsSnapshotTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let state = AppState(userDefaults: defaults)
-        state.hasOpenRepository = true
-        state.newWindowRepoURL = URL(fileURLWithPath: "/tmp/repository")
 
         state.apply(
             AppSettingsSnapshot(
@@ -133,8 +131,6 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertFalse(state.showGitFlow)
         XCTAssertFalse(state.autoFetchEnabled)
         XCTAssertTrue(state.refreshOnAppActive)
-        XCTAssertTrue(state.hasOpenRepository)
-        XCTAssertEqual(state.newWindowRepoURL, URL(fileURLWithPath: "/tmp/repository"))
     }
 
     func testSyncEnabledIsDeviceLocalAndPersisted() {

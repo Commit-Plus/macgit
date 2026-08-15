@@ -89,6 +89,7 @@ struct MainWindowView: View {
     @ObservedObject var providerAccountController: GitProviderAccountController
     @ObservedObject var aiProviderController: AIProviderController
     let onOpenConnections: () -> Void
+    let windowContext: RepositoryWindowContext
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var accountController: AccountSessionController
     @EnvironmentObject var featureAccessController: FeatureAccessController
@@ -176,12 +177,14 @@ struct MainWindowView: View {
         providerAccountController: GitProviderAccountController,
         aiProviderController: AIProviderController,
         onOpenConnections: @escaping () -> Void = {},
+        windowContext: RepositoryWindowContext,
         operationProgress: RepositoryOperationProgress
     ) {
         self.repositoryURL = repositoryURL
         self.providerAccountController = providerAccountController
         self.aiProviderController = aiProviderController
         self.onOpenConnections = onOpenConnections
+        self.windowContext = windowContext
         self.operationProgress = operationProgress
         _pullRequestController = StateObject(wrappedValue: PullRequestController(
             providerAccountController: providerAccountController,
@@ -448,18 +451,19 @@ struct MainWindowView: View {
                     await syncState.refresh(repositoryURL: repositoryURL)
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: .showSearchModal)) { _ in
+            .onReceive(NotificationCenter.default.publisher(for: .showSearchModal)) { notification in
+                guard windowContext.owns(notification) else { return }
                 showingSearchModal = true
             }
             .onReceive(NotificationCenter.default.publisher(for: .toolbarAction)) { notification in
-                if let action = notification.userInfo?["action"] as? ToolbarAction {
-                    handleToolbarAction(action)
-                }
+                guard windowContext.owns(notification),
+                      let action = notification.userInfo?["action"] as? ToolbarAction else { return }
+                handleToolbarAction(action)
             }
             .onReceive(NotificationCenter.default.publisher(for: .gitUndoAction)) { notification in
-                if let action = notification.userInfo?["action"] as? GitUndoMenuAction {
-                    handleGitUndoMenuAction(action)
-                }
+                guard windowContext.owns(notification),
+                      let action = notification.userInfo?["action"] as? GitUndoMenuAction else { return }
+                handleGitUndoMenuAction(action)
             }
             .onReceive(NotificationCenter.default.publisher(for: .repositoryOperationProgressBegan)) { notification in
                 if let event = notification.userInfo?["event"] as? RepositoryOperationProgressEvent {
@@ -529,7 +533,8 @@ struct MainWindowView: View {
             windowWidth = newWidth
         }
         .toolbar { toolbarContent }
-        .navigationTitle("")
+        .toolbar(removing: .title)
+        .navigationTitle(repositoryURL.lastPathComponent)
         .focusedSceneValue(\.toolbarAction, toolbarActionBinding)
         .focusedSceneValue(\.toolbarActionState, ToolbarActionState(
             isSyncing: syncState.isAnySyncing,
@@ -580,7 +585,8 @@ struct MainWindowView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .gitFlowMenuAction)) { notification in
-            guard let action = notification.userInfo?["action"] as? GitFlowMenuAction else { return }
+            guard windowContext.owns(notification),
+                  let action = notification.userInfo?["action"] as? GitFlowMenuAction else { return }
             handleGitFlowMenuAction(action)
         }
         .onAppear {
@@ -1809,9 +1815,13 @@ struct MainWindowView: View {
     }
 
     func openWorktreeInNewWindow(at path: URL) {
-        appState.newWindowRepoShouldFitScreen = false
-        appState.newWindowRepoURL = path
-        openWindow(id: "main")
+        openWindow(
+            id: "main",
+            value: RepositoryWindowRequest.repository(
+                path,
+                shouldFitVisibleScreen: false
+            )
+        )
     }
 
     private func openWorktreeInTerminal(at path: URL) {

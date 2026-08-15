@@ -16,25 +16,13 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-import SwiftUI
+import AppKit
+@MainActor
+final class RepositoryWindowContext {
+    weak var window: NSWindow?
 
-struct GitFlowCommands: Commands {
-    @FocusedValue(\.gitFlowCommandState) private var commandState
-
-    var body: some Commands {
-        CommandMenu("Git Flow") {
-            GitFlowCommandMenuContent(
-                state: commandState,
-                hasOpenRepository: commandState != nil,
-                perform: perform
-            )
-        }
-    }
-
-    private func perform(_ action: GitFlowMenuAction) {
-        WindowScopedNotification.post(
-            name: .gitFlowMenuAction,
-            userInfo: ["action": action]
-        )
+    func owns(_ notification: Notification) -> Bool {
+        guard let targetWindow = notification.object as? NSWindow else { return false }
+        return targetWindow === window
     }
 }

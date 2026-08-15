@@ -18,13 +18,6 @@
 import SwiftUI
 import Combine
 
-enum FileMenuAction: Equatable {
-    case new
-    case open
-    case close
-    case openRecent(URL)
-}
-
 final class AppState: ObservableObject {
     static let shared = AppState()
     private static let appearanceKey = "appearance"
@@ -52,11 +45,6 @@ final class AppState: ObservableObject {
     @Published private var currentSettingsSnapshot: AppSettingsSnapshot =
         AppSettingsSnapshot(showToolbarButtonText: true, showSubmodules: false, showSubtrees: false)
 
-    @Published var fileMenuAction: FileMenuAction?
-    @Published var openWindowWithCloneSheet = false
-    @Published var newWindowRepoURL: URL?
-    @Published var newWindowRepoShouldFitScreen = false
-    @Published var hasOpenRepository = false
     @Published var appearance: AppAppearance {
         didSet {
             userDefaults.set(appearance.rawValue, forKey: Self.appearanceKey)

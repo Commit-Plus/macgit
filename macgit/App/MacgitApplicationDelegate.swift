@@ -16,25 +16,15 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-import SwiftUI
+import AppKit
 
-struct GitFlowCommands: Commands {
-    @FocusedValue(\.gitFlowCommandState) private var commandState
+extension Notification.Name {
+    static let newRepositoryTab = Notification.Name("macgit.newRepositoryTab")
+}
 
-    var body: some Commands {
-        CommandMenu("Git Flow") {
-            GitFlowCommandMenuContent(
-                state: commandState,
-                hasOpenRepository: commandState != nil,
-                perform: perform
-            )
-        }
-    }
-
-    private func perform(_ action: GitFlowMenuAction) {
-        WindowScopedNotification.post(
-            name: .gitFlowMenuAction,
-            userInfo: ["action": action]
-        )
+@MainActor
+final class MacgitApplicationDelegate: NSObject, NSApplicationDelegate {
+    @IBAction func newWindowForTab(_ sender: Any?) {
+        WindowScopedNotification.post(name: .newRepositoryTab)
     }
 }
