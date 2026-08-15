@@ -619,7 +619,9 @@ final class PullRequestController: ObservableObject {
         defer { isPerformingAction = false }
 
         do {
-            let result = try await service.createPullRequest(draft, token: token)
+            var activeDraft = draft
+            activeDraft.repository = repository
+            let result = try await service.createPullRequest(activeDraft, token: token)
             createDraftSeed = nil
             createDraftParticipants = []
             createDraftParticipantsErrorMessage = nil

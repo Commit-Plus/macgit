@@ -123,6 +123,29 @@ extension MainWindowView {
         }
     }
 
+    func submitCreatePullRequest(_ draft: PullRequestDraft) async {
+        guard await authorizePullRequestAccess() else { return }
+        do {
+            let remote = try await prepareRemoteBranchForPullRequest(branch: draft.sourceBranch)
+            await pullRequestController.loadPullRequests(
+                repositoryURL: repositoryURL,
+                remoteName: remote,
+                forceRefresh: true
+            )
+            if let errorMessage = pullRequestController.errorMessage {
+                await MainActor.run {
+                    syncState.showError(errorMessage)
+                }
+                return
+            }
+            await pullRequestController.createPullRequest(draft)
+        } catch {
+            await MainActor.run {
+                syncState.showError(error.localizedDescription)
+            }
+        }
+    }
+
     func prepareRemoteBranchForPullRequest(branch: String) async throws -> String {
         let localBranch = branch.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !localBranch.isEmpty else {

@@ -206,6 +206,9 @@ final class GitHubPullRequestServiceTests: XCTestCase {
               "base": { "label": "octocat:main", "ref": "main", "sha": "def456" },
               "assignees": [
                 { "login": "teammate", "avatar_url": "https://avatars.githubusercontent.com/u/2" }
+              ],
+              "requested_reviewers": [
+                { "login": "reviewer", "avatar_url": "https://avatars.githubusercontent.com/u/3" }
               ]
             }
             """),
@@ -255,6 +258,7 @@ final class GitHubPullRequestServiceTests: XCTestCase {
 
         XCTAssertEqual(detail.summary.number, 12)
         XCTAssertEqual(detail.body, "Adds the pull request list and detail view.")
+        XCTAssertEqual(detail.reviewers.map(\.username), ["reviewer"])
         XCTAssertEqual(detail.assignees.map(\.username), ["teammate"])
         XCTAssertEqual(detail.comments.map(\.body), [
             "Looks good to me.",

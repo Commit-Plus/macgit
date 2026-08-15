@@ -192,6 +192,9 @@ final class GitLabPullRequestServiceTests: XCTestCase {
               "author": { "username": "tanuki", "avatar_url": null },
               "assignees": [
                 { "username": "reviewer", "avatar_url": null }
+              ],
+              "reviewers": [
+                { "username": "maintainer", "avatar_url": null }
               ]
             }
             """),
@@ -218,6 +221,7 @@ final class GitLabPullRequestServiceTests: XCTestCase {
 
         XCTAssertEqual(detail.summary.number, 7)
         XCTAssertEqual(detail.body, "Preserve GitLab detail markdown.")
+        XCTAssertEqual(detail.reviewers.map(\.username), ["maintainer"])
         XCTAssertEqual(detail.assignees.map(\.username), ["reviewer"])
         XCTAssertEqual(detail.comments.count, 1)
         XCTAssertEqual(detail.comments.first?.body, "Looks good.")

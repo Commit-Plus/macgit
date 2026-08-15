@@ -130,6 +130,7 @@ struct GitLabPullRequestService: PullRequestProviding {
             return PullRequestDetail(
                 summary: response.mergeRequest.summary,
                 body: response.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                reviewers: response.reviewers.map(\.author),
                 assignees: response.assignees.map(\.author),
                 comments: try await mergeRequestNotes(
                     repository: repository,
@@ -541,17 +542,23 @@ private struct GitLabMergeRequestDetailResponse: Decodable {
     var mergeRequest: GitLabMergeRequestResponse
     var description: String?
     var assignees: [GitLabMergeRequestResponse.User]
+    var reviewers: [GitLabMergeRequestResponse.User]
 
     init(from decoder: Decoder) throws {
         mergeRequest = try GitLabMergeRequestResponse(from: decoder)
         let container = try decoder.container(keyedBy: CodingKeys.self)
         description = try container.decodeIfPresent(String.self, forKey: .description)
         assignees = try container.decodeIfPresent([GitLabMergeRequestResponse.User].self, forKey: .assignees) ?? []
+        reviewers = try container.decodeIfPresent(
+            [GitLabMergeRequestResponse.User].self,
+            forKey: .reviewers
+        ) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case description
         case assignees
+        case reviewers
     }
 }
 

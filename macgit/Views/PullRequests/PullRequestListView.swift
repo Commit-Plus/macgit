@@ -24,6 +24,8 @@ struct PullRequestListView: View {
     let repositoryURL: URL
     var accountConnectionErrorMessage: String? = nil
     var onReconnectAccount: () -> Void = {}
+    var onRequestCreatePullRequest: () -> Void = {}
+    var onSubmitCreatePullRequest: (PullRequestDraft) -> Void = { _ in }
     var authorizeAction: () async -> Bool = { true }
     @State private var pendingCommentPullRequest: PullRequestSummary?
     @State private var selectedPullRequestID: Int?
@@ -51,12 +53,7 @@ struct PullRequestListView: View {
                             )
                         }
                     },
-                    onCreate: { draft in
-                        Task {
-                            guard await authorizeAction() else { return }
-                            await controller.createPullRequest(draft)
-                        }
-                    }
+                    onCreate: onSubmitCreatePullRequest
                 )
             } else {
                 VStack(spacing: 0) {
@@ -108,7 +105,13 @@ struct PullRequestListView: View {
                             },
                             right: {
                                 detailPanel
-                                    .frame(minWidth: 420, idealWidth: 600, maxWidth: .infinity)
+                                    .frame(
+                                        minWidth: 680,
+                                        idealWidth: 820,
+                                        maxWidth: .infinity,
+                                        maxHeight: .infinity,
+                                        alignment: .top
+                                    )
                             }
                         )
                     } else {
@@ -286,12 +289,7 @@ struct PullRequestListView: View {
             .frame(width: 110)
             Toggle("Created by me", isOn: $controller.createdByMeOnly)
                 .disabled(controller.selectedProviderAccountUsername == nil)
-            Button("Create Pull Request") {
-                Task {
-                    guard await authorizeAction() else { return }
-                    await controller.presentCreatePullRequest()
-                }
-            }
+            Button("Create Pull Request", action: onRequestCreatePullRequest)
             .disabled(controller.isLoading || controller.errorMessage != nil)
             Button("Refresh pull requests", systemImage: "arrow.clockwise") {
                 Task {
@@ -537,21 +535,11 @@ private struct PullRequestDetailPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            PullRequestDetailHeader(summary: detail.summary, onClose: onClose)
+            PullRequestDetailTabBar(selection: $selectedTab)
 
             if selectedTab == .overview {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        metadata
-                        description
-                        assignees
-                        comments
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(20)
-                }
-
-                commentComposer
+                overviewContent
             } else {
                 PullRequestChangesView(
                     files: changes,
@@ -564,7 +552,7 @@ private struct PullRequestDetailPane: View {
 
             footer
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: isCommentBarExpanded) { _, isExpanded in
             if isExpanded {
                 Task { @MainActor in
@@ -587,135 +575,76 @@ private struct PullRequestDetailPane: View {
         }
     }
 
-    private var tabPicker: some View {
-        Picker("Pull request detail section", selection: $selectedTab) {
-            ForEach(PullRequestDetailTab.allCases) { tab in
-                Text(tab.rawValue).tag(tab)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(width: 180)
-    }
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(detail.summary.title)
-                    .font(.title3.weight(.semibold))
-                    .lineLimit(2)
-                Text("#\(detail.summary.number) \(detail.summary.source.ref) -> \(detail.summary.target.ref)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .layoutPriority(1)
-
-            Spacer(minLength: 12)
-
-            tabPicker
-
-            Button("Close detail", systemImage: "xmark", action: onClose)
-                .buttonStyle(.borderless)
-                .labelStyle(.iconOnly)
-                .help("Close pull request detail")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(.separator)
-                .frame(height: 0.5)
-        }
-    }
-
-    private var metadata: some View {
-        HStack(spacing: 12) {
-            Label(detail.summary.author.username, systemImage: "person")
-            Label(detail.summary.updatedAt.formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
-        }
-        .font(.subheadline)
-        .foregroundStyle(.secondary)
-    }
-
-    private var description: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Description")
-                .font(.headline)
-            if detail.body.isEmpty {
-                Text("No description")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-            } else {
-                Markdown(detail.body)
-                    .markdownTheme(.gitHub)
-                    .textSelection(.enabled)
-            }
-        }
-    }
-
-    private var assignees: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Assignees")
-                .font(.headline)
-            if detail.assignees.isEmpty {
-                Text("No assignees")
-                    .foregroundStyle(.secondary)
-            } else {
-                FlowRow(items: detail.assignees.map(\.username)) { username in
-                    Label(username, systemImage: "person.crop.circle")
-                        .font(.subheadline)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.quaternary, in: Capsule())
-                }
-            }
-        }
-    }
-
-    private var comments: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Comments")
-                .font(.headline)
-            if detail.comments.isEmpty {
-                Text("No comments")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(detail.comments) { comment in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(comment.author.username)
-                                .font(.subheadline.weight(.semibold))
-                            Text(comment.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+    private var overviewContent: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        PullRequestConversationBlock(
+                            author: detail.summary.author,
+                            date: detail.summary.createdAt,
+                            action: "opened this pull request"
+                        ) {
+                            if detail.body.isEmpty {
+                                Text("No description provided.")
+                                    .italic()
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Markdown(detail.body)
+                                    .markdownTheme(.gitHub)
+                                    .textSelection(.enabled)
+                            }
                         }
-                        Markdown(comment.body)
-                            .markdownTheme(.gitHub)
-                            .textSelection(.enabled)
+
+                        ForEach(detail.comments) { comment in
+                            PullRequestConversationBlock(
+                                author: comment.author,
+                                date: comment.createdAt,
+                                action: "commented"
+                            ) {
+                                Markdown(comment.body)
+                                    .markdownTheme(.gitHub)
+                                    .textSelection(.enabled)
+                            }
+                        }
+
+                        if detail.comments.isEmpty {
+                            Text("No comments yet")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.vertical, 8)
+                        }
+
+                        Button(action: onRefreshDetail) {
+                            if isRefreshingDetail {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Label("Refresh comments", systemImage: "arrow.clockwise")
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .disabled(isRefreshingDetail)
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                        .stroke(.separator, lineWidth: 0.5)
-                    }
+                    .padding(20)
                 }
+
+                commentComposer
             }
-            Button(action: onRefreshDetail) {
-                if isRefreshingDetail {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Label("Refresh comments", systemImage: "arrow.clockwise")
-                }
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .disabled(isRefreshingDetail)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.top, 2)
+            .frame(minWidth: 440, maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            PullRequestMetadataSidebar(
+                reviewers: detail.reviewers,
+                assignees: detail.assignees
+            )
+            .frame(width: 220)
+            .frame(maxHeight: .infinity)
         }
     }
 

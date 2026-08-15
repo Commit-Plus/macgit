@@ -1044,6 +1044,16 @@ struct MainWindowView: View {
                         repositoryURL: repositoryURL,
                         accountConnectionErrorMessage: providerAccountController.errorMessage,
                         onReconnectAccount: onOpenConnections,
+                        onRequestCreatePullRequest: {
+                            runRepositoryOperation("Preparing pull request...") {
+                                await prepareCreatePullRequest()
+                            }
+                        },
+                        onSubmitCreatePullRequest: { draft in
+                            runRepositoryOperation("Creating pull request...") {
+                                await submitCreatePullRequest(draft)
+                            }
+                        },
                         authorizeAction: { await authorizePullRequestAccess() }
                     )
                 case .denied(let denial):

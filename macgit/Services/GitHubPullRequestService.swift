@@ -160,6 +160,7 @@ struct GitHubPullRequestService: PullRequestProviding {
             return PullRequestDetail(
                 summary: response.summary,
                 body: response.body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                reviewers: response.requestedReviewers.map(\.author),
                 assignees: response.assignees.map(\.author),
                 comments: try await pullRequestComments(repository: repository, token: token, number: number),
                 changesURL: response.changesURL
@@ -695,6 +696,7 @@ private struct GitHubPullRequestDetailPayload: Decodable {
     var pullRequest: GitHubPullRequestResponse
     var body: String?
     var assignees: [GitHubPullRequestResponse.User]
+    var requestedReviewers: [GitHubPullRequestResponse.User]
 
     var summary: PullRequestSummary {
         pullRequest.summary
@@ -709,11 +711,16 @@ private struct GitHubPullRequestDetailPayload: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         body = try container.decodeIfPresent(String.self, forKey: .body)
         assignees = try container.decodeIfPresent([GitHubPullRequestResponse.User].self, forKey: .assignees) ?? []
+        requestedReviewers = try container.decodeIfPresent(
+            [GitHubPullRequestResponse.User].self,
+            forKey: .requestedReviewers
+        ) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case body
         case assignees
+        case requestedReviewers = "requested_reviewers"
     }
 }
 

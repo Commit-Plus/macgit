@@ -160,9 +160,26 @@ struct PullRequestDetail: Identifiable, Equatable, Codable {
     var id: Int { summary.id }
     var summary: PullRequestSummary
     var body: String
+    var reviewers: [PullRequestAuthor]
     var assignees: [PullRequestAuthor]
     var comments: [PullRequestComment]
     var changesURL: URL
+
+    init(
+        summary: PullRequestSummary,
+        body: String,
+        reviewers: [PullRequestAuthor] = [],
+        assignees: [PullRequestAuthor],
+        comments: [PullRequestComment],
+        changesURL: URL
+    ) {
+        self.summary = summary
+        self.body = body
+        self.reviewers = reviewers
+        self.assignees = assignees
+        self.comments = comments
+        self.changesURL = changesURL
+    }
 }
 
 enum PullRequestDraftValidationError: LocalizedError, Equatable {

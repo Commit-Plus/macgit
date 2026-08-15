@@ -16,18 +16,24 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-import Foundation
+import SwiftUI
 
-enum PullRequestDetailTab: String, CaseIterable, Identifiable {
-    case overview = "Overview"
-    case changes = "Changes"
+struct PullRequestAuthorAvatar: View {
+    let author: PullRequestAuthor
+    var size: CGFloat = 20
 
-    var id: Self { self }
-
-    var systemImage: String {
-        switch self {
-        case .overview: "bubble.left.and.bubble.right"
-        case .changes: "doc.text.magnifyingglass"
+    var body: some View {
+        AsyncImage(url: author.avatarURL) { image in
+            image
+                .resizable()
+                .scaledToFill()
+        } placeholder: {
+            Image(systemName: "person.crop.circle.fill")
+                .resizable()
+                .foregroundStyle(.secondary)
         }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .accessibilityHidden(true)
     }
 }
