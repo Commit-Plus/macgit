@@ -347,7 +347,6 @@ struct MainWindowView: View {
                     }
                 )
             }
-            .sheet(isPresented: createPullRequestSheetPresented) { createPullRequestSheet }
             .sheet(item: $pendingSearchFileOpenRequest) { request in
                 SearchFileOpenSheet(request: request) { application, rememberChoice in
                     pendingSearchFileOpenRequest = nil
@@ -863,8 +862,7 @@ struct MainWindowView: View {
             },
             onRequestCreatePullRequestFromWorkspace: {
                 runRepositoryOperation("Preparing pull request...") {
-                    guard await authorizePullRequestAccess() else { return }
-                    await pullRequestController.presentCreatePullRequest()
+                    await prepareCreatePullRequest()
                 }
             },
             onRequestShowSubtreeInFinder: { path in

@@ -89,6 +89,9 @@ final class PullRequestController: ObservableObject {
     @Published private(set) var createDraftChangedFileCount: Int?
     @Published private(set) var isLoadingCreateDraftChanges = false
     @Published private(set) var createDraftChangesErrorMessage: String?
+    @Published private(set) var createDraftParticipants: [PullRequestParticipant] = []
+    @Published private(set) var isLoadingCreateDraftParticipants = false
+    @Published private(set) var createDraftParticipantsErrorMessage: String?
     @Published private(set) var isPerformingAction = false
     @Published private(set) var accountConnectionHost: GitProviderHost?
 
@@ -119,6 +122,7 @@ final class PullRequestController: ObservableObject {
     private var changesCache: [PullRequestChangesCacheKey: CachedPullRequestChanges] = [:]
     private var changesLoadID = UUID()
     private var createDraftChangesLoadID = UUID()
+    private var createDraftParticipantsLoadID = UUID()
 
     init(
         providerAccountController: GitProviderAccountController,
@@ -499,13 +503,52 @@ final class PullRequestController: ObservableObject {
 
         createDraftSeed = PullRequestDraftSeed(
             repository: repository,
+            remoteName: activeRemoteName,
             sourceBranches: Array(Set(localBranches).union([sourceBranch])).sorted(),
             targetBranches: targetBranches,
             sourceBranch: sourceBranch,
             targetBranch: defaultTargetBranch,
             suggestedTitle: suggestedTitle(for: sourceBranch)
         )
-        await loadCreateDraftChanges(sourceBranch: sourceBranch, targetBranch: defaultTargetBranch)
+        async let changesLoad: Void = loadCreateDraftChanges(
+            sourceBranch: sourceBranch,
+            targetBranch: defaultTargetBranch
+        )
+        async let participantsLoad: Void = loadCreateDraftParticipants()
+        _ = await (changesLoad, participantsLoad)
+    }
+
+    func loadCreateDraftParticipants() async {
+        let loadID = UUID()
+        createDraftParticipantsLoadID = loadID
+        createDraftParticipants = []
+        createDraftParticipantsErrorMessage = nil
+        guard let repository = activeRepository,
+              let token = activeToken,
+              let service = services[repository.provider] else {
+            isLoadingCreateDraftParticipants = false
+            return
+        }
+
+        isLoadingCreateDraftParticipants = true
+        do {
+            let participants = try await service.pullRequestParticipants(
+                repository: repository,
+                token: token
+            )
+            guard createDraftParticipantsLoadID == loadID else { return }
+            createDraftParticipants = participants.sorted {
+                $0.username.localizedCaseInsensitiveCompare($1.username) == .orderedAscending
+            }
+            isLoadingCreateDraftParticipants = false
+        } catch is CancellationError {
+            guard createDraftParticipantsLoadID == loadID else { return }
+            isLoadingCreateDraftParticipants = false
+        } catch {
+            guard createDraftParticipantsLoadID == loadID else { return }
+            createDraftParticipantsErrorMessage = error.localizedDescription
+            isLoadingCreateDraftParticipants = false
+        }
     }
 
     func loadCreateDraftChanges(sourceBranch: String, targetBranch: String) async {
@@ -548,10 +591,14 @@ final class PullRequestController: ObservableObject {
 
     func dismissCreatePullRequest() {
         createDraftChangesLoadID = UUID()
+        createDraftParticipantsLoadID = UUID()
         createDraftSeed = nil
         createDraftChangedFileCount = nil
         createDraftChangesErrorMessage = nil
         isLoadingCreateDraftChanges = false
+        createDraftParticipants = []
+        createDraftParticipantsErrorMessage = nil
+        isLoadingCreateDraftParticipants = false
     }
 
     func createPullRequest(_ draft: PullRequestDraft) async {
@@ -572,11 +619,16 @@ final class PullRequestController: ObservableObject {
         defer { isPerformingAction = false }
 
         do {
-            _ = try await service.createPullRequest(draft, token: token)
+            let result = try await service.createPullRequest(draft, token: token)
             createDraftSeed = nil
+            createDraftParticipants = []
+            createDraftParticipantsErrorMessage = nil
             invalidateListCache()
             if let activeRemoteURLString {
                 await loadPullRequests(remoteURLString: activeRemoteURLString, page: 1, forceRefresh: true)
+            }
+            if !result.warnings.isEmpty {
+                detailErrorMessage = "Pull request #\(result.summary.number) was created, but \(result.warnings.joined(separator: " "))"
             }
         } catch {
             detailErrorMessage = error.localizedDescription

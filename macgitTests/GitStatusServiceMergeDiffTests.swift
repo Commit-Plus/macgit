@@ -57,6 +57,30 @@ final class GitStatusServiceMergeDiffTests: XCTestCase {
         XCTAssertEqual(count, 1)
     }
 
+    func testPullRequestChangedFilesAndDiffUseThreeDotComparison() async throws {
+        let repoURL = try makeRepoWithMergeCommit()
+        try runGit(["update-ref", "refs/remotes/origin/main", "main^1"], in: repoURL)
+
+        let changes = try await GitStatusService.shared.pullRequestChangedFiles(
+            sourceBranch: "feature",
+            targetBranch: "main",
+            remoteName: "origin",
+            in: repoURL
+        )
+        let hunks = try await GitStatusService.shared.pullRequestDiff(
+            for: "feature.txt",
+            sourceBranch: "feature",
+            targetBranch: "main",
+            remoteName: "origin",
+            in: repoURL
+        )
+
+        XCTAssertEqual(changes.count, 1)
+        XCTAssertEqual(changes.first?.path, "feature.txt")
+        XCTAssertEqual(changes.first?.status, .added)
+        XCTAssertTrue(hunks.flatMap(\.lines).contains { $0.type == .added && $0.text == "feature line" })
+    }
+
     // MARK: - Helpers
 
     private func makeRepoWithMergeCommit() throws -> URL {

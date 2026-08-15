@@ -138,21 +138,12 @@ extension GitStatusService {
         remoteName: String?,
         in repositoryURL: URL
     ) async throws -> Int {
-        let sourceRef = "refs/heads/\(sourceBranch)"
-        guard await gitReferenceExists(sourceRef, in: repositoryURL) else {
-            throw GitError.commandFailed("Could not find source branch '\(sourceBranch)'.")
-        }
-
-        let remoteTargetRef = remoteName.map { "refs/remotes/\($0)/\(targetBranch)" }
-        let localTargetRef = "refs/heads/\(targetBranch)"
-        let targetRef: String
-        if let remoteTargetRef, await gitReferenceExists(remoteTargetRef, in: repositoryURL) {
-            targetRef = remoteTargetRef
-        } else if await gitReferenceExists(localTargetRef, in: repositoryURL) {
-            targetRef = localTargetRef
-        } else {
-            throw GitError.commandFailed("Could not find target branch '\(targetBranch)'.")
-        }
+        let references = try await pullRequestComparisonReferences(
+            sourceBranch: sourceBranch,
+            targetBranch: targetBranch,
+            remoteName: remoteName,
+            in: repositoryURL
+        )
 
         let output = try await runGitRaw(
             arguments: [
@@ -160,12 +151,103 @@ extension GitStatusService {
                 "--name-only",
                 "-z",
                 "--find-renames",
-                "\(targetRef)...\(sourceRef)",
+                "\(references.target)...\(references.source)",
                 "--",
             ],
             in: repositoryURL
         )
         return output.split(separator: 0).count
+    }
+
+    func pullRequestChangedFiles(
+        sourceBranch: String,
+        targetBranch: String,
+        remoteName: String?,
+        in repositoryURL: URL
+    ) async throws -> [CommitFileChange] {
+        let references = try await pullRequestComparisonReferences(
+            sourceBranch: sourceBranch,
+            targetBranch: targetBranch,
+            remoteName: remoteName,
+            in: repositoryURL
+        )
+        let output = try await runGit(
+            arguments: [
+                "diff",
+                "--name-status",
+                "--find-renames",
+                "\(references.target)...\(references.source)",
+                "--",
+            ],
+            in: repositoryURL
+        )
+
+        return output.split(separator: "\n").compactMap { line in
+            let parts = line.split(separator: "\t").map(String.init)
+            guard parts.count >= 2 else { return nil }
+            let statusCode = parts[0]
+            let path = (statusCode.hasPrefix("R") || statusCode.hasPrefix("C")) && parts.count >= 3
+                ? parts[2]
+                : parts[1]
+            let status: CommitFileStatus
+            switch statusCode.first {
+            case "A": status = .added
+            case "D": status = .deleted
+            case "R": status = .renamed
+            case "C": status = .copied
+            default: status = .modified
+            }
+            return CommitFileChange(path: path, status: status)
+        }
+    }
+
+    func pullRequestDiff(
+        for file: String,
+        sourceBranch: String,
+        targetBranch: String,
+        remoteName: String?,
+        in repositoryURL: URL
+    ) async throws -> [DiffHunk] {
+        let references = try await pullRequestComparisonReferences(
+            sourceBranch: sourceBranch,
+            targetBranch: targetBranch,
+            remoteName: remoteName,
+            in: repositoryURL
+        )
+        let output = try await runGit(
+            arguments: [
+                "diff",
+                "--no-color",
+                "-U3",
+                "\(references.target)...\(references.source)",
+                "--",
+                file,
+            ],
+            in: repositoryURL
+        )
+        return DiffParser.parse(output)
+    }
+
+    private func pullRequestComparisonReferences(
+        sourceBranch: String,
+        targetBranch: String,
+        remoteName: String?,
+        in repositoryURL: URL
+    ) async throws -> (source: String, target: String) {
+        let sourceRef = "refs/heads/\(sourceBranch)"
+        guard await gitReferenceExists(sourceRef, in: repositoryURL) else {
+            throw GitError.commandFailed("Could not find source branch '\(sourceBranch)'.")
+        }
+
+        let remoteTargetRef = remoteName.map { "refs/remotes/\($0)/\(targetBranch)" }
+        let localTargetRef = "refs/heads/\(targetBranch)"
+        if let remoteTargetRef, await gitReferenceExists(remoteTargetRef, in: repositoryURL) {
+            return (sourceRef, remoteTargetRef)
+        }
+        guard await gitReferenceExists(localTargetRef, in: repositoryURL) else {
+            throw GitError.commandFailed("Could not find target branch '\(targetBranch)'.")
+        }
+        return (sourceRef, localTargetRef)
     }
 
     private func gitReferenceExists(_ reference: String, in repositoryURL: URL) async -> Bool {

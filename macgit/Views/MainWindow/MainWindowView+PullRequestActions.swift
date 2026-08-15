@@ -74,6 +74,9 @@ extension MainWindowView {
 
     func prepareCreatePullRequest(branch: String) async {
         guard await authorizePullRequestAccess() else { return }
+        await MainActor.run {
+            selectedItem = .item(.pullRequests)
+        }
         do {
             let remote = try await prepareRemoteBranchForPullRequest(branch: branch)
             await pullRequestController.loadPullRequests(repositoryURL: repositoryURL, remoteName: remote)
@@ -94,6 +97,28 @@ extension MainWindowView {
         } catch {
             await MainActor.run {
                 syncState.showError(error.localizedDescription)
+            }
+        }
+    }
+
+    func prepareCreatePullRequest() async {
+        guard await authorizePullRequestAccess() else { return }
+        await MainActor.run {
+            selectedItem = .item(.pullRequests)
+        }
+        await pullRequestController.loadPullRequests(repositoryURL: repositoryURL)
+        if let errorMessage = pullRequestController.errorMessage {
+            await MainActor.run {
+                syncState.showError(errorMessage)
+            }
+            return
+        }
+        await pullRequestController.presentCreatePullRequest()
+        if pullRequestController.createDraftSeed == nil,
+           let detailErrorMessage = pullRequestController.detailErrorMessage {
+            await MainActor.run {
+                syncState.showError(detailErrorMessage)
+                pullRequestController.detailErrorMessage = nil
             }
         }
     }

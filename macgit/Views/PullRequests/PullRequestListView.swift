@@ -29,60 +29,92 @@ struct PullRequestListView: View {
     @State private var selectedPullRequestID: Int?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-
-            if controller.isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage = controller.errorMessage {
-                VStack(spacing: 12) {
-                    Text(errorMessage)
-                        .font(.headline)
-                    if controller.needsAccountConnectionAction {
-                        Text("Pull requests require an OAuth account over HTTPS. SSH keys are only used for Git fetch and push.")
-                            .font(.callout)
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: 440)
-
-                        HStack(spacing: 10) {
-                            Button(controller.accountConnectionActionTitle, action: onReconnectAccount)
-                            Button("Reload", systemImage: "arrow.clockwise") {
-                                Task {
-                                    guard await authorizeAction() else { return }
-                                    await controller.loadPullRequests(repositoryURL: repositoryURL, forceRefresh: true)
-                                }
-                            }
-                            .disabled(controller.isLoading)
+        Group {
+            if let seed = controller.createDraftSeed {
+                CreatePullRequestView(
+                    seed: seed,
+                    repositoryURL: repositoryURL,
+                    isSubmitting: controller.isPerformingAction,
+                    changedFileCount: controller.createDraftChangedFileCount,
+                    isLoadingChanges: controller.isLoadingCreateDraftChanges,
+                    changesErrorMessage: controller.createDraftChangesErrorMessage,
+                    participants: controller.createDraftParticipants,
+                    isLoadingParticipants: controller.isLoadingCreateDraftParticipants,
+                    participantsErrorMessage: controller.createDraftParticipantsErrorMessage,
+                    onCancel: { controller.dismissCreatePullRequest() },
+                    onBranchesChanged: { sourceBranch, targetBranch in
+                        Task {
+                            guard await authorizeAction() else { return }
+                            await controller.loadCreateDraftChanges(
+                                sourceBranch: sourceBranch,
+                                targetBranch: targetBranch
+                            )
                         }
-                        if let accountConnectionErrorMessage {
-                            Text(accountConnectionErrorMessage)
-                                .font(.callout)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                }
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if controller.visibleItems.isEmpty {
-                Text(emptyStateMessage)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if selectedPullRequestID != nil {
-                PersistentHSplit(
-                    autosaveName: "PullRequestMainSplit",
-                    left: {
-                        pullRequestListPanel
                     },
-                    right: {
-                        detailPanel
-                            .frame(minWidth: 420, idealWidth: 600, maxWidth: .infinity)
+                    onCreate: { draft in
+                        Task {
+                            guard await authorizeAction() else { return }
+                            await controller.createPullRequest(draft)
+                        }
                     }
                 )
             } else {
-                pullRequestListPanel
+                VStack(spacing: 0) {
+                    header
+                    Divider()
+
+                    if controller.isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if let errorMessage = controller.errorMessage {
+                        VStack(spacing: 12) {
+                            Text(errorMessage)
+                                .font(.headline)
+                            if controller.needsAccountConnectionAction {
+                                Text("Pull requests require an OAuth account over HTTPS. SSH keys are only used for Git fetch and push.")
+                                    .font(.callout)
+                                    .multilineTextAlignment(.center)
+                                    .foregroundStyle(.tertiary)
+                                    .frame(maxWidth: 440)
+
+                                HStack(spacing: 10) {
+                                    Button(controller.accountConnectionActionTitle, action: onReconnectAccount)
+                                    Button("Reload", systemImage: "arrow.clockwise") {
+                                        Task {
+                                            guard await authorizeAction() else { return }
+                                            await controller.loadPullRequests(repositoryURL: repositoryURL, forceRefresh: true)
+                                        }
+                                    }
+                                    .disabled(controller.isLoading)
+                                }
+                                if let accountConnectionErrorMessage {
+                                    Text(accountConnectionErrorMessage)
+                                        .font(.callout)
+                                        .multilineTextAlignment(.center)
+                                }
+                            }
+                        }
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if controller.visibleItems.isEmpty {
+                        Text(emptyStateMessage)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if selectedPullRequestID != nil {
+                        PersistentHSplit(
+                            autosaveName: "PullRequestMainSplit",
+                            left: {
+                                pullRequestListPanel
+                            },
+                            right: {
+                                detailPanel
+                                    .frame(minWidth: 420, idealWidth: 600, maxWidth: .infinity)
+                            }
+                        )
+                    } else {
+                        pullRequestListPanel
+                    }
+                }
             }
         }
         .sheet(item: $pendingCommentPullRequest) { pullRequest in

@@ -421,46 +421,6 @@ extension MainWindowView {
         )
     }
 
-    var createPullRequestSheetPresented: Binding<Bool> {
-        Binding(
-            get: { pullRequestController.createDraftSeed != nil },
-            set: { isPresented in
-                if !isPresented {
-                    pullRequestController.dismissCreatePullRequest()
-                }
-            }
-        )
-    }
-
-    @ViewBuilder
-    var createPullRequestSheet: some View {
-        if let seed = pullRequestController.createDraftSeed {
-            CreatePullRequestSheet(
-                seed: seed,
-                isSubmitting: pullRequestController.isPerformingAction,
-                changedFileCount: pullRequestController.createDraftChangedFileCount,
-                isLoadingChanges: pullRequestController.isLoadingCreateDraftChanges,
-                changesErrorMessage: pullRequestController.createDraftChangesErrorMessage,
-                onCancel: { pullRequestController.dismissCreatePullRequest() },
-                onBranchesChanged: { sourceBranch, targetBranch in
-                    Task {
-                        guard await authorizePullRequestAccess() else { return }
-                        await pullRequestController.loadCreateDraftChanges(
-                            sourceBranch: sourceBranch,
-                            targetBranch: targetBranch
-                        )
-                    }
-                },
-                onCreate: { draft in
-                    Task {
-                        guard await authorizePullRequestAccess() else { return }
-                        await pullRequestController.createPullRequest(draft)
-                    }
-                }
-            )
-        }
-    }
-
     func tagMoveConfirmationSheet(for confirmation: PendingTagMoveConfirmation) -> some View {
         MoveTagConfirmationSheet(
             confirmation: confirmation,

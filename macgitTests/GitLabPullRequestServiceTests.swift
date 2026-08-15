@@ -97,7 +97,7 @@ final class GitLabPullRequestServiceTests: XCTestCase {
         ])
         let service = GitLabPullRequestService(httpClient: client)
 
-        let summary = try await service.createPullRequest(
+        let result = try await service.createPullRequest(
             makeDraft(),
             token: makeToken()
         )
@@ -114,8 +114,63 @@ final class GitLabPullRequestServiceTests: XCTestCase {
         XCTAssertEqual(json["description"], "Implements GitLab merge request actions.")
         XCTAssertEqual(json["source_branch"], "feature/gitlab-action")
         XCTAssertEqual(json["target_branch"], "main")
-        XCTAssertEqual(summary.number, 8)
-        XCTAssertEqual(summary.title, "Add GitLab action")
+        XCTAssertEqual(result.summary.number, 8)
+        XCTAssertEqual(result.summary.title, "Add GitLab action")
+    }
+
+    func testPullRequestParticipantsLoadsProjectMembers() async throws {
+        let client = StubGitLabPullRequestHTTPClient(responses: [
+            .json(statusCode: 200, body: """
+            [
+              { "id": 7, "username": "reviewer", "avatar_url": null },
+              { "id": 9, "username": "assignee", "avatar_url": "https://example.com/assignee.png" }
+            ]
+            """)
+        ])
+        let service = GitLabPullRequestService(httpClient: client)
+
+        let participants = try await service.pullRequestParticipants(
+            repository: makeRepository(),
+            token: makeToken()
+        )
+
+        XCTAssertEqual(participants.map(\.providerUserID), [7, 9])
+        XCTAssertEqual(
+            client.requests.first?.url?.absoluteString,
+            "https://gitlab.com/api/v4/projects/group%2Fsubgroup%2Fproject/members/all?per_page=100&page=1"
+        )
+    }
+
+    func testCreateMergeRequestIncludesReviewerAndAssigneeIDs() async throws {
+        let client = StubGitLabPullRequestHTTPClient(responses: [
+            .json(statusCode: 201, body: """
+            {
+              "iid": 8,
+              "title": "Add GitLab action",
+              "state": "opened",
+              "draft": false,
+              "web_url": "https://gitlab.com/group/subgroup/project/-/merge_requests/8",
+              "created_at": "2026-07-08T00:10:11Z",
+              "updated_at": "2026-07-08T00:10:11Z",
+              "merged_at": null,
+              "source_branch": "feature/gitlab-action",
+              "target_branch": "main",
+              "sha": "def456",
+              "author": { "username": "tanuki", "avatar_url": null }
+            }
+            """)
+        ])
+        let service = GitLabPullRequestService(httpClient: client)
+        var draft = try makeDraft()
+        draft.reviewers = [PullRequestParticipant(id: "7", username: "reviewer", avatarURL: nil, providerUserID: 7)]
+        draft.assignees = [PullRequestParticipant(id: "9", username: "assignee", avatarURL: nil, providerUserID: 9)]
+
+        _ = try await service.createPullRequest(draft, token: makeToken())
+
+        let body = try XCTUnwrap(client.requests.first?.httpBody)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["reviewer_ids"] as? [Int], [7])
+        XCTAssertEqual(json["assignee_ids"] as? [Int], [9])
     }
 
     func testPullRequestDetailDecodesFractionalSecondDates() async throws {
