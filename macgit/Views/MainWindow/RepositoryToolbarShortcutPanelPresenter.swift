@@ -144,7 +144,7 @@ struct RepositoryToolbarShortcutPanelPresenter: NSViewRepresentable {
         }
 
         private func makePanel() -> NSPanel {
-            let panel = NSPanel(
+            let panel = ToolbarShortcutPanelWindow(
                 contentRect: .zero,
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered,
@@ -155,8 +155,14 @@ struct RepositoryToolbarShortcutPanelPresenter: NSViewRepresentable {
             panel.hasShadow = false
             panel.hidesOnDeactivate = false
             panel.isReleasedWhenClosed = false
-            panel.becomesKeyOnlyIfNeeded = true
             return panel
+        }
+
+        private final class ToolbarShortcutPanelWindow: NSPanel {
+            // Preserve the repository window as key so AppKit keeps its
+            // window-scoped tab and full-screen commands in the View menu.
+            override var canBecomeKey: Bool { false }
+            override var canBecomeMain: Bool { false }
         }
 
         private func observeWindow(_ window: NSWindow) {

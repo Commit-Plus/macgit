@@ -81,9 +81,6 @@ struct RepositoryToolbarShortcutPanel: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Toolbar Shortcuts")
                     .font(.headline)
-                Text("Run an action or choose which ones stay visible.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
 
             Spacer()
