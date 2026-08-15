@@ -24,65 +24,100 @@ struct PullRequestListView: View {
     let repositoryURL: URL
     var accountConnectionErrorMessage: String? = nil
     var onReconnectAccount: () -> Void = {}
+    var onRequestCreatePullRequest: () -> Void = {}
+    var onSubmitCreatePullRequest: (PullRequestDraft) -> Void = { _ in }
     var authorizeAction: () async -> Bool = { true }
     @State private var pendingCommentPullRequest: PullRequestSummary?
     @State private var selectedPullRequestID: Int?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-
-            if controller.isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage = controller.errorMessage {
-                VStack(spacing: 12) {
-                    Text(errorMessage)
-                        .font(.headline)
-                    if controller.needsAccountConnectionAction {
-                        Text("Pull requests require an OAuth account over HTTPS. SSH keys are only used for Git fetch and push.")
-                            .font(.callout)
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: 440)
-
-                        HStack(spacing: 10) {
-                            Button(controller.accountConnectionActionTitle, action: onReconnectAccount)
-                            Button("Reload", systemImage: "arrow.clockwise") {
-                                Task {
-                                    guard await authorizeAction() else { return }
-                                    await controller.loadPullRequests(repositoryURL: repositoryURL, forceRefresh: true)
-                                }
-                            }
-                            .disabled(controller.isLoading)
+        Group {
+            if let seed = controller.createDraftSeed {
+                CreatePullRequestView(
+                    seed: seed,
+                    repositoryURL: repositoryURL,
+                    isSubmitting: controller.isPerformingAction,
+                    changedFileCount: controller.createDraftChangedFileCount,
+                    isLoadingChanges: controller.isLoadingCreateDraftChanges,
+                    changesErrorMessage: controller.createDraftChangesErrorMessage,
+                    participants: controller.createDraftParticipants,
+                    isLoadingParticipants: controller.isLoadingCreateDraftParticipants,
+                    participantsErrorMessage: controller.createDraftParticipantsErrorMessage,
+                    onCancel: { controller.dismissCreatePullRequest() },
+                    onBranchesChanged: { sourceBranch, targetBranch in
+                        Task {
+                            guard await authorizeAction() else { return }
+                            await controller.loadCreateDraftChanges(
+                                sourceBranch: sourceBranch,
+                                targetBranch: targetBranch
+                            )
                         }
-                        if let accountConnectionErrorMessage {
-                            Text(accountConnectionErrorMessage)
-                                .font(.callout)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                }
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if controller.visibleItems.isEmpty {
-                Text(emptyStateMessage)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if selectedPullRequestID != nil {
-                PersistentHSplit(
-                    autosaveName: "PullRequestMainSplit",
-                    left: {
-                        pullRequestListPanel
                     },
-                    right: {
-                        detailPanel
-                            .frame(minWidth: 420, idealWidth: 600, maxWidth: .infinity)
-                    }
+                    onCreate: onSubmitCreatePullRequest
                 )
             } else {
-                pullRequestListPanel
+                VStack(spacing: 0) {
+                    header
+                    Divider()
+
+                    if controller.isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if let errorMessage = controller.errorMessage {
+                        VStack(spacing: 12) {
+                            Text(errorMessage)
+                                .font(.headline)
+                            if controller.needsAccountConnectionAction {
+                                Text("Pull requests require an OAuth account over HTTPS. SSH keys are only used for Git fetch and push.")
+                                    .font(.callout)
+                                    .multilineTextAlignment(.center)
+                                    .foregroundStyle(.tertiary)
+                                    .frame(maxWidth: 440)
+
+                                HStack(spacing: 10) {
+                                    Button(controller.accountConnectionActionTitle, action: onReconnectAccount)
+                                    Button("Reload", systemImage: "arrow.clockwise") {
+                                        Task {
+                                            guard await authorizeAction() else { return }
+                                            await controller.loadPullRequests(repositoryURL: repositoryURL, forceRefresh: true)
+                                        }
+                                    }
+                                    .disabled(controller.isLoading)
+                                }
+                                if let accountConnectionErrorMessage {
+                                    Text(accountConnectionErrorMessage)
+                                        .font(.callout)
+                                        .multilineTextAlignment(.center)
+                                }
+                            }
+                        }
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if controller.visibleItems.isEmpty {
+                        Text(emptyStateMessage)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if selectedPullRequestID != nil {
+                        PersistentHSplit(
+                            autosaveName: "PullRequestMainSplit",
+                            left: {
+                                pullRequestListPanel
+                            },
+                            right: {
+                                detailPanel
+                                    .frame(
+                                        minWidth: 680,
+                                        idealWidth: 820,
+                                        maxWidth: .infinity,
+                                        maxHeight: .infinity,
+                                        alignment: .top
+                                    )
+                            }
+                        )
+                    } else {
+                        pullRequestListPanel
+                    }
+                }
             }
         }
         .sheet(item: $pendingCommentPullRequest) { pullRequest in
@@ -182,12 +217,6 @@ struct PullRequestListView: View {
                         controller.openInBrowser(detail.summary)
                     }
                 },
-                onOpenChanges: {
-                    Task {
-                        guard await authorizeAction() else { return }
-                        controller.openChangesInBrowser(detail)
-                    }
-                },
                 isRefreshingDetail: controller.isLoadingDetail,
                 onRefreshDetail: {
                     Task {
@@ -215,6 +244,13 @@ struct PullRequestListView: View {
                     Task {
                         guard await authorizeAction() else { return }
                         await controller.loadPullRequestChanges(detail.summary, forceRefresh: true)
+                    }
+                },
+                isMerging: controller.isPerformingAction,
+                onMerge: {
+                    Task {
+                        guard await authorizeAction() else { return }
+                        await controller.merge(detail.summary)
                     }
                 }
             )
@@ -254,12 +290,7 @@ struct PullRequestListView: View {
             .frame(width: 110)
             Toggle("Created by me", isOn: $controller.createdByMeOnly)
                 .disabled(controller.selectedProviderAccountUsername == nil)
-            Button("Create Pull Request") {
-                Task {
-                    guard await authorizeAction() else { return }
-                    await controller.presentCreatePullRequest()
-                }
-            }
+            Button("Create Pull Request", action: onRequestCreatePullRequest)
             .disabled(controller.isLoading || controller.errorMessage != nil)
             Button("Refresh pull requests", systemImage: "arrow.clockwise") {
                 Task {
@@ -337,11 +368,11 @@ private struct PullRequestRow: View {
     let onComment: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 6) {
             Text("#\(summary.number)")
                 .font(.subheadline.monospacedDigit())
                 .foregroundStyle(.secondary)
-                .frame(width: 42, alignment: .leading)
+                .frame(width: 18, alignment: .leading)
 
             Image(systemName: pullRequestIcon)
                 .font(.system(size: 15, weight: .semibold))
@@ -488,7 +519,6 @@ private struct PullRequestDetailPane: View {
     let detail: PullRequestDetail
     let onClose: () -> Void
     let onOpenPullRequest: () -> Void
-    let onOpenChanges: () -> Void
     let isRefreshingDetail: Bool
     let onRefreshDetail: () -> Void
     let isSubmittingComment: Bool
@@ -498,41 +528,33 @@ private struct PullRequestDetailPane: View {
     let changesErrorMessage: String?
     let onLoadChanges: () -> Void
     let onRefreshChanges: () -> Void
+    let isMerging: Bool
+    let onMerge: () -> Void
     @State private var selectedTab: PullRequestDetailTab = .overview
     @State private var isCommentBarExpanded = false
+    @State private var isConfirmingMerge = false
     @State private var commentText = ""
     @FocusState private var isCommentFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            PullRequestDetailHeader(summary: detail.summary, onClose: onClose)
+            PullRequestDetailTabBar(selection: $selectedTab)
 
             if selectedTab == .overview {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        metadata
-                        description
-                        assignees
-                        comments
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(20)
-                }
-
-                commentComposer
+                overviewContent
             } else {
                 PullRequestChangesView(
                     files: changes,
                     isLoading: isLoadingChanges,
                     errorMessage: changesErrorMessage,
-                    onRefresh: onRefreshChanges,
-                    onOpenChanges: onOpenChanges
+                    onRefresh: onRefreshChanges
                 )
             }
 
             footer
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: isCommentBarExpanded) { _, isExpanded in
             if isExpanded {
                 Task { @MainActor in
@@ -553,144 +575,97 @@ private struct PullRequestDetailPane: View {
                 onLoadChanges()
             }
         }
-    }
-
-    private var tabPicker: some View {
-        Picker("Pull request detail section", selection: $selectedTab) {
-            ForEach(PullRequestDetailTab.allCases) { tab in
-                Text(tab.rawValue).tag(tab)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(width: 180)
-    }
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(detail.summary.title)
-                    .font(.title3.weight(.semibold))
-                    .lineLimit(2)
-                Text("#\(detail.summary.number) \(detail.summary.source.ref) -> \(detail.summary.target.ref)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .layoutPriority(1)
-
-            Spacer(minLength: 12)
-
-            tabPicker
-
-            Button("Close detail", systemImage: "xmark", action: onClose)
-                .buttonStyle(.borderless)
-                .labelStyle(.iconOnly)
-                .help("Close pull request detail")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(.separator)
-                .frame(height: 0.5)
+        .alert("Merge Pull Request?", isPresented: $isConfirmingMerge) {
+            Button("Cancel", role: .cancel) {}
+            Button("Merge Pull Request", action: onMerge)
+        } message: {
+            Text("Merge #\(detail.summary.number) into \(detail.summary.target.ref)? This updates the remote repository.")
         }
     }
 
-    private var metadata: some View {
-        HStack(spacing: 12) {
-            Label(detail.summary.author.username, systemImage: "person")
-            Label(detail.summary.updatedAt.formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
-        }
-        .font(.subheadline)
-        .foregroundStyle(.secondary)
-    }
-
-    private var description: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Description")
-                .font(.headline)
-            if detail.body.isEmpty {
-                Text("No description")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-            } else {
-                Markdown(detail.body)
-                    .markdownTheme(.gitHub)
-                    .textSelection(.enabled)
-            }
-        }
-    }
-
-    private var assignees: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Assignees")
-                .font(.headline)
-            if detail.assignees.isEmpty {
-                Text("No assignees")
-                    .foregroundStyle(.secondary)
-            } else {
-                FlowRow(items: detail.assignees.map(\.username)) { username in
-                    Label(username, systemImage: "person.crop.circle")
-                        .font(.subheadline)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.quaternary, in: Capsule())
-                }
-            }
-        }
-    }
-
-    private var comments: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Comments")
-                .font(.headline)
-            if detail.comments.isEmpty {
-                Text("No comments")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(detail.comments) { comment in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(comment.author.username)
-                                .font(.subheadline.weight(.semibold))
-                            Text(comment.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+    private var overviewContent: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        PullRequestConversationBlock(
+                            author: detail.summary.author,
+                            date: detail.summary.createdAt,
+                            action: "opened this pull request"
+                        ) {
+                            if detail.body.isEmpty {
+                                Text("No description provided.")
+                                    .italic()
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Markdown(detail.body)
+                                    .markdownTheme(.gitHub)
+                                    .textSelection(.enabled)
+                            }
                         }
-                        Markdown(comment.body)
-                            .markdownTheme(.gitHub)
-                            .textSelection(.enabled)
+
+                        ForEach(detail.comments) { comment in
+                            PullRequestConversationBlock(
+                                author: comment.author,
+                                date: comment.createdAt,
+                                action: "commented"
+                            ) {
+                                Markdown(comment.body)
+                                    .markdownTheme(.gitHub)
+                                    .textSelection(.enabled)
+                            }
+                        }
+
+                        if detail.comments.isEmpty {
+                            Text("No comments yet")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.vertical, 8)
+                        }
+
+                        Button(action: onRefreshDetail) {
+                            if isRefreshingDetail {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Label("Refresh comments", systemImage: "arrow.clockwise")
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .disabled(isRefreshingDetail)
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                        .stroke(.separator, lineWidth: 0.5)
-                    }
+                    .padding(20)
                 }
+
+                commentComposer
             }
-            Button(action: onRefreshDetail) {
-                if isRefreshingDetail {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Label("Refresh comments", systemImage: "arrow.clockwise")
-                }
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .disabled(isRefreshingDetail)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.top, 2)
+            .frame(minWidth: 440, maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            PullRequestMetadataSidebar(
+                reviewers: detail.reviewers,
+                assignees: detail.assignees
+            )
+            .frame(width: 220)
+            .frame(maxHeight: .infinity)
         }
     }
 
     private var footer: some View {
         HStack {
             Button("Open PR", systemImage: "safari", action: onOpenPullRequest)
-            Button("Open Changes", systemImage: "doc.text.magnifyingglass", action: onOpenChanges)
+            Button("Merge Pull Request", systemImage: "arrow.triangle.merge") {
+                isConfirmingMerge = true
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+            .disabled(!canMerge || isMerging)
+            .help(mergeButtonHelp)
             Spacer()
             Button("Close", action: onClose)
                 .keyboardShortcut(.cancelAction)
@@ -702,6 +677,20 @@ private struct PullRequestDetailPane: View {
                 .fill(.separator)
                 .frame(height: 0.5)
         }
+    }
+
+    private var canMerge: Bool {
+        detail.summary.state == .open && detail.summary.mergeReadiness != .blocked
+    }
+
+    private var mergeButtonHelp: String {
+        if detail.summary.state != .open {
+            return "Only open pull requests can be merged."
+        }
+        if detail.summary.mergeReadiness == .blocked {
+            return "This pull request is currently blocked from merging."
+        }
+        return "Merge this pull request into \(detail.summary.target.ref)."
     }
 
     private var commentComposer: some View {

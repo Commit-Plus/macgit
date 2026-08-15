@@ -347,7 +347,6 @@ struct MainWindowView: View {
                     }
                 )
             }
-            .sheet(isPresented: createPullRequestSheetPresented) { createPullRequestSheet }
             .sheet(item: $pendingSearchFileOpenRequest) { request in
                 SearchFileOpenSheet(request: request) { application, rememberChoice in
                     pendingSearchFileOpenRequest = nil
@@ -863,8 +862,7 @@ struct MainWindowView: View {
             },
             onRequestCreatePullRequestFromWorkspace: {
                 runRepositoryOperation("Preparing pull request...") {
-                    guard await authorizePullRequestAccess() else { return }
-                    await pullRequestController.presentCreatePullRequest()
+                    await prepareCreatePullRequest()
                 }
             },
             onRequestShowSubtreeInFinder: { path in
@@ -1046,6 +1044,16 @@ struct MainWindowView: View {
                         repositoryURL: repositoryURL,
                         accountConnectionErrorMessage: providerAccountController.errorMessage,
                         onReconnectAccount: onOpenConnections,
+                        onRequestCreatePullRequest: {
+                            runRepositoryOperation("Preparing pull request...") {
+                                await prepareCreatePullRequest()
+                            }
+                        },
+                        onSubmitCreatePullRequest: { draft in
+                            runRepositoryOperation("Creating pull request...") {
+                                await submitCreatePullRequest(draft)
+                            }
+                        },
                         authorizeAction: { await authorizePullRequestAccess() }
                     )
                 case .denied(let denial):
@@ -1203,6 +1211,8 @@ struct MainWindowView: View {
             .padding(.horizontal, 12)
         }
 
+        ToolbarSpacer(.flexible)
+
         if windowWidth >= Self.pinnedToolbarShortcutsMinimumWindowWidth,
            !appState.pinnedRepositoryToolbarShortcuts.isEmpty {
             ToolbarItem(placement: .automatic) {
@@ -1217,16 +1227,21 @@ struct MainWindowView: View {
                         )
                     }
                 }
+                .controlSize(.large)
+                // .padding(.horizontal, -6)
             }
-        }
 
-        ToolbarSpacer(.flexible)
+            ToolbarSpacer(.fixed)
+        }
 
         ToolbarItem(placement: .automatic) {
             Button("Toolbar shortcuts", systemImage: "sidebar.right") {
                 showingToolbarShortcutPanel.toggle()
             }
+            .controlSize(.large)
             .labelStyle(.iconOnly)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
             .help(showingToolbarShortcutPanel ? "Hide Toolbar Shortcuts" : "Show Toolbar Shortcuts")
             .background {
                 RepositoryToolbarShortcutPanelPresenter(

@@ -34,6 +34,53 @@ struct GitHubPullRequestService: PullRequestProviding {
         self.decoder = decoder
     }
 
+    func pullRequestParticipants(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws -> [PullRequestParticipant] {
+        guard repository.provider == .github else {
+            throw PullRequestProviderError.unsupportedProvider
+        }
+        var participants: [PullRequestParticipant] = []
+        var page = 1
+        while true {
+            var components = URLComponents(
+                url: apiBaseURL
+                    .appendingPathComponent("repos")
+                    .appendingPathComponent(repository.owner)
+                    .appendingPathComponent(repository.name)
+                    .appendingPathComponent("assignees"),
+                resolvingAgainstBaseURL: false
+            )
+            components?.queryItems = [
+                URLQueryItem(name: "per_page", value: "100"),
+                URLQueryItem(name: "page", value: String(page)),
+            ]
+            guard let url = components?.url else {
+                throw PullRequestProviderError.repositoryUnavailable
+            }
+            let (data, response) = try await httpClient.data(for: makeRequest(url: url, token: token))
+            try validate(response: response, data: data)
+            let users: [GitHubPullRequestResponse.User]
+            do {
+                users = try decoder.decode([GitHubPullRequestResponse.User].self, from: data)
+            } catch {
+                throw PullRequestProviderError.providerMessage("GitHub returned an invalid assignee response.")
+            }
+            participants.append(contentsOf: users.map {
+                PullRequestParticipant(
+                    id: $0.login,
+                    username: $0.login,
+                    avatarURL: $0.avatarURL,
+                    providerUserID: nil
+                )
+            })
+            guard hasLinkRelation("next", in: response) else { break }
+            page += 1
+        }
+        return participants
+    }
+
     func listPullRequests(
         repository: GitRepositoryIdentity,
         token: GitProviderToken,
@@ -113,6 +160,7 @@ struct GitHubPullRequestService: PullRequestProviding {
             return PullRequestDetail(
                 summary: response.summary,
                 body: response.body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                reviewers: response.requestedReviewers.map(\.author),
                 assignees: response.assignees.map(\.author),
                 comments: try await pullRequestComments(repository: repository, token: token, number: number),
                 changesURL: response.changesURL
@@ -174,7 +222,7 @@ struct GitHubPullRequestService: PullRequestProviding {
     func createPullRequest(
         _ draft: PullRequestDraft,
         token: GitProviderToken
-    ) async throws -> PullRequestSummary {
+    ) async throws -> PullRequestCreationResult {
         guard draft.repository.provider == .github else {
             throw PullRequestProviderError.unsupportedProvider
         }
@@ -197,7 +245,54 @@ struct GitHubPullRequestService: PullRequestProviding {
             )
             try validateWrite(response: response, data: data)
             let created = try decoder.decode(GitHubPullRequestResponse.self, from: data)
-            return created.summary
+            var warnings: [String] = []
+            if !draft.reviewers.isEmpty {
+                do {
+                    let reviewersURL = url
+                        .appendingPathComponent(String(created.number))
+                        .appendingPathComponent("requested_reviewers")
+                    let payload = GitHubReviewerRequestPayload(
+                        reviewers: draft.reviewers.map(\.username)
+                    )
+                    let (reviewerData, reviewerResponse) = try await httpClient.data(
+                        for: try makeJSONRequest(
+                            url: reviewersURL,
+                            token: token,
+                            method: "POST",
+                            body: payload
+                        )
+                    )
+                    try validateWrite(response: reviewerResponse, data: reviewerData)
+                } catch {
+                    warnings.append("Reviewers could not be added: \(error.localizedDescription)")
+                }
+            }
+            if !draft.assignees.isEmpty {
+                do {
+                    let assigneesURL = apiBaseURL
+                        .appendingPathComponent("repos")
+                        .appendingPathComponent(draft.repository.owner)
+                        .appendingPathComponent(draft.repository.name)
+                        .appendingPathComponent("issues")
+                        .appendingPathComponent(String(created.number))
+                        .appendingPathComponent("assignees")
+                    let payload = GitHubAssigneeRequestPayload(
+                        assignees: draft.assignees.map(\.username)
+                    )
+                    let (assigneeData, assigneeResponse) = try await httpClient.data(
+                        for: try makeJSONRequest(
+                            url: assigneesURL,
+                            token: token,
+                            method: "POST",
+                            body: payload
+                        )
+                    )
+                    try validateWrite(response: assigneeResponse, data: assigneeData)
+                } catch {
+                    warnings.append("Assignees could not be added: \(error.localizedDescription)")
+                }
+            }
+            return PullRequestCreationResult(summary: created.summary, warnings: warnings)
         } catch let error as PullRequestProviderError {
             throw error
         } catch {
@@ -228,6 +323,33 @@ struct GitHubPullRequestService: PullRequestProviding {
             for: try makeJSONRequest(url: url, token: token, method: "POST", body: payload)
         )
         try validateWrite(response: response, data: data)
+    }
+
+    func mergePullRequest(
+        _ pullRequest: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws {
+        guard repository.provider == .github else {
+            throw PullRequestProviderError.unsupportedProvider
+        }
+
+        let url = apiBaseURL
+            .appendingPathComponent("repos")
+            .appendingPathComponent(repository.owner)
+            .appendingPathComponent(repository.name)
+            .appendingPathComponent("pulls")
+            .appendingPathComponent(String(pullRequest.number))
+            .appendingPathComponent("merge")
+        var request = makeRequest(url: url, token: token)
+        request.httpMethod = "PUT"
+        let (data, response) = try await httpClient.data(for: request)
+        try validateWrite(response: response, data: data)
+
+        let result = try decoder.decode(GitHubPullRequestMergeResponse.self, from: data)
+        guard result.merged else {
+            throw PullRequestProviderError.providerMessage(result.message)
+        }
     }
 
     private func issueComments(
@@ -461,6 +583,14 @@ private struct GitHubCreatePullRequestPayload: Encodable {
     var base: String
 }
 
+private struct GitHubReviewerRequestPayload: Encodable {
+    var reviewers: [String]
+}
+
+private struct GitHubAssigneeRequestPayload: Encodable {
+    var assignees: [String]
+}
+
 private struct GitHubPullRequestFileResponse: Decodable {
     var filename: String
     var previousFilename: String?
@@ -589,10 +719,16 @@ private struct GitHubPullRequestResponse: Decodable {
     }
 }
 
+private struct GitHubPullRequestMergeResponse: Decodable {
+    var merged: Bool
+    var message: String
+}
+
 private struct GitHubPullRequestDetailPayload: Decodable {
     var pullRequest: GitHubPullRequestResponse
     var body: String?
     var assignees: [GitHubPullRequestResponse.User]
+    var requestedReviewers: [GitHubPullRequestResponse.User]
 
     var summary: PullRequestSummary {
         pullRequest.summary
@@ -607,11 +743,16 @@ private struct GitHubPullRequestDetailPayload: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         body = try container.decodeIfPresent(String.self, forKey: .body)
         assignees = try container.decodeIfPresent([GitHubPullRequestResponse.User].self, forKey: .assignees) ?? []
+        requestedReviewers = try container.decodeIfPresent(
+            [GitHubPullRequestResponse.User].self,
+            forKey: .requestedReviewers
+        ) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case body
         case assignees
+        case requestedReviewers = "requested_reviewers"
     }
 }
 

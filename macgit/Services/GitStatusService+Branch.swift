@@ -141,22 +141,20 @@ extension GitStatusService {
     }
 
     func branchSyncStatus(for branch: String, in repositoryURL: URL) async -> BranchSyncStatus? {
-        // Check if branch has an upstream
-        let upstream = await upstreamBranch(for: branch, in: repositoryURL)
-        guard let upstreamRef = upstream, !upstreamRef.isEmpty else {
-            print("[branchSyncStatus] No upstream for branch: \(branch)")
+        guard let comparisonRef = await comparisonRef(for: branch, in: repositoryURL) else {
+            print("[branchSyncStatus] No upstream or matching remote-tracking branch for branch: \(branch)")
             return nil
         }
 
         // Use a single symmetric-difference command to get both counts atomically
         // Output format: "behind\tahead"
         let output = (try? await runGit(
-            arguments: ["rev-list", "--count", "--left-right", "\(upstreamRef)...\(branch)"],
+            arguments: ["rev-list", "--count", "--left-right", "\(comparisonRef)...\(branch)"],
             in: repositoryURL
         ))?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard let line = output, !line.isEmpty else {
-            print("[branchSyncStatus] Empty output for branch: \(branch), upstream: \(upstreamRef)")
+            print("[branchSyncStatus] Empty output for branch: \(branch), comparison ref: \(comparisonRef)")
             return nil
         }
 
@@ -173,8 +171,49 @@ extension GitStatusService {
             return nil
         }
 
-        print("[branchSyncStatus] Branch: \(branch), upstream: \(upstreamRef), ahead: \(ahead), behind: \(behind)")
+        print("[branchSyncStatus] Branch: \(branch), comparison ref: \(comparisonRef), ahead: \(ahead), behind: \(behind)")
         return BranchSyncStatus(ahead: ahead, behind: behind)
+    }
+
+    func comparisonRef(for branch: String, in repositoryURL: URL) async -> String? {
+        if let upstream = await upstreamBranch(for: branch, in: repositoryURL), !upstream.isEmpty {
+            return upstream
+        }
+
+        return await matchingRemoteTrackingBranch(for: branch, in: repositoryURL)
+    }
+
+    private func matchingRemoteTrackingBranch(for branch: String, in repositoryURL: URL) async -> String? {
+        let remotes = await remotes(in: repositoryURL)
+        let matches = await withTaskGroup(of: String?.self, returning: [String].self) { group in
+            for remote in remotes {
+                group.addTask {
+                    let ref = "\(remote)/\(branch)"
+                    let output = try? await self.runGit(
+                        arguments: ["rev-parse", "--verify", "--quiet", "refs/remotes/\(ref)"],
+                        in: repositoryURL
+                    )
+                    guard let output, !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        return nil
+                    }
+                    return ref
+                }
+            }
+
+            var matches: [String] = []
+            for await match in group {
+                if let match {
+                    matches.append(match)
+                }
+            }
+            return matches
+        }
+
+        if matches.contains("origin/\(branch)") {
+            return "origin/\(branch)"
+        }
+
+        return matches.count == 1 ? matches[0] : nil
     }
 
 }

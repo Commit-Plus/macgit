@@ -160,9 +160,26 @@ struct PullRequestDetail: Identifiable, Equatable, Codable {
     var id: Int { summary.id }
     var summary: PullRequestSummary
     var body: String
+    var reviewers: [PullRequestAuthor]
     var assignees: [PullRequestAuthor]
     var comments: [PullRequestComment]
     var changesURL: URL
+
+    init(
+        summary: PullRequestSummary,
+        body: String,
+        reviewers: [PullRequestAuthor] = [],
+        assignees: [PullRequestAuthor],
+        comments: [PullRequestComment],
+        changesURL: URL
+    ) {
+        self.summary = summary
+        self.body = body
+        self.reviewers = reviewers
+        self.assignees = assignees
+        self.comments = comments
+        self.changesURL = changesURL
+    }
 }
 
 enum PullRequestDraftValidationError: LocalizedError, Equatable {
@@ -185,13 +202,17 @@ struct PullRequestDraft: Equatable {
     var targetBranch: String
     var title: String
     var body: String
+    var reviewers: [PullRequestParticipant]
+    var assignees: [PullRequestParticipant]
 
     init(
         repository: GitRepositoryIdentity,
         sourceBranch: String,
         targetBranch: String,
         title: String,
-        body: String
+        body: String,
+        reviewers: [PullRequestParticipant] = [],
+        assignees: [PullRequestParticipant] = []
     ) throws {
         let normalizedSource = sourceBranch.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedTarget = targetBranch.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -200,6 +221,8 @@ struct PullRequestDraft: Equatable {
         self.targetBranch = normalizedTarget
         self.title = title
         self.body = body
+        self.reviewers = reviewers
+        self.assignees = assignees
         try validate()
     }
 
@@ -213,8 +236,21 @@ struct PullRequestDraft: Equatable {
     }
 }
 
+struct PullRequestParticipant: Identifiable, Equatable, Decodable {
+    var id: String
+    var username: String
+    var avatarURL: URL?
+    var providerUserID: Int? = nil
+}
+
+struct PullRequestCreationResult: Equatable {
+    var summary: PullRequestSummary
+    var warnings: [String] = []
+}
+
 struct PullRequestDraftSeed: Equatable {
     var repository: GitRepositoryIdentity
+    var remoteName: String?
     var sourceBranches: [String]
     var targetBranches: [String]
     var sourceBranch: String

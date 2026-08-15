@@ -31,6 +31,46 @@ struct GitLabPullRequestService: PullRequestProviding {
         self.encoder = JSONEncoder()
     }
 
+    func pullRequestParticipants(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws -> [PullRequestParticipant] {
+        guard repository.provider == .gitlab else {
+            throw PullRequestProviderError.unsupportedProvider
+        }
+        var participants: [PullRequestParticipant] = []
+        var page = 1
+        while true {
+            let url = try projectURL(
+                repository: repository,
+                pathComponents: ["members", "all"],
+                queryItems: [
+                    URLQueryItem(name: "per_page", value: "100"),
+                    URLQueryItem(name: "page", value: String(page)),
+                ]
+            )
+            let (data, response) = try await httpClient.data(for: makeRequest(url: url, token: token))
+            try validate(response: response, data: data)
+            let users: [GitLabProjectMemberResponse]
+            do {
+                users = try decoder.decode([GitLabProjectMemberResponse].self, from: data)
+            } catch {
+                throw PullRequestProviderError.providerMessage("GitLab returned an invalid project member response.")
+            }
+            participants.append(contentsOf: users.map {
+                PullRequestParticipant(
+                    id: String($0.id),
+                    username: $0.username,
+                    avatarURL: $0.avatarURL,
+                    providerUserID: $0.id
+                )
+            })
+            guard hasPaginationHeader("X-Next-Page", in: response) else { break }
+            page += 1
+        }
+        return participants
+    }
+
     func listPullRequests(
         repository: GitRepositoryIdentity,
         token: GitProviderToken,
@@ -90,6 +130,7 @@ struct GitLabPullRequestService: PullRequestProviding {
             return PullRequestDetail(
                 summary: response.mergeRequest.summary,
                 body: response.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                reviewers: response.reviewers.map(\.author),
                 assignees: response.assignees.map(\.author),
                 comments: try await mergeRequestNotes(
                     repository: repository,
@@ -147,7 +188,7 @@ struct GitLabPullRequestService: PullRequestProviding {
     func createPullRequest(
         _ draft: PullRequestDraft,
         token: GitProviderToken
-    ) async throws -> PullRequestSummary {
+    ) async throws -> PullRequestCreationResult {
         guard draft.repository.provider == .gitlab else {
             throw PullRequestProviderError.unsupportedProvider
         }
@@ -159,7 +200,9 @@ struct GitLabPullRequestService: PullRequestProviding {
             title: draft.title,
             description: draft.body.isEmpty ? nil : draft.body,
             sourceBranch: draft.sourceBranch,
-            targetBranch: draft.targetBranch
+            targetBranch: draft.targetBranch,
+            reviewerIDs: nonEmptyIDs(from: draft.reviewers),
+            assigneeIDs: nonEmptyIDs(from: draft.assignees)
         )
 
         do {
@@ -167,12 +210,18 @@ struct GitLabPullRequestService: PullRequestProviding {
                 for: try makeJSONRequest(url: url, token: token, method: "POST", body: payload)
             )
             try validateWrite(response: response, data: data)
-            return try decoder.decode(GitLabMergeRequestResponse.self, from: data).summary
+            let summary = try decoder.decode(GitLabMergeRequestResponse.self, from: data).summary
+            return PullRequestCreationResult(summary: summary)
         } catch let error as PullRequestProviderError {
             throw error
         } catch {
             throw PullRequestProviderError.providerMessage("GitLab returned an invalid merge request response.")
         }
+    }
+
+    private func nonEmptyIDs(from participants: [PullRequestParticipant]) -> [Int]? {
+        let ids = participants.compactMap(\.providerUserID)
+        return ids.isEmpty ? nil : ids
     }
 
     func createComment(
@@ -194,6 +243,30 @@ struct GitLabPullRequestService: PullRequestProviding {
             for: try makeJSONRequest(url: url, token: token, method: "POST", body: payload)
         )
         try validateWrite(response: response, data: data)
+    }
+
+    func mergePullRequest(
+        _ pullRequest: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws {
+        guard repository.provider == .gitlab else {
+            throw PullRequestProviderError.unsupportedProvider
+        }
+
+        let url = try projectURL(
+            repository: repository,
+            pathComponents: ["merge_requests", String(pullRequest.number), "merge"]
+        )
+        var request = makeRequest(url: url, token: token)
+        request.httpMethod = "PUT"
+        let (data, response) = try await httpClient.data(for: request)
+        try validateWrite(response: response, data: data)
+
+        let result = try decoder.decode(GitLabMergeRequestResponse.self, from: data)
+        guard result.summary.state == .merged else {
+            throw PullRequestProviderError.providerMessage("GitLab did not merge the merge request.")
+        }
     }
 
     private func mergeRequestNotes(
@@ -332,12 +405,28 @@ private struct GitLabCreateMergeRequestPayload: Encodable {
     var description: String?
     var sourceBranch: String
     var targetBranch: String
+    var reviewerIDs: [Int]?
+    var assigneeIDs: [Int]?
 
     enum CodingKeys: String, CodingKey {
         case title
         case description
         case sourceBranch = "source_branch"
         case targetBranch = "target_branch"
+        case reviewerIDs = "reviewer_ids"
+        case assigneeIDs = "assignee_ids"
+    }
+}
+
+private struct GitLabProjectMemberResponse: Decodable {
+    var id: Int
+    var username: String
+    var avatarURL: URL?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case username
+        case avatarURL = "avatar_url"
     }
 }
 
@@ -477,17 +566,23 @@ private struct GitLabMergeRequestDetailResponse: Decodable {
     var mergeRequest: GitLabMergeRequestResponse
     var description: String?
     var assignees: [GitLabMergeRequestResponse.User]
+    var reviewers: [GitLabMergeRequestResponse.User]
 
     init(from decoder: Decoder) throws {
         mergeRequest = try GitLabMergeRequestResponse(from: decoder)
         let container = try decoder.container(keyedBy: CodingKeys.self)
         description = try container.decodeIfPresent(String.self, forKey: .description)
         assignees = try container.decodeIfPresent([GitLabMergeRequestResponse.User].self, forKey: .assignees) ?? []
+        reviewers = try container.decodeIfPresent(
+            [GitLabMergeRequestResponse.User].self,
+            forKey: .reviewers
+        ) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case description
         case assignees
+        case reviewers
     }
 }
 

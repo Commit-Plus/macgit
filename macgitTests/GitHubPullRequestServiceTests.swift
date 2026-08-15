@@ -206,6 +206,9 @@ final class GitHubPullRequestServiceTests: XCTestCase {
               "base": { "label": "octocat:main", "ref": "main", "sha": "def456" },
               "assignees": [
                 { "login": "teammate", "avatar_url": "https://avatars.githubusercontent.com/u/2" }
+              ],
+              "requested_reviewers": [
+                { "login": "reviewer", "avatar_url": "https://avatars.githubusercontent.com/u/3" }
               ]
             }
             """),
@@ -255,6 +258,7 @@ final class GitHubPullRequestServiceTests: XCTestCase {
 
         XCTAssertEqual(detail.summary.number, 12)
         XCTAssertEqual(detail.body, "Adds the pull request list and detail view.")
+        XCTAssertEqual(detail.reviewers.map(\.username), ["reviewer"])
         XCTAssertEqual(detail.assignees.map(\.username), ["teammate"])
         XCTAssertEqual(detail.comments.map(\.body), [
             "Looks good to me.",
@@ -348,7 +352,7 @@ final class GitHubPullRequestServiceTests: XCTestCase {
         ])
         let service = GitHubPullRequestService(httpClient: client)
 
-        let summary = try await service.createPullRequest(
+        let result = try await service.createPullRequest(
             makeDraft(),
             token: makeToken()
         )
@@ -367,8 +371,72 @@ final class GitHubPullRequestServiceTests: XCTestCase {
         XCTAssertEqual(json["body"], "Implements create, comment, and checkout actions.")
         XCTAssertEqual(json["head"], "feature/pr-actions")
         XCTAssertEqual(json["base"], "main")
-        XCTAssertEqual(summary.number, 22)
-        XCTAssertEqual(summary.title, "Add provider-backed pull request actions")
+        XCTAssertEqual(result.summary.number, 22)
+        XCTAssertEqual(result.summary.title, "Add provider-backed pull request actions")
+    }
+
+    func testPullRequestParticipantsLoadsAssignableUsers() async throws {
+        let client = StubPullRequestHTTPClient(responses: [
+            .json(statusCode: 200, body: """
+            [
+              { "login": "reviewer", "avatar_url": "https://example.com/reviewer.png" },
+              { "login": "assignee", "avatar_url": null }
+            ]
+            """)
+        ])
+        let service = GitHubPullRequestService(httpClient: client)
+
+        let participants = try await service.pullRequestParticipants(
+            repository: makeRepository(),
+            token: makeToken()
+        )
+
+        XCTAssertEqual(participants.map(\.username), ["reviewer", "assignee"])
+        XCTAssertEqual(
+            client.requests.first?.url?.absoluteString,
+            "https://api.github.com/repos/octocat/Hello-World/assignees?per_page=100&page=1"
+        )
+    }
+
+    func testCreatePullRequestAddsReviewersAndAssigneesAfterCreation() async throws {
+        let client = StubPullRequestHTTPClient(responses: [
+            .json(statusCode: 201, body: """
+            {
+              "number": 22,
+              "title": "Add provider-backed pull request actions",
+              "state": "open",
+              "draft": false,
+              "html_url": "https://github.com/octocat/Hello-World/pull/22",
+              "created_at": "2026-07-08T00:10:11Z",
+              "updated_at": "2026-07-08T00:10:11Z",
+              "merged_at": null,
+              "user": { "login": "octocat", "avatar_url": null },
+              "head": { "label": "octocat:feature/pr-actions", "ref": "feature/pr-actions", "sha": "abc123" },
+              "base": { "label": "octocat:main", "ref": "main", "sha": "def456" }
+            }
+            """),
+            .json(statusCode: 201, body: "{}"),
+            .json(statusCode: 201, body: "{}"),
+        ])
+        let service = GitHubPullRequestService(httpClient: client)
+        var draft = try makeDraft()
+        draft.reviewers = [PullRequestParticipant(id: "reviewer", username: "reviewer", avatarURL: nil)]
+        draft.assignees = [PullRequestParticipant(id: "assignee", username: "assignee", avatarURL: nil)]
+
+        let result = try await service.createPullRequest(draft, token: makeToken())
+
+        XCTAssertTrue(result.warnings.isEmpty)
+        XCTAssertEqual(client.requests.map { $0.url?.path }, [
+            "/repos/octocat/Hello-World/pulls",
+            "/repos/octocat/Hello-World/pulls/22/requested_reviewers",
+            "/repos/octocat/Hello-World/issues/22/assignees",
+        ])
+        let reviewerBody = try XCTUnwrap(client.requests[1].httpBody)
+        let reviewerJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: reviewerBody) as? [String: [String]])
+        XCTAssertEqual(reviewerJSON["reviewers"], ["reviewer"])
+        let assigneeBody = try XCTUnwrap(client.requests[2].httpBody)
+        let assigneeJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: assigneeBody) as? [String: [String]])
+        XCTAssertEqual(assigneeJSON["assignees"], ["assignee"])
     }
 
     func testPullRequestChangesLoadsAllPagesAndDecodesPatches() async throws {
@@ -438,6 +506,26 @@ final class GitHubPullRequestServiceTests: XCTestCase {
                 .providerMessage("The connected account does not have permission to modify pull requests.")
             )
         }
+    }
+
+    func testMergePullRequestUsesProviderMergeEndpoint() async throws {
+        let client = StubPullRequestHTTPClient(responses: [
+            .json(statusCode: 200, body: #"{"merged":true,"message":"Pull Request successfully merged"}"#)
+        ])
+        let service = GitHubPullRequestService(httpClient: client)
+
+        try await service.mergePullRequest(
+            makeSummary(number: 22),
+            repository: makeRepository(),
+            token: makeToken()
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        XCTAssertEqual(request.httpMethod, "PUT")
+        XCTAssertEqual(
+            request.url?.absoluteString,
+            "https://api.github.com/repos/octocat/Hello-World/pulls/22/merge"
+        )
     }
 
     func testCreateCommentPostsExpectedBody() async throws {

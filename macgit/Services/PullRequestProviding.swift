@@ -19,6 +19,11 @@
 import Foundation
 
 protocol PullRequestProviding {
+    func pullRequestParticipants(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws -> [PullRequestParticipant]
+
     func listPullRequests(
         repository: GitRepositoryIdentity,
         token: GitProviderToken,
@@ -42,7 +47,7 @@ protocol PullRequestProviding {
     func createPullRequest(
         _ draft: PullRequestDraft,
         token: GitProviderToken
-    ) async throws -> PullRequestSummary
+    ) async throws -> PullRequestCreationResult
 
     func createComment(
         body: String,
@@ -50,6 +55,23 @@ protocol PullRequestProviding {
         repository: GitRepositoryIdentity,
         token: GitProviderToken
     ) async throws
+
+    func mergePullRequest(
+        _ pullRequest: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws
+}
+
+extension PullRequestProviding {
+    func pullRequestParticipants(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws -> [PullRequestParticipant] {
+        _ = repository
+        _ = token
+        return []
+    }
 }
 
 enum PullRequestProviderError: LocalizedError, Equatable {

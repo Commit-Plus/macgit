@@ -662,6 +662,46 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(receivedComparison?.remote, "origin")
     }
 
+    func testPresentCreatePullRequestLoadsParticipants() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let participants = [
+            PullRequestParticipant(id: "z-user", username: "z-user", avatarURL: nil),
+            PullRequestParticipant(id: "a-user", username: "a-user", avatarURL: nil),
+        ]
+        let service = FakePullRequestProvider(
+            result: .success([makeSummary()]),
+            participantsResult: .success(participants)
+        )
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service],
+            remoteNameProvider: { _ in "origin" },
+            remoteURLProvider: { _, _ in "https://github.com/octocat/Hello-World.git" },
+            currentBranchProvider: { _ in "feature/pr-actions" },
+            localBranchesProvider: { _ in ["main", "feature/pr-actions"] },
+            changedFileCountProvider: { _, _, _, _ in 1 }
+        )
+
+        await controller.loadPullRequests(repositoryURL: URL(fileURLWithPath: "/tmp/macgit-pr-participants"))
+        await controller.presentCreatePullRequest()
+
+        XCTAssertEqual(controller.createDraftParticipants.map(\.username), ["a-user", "z-user"])
+        XCTAssertFalse(controller.isLoadingCreateDraftParticipants)
+        XCTAssertNil(controller.createDraftParticipantsErrorMessage)
+    }
+
     func testCreatePullRequestChangeCountIsZeroWhenBranchesMatch() async throws {
         let account = makeAccount()
         let token = makeToken()
@@ -784,6 +824,53 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(controller.items, [createdSummary])
     }
 
+    func testCreatePullRequestReportsParticipantWarningWithoutFailingCreation() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let createdSummary = makeSummary(number: 31)
+        let service = FakePullRequestProvider(
+            result: .success([createdSummary]),
+            createResult: .success(createdSummary),
+            createWarnings: ["Reviewers could not be added."]
+        )
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service]
+        )
+        await controller.loadPullRequests(remoteURLString: "https://github.com/octocat/Hello-World.git")
+        let draft = try PullRequestDraft(
+            repository: GitRepositoryIdentity(
+                provider: .github,
+                hostURL: URL(string: "https://github.com")!,
+                owner: "octocat",
+                name: "Hello-World"
+            ),
+            sourceBranch: "feature/pr-actions",
+            targetBranch: "main",
+            title: "Create with warning",
+            body: ""
+        )
+
+        await controller.createPullRequest(draft)
+
+        XCTAssertEqual(controller.items, [createdSummary])
+        XCTAssertEqual(
+            controller.detailErrorMessage,
+            "Pull request #31 was created, but Reviewers could not be added."
+        )
+    }
+
     func testCommentRequiresNonEmptyBody() async throws {
         let account = makeAccount()
         let token = makeToken()
@@ -852,6 +939,45 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(fetchedReference?.reference, "pull/18/head")
         XCTAssertEqual(fetchedReference?.localBranch, "pr/18")
         XCTAssertEqual(checkedOutBranch, "pr/18")
+    }
+
+    func testMergePullRequestInvalidatesAndRefreshesProviderState() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let mergedSummary = makeSummary(number: 18, state: .merged)
+        let mergedDetail = PullRequestDetail(
+            summary: mergedSummary,
+            body: "Merged pull request.",
+            assignees: [],
+            comments: [],
+            changesURL: URL(string: "https://github.com/octocat/Hello-World/pull/18/files")!
+        )
+        let service = FakePullRequestProvider(
+            result: .success([makeSummary(number: 18)]),
+            detailResult: .success(mergedDetail)
+        )
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "https://github.com/octocat/Hello-World.git")
+        await controller.merge(makeSummary(number: 18))
+
+        XCTAssertEqual(service.mergedPullRequestNumber, 18)
+        XCTAssertEqual(controller.selectedDetail?.summary.state, .merged)
+        XCTAssertEqual(service.listCallCount, 2)
     }
 
     private func makeAccount(
@@ -956,7 +1082,10 @@ private final class FakePullRequestProvider: PullRequestProviding {
     private var detailResults: [Result<PullRequestDetail, PullRequestProviderError>]
     private let createResult: Result<PullRequestSummary, PullRequestProviderError>
     private let commentResult: Result<Void, PullRequestProviderError>
+    private let mergeResult: Result<Void, PullRequestProviderError>
     private let changesResult: Result<[PullRequestChangedFile], PullRequestProviderError>
+    private let participantsResult: Result<[PullRequestParticipant], PullRequestProviderError>
+    private let createWarnings: [String]
     private let hasPreviousPage: Bool
     private let hasNextPage: Bool
     private(set) var receivedRepository: GitRepositoryIdentity?
@@ -971,22 +1100,29 @@ private final class FakePullRequestProvider: PullRequestProviding {
     private(set) var changesCallCount = 0
     private(set) var createdDraft: PullRequestDraft?
     private(set) var createdCommentBody: String?
+    private(set) var mergedPullRequestNumber: Int?
 
     init(
         result: Result<[PullRequestSummary], PullRequestProviderError> = .success([]),
         detailResult: Result<PullRequestDetail, PullRequestProviderError> = .failure(.providerMessage("No detail")),
         detailResults: [Result<PullRequestDetail, PullRequestProviderError>]? = nil,
         changesResult: Result<[PullRequestChangedFile], PullRequestProviderError> = .success([]),
+        participantsResult: Result<[PullRequestParticipant], PullRequestProviderError> = .success([]),
         createResult: Result<PullRequestSummary, PullRequestProviderError> = .failure(.providerMessage("No create")),
+        createWarnings: [String] = [],
         commentResult: Result<Void, PullRequestProviderError> = .success(()),
+        mergeResult: Result<Void, PullRequestProviderError> = .success(()),
         hasPreviousPage: Bool = false,
         hasNextPage: Bool = false
     ) {
         self.result = result
         self.detailResults = detailResults ?? [detailResult]
         self.changesResult = changesResult
+        self.participantsResult = participantsResult
         self.createResult = createResult
+        self.createWarnings = createWarnings
         self.commentResult = commentResult
+        self.mergeResult = mergeResult
         self.hasPreviousPage = hasPreviousPage
         self.hasNextPage = hasNextPage
     }
@@ -1011,6 +1147,15 @@ private final class FakePullRequestProvider: PullRequestProviding {
             hasPreviousPage: hasPreviousPage,
             hasNextPage: hasNextPage
         )
+    }
+
+    func pullRequestParticipants(
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws -> [PullRequestParticipant] {
+        receivedRepository = repository
+        receivedToken = token
+        return try participantsResult.get()
     }
 
     func pullRequestDetail(
@@ -1043,10 +1188,13 @@ private final class FakePullRequestProvider: PullRequestProviding {
     func createPullRequest(
         _ draft: PullRequestDraft,
         token: GitProviderToken
-    ) async throws -> PullRequestSummary {
+    ) async throws -> PullRequestCreationResult {
         createdDraft = draft
         receivedToken = token
-        return try createResult.get()
+        return PullRequestCreationResult(
+            summary: try createResult.get(),
+            warnings: createWarnings
+        )
     }
 
     func createComment(
@@ -1060,5 +1208,16 @@ private final class FakePullRequestProvider: PullRequestProviding {
         receivedToken = token
         _ = pullRequest
         _ = try commentResult.get()
+    }
+
+    func mergePullRequest(
+        _ pullRequest: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws {
+        mergedPullRequestNumber = pullRequest.number
+        receivedRepository = repository
+        receivedToken = token
+        _ = try mergeResult.get()
     }
 }
