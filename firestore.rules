@@ -46,10 +46,12 @@ service cloud.firestore {
           'showHeaderBranchButton',
           'showHeaderMergeButton',
           'showHeaderStashButton',
+          'showHeaderUndoButton',
           'showHeaderRemoteButton',
           'showHeaderFinderButton',
           'showHeaderEditorButton',
           'showHeaderTerminalButton',
+          'showHeaderSettingsButton',
           'historyBranchFilter',
           'historyIncludeRemotes',
           'autoFetchEnabled',
@@ -74,10 +76,12 @@ service cloud.firestore {
         && (!('showHeaderBranchButton' in request.resource.data) || request.resource.data.showHeaderBranchButton is bool)
         && (!('showHeaderMergeButton' in request.resource.data) || request.resource.data.showHeaderMergeButton is bool)
         && (!('showHeaderStashButton' in request.resource.data) || request.resource.data.showHeaderStashButton is bool)
+        && (!('showHeaderUndoButton' in request.resource.data) || request.resource.data.showHeaderUndoButton is bool)
         && (!('showHeaderRemoteButton' in request.resource.data) || request.resource.data.showHeaderRemoteButton is bool)
         && (!('showHeaderFinderButton' in request.resource.data) || request.resource.data.showHeaderFinderButton is bool)
         && (!('showHeaderEditorButton' in request.resource.data) || request.resource.data.showHeaderEditorButton is bool)
         && (!('showHeaderTerminalButton' in request.resource.data) || request.resource.data.showHeaderTerminalButton is bool)
+        && (!('showHeaderSettingsButton' in request.resource.data) || request.resource.data.showHeaderSettingsButton is bool)
         && (!('historyBranchFilter' in request.resource.data)
           || (request.resource.data.historyBranchFilter is string
             && request.resource.data.historyBranchFilter.matches('^(all|current|branch:.+)$')))

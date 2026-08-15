@@ -47,10 +47,21 @@ struct GitProviderTokenVaultError: LocalizedError {
 
 final class KeychainGitProviderTokenVault: GitProviderTokenVault {
     private let service = "com.commitplus.macgit.git-provider-tokens"
+    private static let cacheLock = NSLock()
+    private static var tokenCache: [String: GitProviderToken] = [:]
+    private static var missingTokenCache: Set<String> = []
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
     func readToken(for account: GitProviderAccount) throws -> GitProviderToken? {
+        let cacheKey = GitProviderTokenVaultKey.key(for: account)
+        if let cachedToken = cachedToken(for: cacheKey) {
+            return cachedToken
+        }
+        if isKnownMissing(cacheKey) {
+            return nil
+        }
+
         var query = baseQuery(for: account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -58,6 +69,7 @@ final class KeychainGitProviderTokenVault: GitProviderTokenVault {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound {
+            cacheMissingToken(for: cacheKey)
             return nil
         }
         guard status == errSecSuccess else {
@@ -66,7 +78,9 @@ final class KeychainGitProviderTokenVault: GitProviderTokenVault {
         guard let data = item as? Data else {
             throw GitProviderTokenVaultError(status: errSecDecode)
         }
-        return try decoder.decode(GitProviderToken.self, from: data)
+        let token = try decoder.decode(GitProviderToken.self, from: data)
+        cacheToken(token, for: cacheKey)
+        return token
     }
 
     func saveToken(_ token: GitProviderToken, for account: GitProviderAccount) throws {
@@ -85,11 +99,13 @@ final class KeychainGitProviderTokenVault: GitProviderTokenVault {
             guard updateStatus == errSecSuccess else {
                 throw GitProviderTokenVaultError(status: updateStatus)
             }
+            cacheToken(token, for: GitProviderTokenVaultKey.key(for: account))
             return
         }
         guard status == errSecSuccess else {
             throw GitProviderTokenVaultError(status: status)
         }
+        cacheToken(token, for: GitProviderTokenVaultKey.key(for: account))
     }
 
     func deleteToken(for account: GitProviderAccount) throws {
@@ -97,6 +113,7 @@ final class KeychainGitProviderTokenVault: GitProviderTokenVault {
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw GitProviderTokenVaultError(status: status)
         }
+        cacheMissingToken(for: GitProviderTokenVaultKey.key(for: account))
     }
 
     private func baseQuery(for account: GitProviderAccount) -> [String: Any] {
@@ -105,5 +122,31 @@ final class KeychainGitProviderTokenVault: GitProviderTokenVault {
             kSecAttrService as String: service,
             kSecAttrAccount as String: GitProviderTokenVaultKey.key(for: account),
         ]
+    }
+
+    private func cachedToken(for key: String) -> GitProviderToken? {
+        Self.cacheLock.withLock {
+            Self.tokenCache[key]
+        }
+    }
+
+    private func isKnownMissing(_ key: String) -> Bool {
+        Self.cacheLock.withLock {
+            Self.missingTokenCache.contains(key)
+        }
+    }
+
+    private func cacheToken(_ token: GitProviderToken, for key: String) {
+        Self.cacheLock.withLock {
+            Self.tokenCache[key] = token
+            Self.missingTokenCache.remove(key)
+        }
+    }
+
+    private func cacheMissingToken(for key: String) {
+        Self.cacheLock.withLock {
+            Self.tokenCache.removeValue(forKey: key)
+            Self.missingTokenCache.insert(key)
+        }
     }
 }

@@ -30,10 +30,12 @@ final class CloudSettingsDocumentTests: XCTestCase {
         showHeaderBranchButton: true,
         showHeaderMergeButton: false,
         showHeaderStashButton: true,
+        showHeaderUndoButton: true,
         showHeaderRemoteButton: false,
         showHeaderFinderButton: true,
         showHeaderEditorButton: false,
         showHeaderTerminalButton: false,
+        showHeaderSettingsButton: true,
         historyBranchFilter: .branch("origin/feature/login"),
         historyIncludeRemotes: true,
         autoFetchEnabled: true,
@@ -57,10 +59,12 @@ final class CloudSettingsDocumentTests: XCTestCase {
                 "showHeaderBranchButton",
                 "showHeaderMergeButton",
                 "showHeaderStashButton",
+                "showHeaderUndoButton",
                 "showHeaderRemoteButton",
                 "showHeaderFinderButton",
                 "showHeaderEditorButton",
                 "showHeaderTerminalButton",
+                "showHeaderSettingsButton",
                 "historyBranchFilter",
                 "historyIncludeRemotes",
                 "autoFetchEnabled",
@@ -77,10 +81,12 @@ final class CloudSettingsDocumentTests: XCTestCase {
         XCTAssertEqual(document["showHeaderBranchButton"] as? Bool, true)
         XCTAssertEqual(document["showHeaderMergeButton"] as? Bool, false)
         XCTAssertEqual(document["showHeaderStashButton"] as? Bool, true)
+        XCTAssertEqual(document["showHeaderUndoButton"] as? Bool, true)
         XCTAssertEqual(document["showHeaderRemoteButton"] as? Bool, false)
         XCTAssertEqual(document["showHeaderFinderButton"] as? Bool, true)
         XCTAssertEqual(document["showHeaderEditorButton"] as? Bool, false)
         XCTAssertEqual(document["showHeaderTerminalButton"] as? Bool, false)
+        XCTAssertEqual(document["showHeaderSettingsButton"] as? Bool, true)
         XCTAssertEqual(document["historyBranchFilter"] as? String, "branch:origin/feature/login")
         XCTAssertEqual(document["historyIncludeRemotes"] as? Bool, true)
         XCTAssertEqual(document["autoFetchEnabled"] as? Bool, true)
@@ -91,14 +97,18 @@ final class CloudSettingsDocumentTests: XCTestCase {
     func testDecodingDefaultsMissingHeaderButtonsToTrue() throws {
         var document = validDocument()
         document.removeValue(forKey: "showHeaderBranchButton")
+        document.removeValue(forKey: "showHeaderUndoButton")
         document.removeValue(forKey: "showHeaderRemoteButton")
         document.removeValue(forKey: "showHeaderEditorButton")
+        document.removeValue(forKey: "showHeaderSettingsButton")
 
         let decoded = try CloudSettingsDocument.decode(document)
 
         XCTAssertTrue(decoded.showHeaderBranchButton)
+        XCTAssertFalse(decoded.showHeaderUndoButton)
         XCTAssertTrue(decoded.showHeaderRemoteButton)
         XCTAssertTrue(decoded.showHeaderEditorButton)
+        XCTAssertFalse(decoded.showHeaderSettingsButton)
     }
 
     func testDecodingDefaultsMissingGitFlowVisibilityToTrue() throws {

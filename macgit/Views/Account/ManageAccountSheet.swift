@@ -228,10 +228,12 @@ struct SettingsSyncConflictSheet: View {
                 settingRow("Header: Branch", enabled: snapshot.showHeaderBranchButton)
                 settingRow("Header: Merge", enabled: snapshot.showHeaderMergeButton)
                 settingRow("Header: Stash", enabled: snapshot.showHeaderStashButton)
-                settingRow("Header: Remote", enabled: snapshot.showHeaderRemoteButton)
-                settingRow("Header: Finder", enabled: snapshot.showHeaderFinderButton)
-                settingRow("Header: External Editor", enabled: snapshot.showHeaderEditorButton)
-                settingRow("Header: Terminal", enabled: snapshot.showHeaderTerminalButton)
+                settingRow("Pinned: Undo", enabled: snapshot.showHeaderUndoButton)
+                settingRow("Pinned: Remote", enabled: snapshot.showHeaderRemoteButton)
+                settingRow("Pinned: Finder", enabled: snapshot.showHeaderFinderButton)
+                settingRow("Pinned: External Editor", enabled: snapshot.showHeaderEditorButton)
+                settingRow("Pinned: Terminal", enabled: snapshot.showHeaderTerminalButton)
+                settingRow("Pinned: Settings", enabled: snapshot.showHeaderSettingsButton)
                 enabledSettingRow("Auto fetch", enabled: snapshot.autoFetchEnabled)
                 enabledSettingRow(
                     "Refresh when app becomes active",

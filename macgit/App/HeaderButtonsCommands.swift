@@ -27,10 +27,6 @@ struct HeaderButtonsCommands: Commands {
                 Toggle("Branch", isOn: $appState.showHeaderBranchButton)
                 Toggle("Merge", isOn: $appState.showHeaderMergeButton)
                 Toggle("Stash", isOn: $appState.showHeaderStashButton)
-                Toggle("Remote", isOn: $appState.showHeaderRemoteButton)
-                Toggle("Finder", isOn: $appState.showHeaderFinderButton)
-                Toggle("External Editor", isOn: $appState.showHeaderEditorButton)
-                Toggle("Terminal", isOn: $appState.showHeaderTerminalButton)
             }
         }
     }

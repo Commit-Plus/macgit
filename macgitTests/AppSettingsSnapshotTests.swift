@@ -31,10 +31,12 @@ final class AppSettingsSnapshotTests: XCTestCase {
             showHeaderBranchButton: false,
             showHeaderMergeButton: true,
             showHeaderStashButton: false,
+            showHeaderUndoButton: true,
             showHeaderRemoteButton: true,
             showHeaderFinderButton: false,
             showHeaderEditorButton: false,
             showHeaderTerminalButton: true,
+            showHeaderSettingsButton: false,
             historyBranchFilter: .branch("origin/feature/login"),
             historyIncludeRemotes: true,
             autoFetchEnabled: true,
@@ -58,10 +60,12 @@ final class AppSettingsSnapshotTests: XCTestCase {
                 "showHeaderBranchButton",
                 "showHeaderMergeButton",
                 "showHeaderStashButton",
+                "showHeaderUndoButton",
                 "showHeaderRemoteButton",
                 "showHeaderFinderButton",
                 "showHeaderEditorButton",
                 "showHeaderTerminalButton",
+                "showHeaderSettingsButton",
                 "historyBranchFilter",
                 "historyIncludeRemotes",
                 "autoFetchEnabled",
@@ -203,27 +207,82 @@ final class AppSettingsSnapshotTests: XCTestCase {
         XCTAssertTrue(state.showHeaderBranchButton)
         XCTAssertTrue(state.showHeaderMergeButton)
         XCTAssertTrue(state.showHeaderStashButton)
+        XCTAssertFalse(state.showHeaderUndoButton)
         XCTAssertTrue(state.showHeaderRemoteButton)
         XCTAssertTrue(state.showHeaderFinderButton)
         XCTAssertTrue(state.showHeaderEditorButton)
         XCTAssertTrue(state.showHeaderTerminalButton)
+        XCTAssertFalse(state.showHeaderSettingsButton)
 
         state.showHeaderBranchButton = false
         state.showHeaderMergeButton = false
         state.showHeaderStashButton = false
-        state.showHeaderRemoteButton = false
-        state.showHeaderFinderButton = false
-        state.showHeaderEditorButton = false
-        state.showHeaderTerminalButton = false
+        for shortcut in RepositoryToolbarShortcut.allCases {
+            state.setRepositoryToolbarShortcut(shortcut, isPinned: false)
+        }
 
         let reloaded = AppState(userDefaults: defaults)
         XCTAssertFalse(reloaded.showHeaderBranchButton)
         XCTAssertFalse(reloaded.showHeaderMergeButton)
         XCTAssertFalse(reloaded.showHeaderStashButton)
+        XCTAssertFalse(reloaded.showHeaderUndoButton)
         XCTAssertFalse(reloaded.showHeaderRemoteButton)
         XCTAssertFalse(reloaded.showHeaderFinderButton)
         XCTAssertFalse(reloaded.showHeaderEditorButton)
         XCTAssertFalse(reloaded.showHeaderTerminalButton)
+        XCTAssertFalse(reloaded.showHeaderSettingsButton)
+    }
+
+    func testRepositoryToolbarPinsEnforceLimitPersistAndUpdateSnapshot() {
+        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let state = AppState(userDefaults: defaults)
+        XCTAssertEqual(
+            state.pinnedRepositoryToolbarShortcuts,
+            [.remote, .finder, .editor, .terminal]
+        )
+        XCTAssertFalse(state.setRepositoryToolbarShortcut(.undo, isPinned: true))
+
+        XCTAssertTrue(state.setRepositoryToolbarShortcut(.terminal, isPinned: false))
+        XCTAssertTrue(state.setRepositoryToolbarShortcut(.undo, isPinned: true))
+        XCTAssertEqual(
+            state.pinnedRepositoryToolbarShortcuts,
+            [.undo, .remote, .finder, .editor]
+        )
+        XCTAssertTrue(state.snapshot.showHeaderUndoButton)
+        XCTAssertFalse(state.snapshot.showHeaderTerminalButton)
+
+        let reloaded = AppState(userDefaults: defaults)
+        XCTAssertEqual(reloaded.pinnedRepositoryToolbarShortcuts, state.pinnedRepositoryToolbarShortcuts)
+    }
+
+    func testApplyingCloudSnapshotNormalizesRepositoryToolbarPinsToFour() {
+        let suiteName = "AppSettingsSnapshotTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let state = AppState(userDefaults: defaults)
+
+        state.apply(
+            AppSettingsSnapshot(
+                showToolbarButtonText: true,
+                showSubmodules: false,
+                showSubtrees: false,
+                showHeaderUndoButton: true,
+                showHeaderRemoteButton: true,
+                showHeaderFinderButton: true,
+                showHeaderEditorButton: true,
+                showHeaderTerminalButton: true,
+                showHeaderSettingsButton: true
+            )
+        )
+
+        XCTAssertEqual(
+            state.pinnedRepositoryToolbarShortcuts,
+            [.undo, .remote, .finder, .editor]
+        )
+        XCTAssertEqual(state.snapshot.pinnedRepositoryToolbarShortcuts.count, 4)
     }
 
     func testHistoryFilterDefaultsAndPersistence() {

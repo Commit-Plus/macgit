@@ -28,10 +28,12 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
     var showHeaderBranchButton: Bool
     var showHeaderMergeButton: Bool
     var showHeaderStashButton: Bool
+    var showHeaderUndoButton: Bool
     var showHeaderRemoteButton: Bool
     var showHeaderFinderButton: Bool
     var showHeaderEditorButton: Bool
     var showHeaderTerminalButton: Bool
+    var showHeaderSettingsButton: Bool
     var historyBranchFilter: HistoryBranchFilter
     var historyIncludeRemotes: Bool
     var autoFetchEnabled: Bool
@@ -46,10 +48,12 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
         showHeaderBranchButton: Bool = true,
         showHeaderMergeButton: Bool = true,
         showHeaderStashButton: Bool = true,
+        showHeaderUndoButton: Bool = false,
         showHeaderRemoteButton: Bool = true,
         showHeaderFinderButton: Bool = true,
         showHeaderEditorButton: Bool = true,
         showHeaderTerminalButton: Bool = true,
+        showHeaderSettingsButton: Bool = false,
         historyBranchFilter: HistoryBranchFilter = .all,
         historyIncludeRemotes: Bool = false,
         autoFetchEnabled: Bool = false,
@@ -64,10 +68,12 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
         self.showHeaderBranchButton = showHeaderBranchButton
         self.showHeaderMergeButton = showHeaderMergeButton
         self.showHeaderStashButton = showHeaderStashButton
+        self.showHeaderUndoButton = showHeaderUndoButton
         self.showHeaderRemoteButton = showHeaderRemoteButton
         self.showHeaderFinderButton = showHeaderFinderButton
         self.showHeaderEditorButton = showHeaderEditorButton
         self.showHeaderTerminalButton = showHeaderTerminalButton
+        self.showHeaderSettingsButton = showHeaderSettingsButton
         self.historyBranchFilter = historyBranchFilter
         self.historyIncludeRemotes = historyIncludeRemotes
         self.autoFetchEnabled = autoFetchEnabled
@@ -85,10 +91,12 @@ struct AppSettingsSnapshot: Codable, Equatable, Sendable {
         showHeaderBranchButton = try container.decode(Bool.self, forKey: .showHeaderBranchButton)
         showHeaderMergeButton = try container.decode(Bool.self, forKey: .showHeaderMergeButton)
         showHeaderStashButton = try container.decode(Bool.self, forKey: .showHeaderStashButton)
+        showHeaderUndoButton = try container.decodeIfPresent(Bool.self, forKey: .showHeaderUndoButton) ?? false
         showHeaderRemoteButton = try container.decode(Bool.self, forKey: .showHeaderRemoteButton)
         showHeaderFinderButton = try container.decode(Bool.self, forKey: .showHeaderFinderButton)
         showHeaderEditorButton = try container.decode(Bool.self, forKey: .showHeaderEditorButton)
         showHeaderTerminalButton = try container.decode(Bool.self, forKey: .showHeaderTerminalButton)
+        showHeaderSettingsButton = try container.decodeIfPresent(Bool.self, forKey: .showHeaderSettingsButton) ?? false
         historyBranchFilter = try container.decode(HistoryBranchFilter.self, forKey: .historyBranchFilter)
         historyIncludeRemotes = try container.decode(Bool.self, forKey: .historyIncludeRemotes)
         autoFetchEnabled = try container.decode(Bool.self, forKey: .autoFetchEnabled)

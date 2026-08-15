@@ -28,10 +28,12 @@ final class AppState: ObservableObject {
     private static let showHeaderBranchButtonKey = "showHeaderBranchButton"
     private static let showHeaderMergeButtonKey = "showHeaderMergeButton"
     private static let showHeaderStashButtonKey = "showHeaderStashButton"
+    private static let showHeaderUndoButtonKey = "showHeaderUndoButton"
     private static let showHeaderRemoteButtonKey = "showHeaderRemoteButton"
     private static let showHeaderFinderButtonKey = "showHeaderFinderButton"
     private static let showHeaderEditorButtonKey = "showHeaderEditorButton"
     private static let showHeaderTerminalButtonKey = "showHeaderTerminalButton"
+    private static let showHeaderSettingsButtonKey = "showHeaderSettingsButton"
     private static let historyBranchFilterKey = "historyBranchFilter"
     private static let historyIncludeRemotesKey = "historyIncludeRemotes"
     private static let autoFetchEnabledKey = "autoFetchEnabled"
@@ -109,7 +111,15 @@ final class AppState: ObservableObject {
             }
         }
     }
-    @Published var showHeaderRemoteButton: Bool {
+    @Published private(set) var showHeaderUndoButton: Bool {
+        didSet {
+            userDefaults.set(showHeaderUndoButton, forKey: Self.showHeaderUndoButtonKey)
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
+        }
+    }
+    @Published private(set) var showHeaderRemoteButton: Bool {
         didSet {
             userDefaults.set(showHeaderRemoteButton, forKey: Self.showHeaderRemoteButtonKey)
             if !isApplyingSnapshot {
@@ -117,7 +127,7 @@ final class AppState: ObservableObject {
             }
         }
     }
-    @Published var showHeaderFinderButton: Bool {
+    @Published private(set) var showHeaderFinderButton: Bool {
         didSet {
             userDefaults.set(showHeaderFinderButton, forKey: Self.showHeaderFinderButtonKey)
             if !isApplyingSnapshot {
@@ -125,7 +135,7 @@ final class AppState: ObservableObject {
             }
         }
     }
-    @Published var showHeaderEditorButton: Bool {
+    @Published private(set) var showHeaderEditorButton: Bool {
         didSet {
             userDefaults.set(showHeaderEditorButton, forKey: Self.showHeaderEditorButtonKey)
             if !isApplyingSnapshot {
@@ -133,9 +143,17 @@ final class AppState: ObservableObject {
             }
         }
     }
-    @Published var showHeaderTerminalButton: Bool {
+    @Published private(set) var showHeaderTerminalButton: Bool {
         didSet {
             userDefaults.set(showHeaderTerminalButton, forKey: Self.showHeaderTerminalButtonKey)
+            if !isApplyingSnapshot {
+                currentSettingsSnapshot = snapshot
+            }
+        }
+    }
+    @Published private(set) var showHeaderSettingsButton: Bool {
+        didSet {
+            userDefaults.set(showHeaderSettingsButton, forKey: Self.showHeaderSettingsButtonKey)
             if !isApplyingSnapshot {
                 currentSettingsSnapshot = snapshot
             }
@@ -213,10 +231,12 @@ final class AppState: ObservableObject {
         let showHeaderBranchButton = userDefaults.object(forKey: Self.showHeaderBranchButtonKey) as? Bool ?? true
         let showHeaderMergeButton = userDefaults.object(forKey: Self.showHeaderMergeButtonKey) as? Bool ?? true
         let showHeaderStashButton = userDefaults.object(forKey: Self.showHeaderStashButtonKey) as? Bool ?? true
+        let showHeaderUndoButton = userDefaults.object(forKey: Self.showHeaderUndoButtonKey) as? Bool ?? false
         let showHeaderRemoteButton = userDefaults.object(forKey: Self.showHeaderRemoteButtonKey) as? Bool ?? true
         let showHeaderFinderButton = userDefaults.object(forKey: Self.showHeaderFinderButtonKey) as? Bool ?? true
         let showHeaderEditorButton = userDefaults.object(forKey: Self.showHeaderEditorButtonKey) as? Bool ?? true
         let showHeaderTerminalButton = userDefaults.object(forKey: Self.showHeaderTerminalButtonKey) as? Bool ?? true
+        let showHeaderSettingsButton = userDefaults.object(forKey: Self.showHeaderSettingsButtonKey) as? Bool ?? false
         let historyBranchFilter = userDefaults.string(forKey: Self.historyBranchFilterKey)
             .flatMap(HistoryBranchFilter.init(storageValue:)) ?? .all
         let historyIncludeRemotes = userDefaults.object(forKey: Self.historyIncludeRemotesKey) as? Bool ?? false
@@ -228,6 +248,26 @@ final class AppState: ObservableObject {
         let preferredSearchFileApplicationBundleIdentifier = userDefaults.string(
             forKey: Self.preferredSearchFileApplicationKey
         )
+        let loadedSnapshot = AppSettingsSnapshot(
+            appearance: appearance,
+            showToolbarButtonText: showToolbarButtonText,
+            showGitFlow: showGitFlow,
+            showSubmodules: showSubmodules,
+            showSubtrees: showSubtrees,
+            showHeaderBranchButton: showHeaderBranchButton,
+            showHeaderMergeButton: showHeaderMergeButton,
+            showHeaderStashButton: showHeaderStashButton,
+            showHeaderUndoButton: showHeaderUndoButton,
+            showHeaderRemoteButton: showHeaderRemoteButton,
+            showHeaderFinderButton: showHeaderFinderButton,
+            showHeaderEditorButton: showHeaderEditorButton,
+            showHeaderTerminalButton: showHeaderTerminalButton,
+            showHeaderSettingsButton: showHeaderSettingsButton,
+            historyBranchFilter: historyBranchFilter,
+            historyIncludeRemotes: historyIncludeRemotes,
+            autoFetchEnabled: autoFetchEnabled,
+            refreshOnAppActive: refreshOnAppActive
+        ).normalizedRepositoryToolbarShortcuts()
 
         self.appearance = appearance
         self.showToolbarButtonText = showToolbarButtonText
@@ -237,10 +277,12 @@ final class AppState: ObservableObject {
         self.showHeaderBranchButton = showHeaderBranchButton
         self.showHeaderMergeButton = showHeaderMergeButton
         self.showHeaderStashButton = showHeaderStashButton
-        self.showHeaderRemoteButton = showHeaderRemoteButton
-        self.showHeaderFinderButton = showHeaderFinderButton
-        self.showHeaderEditorButton = showHeaderEditorButton
-        self.showHeaderTerminalButton = showHeaderTerminalButton
+        self.showHeaderUndoButton = loadedSnapshot.showHeaderUndoButton
+        self.showHeaderRemoteButton = loadedSnapshot.showHeaderRemoteButton
+        self.showHeaderFinderButton = loadedSnapshot.showHeaderFinderButton
+        self.showHeaderEditorButton = loadedSnapshot.showHeaderEditorButton
+        self.showHeaderTerminalButton = loadedSnapshot.showHeaderTerminalButton
+        self.showHeaderSettingsButton = loadedSnapshot.showHeaderSettingsButton
         self.historyBranchFilter = historyBranchFilter
         self.historyIncludeRemotes = historyIncludeRemotes
         self.autoFetchEnabled = autoFetchEnabled
@@ -248,24 +290,7 @@ final class AppState: ObservableObject {
         self.syncEnabled = syncEnabled
         self.searchFilter = searchFilter
         self.preferredSearchFileApplicationBundleIdentifier = preferredSearchFileApplicationBundleIdentifier
-        currentSettingsSnapshot = AppSettingsSnapshot(
-            appearance: appearance,
-            showToolbarButtonText: showToolbarButtonText,
-            showGitFlow: showGitFlow,
-            showSubmodules: showSubmodules,
-            showSubtrees: showSubtrees,
-            showHeaderBranchButton: showHeaderBranchButton,
-            showHeaderMergeButton: showHeaderMergeButton,
-            showHeaderStashButton: showHeaderStashButton,
-            showHeaderRemoteButton: showHeaderRemoteButton,
-            showHeaderFinderButton: showHeaderFinderButton,
-            showHeaderEditorButton: showHeaderEditorButton,
-            showHeaderTerminalButton: showHeaderTerminalButton,
-            historyBranchFilter: historyBranchFilter,
-            historyIncludeRemotes: historyIncludeRemotes,
-            autoFetchEnabled: autoFetchEnabled,
-            refreshOnAppActive: refreshOnAppActive
-        )
+        currentSettingsSnapshot = loadedSnapshot
     }
 
     var snapshot: AppSettingsSnapshot {
@@ -278,10 +303,12 @@ final class AppState: ObservableObject {
             showHeaderBranchButton: showHeaderBranchButton,
             showHeaderMergeButton: showHeaderMergeButton,
             showHeaderStashButton: showHeaderStashButton,
+            showHeaderUndoButton: showHeaderUndoButton,
             showHeaderRemoteButton: showHeaderRemoteButton,
             showHeaderFinderButton: showHeaderFinderButton,
             showHeaderEditorButton: showHeaderEditorButton,
             showHeaderTerminalButton: showHeaderTerminalButton,
+            showHeaderSettingsButton: showHeaderSettingsButton,
             historyBranchFilter: historyBranchFilter,
             historyIncludeRemotes: historyIncludeRemotes,
             autoFetchEnabled: autoFetchEnabled,
@@ -290,6 +317,7 @@ final class AppState: ObservableObject {
     }
 
     func apply(_ snapshot: AppSettingsSnapshot) {
+        let snapshot = snapshot.normalizedRepositoryToolbarShortcuts()
         isApplyingSnapshot = true
         defer { isApplyingSnapshot = false }
         appearance = snapshot.appearance
@@ -300,15 +328,54 @@ final class AppState: ObservableObject {
         showHeaderBranchButton = snapshot.showHeaderBranchButton
         showHeaderMergeButton = snapshot.showHeaderMergeButton
         showHeaderStashButton = snapshot.showHeaderStashButton
+        showHeaderUndoButton = snapshot.showHeaderUndoButton
         showHeaderRemoteButton = snapshot.showHeaderRemoteButton
         showHeaderFinderButton = snapshot.showHeaderFinderButton
         showHeaderEditorButton = snapshot.showHeaderEditorButton
         showHeaderTerminalButton = snapshot.showHeaderTerminalButton
+        showHeaderSettingsButton = snapshot.showHeaderSettingsButton
         historyBranchFilter = snapshot.historyBranchFilter
         historyIncludeRemotes = snapshot.historyIncludeRemotes
         autoFetchEnabled = snapshot.autoFetchEnabled
         refreshOnAppActive = snapshot.refreshOnAppActive
         currentSettingsSnapshot = snapshot
+    }
+
+    var pinnedRepositoryToolbarShortcuts: [RepositoryToolbarShortcut] {
+        snapshot.pinnedRepositoryToolbarShortcuts
+    }
+
+    @discardableResult
+    func setRepositoryToolbarShortcut(
+        _ shortcut: RepositoryToolbarShortcut,
+        isPinned: Bool
+    ) -> Bool {
+        if isPinned,
+           !isRepositoryToolbarShortcutPinned(shortcut),
+           pinnedRepositoryToolbarShortcuts.count >= RepositoryToolbarShortcut.maximumPinnedCount {
+            return false
+        }
+
+        switch shortcut {
+        case .undo: showHeaderUndoButton = isPinned
+        case .remote: showHeaderRemoteButton = isPinned
+        case .finder: showHeaderFinderButton = isPinned
+        case .editor: showHeaderEditorButton = isPinned
+        case .terminal: showHeaderTerminalButton = isPinned
+        case .settings: showHeaderSettingsButton = isPinned
+        }
+        return true
+    }
+
+    func isRepositoryToolbarShortcutPinned(_ shortcut: RepositoryToolbarShortcut) -> Bool {
+        switch shortcut {
+        case .undo: showHeaderUndoButton
+        case .remote: showHeaderRemoteButton
+        case .finder: showHeaderFinderButton
+        case .editor: showHeaderEditorButton
+        case .terminal: showHeaderTerminalButton
+        case .settings: showHeaderSettingsButton
+        }
     }
 
     func restoreLocalOnlyPreferences() {

@@ -35,8 +35,18 @@ struct AIProviderCredentialStoreError: LocalizedError {
 
 final class KeychainAIProviderCredentialStore: AIProviderCredentialStore, @unchecked Sendable {
     private let service = "com.commitplus.macgit.ai-provider-api-keys"
+    private static let cacheLock = NSLock()
+    private static var apiKeyCache: [AIProviderID: String] = [:]
+    private static var missingAPIKeyCache: Set<AIProviderID> = []
 
     func apiKey(for providerID: AIProviderID) throws -> String? {
+        if let cachedKey = cachedAPIKey(for: providerID) {
+            return cachedKey
+        }
+        if isKnownMissing(providerID) {
+            return nil
+        }
+
         var query = baseQuery(for: providerID)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -44,6 +54,7 @@ final class KeychainAIProviderCredentialStore: AIProviderCredentialStore, @unche
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound {
+            cacheMissingAPIKey(for: providerID)
             return nil
         }
         guard status == errSecSuccess else {
@@ -54,6 +65,7 @@ final class KeychainAIProviderCredentialStore: AIProviderCredentialStore, @unche
               !apiKey.isEmpty else {
             throw AIProviderCredentialStoreError(status: errSecDecode)
         }
+        cacheAPIKey(apiKey, for: providerID)
         return apiKey
     }
 
@@ -72,11 +84,13 @@ final class KeychainAIProviderCredentialStore: AIProviderCredentialStore, @unche
             guard updateStatus == errSecSuccess else {
                 throw AIProviderCredentialStoreError(status: updateStatus)
             }
+            cacheAPIKey(apiKey, for: providerID)
             return
         }
         guard status == errSecSuccess else {
             throw AIProviderCredentialStoreError(status: status)
         }
+        cacheAPIKey(apiKey, for: providerID)
     }
 
     func deleteAPIKey(for providerID: AIProviderID) throws {
@@ -84,6 +98,7 @@ final class KeychainAIProviderCredentialStore: AIProviderCredentialStore, @unche
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw AIProviderCredentialStoreError(status: status)
         }
+        cacheMissingAPIKey(for: providerID)
     }
 
     private func baseQuery(for providerID: AIProviderID) -> [String: Any] {
@@ -92,5 +107,31 @@ final class KeychainAIProviderCredentialStore: AIProviderCredentialStore, @unche
             kSecAttrService as String: service,
             kSecAttrAccount as String: providerID.rawValue,
         ]
+    }
+
+    private func cachedAPIKey(for providerID: AIProviderID) -> String? {
+        Self.cacheLock.withLock {
+            Self.apiKeyCache[providerID]
+        }
+    }
+
+    private func isKnownMissing(_ providerID: AIProviderID) -> Bool {
+        Self.cacheLock.withLock {
+            Self.missingAPIKeyCache.contains(providerID)
+        }
+    }
+
+    private func cacheAPIKey(_ apiKey: String, for providerID: AIProviderID) {
+        Self.cacheLock.withLock {
+            Self.apiKeyCache[providerID] = apiKey
+            Self.missingAPIKeyCache.remove(providerID)
+        }
+    }
+
+    private func cacheMissingAPIKey(for providerID: AIProviderID) {
+        Self.cacheLock.withLock {
+            Self.apiKeyCache.removeValue(forKey: providerID)
+            Self.missingAPIKeyCache.insert(providerID)
+        }
     }
 }

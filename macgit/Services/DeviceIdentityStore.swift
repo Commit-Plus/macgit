@@ -39,24 +39,38 @@ struct DeviceIdentityError: LocalizedError {
 final class KeychainDeviceIdentifierStore: DeviceIdentifierStoring {
     private let service: String
     private let account = "commit-plus-device-id"
+    private static let cacheLock = NSLock()
+    private static var identifierCache: [String: String] = [:]
+    private static var missingIdentifierCache: Set<String> = []
 
     init(service: String = "dev.thanhtran.macgit.commit-plus-device") {
         self.service = service
     }
 
     func readIdentifier() throws -> String? {
+        if let cachedIdentifier = cachedIdentifier {
+            return cachedIdentifier
+        }
+        if isKnownMissing {
+            return nil
+        }
+
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecItemNotFound { return nil }
+        if status == errSecItemNotFound {
+            cacheMissingIdentifier()
+            return nil
+        }
         guard status == errSecSuccess,
               let data = item as? Data,
               let identifier = String(data: data, encoding: .utf8) else {
             throw keychainError(status == errSecSuccess ? errSecDecode : status)
         }
+        cacheIdentifier(identifier)
         return identifier
     }
 
@@ -75,9 +89,11 @@ final class KeychainDeviceIdentifierStore: DeviceIdentifierStoring {
                 [kSecValueData as String: data] as CFDictionary
             )
             guard updateStatus == errSecSuccess else { throw keychainError(updateStatus) }
+            cacheIdentifier(identifier)
             return
         }
         guard status == errSecSuccess else { throw keychainError(status) }
+        cacheIdentifier(identifier)
     }
 
     private var baseQuery: [String: Any] {
@@ -94,6 +110,36 @@ final class KeychainDeviceIdentifierStore: DeviceIdentifierStoring {
         return DeviceIdentityError(
             message: "Commit+ could not access this Mac's device identity. \(detail)"
         )
+    }
+
+    private var cacheKey: String {
+        "\(service):\(account)"
+    }
+
+    private var cachedIdentifier: String? {
+        Self.cacheLock.withLock {
+            Self.identifierCache[cacheKey]
+        }
+    }
+
+    private var isKnownMissing: Bool {
+        Self.cacheLock.withLock {
+            Self.missingIdentifierCache.contains(cacheKey)
+        }
+    }
+
+    private func cacheIdentifier(_ identifier: String) {
+        Self.cacheLock.withLock {
+            Self.identifierCache[cacheKey] = identifier
+            Self.missingIdentifierCache.remove(cacheKey)
+        }
+    }
+
+    private func cacheMissingIdentifier() {
+        Self.cacheLock.withLock {
+            Self.identifierCache.removeValue(forKey: cacheKey)
+            Self.missingIdentifierCache.insert(cacheKey)
+        }
     }
 }
 

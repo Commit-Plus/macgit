@@ -188,6 +188,11 @@ final class SettingsSyncService: ObservableObject {
               observation != nil,
               !isApplyingRemote else { return }
 
+        // A publisher can deliver the just-applied remote value after
+        // applyRemote() clears its synchronous guard. Do not echo that value
+        // back to Firestore unless it is also replacing a pending local edit.
+        guard snapshot != lastKnownCloudSnapshot || pendingLocalSnapshot != nil else { return }
+
         pendingLocalSnapshot = snapshot
         pendingDebounce?.cancel()
         let currentGeneration = generation

@@ -69,35 +69,10 @@ struct AppearanceSettingsView: View {
                     isOn: $appState.showHeaderStashButton
                 )
 
-                SettingsToggleRow(
-                    title: "Remote",
-                    detail: "Show the remote repository shortcut in the header.",
-                    systemImage: "network",
-                    isOn: $appState.showHeaderRemoteButton
-                )
-
-                SettingsToggleRow(
-                    title: "Finder",
-                    detail: "Show the repository folder shortcut in the header.",
-                    systemImage: "folder",
-                    isOn: $appState.showHeaderFinderButton
-                )
-
-                SettingsToggleRow(
-                    title: "External Editor",
-                    detail: "Show the shortcut that opens the repository in your preferred editor.",
-                    systemImage: "chevron.left.forwardslash.chevron.right",
-                    isOn: $appState.showHeaderEditorButton
-                )
-
-                SettingsToggleRow(
-                    title: "Terminal",
-                    detail: "Show the terminal shortcut in the repository header.",
-                    systemImage: "terminal",
-                    isOn: $appState.showHeaderTerminalButton
-                )
             } header: {
                 Label("Header Shortcuts", systemImage: "rectangle.topthird.inset.filled")
+            } footer: {
+                Text("Manage right-side repository shortcuts from the toolbar panel.")
             }
 
             Section {
@@ -127,9 +102,5 @@ struct AppearanceSettingsView: View {
         appState.showHeaderBranchButton = true
         appState.showHeaderMergeButton = true
         appState.showHeaderStashButton = true
-        appState.showHeaderRemoteButton = true
-        appState.showHeaderFinderButton = true
-        appState.showHeaderEditorButton = true
-        appState.showHeaderTerminalButton = true
     }
 }
