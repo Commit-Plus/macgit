@@ -30,6 +30,17 @@ final class SidebarBranchSyncBadgeResolverTests: XCTestCase {
         XCTAssertEqual(resolved, BranchSyncStatus(ahead: 2, behind: 1))
     }
 
+    func testCurrentBranchPrefersZeroToolbarStatusOverStaleCachedStatus() {
+        let resolved = SidebarBranchSyncBadgeResolver.status(
+            for: "main",
+            currentBranch: "main",
+            branchSyncStatus: ["main": BranchSyncStatus(ahead: 1, behind: 0)],
+            currentBranchFallbackSyncStatus: BranchSyncStatus(ahead: 0, behind: 0)
+        )
+
+        XCTAssertEqual(resolved, BranchSyncStatus(ahead: 0, behind: 0))
+    }
+
     func testCurrentBranchFallsBackToCachedStatusWhenToolbarStatusMissing() {
         let resolved = SidebarBranchSyncBadgeResolver.status(
             for: "main",

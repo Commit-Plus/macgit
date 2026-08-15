@@ -959,7 +959,6 @@ struct MainWindowView: View {
     private var currentBranchFallbackSyncStatus: BranchSyncStatus? {
         let ahead = syncState.pushBadgeCount
         let behind = syncState.pullBadgeCount
-        guard ahead > 0 || behind > 0 else { return nil }
         return BranchSyncStatus(ahead: ahead, behind: behind)
     }
 
