@@ -45,6 +45,18 @@ final class BranchSyncStatusTests: XCTestCase {
         XCTAssertEqual(status, BranchSyncStatus(ahead: 1, behind: 0))
     }
 
+    func testCurrentBranchAheadBehindUsesMatchingRemoteTrackingBranchWhenUpstreamIsUnset() async throws {
+        let branch = "codex/inline-create-pull-request"
+        let repoURL = try makeRepoWithRemoteTrackingBranchWithoutUpstream(branch: branch)
+
+        let counts = await GitStatusService.shared.aheadBehindCount(in: repoURL)
+        let status = await GitStatusService.shared.branchSyncStatus(for: branch, in: repoURL)
+
+        XCTAssertEqual(counts.ahead, 1)
+        XCTAssertEqual(counts.behind, 0)
+        XCTAssertEqual(status, BranchSyncStatus(ahead: 1, behind: 0))
+    }
+
     // MARK: - Helpers
 
     private func makeRepoWithTrackedBranch(aheadCommits: Int) throws -> URL {
@@ -70,6 +82,38 @@ final class BranchSyncStatusTests: XCTestCase {
             try runGit(["add", "tracked.txt"], in: localURL)
             try runGit(["commit", "-m", "ahead \(index)"], in: localURL)
         }
+
+        return localURL
+    }
+
+    private func makeRepoWithRemoteTrackingBranchWithoutUpstream(branch: String) throws -> URL {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macgit-current-branch-sync-\(UUID().uuidString)", isDirectory: true)
+        let originURL = rootURL.appendingPathComponent("origin.git", isDirectory: true)
+        let localURL = rootURL.appendingPathComponent("local", isDirectory: true)
+
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        try runGit(["init", "--bare", "--initial-branch=main", originURL.path], in: rootURL)
+        try runGit(["clone", originURL.path, localURL.path], in: rootURL)
+        try configureGit(in: localURL)
+
+        let trackedFile = localURL.appendingPathComponent("tracked.txt")
+        try "base\n".write(to: trackedFile, atomically: true, encoding: .utf8)
+        try runGit(["add", "tracked.txt"], in: localURL)
+        try runGit(["commit", "-m", "base"], in: localURL)
+        try runGit(["push", "-u", "origin", "main"], in: localURL)
+
+        try runGit(["checkout", "-b", branch], in: localURL)
+        try "published\n".write(to: trackedFile, atomically: true, encoding: .utf8)
+        try runGit(["add", "tracked.txt"], in: localURL)
+        try runGit(["commit", "-m", "published"], in: localURL)
+        try runGit(["push", "-u", "origin", branch], in: localURL)
+        try runGit(["branch", "--unset-upstream", branch], in: localURL)
+
+        try "local ahead\n".write(to: trackedFile, atomically: true, encoding: .utf8)
+        try runGit(["add", "tracked.txt"], in: localURL)
+        try runGit(["commit", "-m", "local ahead"], in: localURL)
 
         return localURL
     }

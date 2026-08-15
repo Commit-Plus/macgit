@@ -76,10 +76,10 @@ struct BranchRowContent: View, Equatable {
                 if isActiveDropRow {
                     BranchDropLabel(text: dropLabel)
                 } else {
+                    BranchSyncBadge(isSyncing: isBranchSyncing, status: syncStatus)
                     if headBadgeVisible {
                         BranchHeadBadge()
                     }
-                    BranchSyncBadge(isSyncing: isBranchSyncing, status: syncStatus)
                 }
             }
         }

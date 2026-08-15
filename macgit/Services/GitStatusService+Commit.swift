@@ -251,15 +251,16 @@ extension GitStatusService {
     }
 
     func aheadBehindCount(in repositoryURL: URL) async -> (ahead: Int, behind: Int) {
-        // Pull and Push badges describe only the checked-out branch. A local
-        // branch without an upstream has no meaningful remote comparison.
+        // Pull and Push badges describe only the checked-out branch. Prefer
+        // the configured upstream, falling back to an unambiguous matching
+        // remote-tracking branch for newly published branches.
         guard let branch = await currentBranch(in: repositoryURL),
-              await upstreamBranch(for: branch, in: repositoryURL) != nil else {
+              let comparisonRef = await comparisonRef(for: branch, in: repositoryURL) else {
             return (ahead: 0, behind: 0)
         }
 
         let output = (try? await runGit(
-            arguments: ["rev-list", "--count", "--left-right", "@{upstream}...HEAD"],
+            arguments: ["rev-list", "--count", "--left-right", "\(comparisonRef)...HEAD"],
             in: repositoryURL
         ))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let parts = output.split(whereSeparator: { $0 == " " || $0 == "\t" })
