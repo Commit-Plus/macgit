@@ -508,6 +508,26 @@ final class GitHubPullRequestServiceTests: XCTestCase {
         }
     }
 
+    func testMergePullRequestUsesProviderMergeEndpoint() async throws {
+        let client = StubPullRequestHTTPClient(responses: [
+            .json(statusCode: 200, body: #"{"merged":true,"message":"Pull Request successfully merged"}"#)
+        ])
+        let service = GitHubPullRequestService(httpClient: client)
+
+        try await service.mergePullRequest(
+            makeSummary(number: 22),
+            repository: makeRepository(),
+            token: makeToken()
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        XCTAssertEqual(request.httpMethod, "PUT")
+        XCTAssertEqual(
+            request.url?.absoluteString,
+            "https://api.github.com/repos/octocat/Hello-World/pulls/22/merge"
+        )
+    }
+
     func testCreateCommentPostsExpectedBody() async throws {
         let client = StubPullRequestHTTPClient(responses: [
             .json(statusCode: 201, body: """

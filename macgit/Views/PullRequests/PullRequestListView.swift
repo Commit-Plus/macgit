@@ -217,12 +217,6 @@ struct PullRequestListView: View {
                         controller.openInBrowser(detail.summary)
                     }
                 },
-                onOpenChanges: {
-                    Task {
-                        guard await authorizeAction() else { return }
-                        controller.openChangesInBrowser(detail)
-                    }
-                },
                 isRefreshingDetail: controller.isLoadingDetail,
                 onRefreshDetail: {
                     Task {
@@ -250,6 +244,13 @@ struct PullRequestListView: View {
                     Task {
                         guard await authorizeAction() else { return }
                         await controller.loadPullRequestChanges(detail.summary, forceRefresh: true)
+                    }
+                },
+                isMerging: controller.isPerformingAction,
+                onMerge: {
+                    Task {
+                        guard await authorizeAction() else { return }
+                        await controller.merge(detail.summary)
                     }
                 }
             )
@@ -367,11 +368,11 @@ private struct PullRequestRow: View {
     let onComment: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 6) {
             Text("#\(summary.number)")
                 .font(.subheadline.monospacedDigit())
                 .foregroundStyle(.secondary)
-                .frame(width: 42, alignment: .leading)
+                .frame(width: 18, alignment: .leading)
 
             Image(systemName: pullRequestIcon)
                 .font(.system(size: 15, weight: .semibold))
@@ -518,7 +519,6 @@ private struct PullRequestDetailPane: View {
     let detail: PullRequestDetail
     let onClose: () -> Void
     let onOpenPullRequest: () -> Void
-    let onOpenChanges: () -> Void
     let isRefreshingDetail: Bool
     let onRefreshDetail: () -> Void
     let isSubmittingComment: Bool
@@ -528,8 +528,11 @@ private struct PullRequestDetailPane: View {
     let changesErrorMessage: String?
     let onLoadChanges: () -> Void
     let onRefreshChanges: () -> Void
+    let isMerging: Bool
+    let onMerge: () -> Void
     @State private var selectedTab: PullRequestDetailTab = .overview
     @State private var isCommentBarExpanded = false
+    @State private var isConfirmingMerge = false
     @State private var commentText = ""
     @FocusState private var isCommentFocused: Bool
 
@@ -545,8 +548,7 @@ private struct PullRequestDetailPane: View {
                     files: changes,
                     isLoading: isLoadingChanges,
                     errorMessage: changesErrorMessage,
-                    onRefresh: onRefreshChanges,
-                    onOpenChanges: onOpenChanges
+                    onRefresh: onRefreshChanges
                 )
             }
 
@@ -572,6 +574,12 @@ private struct PullRequestDetailPane: View {
             if tab == .changes {
                 onLoadChanges()
             }
+        }
+        .alert("Merge Pull Request?", isPresented: $isConfirmingMerge) {
+            Button("Cancel", role: .cancel) {}
+            Button("Merge Pull Request", action: onMerge)
+        } message: {
+            Text("Merge #\(detail.summary.number) into \(detail.summary.target.ref)? This updates the remote repository.")
         }
     }
 
@@ -651,7 +659,13 @@ private struct PullRequestDetailPane: View {
     private var footer: some View {
         HStack {
             Button("Open PR", systemImage: "safari", action: onOpenPullRequest)
-            Button("Open Changes", systemImage: "doc.text.magnifyingglass", action: onOpenChanges)
+            Button("Merge Pull Request", systemImage: "arrow.triangle.merge") {
+                isConfirmingMerge = true
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+            .disabled(!canMerge || isMerging)
+            .help(mergeButtonHelp)
             Spacer()
             Button("Close", action: onClose)
                 .keyboardShortcut(.cancelAction)
@@ -663,6 +677,20 @@ private struct PullRequestDetailPane: View {
                 .fill(.separator)
                 .frame(height: 0.5)
         }
+    }
+
+    private var canMerge: Bool {
+        detail.summary.state == .open && detail.summary.mergeReadiness != .blocked
+    }
+
+    private var mergeButtonHelp: String {
+        if detail.summary.state != .open {
+            return "Only open pull requests can be merged."
+        }
+        if detail.summary.mergeReadiness == .blocked {
+            return "This pull request is currently blocked from merging."
+        }
+        return "Merge this pull request into \(detail.summary.target.ref)."
     }
 
     private var commentComposer: some View {

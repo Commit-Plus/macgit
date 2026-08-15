@@ -325,6 +325,33 @@ struct GitHubPullRequestService: PullRequestProviding {
         try validateWrite(response: response, data: data)
     }
 
+    func mergePullRequest(
+        _ pullRequest: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws {
+        guard repository.provider == .github else {
+            throw PullRequestProviderError.unsupportedProvider
+        }
+
+        let url = apiBaseURL
+            .appendingPathComponent("repos")
+            .appendingPathComponent(repository.owner)
+            .appendingPathComponent(repository.name)
+            .appendingPathComponent("pulls")
+            .appendingPathComponent(String(pullRequest.number))
+            .appendingPathComponent("merge")
+        var request = makeRequest(url: url, token: token)
+        request.httpMethod = "PUT"
+        let (data, response) = try await httpClient.data(for: request)
+        try validateWrite(response: response, data: data)
+
+        let result = try decoder.decode(GitHubPullRequestMergeResponse.self, from: data)
+        guard result.merged else {
+            throw PullRequestProviderError.providerMessage(result.message)
+        }
+    }
+
     private func issueComments(
         repository: GitRepositoryIdentity,
         token: GitProviderToken,
@@ -690,6 +717,11 @@ private struct GitHubPullRequestResponse: Decodable {
             PullRequestBranchRef(label: label, ref: ref, sha: sha)
         }
     }
+}
+
+private struct GitHubPullRequestMergeResponse: Decodable {
+    var merged: Bool
+    var message: String
 }
 
 private struct GitHubPullRequestDetailPayload: Decodable {

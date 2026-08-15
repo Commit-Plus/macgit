@@ -112,7 +112,7 @@ final class PullRequestController: ObservableObject {
     private var activeRemoteURLString: String?
     private var activeToken: GitProviderToken?
     private let pullRequestPageSize = 30
-    private let listCacheTTL: TimeInterval = 45
+    private let listCacheTTL: TimeInterval = 120
     private let detailCacheTTL: TimeInterval = 300
     private let changesCacheTTL: TimeInterval = 300
     private let commentRefreshAttempts = 3
@@ -663,6 +663,47 @@ final class PullRequestController: ObservableObject {
             invalidateDetailCache(for: pullRequest.number)
             if selectedDetail?.summary.number == pullRequest.number {
                 await refreshDetailAfterComment(pullRequest, body: trimmedBody)
+            }
+        } catch {
+            detailErrorMessage = error.localizedDescription
+        }
+    }
+
+    func merge(_ pullRequest: PullRequestSummary) async {
+        guard pullRequest.state == .open else {
+            detailErrorMessage = "Only open pull requests can be merged."
+            return
+        }
+        guard pullRequest.mergeReadiness != .blocked else {
+            detailErrorMessage = "This pull request is currently blocked from merging."
+            return
+        }
+        guard let repository = activeRepository,
+              let token = activeToken,
+              let service = services[repository.provider] else {
+            detailErrorMessage = "Pull request merging is unavailable."
+            return
+        }
+
+        isPerformingAction = true
+        defer { isPerformingAction = false }
+
+        do {
+            try await service.mergePullRequest(
+                pullRequest,
+                repository: repository,
+                token: token
+            )
+            invalidateListCache()
+            invalidateDetailCache(for: pullRequest.number)
+            invalidateChangesCache()
+            await loadPullRequestDetail(pullRequest, forceRefresh: true)
+            if let activeRemoteURLString {
+                await loadPullRequests(
+                    remoteURLString: activeRemoteURLString,
+                    page: currentPage,
+                    forceRefresh: true
+                )
             }
         } catch {
             detailErrorMessage = error.localizedDescription

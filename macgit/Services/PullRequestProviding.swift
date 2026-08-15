@@ -55,6 +55,12 @@ protocol PullRequestProviding {
         repository: GitRepositoryIdentity,
         token: GitProviderToken
     ) async throws
+
+    func mergePullRequest(
+        _ pullRequest: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws
 }
 
 extension PullRequestProviding {

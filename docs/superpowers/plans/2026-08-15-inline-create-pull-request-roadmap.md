@@ -10,6 +10,7 @@
 | 2 | Provider-aware reviewer and assignee loading/submission with partial-failure handling | [completed] | [`2026-08-15-inline-create-pull-request-phase-2.md`](2026-08-15-inline-create-pull-request-phase-2.md) |
 | 3 | Publish the selected local source branch before provider creation | [completed] | [`2026-08-15-inline-create-pull-request-phase-3.md`](2026-08-15-inline-create-pull-request-phase-3.md) |
 | 4 | GitHub-inspired Pull Request detail hierarchy and Overview layout | [completed] | [`2026-08-15-inline-create-pull-request-phase-4.md`](2026-08-15-inline-create-pull-request-phase-4.md) |
+| 5 | Provider-backed Pull Request merge action and list-cache tuning | [completed] | [`2026-08-15-inline-create-pull-request-phase-5.md`](2026-08-15-inline-create-pull-request-phase-5.md) |
 
 ## Shared Constraints
 

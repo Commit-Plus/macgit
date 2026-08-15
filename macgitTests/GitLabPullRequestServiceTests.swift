@@ -319,6 +319,41 @@ final class GitLabPullRequestServiceTests: XCTestCase {
         }
     }
 
+    func testMergePullRequestUsesProviderMergeEndpoint() async throws {
+        let client = StubGitLabPullRequestHTTPClient(responses: [
+            .json(statusCode: 200, body: """
+            {
+              "iid": 7,
+              "title": "Merge GitLab action",
+              "state": "merged",
+              "draft": false,
+              "web_url": "https://gitlab.com/group/subgroup/project/-/merge_requests/7",
+              "created_at": "2026-07-08T00:10:11Z",
+              "updated_at": "2026-07-08T00:12:11Z",
+              "merged_at": "2026-07-08T00:12:11Z",
+              "source_branch": "feature/gitlab-action",
+              "target_branch": "main",
+              "sha": "def456",
+              "author": { "username": "tanuki", "avatar_url": null }
+            }
+            """)
+        ])
+        let service = GitLabPullRequestService(httpClient: client)
+
+        try await service.mergePullRequest(
+            makeSummary(number: 7),
+            repository: makeRepository(),
+            token: makeToken()
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        XCTAssertEqual(request.httpMethod, "PUT")
+        XCTAssertEqual(
+            request.url?.absoluteString,
+            "https://gitlab.com/api/v4/projects/group%2Fsubgroup%2Fproject/merge_requests/7/merge"
+        )
+    }
+
     private func makeRepository() -> GitRepositoryIdentity {
         GitRepositoryIdentity(
             provider: .gitlab,
@@ -344,6 +379,20 @@ final class GitLabPullRequestServiceTests: XCTestCase {
             refreshToken: nil,
             expiresAt: nil,
             tokenType: "Bearer"
+        )
+    }
+
+    private func makeSummary(number: Int) -> PullRequestSummary {
+        PullRequestSummary(
+            number: number,
+            title: "Merge GitLab action",
+            state: .open,
+            author: PullRequestAuthor(username: "tanuki", avatarURL: nil),
+            source: PullRequestBranchRef(label: "feature/gitlab-action", ref: "feature/gitlab-action"),
+            target: PullRequestBranchRef(label: "main", ref: "main"),
+            webURL: URL(string: "https://gitlab.com/group/subgroup/project/-/merge_requests/\(number)")!,
+            updatedAt: Date(),
+            mergeReadiness: .ready
         )
     }
 }

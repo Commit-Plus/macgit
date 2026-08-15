@@ -245,6 +245,30 @@ struct GitLabPullRequestService: PullRequestProviding {
         try validateWrite(response: response, data: data)
     }
 
+    func mergePullRequest(
+        _ pullRequest: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws {
+        guard repository.provider == .gitlab else {
+            throw PullRequestProviderError.unsupportedProvider
+        }
+
+        let url = try projectURL(
+            repository: repository,
+            pathComponents: ["merge_requests", String(pullRequest.number), "merge"]
+        )
+        var request = makeRequest(url: url, token: token)
+        request.httpMethod = "PUT"
+        let (data, response) = try await httpClient.data(for: request)
+        try validateWrite(response: response, data: data)
+
+        let result = try decoder.decode(GitLabMergeRequestResponse.self, from: data)
+        guard result.summary.state == .merged else {
+            throw PullRequestProviderError.providerMessage("GitLab did not merge the merge request.")
+        }
+    }
+
     private func mergeRequestNotes(
         repository: GitRepositoryIdentity,
         token: GitProviderToken,

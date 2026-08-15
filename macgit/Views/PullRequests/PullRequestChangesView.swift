@@ -23,7 +23,6 @@ struct PullRequestChangesView: View {
     let isLoading: Bool
     let errorMessage: String?
     let onRefresh: () -> Void
-    let onOpenChanges: () -> Void
 
     @State private var selectedFileID: String?
     @State private var diffHunks: [DiffHunk] = []
@@ -196,7 +195,6 @@ struct PullRequestChangesView: View {
                 if showsRefresh {
                     Button("Try Again", systemImage: "arrow.clockwise", action: onRefresh)
                 }
-                Button("Open Changes", systemImage: "safari", action: onOpenChanges)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

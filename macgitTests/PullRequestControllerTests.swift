@@ -941,6 +941,45 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(checkedOutBranch, "pr/18")
     }
 
+    func testMergePullRequestInvalidatesAndRefreshesProviderState() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let mergedSummary = makeSummary(number: 18, state: .merged)
+        let mergedDetail = PullRequestDetail(
+            summary: mergedSummary,
+            body: "Merged pull request.",
+            assignees: [],
+            comments: [],
+            changesURL: URL(string: "https://github.com/octocat/Hello-World/pull/18/files")!
+        )
+        let service = FakePullRequestProvider(
+            result: .success([makeSummary(number: 18)]),
+            detailResult: .success(mergedDetail)
+        )
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service]
+        )
+
+        await controller.loadPullRequests(remoteURLString: "https://github.com/octocat/Hello-World.git")
+        await controller.merge(makeSummary(number: 18))
+
+        XCTAssertEqual(service.mergedPullRequestNumber, 18)
+        XCTAssertEqual(controller.selectedDetail?.summary.state, .merged)
+        XCTAssertEqual(service.listCallCount, 2)
+    }
+
     private func makeAccount(
         id: String = "macgit-user-1:github:github.com:583231",
         scopes: [String] = ["repo", "read:user"],
@@ -1043,6 +1082,7 @@ private final class FakePullRequestProvider: PullRequestProviding {
     private var detailResults: [Result<PullRequestDetail, PullRequestProviderError>]
     private let createResult: Result<PullRequestSummary, PullRequestProviderError>
     private let commentResult: Result<Void, PullRequestProviderError>
+    private let mergeResult: Result<Void, PullRequestProviderError>
     private let changesResult: Result<[PullRequestChangedFile], PullRequestProviderError>
     private let participantsResult: Result<[PullRequestParticipant], PullRequestProviderError>
     private let createWarnings: [String]
@@ -1060,6 +1100,7 @@ private final class FakePullRequestProvider: PullRequestProviding {
     private(set) var changesCallCount = 0
     private(set) var createdDraft: PullRequestDraft?
     private(set) var createdCommentBody: String?
+    private(set) var mergedPullRequestNumber: Int?
 
     init(
         result: Result<[PullRequestSummary], PullRequestProviderError> = .success([]),
@@ -1070,6 +1111,7 @@ private final class FakePullRequestProvider: PullRequestProviding {
         createResult: Result<PullRequestSummary, PullRequestProviderError> = .failure(.providerMessage("No create")),
         createWarnings: [String] = [],
         commentResult: Result<Void, PullRequestProviderError> = .success(()),
+        mergeResult: Result<Void, PullRequestProviderError> = .success(()),
         hasPreviousPage: Bool = false,
         hasNextPage: Bool = false
     ) {
@@ -1080,6 +1122,7 @@ private final class FakePullRequestProvider: PullRequestProviding {
         self.createResult = createResult
         self.createWarnings = createWarnings
         self.commentResult = commentResult
+        self.mergeResult = mergeResult
         self.hasPreviousPage = hasPreviousPage
         self.hasNextPage = hasNextPage
     }
@@ -1165,5 +1208,16 @@ private final class FakePullRequestProvider: PullRequestProviding {
         receivedToken = token
         _ = pullRequest
         _ = try commentResult.get()
+    }
+
+    func mergePullRequest(
+        _ pullRequest: PullRequestSummary,
+        repository: GitRepositoryIdentity,
+        token: GitProviderToken
+    ) async throws {
+        mergedPullRequestNumber = pullRequest.number
+        receivedRepository = repository
+        receivedToken = token
+        _ = try mergeResult.get()
     }
 }
