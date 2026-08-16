@@ -450,6 +450,15 @@ struct MainWindowView: View {
                     globalValue: appState.refreshOnAppActive
                 ) else { return }
                 Task {
+                    if let credentialResolver = await credentialResolverForFetch(
+                        options: GitStatusService.FetchOptions()
+                    ) {
+                        try? await GitStatusService.shared.fetch(
+                            options: GitStatusService.FetchOptions(),
+                            in: repositoryURL,
+                            credentialResolver: credentialResolver
+                        )
+                    }
                     await syncState.refresh(repositoryURL: repositoryURL)
                 }
             }

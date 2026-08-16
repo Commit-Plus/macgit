@@ -36,6 +36,8 @@ struct URLSessionGitProviderHTTPClient: GitProviderHTTPClient {
     var session: URLSession = .shared
 
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        var request = request
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else {
             throw GitProviderAuthError.invalidResponse
