@@ -435,6 +435,23 @@ extension MainWindowView {
             }
         )
     }
+
+    func deleteTagConfirmationSheet(for confirmation: PendingTagDeletion) -> some View {
+        DeleteTagConfirmationSheet(
+            confirmation: confirmation,
+            onConfirm: { remote in
+                pendingTagDeletion = nil
+                let message = remote.map { "Deleting \(confirmation.tag) on \($0)..." }
+                    ?? "Deleting \(confirmation.tag)..."
+                runRepositoryOperation(message) {
+                    await deleteTag(confirmation.tag, remote: remote)
+                }
+            },
+            onCancel: {
+                pendingTagDeletion = nil
+            }
+        )
+    }
 }
 
 struct MoveTagConfirmationSheet: View {
@@ -513,5 +530,58 @@ struct MoveTagConfirmationSheet: View {
         .padding(10)
         .background(.quaternary.opacity(0.18))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+struct DeleteTagConfirmationSheet: View {
+    let confirmation: PendingTagDeletion
+    let onConfirm: (String?) -> Void
+    let onCancel: () -> Void
+
+    @State private var deleteOnRemote = false
+    @State private var selectedRemote = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Delete Tag")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            Text("Are you sure you want to delete the tag '\(confirmation.tag)'?")
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Also delete on remote", isOn: $deleteOnRemote)
+                    .toggleStyle(.checkbox)
+                    .disabled(confirmation.remotes.isEmpty)
+
+                if deleteOnRemote {
+                    Picker("Remote", selection: $selectedRemote) {
+                        ForEach(confirmation.remotes, id: \.self) { remote in
+                            Text(remote).tag(remote)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel", role: .cancel, action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+
+                Button("Delete", role: .destructive) {
+                    onConfirm(deleteOnRemote ? selectedRemote : nil)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(deleteOnRemote && selectedRemote.isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 420, idealWidth: 480)
+        .task {
+            selectedRemote = confirmation.remotes.first ?? ""
+        }
     }
 }

@@ -66,6 +66,12 @@ struct PendingForcePushTagConfirmation: Identifiable, Equatable {
     let remote: String
 }
 
+struct PendingTagDeletion: Identifiable, Equatable {
+    let id = UUID()
+    let tag: String
+    let remotes: [String]
+}
+
 struct PendingSubtreeOperation: Identifiable, Equatable {
     let operation: SubtreeOperation
     let entry: GitSubtreeEntry
@@ -127,7 +133,7 @@ struct MainWindowView: View {
     @State var showingDetachedHeadConfirmation = false
     @State var tagToCheckout: String = ""
     @State private var displayedTagDetails: GitTagDetails?
-    @State private var tagPendingDeletion: String?
+    @State var pendingTagDeletion: PendingTagDeletion?
     @State var pendingStashRef: String?
     @State var pendingStashAction: StashAction?
     @State var pendingStashPaths: [String] = []
@@ -433,17 +439,10 @@ struct MainWindowView: View {
             } message: {
                 Text("Are you sure you want to checkout '\(tagToCheckout)'?\n\nDoing so will make your working copy a 'detached HEAD', which means you won't be on a branch anymore. If you want to commit after this you'll probably want to either checkout a branch again, or create a new branch. Is this ok?")
             }
-            .alert("Delete Tag", isPresented: tagDeletionConfirmationPresented) {
-                Button("Cancel", role: .cancel) {}
-                Button("Delete", role: .destructive) {
-                    guard let tag = tagPendingDeletion else { return }
-                    tagPendingDeletion = nil
-                    runRepositoryOperation("Deleting \(tag)...") {
-                        await deleteTag(tag)
-                    }
+            .sheet(isPresented: tagDeletionConfirmationPresented) {
+                if let confirmation = pendingTagDeletion {
+                    deleteTagConfirmationSheet(for: confirmation)
                 }
-            } message: {
-                Text("Delete local tag '\(tagPendingDeletion ?? "")'?")
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 guard repoSettings.resolvedRefreshOnAppActive(
@@ -787,7 +786,15 @@ struct MainWindowView: View {
                 )
             },
             onRequestDeleteTag: { tag in
-                tagPendingDeletion = tag
+                Task {
+                    let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
+                    await MainActor.run {
+                        pendingTagDeletion = PendingTagDeletion(
+                            tag: tag,
+                            remotes: remotes.sorted()
+                        )
+                    }
+                }
             },
             onRequestRebaseOnto: { branch in
                 runRepositoryOperation("Rebasing onto \(branch)...") {
@@ -982,10 +989,10 @@ struct MainWindowView: View {
 
     private var tagDeletionConfirmationPresented: Binding<Bool> {
         Binding(
-            get: { tagPendingDeletion != nil },
+            get: { pendingTagDeletion != nil },
             set: { isPresented in
                 if !isPresented {
-                    tagPendingDeletion = nil
+                    pendingTagDeletion = nil
                 }
             }
         )
@@ -2039,9 +2046,18 @@ struct MainWindowView: View {
         }
     }
 
-    private func deleteTag(_ tag: String) async {
+    func deleteTag(_ tag: String, remote: String? = nil) async {
         do {
             try await GitStatusService.shared.deleteTag(name: tag, in: repositoryURL)
+            if let remote, !remote.isEmpty {
+                let credentialResolver = await credentialResolverForRemoteOperation(remotes: [remote])
+                try await GitStatusService.shared.deleteRemoteTag(
+                    name: tag,
+                    remote: remote,
+                    in: repositoryURL,
+                    credentialResolver: credentialResolver
+                )
+            }
             await MainActor.run {
                 if selectedItem == .tag(tag) {
                     selectedItem = .item(.history)

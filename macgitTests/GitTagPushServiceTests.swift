@@ -92,6 +92,25 @@ final class GitTagPushServiceTests: XCTestCase {
         XCTAssertTrue(message.contains("Force Push to → origin"))
     }
 
+    func testDeleteRemoteTagRemovesOnlyTheSelectedRemoteTag() async throws {
+        let sourceURL = try makeRepository()
+        let remoteURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macgit-tag-remote-\(UUID().uuidString).git", isDirectory: true)
+        try runGit(["init", "--bare", remoteURL.path], in: sourceURL)
+        try runGit(["remote", "add", "origin", remoteURL.path], in: sourceURL)
+        try runGit(["tag", "v1.0.0"], in: sourceURL)
+        try runGit(["tag", "v2.0.0"], in: sourceURL)
+        _ = try await GitStatusService.shared.push(
+            options: GitStatusService.PushOptions(remote: "origin", tags: ["v1.0.0", "v2.0.0"]),
+            in: sourceURL
+        )
+
+        try await GitStatusService.shared.deleteRemoteTag(name: "v1.0.0", remote: "origin", in: sourceURL)
+
+        XCTAssertFalse(try refExists("refs/tags/v1.0.0", in: remoteURL))
+        XCTAssertTrue(try refExists("refs/tags/v2.0.0", in: remoteURL))
+    }
+
     private func makeRepository() throws -> URL {
         let repositoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("macgit-tag-push-\(UUID().uuidString)", isDirectory: true)

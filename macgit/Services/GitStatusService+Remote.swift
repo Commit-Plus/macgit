@@ -74,6 +74,29 @@ extension GitStatusService {
         return outputs.joined(separator: "\n")
     }
 
+    func deleteRemoteTag(
+        name: String,
+        remote: String,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver? = nil,
+        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector(),
+        sshCredentialInjector: GitSSHCredentialInjecting = TemporaryGitSSHCredentialInjector()
+    ) async throws {
+        let injection = try await credentialInjection(
+            for: remote,
+            in: repositoryURL,
+            credentialResolver: credentialResolver,
+            credentialInjector: credentialInjector,
+            sshCredentialInjector: sshCredentialInjector
+        )
+        defer { injection?.cleanup() }
+        _ = try await runRemoteGit(
+            arguments: ["push", remote, "--delete", name],
+            in: repositoryURL,
+            injection: injection
+        )
+    }
+
     func pull(
         remote: String,
         branch: String,
