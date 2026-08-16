@@ -101,7 +101,9 @@ final class PullRequestController: ObservableObject {
     private let remoteNameProvider: (URL) async -> String?
     private let remoteURLProvider: (URL, String) async -> String?
     private let currentBranchProvider: (URL) async -> String?
+    private let defaultBranchProvider: (URL) async -> String?
     private let localBranchesProvider: (URL) async -> [String]
+    private let remoteBranchesProvider: (URL) async -> [String]
     private let changedFileCountProvider: (URL, String, String, String?) async throws -> Int
     private let fetchPullRequestRef: (String, String, String, URL, GitProviderCredentialResolver?) async throws -> Void
     private let checkoutBranch: (String, URL) async throws -> Void
@@ -139,8 +141,35 @@ final class PullRequestController: ObservableObject {
         currentBranchProvider: @escaping (URL) async -> String? = { repositoryURL in
             await GitStatusService.shared.currentBranch(in: repositoryURL)
         },
+        defaultBranchProvider: @escaping (URL) async -> String? = { repositoryURL in
+            let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
+            guard let remote = remotes.first(where: { $0 == "origin" }) ?? remotes.first else { return nil }
+            let remoteHeadRef = await GitStatusService.shared.defaultBranch(in: repositoryURL, remote: remote)
+            guard let remoteHeadRef else { return nil }
+            let prefix = "\(remote)/"
+            if remoteHeadRef.hasPrefix(prefix) {
+                return String(remoteHeadRef.dropFirst(prefix.count))
+            }
+            return remoteHeadRef
+        },
         localBranchesProvider: @escaping (URL) async -> [String] = { repositoryURL in
             await GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
+        },
+        remoteBranchesProvider: @escaping (URL) async -> [String] = { repositoryURL in
+            let remotes = await GitStatusService.shared.remotes(in: repositoryURL)
+            let remoteBranches = await withTaskGroup(of: [String].self) { group in
+                for remote in remotes {
+                    group.addTask {
+                        await GitStatusService.shared.cachedRemoteBranches(remote: remote, in: repositoryURL)
+                    }
+                }
+                var result: [String] = []
+                for await branches in group {
+                    result.append(contentsOf: branches)
+                }
+                return result
+            }
+            return Array(Set(remoteBranches)).sorted()
         },
         changedFileCountProvider: @escaping (URL, String, String, String?) async throws -> Int = { repositoryURL, sourceBranch, targetBranch, remoteName in
             try await GitStatusService.shared.pullRequestChangedFileCount(
@@ -175,7 +204,9 @@ final class PullRequestController: ObservableObject {
         self.remoteNameProvider = remoteNameProvider
         self.remoteURLProvider = remoteURLProvider
         self.currentBranchProvider = currentBranchProvider
+        self.defaultBranchProvider = defaultBranchProvider
         self.localBranchesProvider = localBranchesProvider
+        self.remoteBranchesProvider = remoteBranchesProvider
         self.changedFileCountProvider = changedFileCountProvider
         self.fetchPullRequestRef = fetchPullRequestRef
         self.checkoutBranch = checkoutBranch
@@ -482,40 +513,27 @@ final class PullRequestController: ObservableObject {
             return
         }
 
-        let localBranches = await localBranchesProvider(repositoryURL).filter { !$0.isEmpty }
         let currentBranch = await currentBranchProvider(repositoryURL)
+        let defaultBranch = await defaultBranchProvider(repositoryURL)
         let normalizedRequestedSource = requestedSourceBranch?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let sourceBranch = (normalizedRequestedSource?.isEmpty == false ? normalizedRequestedSource : nil)
             ?? currentBranch
-            ?? localBranches.first
+            ?? defaultBranch
         guard let sourceBranch else {
             detailErrorMessage = "No local branches are available for a pull request."
             return
         }
 
-        let knownTargetBranches = Set(items.map(\.target.ref).filter { !$0.isEmpty })
-        let defaultTargetBranch = knownTargetBranches.first(where: { $0 != sourceBranch })
-            ?? localBranches.first(where: { $0 != sourceBranch && $0 == "main" })
-            ?? localBranches.first(where: { $0 != sourceBranch })
-            ?? "main"
-        let targetBranches = Array(knownTargetBranches.union(localBranches).union([defaultTargetBranch])).sorted()
-
         createDraftSeed = PullRequestDraftSeed(
             repository: repository,
             remoteName: activeRemoteName,
-            sourceBranches: Array(Set(localBranches).union([sourceBranch])).sorted(),
-            targetBranches: targetBranches,
             sourceBranch: sourceBranch,
-            targetBranch: defaultTargetBranch,
+            targetBranch: nil,
             suggestedTitle: suggestedTitle(for: sourceBranch)
         )
-        async let changesLoad: Void = loadCreateDraftChanges(
-            sourceBranch: sourceBranch,
-            targetBranch: defaultTargetBranch
-        )
         async let participantsLoad: Void = loadCreateDraftParticipants()
-        _ = await (changesLoad, participantsLoad)
+        _ = await participantsLoad
     }
 
     func loadCreateDraftParticipants() async {
@@ -587,6 +605,35 @@ final class PullRequestController: ObservableObject {
             createDraftChangesErrorMessage = error.localizedDescription
             isLoadingCreateDraftChanges = false
         }
+    }
+
+    func loadCreateDraftSourceBranches(query: String) async -> [String] {
+        guard let repositoryURL = activeRepositoryURL else { return [] }
+        let branches = await localBranchesProvider(repositoryURL)
+        return filterBranches(branches, query: query)
+    }
+
+    func loadCreateDraftTargetBranches(query: String) async -> [String] {
+        guard let repositoryURL = activeRepositoryURL else { return [] }
+        async let localBranches = localBranchesProvider(repositoryURL)
+        async let remoteBranches = remoteBranchesProvider(repositoryURL)
+        let allBranches = await Set(localBranches).union(remoteBranches)
+        return filterBranches(Array(allBranches), query: query)
+    }
+
+    private func filterBranches(_ branches: [String], query: String) -> [String] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered = trimmed.isEmpty ? branches : branches.filter {
+            $0.localizedCaseInsensitiveContains(trimmed)
+        }
+        return filtered.filter { !$0.isEmpty }.sorted()
+    }
+
+    func resetCreateDraftChanges() {
+        createDraftChangesLoadID = UUID()
+        createDraftChangedFileCount = nil
+        createDraftChangesErrorMessage = nil
+        isLoadingCreateDraftChanges = false
     }
 
     func dismissCreatePullRequest() {

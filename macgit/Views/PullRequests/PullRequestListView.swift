@@ -43,14 +43,24 @@ struct PullRequestListView: View {
                     participants: controller.createDraftParticipants,
                     isLoadingParticipants: controller.isLoadingCreateDraftParticipants,
                     participantsErrorMessage: controller.createDraftParticipantsErrorMessage,
+                    loadSourceBranches: { query in
+                        await controller.loadCreateDraftSourceBranches(query: query)
+                    },
+                    loadTargetBranches: { query in
+                        await controller.loadCreateDraftTargetBranches(query: query)
+                    },
                     onCancel: { controller.dismissCreatePullRequest() },
                     onBranchesChanged: { sourceBranch, targetBranch in
                         Task {
                             guard await authorizeAction() else { return }
-                            await controller.loadCreateDraftChanges(
-                                sourceBranch: sourceBranch,
-                                targetBranch: targetBranch
-                            )
+                            if let targetBranch {
+                                await controller.loadCreateDraftChanges(
+                                    sourceBranch: sourceBranch,
+                                    targetBranch: targetBranch
+                                )
+                            } else {
+                                controller.resetCreateDraftChanges()
+                            }
                         }
                     },
                     onCreate: onSubmitCreatePullRequest

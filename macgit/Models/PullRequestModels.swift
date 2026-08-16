@@ -251,10 +251,8 @@ struct PullRequestCreationResult: Equatable {
 struct PullRequestDraftSeed: Equatable {
     var repository: GitRepositoryIdentity
     var remoteName: String?
-    var sourceBranches: [String]
-    var targetBranches: [String]
     var sourceBranch: String
-    var targetBranch: String
+    var targetBranch: String?
     var suggestedTitle: String
 }
 

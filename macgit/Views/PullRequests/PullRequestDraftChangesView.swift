@@ -22,7 +22,7 @@ struct PullRequestDraftChangesView: View {
     let repositoryURL: URL
     let remoteName: String?
     let sourceBranch: String
-    let targetBranch: String
+    let targetBranch: String?
 
     @State private var changes: [CommitFileChange] = []
     @State private var selectedFile: CommitFileChange?
@@ -37,7 +37,13 @@ struct PullRequestDraftChangesView: View {
 
     var body: some View {
         Group {
-            if sourceBranch == targetBranch {
+            if targetBranch == nil {
+                ContentUnavailableView(
+                    "Select a Target Branch",
+                    systemImage: "arrow.left.arrow.right",
+                    description: Text("Choose a target branch to compare changes.")
+                )
+            } else if sourceBranch == targetBranch {
                 ContentUnavailableView(
                     "Choose Different Branches",
                     systemImage: "arrow.left.arrow.right",
@@ -71,7 +77,7 @@ struct PullRequestDraftChangesView: View {
     }
 
     private var comparisonID: String {
-        "\(remoteName ?? "")|\(targetBranch)...\(sourceBranch)"
+        "\(remoteName ?? "")|\(targetBranch ?? "")...\(sourceBranch)"
     }
 
     private var comparisonContent: some View {
@@ -155,7 +161,7 @@ struct PullRequestDraftChangesView: View {
         diffHunks = []
         errorMessage = nil
         diffErrorMessage = nil
-        guard sourceBranch != targetBranch else {
+        guard let targetBranch, sourceBranch != targetBranch else {
             isLoading = false
             return
         }
@@ -195,6 +201,10 @@ struct PullRequestDraftChangesView: View {
         isLoadingDiff = true
         Task {
             do {
+                guard let targetBranch else {
+                    isLoadingDiff = false
+                    return
+                }
                 let hunks = try await GitStatusService.shared.pullRequestDiff(
                     for: file.path,
                     sourceBranch: sourceBranch,

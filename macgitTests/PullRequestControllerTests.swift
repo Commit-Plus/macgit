@@ -584,7 +584,7 @@ final class PullRequestControllerTests: XCTestCase {
         await controller.presentCreatePullRequest()
 
         XCTAssertEqual(controller.createDraftSeed?.sourceBranch, "feature/pr-actions")
-        XCTAssertEqual(controller.createDraftSeed?.targetBranch, "main")
+        XCTAssertNil(controller.createDraftSeed?.targetBranch)
         XCTAssertEqual(controller.createDraftSeed?.suggestedTitle, "Pr Actions")
     }
 
@@ -617,9 +617,70 @@ final class PullRequestControllerTests: XCTestCase {
         await controller.presentCreatePullRequest(sourceBranch: "feature/context-menu-pr")
 
         XCTAssertEqual(controller.createDraftSeed?.sourceBranch, "feature/context-menu-pr")
-        XCTAssertEqual(controller.createDraftSeed?.sourceBranches, ["feature/context-menu-pr", "main"])
-        XCTAssertEqual(controller.createDraftSeed?.targetBranch, "main")
+        XCTAssertNil(controller.createDraftSeed?.targetBranch)
         XCTAssertEqual(controller.createDraftSeed?.suggestedTitle, "Context Menu Pr")
+    }
+
+    func testLoadCreateDraftSourceBranchesReturnsLocalBranchesFilteredByQuery() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let repositoryURL = URL(fileURLWithPath: "/tmp/macgit-pr-source-loader")
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: FakePullRequestProvider(result: .success([makeSummary()]))],
+            remoteNameProvider: { _ in "origin" },
+            remoteURLProvider: { _, _ in "https://github.com/octocat/Hello-World.git" },
+            localBranchesProvider: { _ in ["main", "feature/a", "feature/b", "release/v1"] }
+        )
+
+        await controller.loadPullRequests(repositoryURL: repositoryURL)
+
+        let all = await controller.loadCreateDraftSourceBranches(query: "")
+        XCTAssertEqual(all, ["feature/a", "feature/b", "main", "release/v1"])
+
+        let filtered = await controller.loadCreateDraftSourceBranches(query: "feature")
+        XCTAssertEqual(filtered, ["feature/a", "feature/b"])
+    }
+
+    func testLoadCreateDraftTargetBranchesMergesLocalAndRemoteAndRemovesDuplicates() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let repositoryURL = URL(fileURLWithPath: "/tmp/macgit-pr-target-loader")
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: FakePullRequestProvider(result: .success([makeSummary()]))],
+            remoteNameProvider: { _ in "origin" },
+            remoteURLProvider: { _, _ in "https://github.com/octocat/Hello-World.git" },
+            localBranchesProvider: { _ in ["main", "feature/local"] },
+            remoteBranchesProvider: { _ in ["main", "feature/remote", "hotfix/v2"] }
+        )
+
+        await controller.loadPullRequests(repositoryURL: repositoryURL)
+
+        let branches = await controller.loadCreateDraftTargetBranches(query: "")
+        XCTAssertEqual(branches, ["feature/local", "feature/remote", "hotfix/v2", "main"])
     }
 
     func testPresentCreatePullRequestLoadsChangedFileCount() async throws {
@@ -653,6 +714,10 @@ final class PullRequestControllerTests: XCTestCase {
 
         await controller.loadPullRequests(repositoryURL: repositoryURL)
         await controller.presentCreatePullRequest()
+
+        XCTAssertNil(controller.createDraftChangedFileCount)
+
+        await controller.loadCreateDraftChanges(sourceBranch: "feature/change-count", targetBranch: "main")
 
         XCTAssertEqual(controller.createDraftChangedFileCount, 4)
         XCTAssertFalse(controller.isLoadingCreateDraftChanges)

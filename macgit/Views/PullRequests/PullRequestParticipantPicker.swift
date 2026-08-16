@@ -44,6 +44,19 @@ struct PullRequestParticipantPicker: View {
                     .foregroundStyle(.tertiary)
             } else {
                 Menu {
+                    Button {
+                        selectedIDs.removeAll()
+                    } label: {
+                        if selectedIDs.isEmpty {
+                            Label("None", systemImage: "checkmark")
+                        } else {
+                            Text("None")
+                        }
+                    }
+                    .disabled(selectedIDs.isEmpty)
+
+                    Divider()
+
                     ForEach(participants) { participant in
                         Button {
                             toggle(participant.id)

@@ -28,12 +28,14 @@ struct CreatePullRequestView: View {
     let participants: [PullRequestParticipant]
     let isLoadingParticipants: Bool
     let participantsErrorMessage: String?
+    let loadSourceBranches: (String) async -> [String]
+    let loadTargetBranches: (String) async -> [String]
     var onCancel: () -> Void
-    var onBranchesChanged: (String, String) -> Void
+    var onBranchesChanged: (String, String?) -> Void
     var onCreate: (PullRequestDraft) -> Void
 
     @State private var sourceBranch: String
-    @State private var targetBranch: String
+    @State private var targetBranch: String?
     @State private var title: String
     @State private var bodyText: String = ""
     @State private var selectedReviewerIDs: Set<String> = []
@@ -51,8 +53,10 @@ struct CreatePullRequestView: View {
         participants: [PullRequestParticipant],
         isLoadingParticipants: Bool,
         participantsErrorMessage: String?,
+        loadSourceBranches: @escaping (String) async -> [String],
+        loadTargetBranches: @escaping (String) async -> [String],
         onCancel: @escaping () -> Void,
-        onBranchesChanged: @escaping (String, String) -> Void,
+        onBranchesChanged: @escaping (String, String?) -> Void,
         onCreate: @escaping (PullRequestDraft) -> Void
     ) {
         self.seed = seed
@@ -64,6 +68,8 @@ struct CreatePullRequestView: View {
         self.participants = participants
         self.isLoadingParticipants = isLoadingParticipants
         self.participantsErrorMessage = participantsErrorMessage
+        self.loadSourceBranches = loadSourceBranches
+        self.loadTargetBranches = loadTargetBranches
         self.onCancel = onCancel
         self.onBranchesChanged = onBranchesChanged
         self.onCreate = onCreate
@@ -133,29 +139,26 @@ struct CreatePullRequestView: View {
     private var formPanel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Source")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Picker("Source", selection: $sourceBranch) {
-                        ForEach(seed.sourceBranches, id: \.self) { branch in
-                            Text(branch).tag(branch)
-                        }
-                    }
-                    .labelsHidden()
-                }
+                SearchableBranchPicker(
+                    title: "Source",
+                    selection: Binding<String?>(
+                        get: { sourceBranch },
+                        set: { if let branch = $0 { sourceBranch = branch } }
+                    ),
+                    placeholder: "Search source branches",
+                    noneTitle: "None",
+                    allowsNone: false,
+                    loadBranches: loadSourceBranches
+                )
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Target")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Picker("Target", selection: $targetBranch) {
-                        ForEach(seed.targetBranches, id: \.self) { branch in
-                            Text(branch).tag(branch)
-                        }
-                    }
-                    .labelsHidden()
-                }
+                SearchableBranchPicker(
+                    title: "Target",
+                    selection: $targetBranch,
+                    placeholder: "Search target branches",
+                    noneTitle: "None",
+                    allowsNone: true,
+                    loadBranches: loadTargetBranches
+                )
 
                 changeSummary
 
@@ -212,6 +215,7 @@ struct CreatePullRequestView: View {
 
     private var canSubmit: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && targetBranch != nil
             && sourceBranch != targetBranch
             && changedFileCount.map { $0 > 0 } == true
             && !isLoadingChanges
@@ -265,6 +269,10 @@ struct CreatePullRequestView: View {
     }
 
     private func submit() {
+        guard let targetBranch else {
+            validationMessage = "Please select a target branch."
+            return
+        }
         do {
             let draft = try PullRequestDraft(
                 repository: seed.repository,
