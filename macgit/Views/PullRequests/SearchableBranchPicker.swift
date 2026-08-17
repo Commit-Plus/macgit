@@ -30,8 +30,6 @@ struct SearchableBranchPicker: View {
     @State private var searchText = ""
     @State private var branches: [String] = []
     @State private var isLoading = false
-    @State private var searchTask: Task<Void, Never>?
-    @FocusState private var isSearchFieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -61,21 +59,13 @@ struct SearchableBranchPicker: View {
 
     private var pickerPopover: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(placeholder, text: $searchText)
-                    .textFieldStyle(.plain)
-                    .focused($isSearchFieldFocused)
-            }
-            .padding(10)
-            .background(Color(nsColor: .textBackgroundColor))
-            .overlay(alignment: .bottom) {
-                Divider()
-            }
-            .onAppear {
-                isSearchFieldFocused = true
-            }
+            SearchField(text: $searchText, placeholder: placeholder)
+                .frame(height: 22)
+                .padding(10)
+                .background(Color(nsColor: .textBackgroundColor))
+                .overlay(alignment: .bottom) {
+                    Divider()
+                }
 
             if isLoading && branches.isEmpty {
                 Spacer()
@@ -126,31 +116,59 @@ struct SearchableBranchPicker: View {
                 .listStyle(.plain)
             }
         }
-        .onAppear {
-            searchTask?.cancel()
-            searchTask = Task {
-                await load()
+        .task(id: searchText) {
+            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            do {
+                try await Task.sleep(nanoseconds: 150_000_000)
+            } catch {
+                return
             }
-        }
-        .onChange(of: searchText) { _, _ in
-            searchTask?.cancel()
-            searchTask = Task {
-                do {
-                    try await Task.sleep(nanoseconds: 150_000_000)
-                } catch {
-                    return
-                }
-                await load()
-            }
+            await load(query: query)
         }
     }
 
-    private func load() async {
+    private func load(query: String) async {
         isLoading = true
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let results = await loadBranches(query)
         guard !Task.isCancelled else { return }
         branches = results
         isLoading = false
+    }
+}
+
+private struct SearchField: NSViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let searchField = NSSearchField()
+        searchField.delegate = context.coordinator
+        searchField.placeholderString = placeholder
+        searchField.bezelStyle = .roundedBezel
+        searchField.focusRingType = .default
+        return searchField
+    }
+
+    func updateNSView(_ nsView: NSSearchField, context: Context) {
+        if nsView.stringValue != text {
+            nsView.stringValue = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        let parent: SearchField
+
+        init(_ parent: SearchField) {
+            self.parent = parent
+        }
+
+        func controlTextDidChange(_ obj: Notification) {
+            guard let field = obj.object as? NSSearchField else { return }
+            parent.text = field.stringValue
+        }
     }
 }
