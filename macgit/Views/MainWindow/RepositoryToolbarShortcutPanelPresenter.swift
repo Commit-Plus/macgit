@@ -21,6 +21,7 @@ import SwiftUI
 
 struct RepositoryToolbarShortcutPanelPresenter: NSViewRepresentable {
     @Binding var isPresented: Bool
+    let appearance: AppAppearance
     let pinnedShortcuts: [RepositoryToolbarShortcut]
     let isActionDisabled: (RepositoryToolbarShortcut) -> Bool
     let onPerformAction: (RepositoryToolbarShortcut) -> Void
@@ -57,8 +58,18 @@ struct RepositoryToolbarShortcutPanelPresenter: NSViewRepresentable {
         )
     }
 
+    private var nsAppearance: NSAppearance? {
+        switch appearance {
+        case .system:
+            nil
+        case .light:
+            NSAppearance(named: .aqua)
+        case .dark:
+            NSAppearance(named: .darkAqua)
+        }
+    }
+
     final class Coordinator {
-        private static let panelWidth: CGFloat = 280
         private static let toolbarBottomSpacing: CGFloat = 4
 
         private weak var parentWindow: NSWindow?
@@ -86,10 +97,14 @@ struct RepositoryToolbarShortcutPanelPresenter: NSViewRepresentable {
             }
 
             let panel = panel ?? makePanel()
+            let nsAppearance = presenter.nsAppearance
+            panel.appearance = nsAppearance
             if let hostingView = panel.contentView as? NSHostingView<RepositoryToolbarShortcutPanel> {
+                hostingView.appearance = nsAppearance
                 hostingView.rootView = presenter.makePanelContent()
             } else {
                 let hostingView = NSHostingView(rootView: presenter.makePanelContent())
+                hostingView.appearance = nsAppearance
                 hostingView.wantsLayer = true
                 hostingView.layer?.cornerRadius = RepositoryToolbarShortcutPanel.cornerRadius
                 hostingView.layer?.cornerCurve = .continuous
@@ -127,13 +142,14 @@ struct RepositoryToolbarShortcutPanelPresenter: NSViewRepresentable {
             let height = max(0, top - window.frame.minY)
             panel.setFrame(
                 NSRect(
-                    x: window.frame.maxX - Self.panelWidth,
+                    x: window.frame.maxX - RepositoryToolbarShortcutPanel.panelWidth,
                     y: window.frame.minY,
-                    width: Self.panelWidth,
+                    width: RepositoryToolbarShortcutPanel.panelWidth,
                     height: height
                 ),
                 display: true
             )
+            panel.invalidateShadow()
         }
 
         func dismiss() {
@@ -152,7 +168,7 @@ struct RepositoryToolbarShortcutPanelPresenter: NSViewRepresentable {
             )
             panel.backgroundColor = .clear
             panel.isOpaque = false
-            panel.hasShadow = false
+            panel.hasShadow = true
             panel.hidesOnDeactivate = false
             panel.isReleasedWhenClosed = false
             return panel

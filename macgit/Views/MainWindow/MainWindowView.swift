@@ -1262,6 +1262,7 @@ struct MainWindowView: View {
             .background {
                 RepositoryToolbarShortcutPanelPresenter(
                     isPresented: $showingToolbarShortcutPanel,
+                    appearance: appState.appearance,
                     pinnedShortcuts: appState.pinnedRepositoryToolbarShortcuts,
                     isActionDisabled: isRepositoryToolbarShortcutDisabled,
                     onPerformAction: performRepositoryToolbarShortcut,
