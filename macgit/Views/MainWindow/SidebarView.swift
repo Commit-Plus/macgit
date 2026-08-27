@@ -175,6 +175,9 @@ struct SidebarView: View {
     @State var activeDropLabel: String?
     @State var isCurrentBranchDropTargeted = false
     @State var activeBranchDragPayload: GitDragPayload?
+    @State private var isSidebarHovered = false
+    @State private var isSidebarScrolling = false
+    @State private var sidebarScrollHideTask: Task<Void, Never>?
 
     init(
         repositoryURL: URL,
@@ -620,6 +623,21 @@ struct SidebarView: View {
             sidebarRows
         }
         .listStyle(.sidebar)
+        .background(
+            SidebarScrollIndicatorController(
+                showsIndicators: isSidebarHovered || isSidebarScrolling,
+                onScroll: showSidebarScrollIndicatorsForScroll
+            )
+        )
+        .onHover { hovering in
+            isSidebarHovered = hovering
+        }
+        .onDisappear {
+            sidebarScrollHideTask?.cancel()
+            sidebarScrollHideTask = nil
+            isSidebarScrolling = false
+            isSidebarHovered = false
+        }
         .contextMenu {
             sidebarCreationMenu
         }
@@ -662,6 +680,16 @@ struct SidebarView: View {
             Task {
                 await loadSubtrees(force: false)
             }
+        }
+    }
+
+    private func showSidebarScrollIndicatorsForScroll() {
+        isSidebarScrolling = true
+        sidebarScrollHideTask?.cancel()
+        sidebarScrollHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(900))
+            guard !Task.isCancelled else { return }
+            isSidebarScrolling = false
         }
     }
 
@@ -770,6 +798,144 @@ struct SidebarView: View {
                 onAddLinkSubtree: onRequestAddLinkSubtree,
                 actions: subtreeSectionActions
             )
+        }
+    }
+}
+
+private struct SidebarScrollIndicatorController: NSViewRepresentable {
+    let showsIndicators: Bool
+    let onScroll: () -> Void
+
+    func makeNSView(context: Context) -> SidebarScrollIndicatorBridgeView {
+        let view = SidebarScrollIndicatorBridgeView()
+        view.configure(showsIndicators: showsIndicators, onScroll: onScroll)
+        return view
+    }
+
+    func updateNSView(_ nsView: SidebarScrollIndicatorBridgeView, context: Context) {
+        nsView.configure(showsIndicators: showsIndicators, onScroll: onScroll)
+    }
+
+    static func dismantleNSView(_ nsView: SidebarScrollIndicatorBridgeView, coordinator: ()) {
+        nsView.detach()
+    }
+}
+
+private final class SidebarScrollIndicatorBridgeView: NSView {
+    private weak var scrollView: NSScrollView?
+    private var showsIndicators = false
+    private var onScroll: (() -> Void)?
+    private var boundsObserver: NSObjectProtocol?
+    private var resolutionTask: Task<Void, Never>?
+    private var lastContentOffset: CGPoint?
+
+    func configure(showsIndicators: Bool, onScroll: @escaping () -> Void) {
+        self.showsIndicators = showsIndicators
+        self.onScroll = onScroll
+        resolveScrollView()
+        applyIndicatorVisibility()
+    }
+
+    func detach() {
+        resolutionTask?.cancel()
+        resolutionTask = nil
+        if let boundsObserver {
+            NotificationCenter.default.removeObserver(boundsObserver)
+        }
+        boundsObserver = nil
+        scrollView?.hasVerticalScroller = true
+        scrollView = nil
+        lastContentOffset = nil
+        onScroll = nil
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        resolveScrollView()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        resolveScrollView()
+    }
+
+    private func resolveScrollView() {
+        resolutionTask?.cancel()
+        resolutionTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard !Task.isCancelled, let self, let resolvedScrollView = findScrollView() else {
+                return
+            }
+            guard scrollView !== resolvedScrollView else {
+                applyIndicatorVisibility()
+                return
+            }
+
+            if let boundsObserver {
+                NotificationCenter.default.removeObserver(boundsObserver)
+            }
+            scrollView?.hasVerticalScroller = true
+            scrollView = resolvedScrollView
+            resolvedScrollView.scrollerStyle = .overlay
+            resolvedScrollView.autohidesScrollers = false
+            resolvedScrollView.contentView.postsBoundsChangedNotifications = true
+            lastContentOffset = resolvedScrollView.contentView.bounds.origin
+            boundsObserver = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification,
+                object: resolvedScrollView.contentView,
+                queue: .main
+            ) { [weak self] _ in
+                self?.contentOffsetDidChange()
+            }
+            applyIndicatorVisibility()
+        }
+    }
+
+    private func findScrollView() -> NSScrollView? {
+        if let enclosingScrollView {
+            return enclosingScrollView
+        }
+
+        var ancestor = superview
+        while let candidateRoot = ancestor {
+            if let match = candidateRoot.descendantScrollViews.first(where: containsBridgeCenter) {
+                return match
+            }
+            ancestor = candidateRoot.superview
+        }
+        return nil
+    }
+
+    private func containsBridgeCenter(_ candidate: NSScrollView) -> Bool {
+        guard candidate.window === window else { return false }
+        let center = NSPoint(x: bounds.midX, y: bounds.midY)
+        return candidate.bounds.contains(candidate.convert(center, from: self))
+    }
+
+    private func contentOffsetDidChange() {
+        guard let scrollView else { return }
+        let contentOffset = scrollView.contentView.bounds.origin
+        guard contentOffset != lastContentOffset else { return }
+        lastContentOffset = contentOffset
+        onScroll?()
+    }
+
+    private func applyIndicatorVisibility() {
+        guard let scrollView else { return }
+        scrollView.hasVerticalScroller = showsIndicators
+        scrollView.verticalScroller?.isHidden = !showsIndicators
+        scrollView.verticalScroller?.alphaValue = showsIndicators ? 1 : 0
+    }
+}
+
+private extension NSView {
+    var descendantScrollViews: [NSScrollView] {
+        subviews.flatMap { subview in
+            var matches = subview.descendantScrollViews
+            if let scrollView = subview as? NSScrollView {
+                matches.insert(scrollView, at: 0)
+            }
+            return matches
         }
     }
 }
