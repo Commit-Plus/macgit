@@ -27,7 +27,12 @@ struct RepositoryToolbarShortcutPanel: View {
     let onPerformAction: (RepositoryToolbarShortcut) -> Void
     let onSetPinned: (RepositoryToolbarShortcut, Bool) -> Void
     let onDismiss: () -> Void
-    @State private var selectedTab: PanelTab = .shortcuts
+    @ObservedObject var repositoryAIController: RepositoryAIChatController
+    @ObservedObject var aiProviderController: AIProviderController
+    let repositoryChatAccess: FeatureAccessDecision
+    let isSignedIn: Bool
+    let onRequestRepositoryChatAccess: () -> Void
+    @Binding var selectedTab: RepositoryToolbarShortcutPanelTab
 
     private var pinnedSet: Set<RepositoryToolbarShortcut> {
         Set(pinnedShortcuts)
@@ -58,7 +63,13 @@ struct RepositoryToolbarShortcutPanel: View {
                 case .shortcuts:
                     shortcutsContent
                 case .chat:
-                    chatPlaceholder
+                    RepositoryAIChatView(
+                        controller: repositoryAIController,
+                        providerController: aiProviderController,
+                        accessDecision: repositoryChatAccess,
+                        isSignedIn: isSignedIn,
+                        onRequestAccess: onRequestRepositoryChatAccess
+                    )
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
@@ -98,7 +109,7 @@ struct RepositoryToolbarShortcutPanel: View {
 
     private var tabSelector: some View {
         HStack(spacing: 6) {
-            ForEach(PanelTab.allCases) { tab in
+            ForEach(RepositoryToolbarShortcutPanelTab.allCases) { tab in
                 tabButton(tab)
             }
         }
@@ -113,7 +124,7 @@ struct RepositoryToolbarShortcutPanel: View {
         }
     }
 
-    private func tabButton(_ tab: PanelTab) -> some View {
+    private func tabButton(_ tab: RepositoryToolbarShortcutPanelTab) -> some View {
         let isSelected = selectedTab == tab
 
         return Button {
@@ -156,54 +167,6 @@ struct RepositoryToolbarShortcutPanel: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)
         }
-    }
-
-    private var chatPlaceholder: some View {
-        VStack(spacing: 16) {
-            Spacer(minLength: 42)
-
-            Image(systemName: "sparkles")
-                .font(.system(size: 36, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 64, height: 64)
-                .glassEffect(
-                    .regular.tint(Color.accentColor.opacity(0.12)),
-                    in: Circle()
-                )
-
-            VStack(spacing: 6) {
-                Text("AI Chat")
-                    .font(.headline)
-
-                Text("Coming soon")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 24)
-
-            HStack(spacing: 10) {
-                Text("Ask Commit+")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Image(systemName: "paperplane.fill")
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(.primary.opacity(0.085))
-                    .stroke(.primary.opacity(0.12), lineWidth: 1)
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
-            .disabled(true)
-        }
-        .frame(maxWidth: .infinity)
     }
 
     private func shortcutRow(_ shortcut: RepositoryToolbarShortcut) -> some View {
@@ -259,24 +222,4 @@ struct RepositoryToolbarShortcutPanel: View {
             )
     }
 
-    private enum PanelTab: String, CaseIterable, Identifiable {
-        case shortcuts
-        case chat
-
-        var id: Self { self }
-
-        var title: String {
-            switch self {
-            case .shortcuts: "Shortcuts"
-            case .chat: "Chat"
-            }
-        }
-
-        var systemImage: String {
-            switch self {
-            case .shortcuts: "square.grid.2x2"
-            case .chat: "bubble.left.and.bubble.right"
-            }
-        }
-    }
 }

@@ -24,6 +24,17 @@ protocol CommitMessageAIProvider: Sendable {
     func generateCommitMessage(
         request: CommitMessageGenerationRequest
     ) async throws -> GeneratedCommitMessage
+    func generateRepositoryResponse(
+        request: RepositoryAIRequest
+    ) async throws -> String
+}
+
+extension CommitMessageAIProvider {
+    func generateRepositoryResponse(
+        request: RepositoryAIRequest
+    ) async throws -> String {
+        throw CommitMessageGenerationError.providerNotImplemented
+    }
 }
 
 struct PlaceholderCommitMessageAIProvider: CommitMessageAIProvider {
@@ -39,4 +50,3 @@ struct PlaceholderCommitMessageAIProvider: CommitMessageAIProvider {
         throw CommitMessageGenerationError.providerNotImplemented
     }
 }
-

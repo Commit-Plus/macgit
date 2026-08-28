@@ -17,7 +17,7 @@
 //
 import Foundation
 
-enum CommitMessageContextBuilder {
+nonisolated enum CommitMessageContextBuilder {
     static func build(
         nameStatus: String,
         numberStats: String,

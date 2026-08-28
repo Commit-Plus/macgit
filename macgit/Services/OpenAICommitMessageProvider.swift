@@ -97,6 +97,33 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
         return try CloudCommitMessageResponse.decode(from: text).formatted()
     }
 
+    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> String {
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("OpenAI model is not configured.")
+        }
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": model,
+            "instructions": RepositoryAIPrompt.instructions,
+            "input": RepositoryAIPrompt.userPrompt(for: request),
+            "max_output_tokens": 1_200,
+            "store": false,
+        ])
+
+        let (data, response) = try await httpClient.data(for: urlRequest)
+        try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+        guard let payload = try? JSONDecoder().decode(Response.self, from: data),
+              let text = payload.output.flatMap(\.content)
+                .first(where: { $0.type == "output_text" })?.text else {
+            throw CommitMessageGenerationError.invalidResponse
+        }
+        return text
+    }
+
     private struct Response: Decodable {
         let output: [Output]
     }

@@ -102,6 +102,41 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
         return try content.formatted()
     }
 
+    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> String {
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("OpenRouter model is not configured.")
+        }
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": model,
+            "messages": [
+                ["role": "system", "content": RepositoryAIPrompt.instructions],
+                ["role": "user", "content": RepositoryAIPrompt.userPrompt(for: request)],
+            ],
+            "max_completion_tokens": 1_500,
+        ])
+
+        let (data, response) = try await httpClient.data(for: urlRequest)
+        try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+        guard let payload = try? JSONDecoder().decode(Response.self, from: data) else {
+            throw CommitMessageGenerationError.invalidResponse
+        }
+        if let providerError = payload.error ?? payload.choices?.first?.error {
+            throw CommitMessageGenerationError.providerRequestFailed(
+                "OpenRouter request failed: \(providerError.message)"
+            )
+        }
+        guard let content = payload.choices?.first?.message?.content,
+              let text = content.plainText else {
+            throw CommitMessageGenerationError.invalidResponse
+        }
+        return text
+    }
+
     private struct Response: Decodable {
         let choices: [Choice]?
         let error: ProviderError?
@@ -151,6 +186,15 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
                 try CloudCommitMessageResponse.decode(from: text).formatted()
             case .structured(let response):
                 try response.formatted()
+            }
+        }
+
+        var plainText: String? {
+            switch self {
+            case .text(let text):
+                text
+            case .structured:
+                nil
             }
         }
     }

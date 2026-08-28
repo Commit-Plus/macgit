@@ -135,6 +135,49 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         )
     }
 
+    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> String {
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("Gemini model is not configured.")
+        }
+        let endpoint = modelsEndpoint.appending(path: "\(model):generateContent")
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "systemInstruction": ["parts": [["text": RepositoryAIPrompt.instructions]]],
+            "contents": [[
+                "role": "user",
+                "parts": [["text": RepositoryAIPrompt.userPrompt(for: request)]],
+            ]],
+            "generationConfig": [
+                "maxOutputTokens": 1_500,
+                "thinkingConfig": ["thinkingLevel": "MINIMAL", "includeThoughts": false],
+            ],
+            "store": false,
+        ])
+
+        let (data, response) = try await httpClient.data(for: urlRequest)
+        try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+        guard let payload = try? JSONDecoder().decode(Response.self, from: data) else {
+            throw CommitMessageGenerationError.invalidResponse
+        }
+        let text = (payload.candidates ?? [])
+            .compactMap(\.content)
+            .flatMap(\.parts)
+            .filter { $0.thought != true }
+            .compactMap(\.text)
+            .joined(separator: "\n")
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            if let blockReason = payload.promptFeedback?.blockReason {
+                throw CommitMessageGenerationError.providerRequestFailed("Gemini blocked the request (\(blockReason)).")
+            }
+            throw RepositoryAIError.emptyResponse
+        }
+        return text
+    }
+
     private struct Response: Decodable {
         let candidates: [Candidate]?
         let promptFeedback: PromptFeedback?

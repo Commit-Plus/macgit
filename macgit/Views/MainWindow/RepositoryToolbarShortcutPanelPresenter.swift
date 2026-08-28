@@ -21,11 +21,17 @@ import SwiftUI
 
 struct RepositoryToolbarShortcutPanelPresenter: NSViewRepresentable {
     @Binding var isPresented: Bool
+    @Binding var selectedTab: RepositoryToolbarShortcutPanelTab
     let appearance: AppAppearance
     let pinnedShortcuts: [RepositoryToolbarShortcut]
     let isActionDisabled: (RepositoryToolbarShortcut) -> Bool
     let onPerformAction: (RepositoryToolbarShortcut) -> Void
     let onSetPinned: (RepositoryToolbarShortcut, Bool) -> Void
+    @ObservedObject var repositoryAIController: RepositoryAIChatController
+    @ObservedObject var aiProviderController: AIProviderController
+    let repositoryChatAccess: FeatureAccessDecision
+    let isSignedIn: Bool
+    let onRequestRepositoryChatAccess: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -54,7 +60,13 @@ struct RepositoryToolbarShortcutPanelPresenter: NSViewRepresentable {
             isActionDisabled: isActionDisabled,
             onPerformAction: onPerformAction,
             onSetPinned: onSetPinned,
-            onDismiss: { isPresented = false }
+            onDismiss: { isPresented = false },
+            repositoryAIController: repositoryAIController,
+            aiProviderController: aiProviderController,
+            repositoryChatAccess: repositoryChatAccess,
+            isSignedIn: isSignedIn,
+            onRequestRepositoryChatAccess: onRequestRepositoryChatAccess,
+            selectedTab: $selectedTab
         )
     }
 
@@ -175,9 +187,9 @@ struct RepositoryToolbarShortcutPanelPresenter: NSViewRepresentable {
         }
 
         private final class ToolbarShortcutPanelWindow: NSPanel {
-            // Preserve the repository window as key so AppKit keeps its
-            // window-scoped tab and full-screen commands in the View menu.
-            override var canBecomeKey: Bool { false }
+            // The panel needs key-window status for its text fields, but never
+            // becomes the app's main document window.
+            override var canBecomeKey: Bool { true }
             override var canBecomeMain: Bool { false }
         }
 

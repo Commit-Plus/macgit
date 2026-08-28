@@ -179,6 +179,8 @@ struct MainWindowView: View {
     @State private var showingExternalEditorChooser = false
     @State private var externalEditorApplications: [IntegrationApplication] = []
     @State private var showingToolbarShortcutPanel = false
+    @State private var repositoryToolbarShortcutPanelTab: RepositoryToolbarShortcutPanelTab = .shortcuts
+    @StateObject private var repositoryAIChatController: RepositoryAIChatController
     @ObservedObject var operationProgress: RepositoryOperationProgress
 
     init(
@@ -200,6 +202,10 @@ struct MainWindowView: View {
             tokenVault: KeychainGitProviderTokenVault(),
             services: [.github: GitHubPullRequestService(), .gitlab: GitLabPullRequestService()],
             openURL: NSWorkspace.shared.open
+        ))
+        _repositoryAIChatController = StateObject(wrappedValue: RepositoryAIChatController(
+            repositoryURL: repositoryURL,
+            providerController: aiProviderController
         ))
     }
 
@@ -1040,7 +1046,8 @@ struct MainWindowView: View {
                         undoManager: undoManager,
                         syncState: syncState,
                         onRunRepositoryOperation: runRepositoryOperation,
-                        onRequestCheckout: checkoutRequest
+                        onRequestCheckout: checkoutRequest,
+                        onRequestExplainCommit: explainCommitWithRepositoryAI
                     )
                 }
             case .branch, .worktree, .tag, .remoteBranch, .head:
@@ -1050,7 +1057,8 @@ struct MainWindowView: View {
                     undoManager: undoManager,
                     syncState: syncState,
                     onRunRepositoryOperation: runRepositoryOperation,
-                    onRequestCheckout: checkoutRequest
+                    onRequestCheckout: checkoutRequest,
+                    onRequestExplainCommit: explainCommitWithRepositoryAI
                 )
             case .item(.pullRequests):
                 switch pullRequestAccessDecision {
@@ -1262,15 +1270,65 @@ struct MainWindowView: View {
             .background {
                 RepositoryToolbarShortcutPanelPresenter(
                     isPresented: $showingToolbarShortcutPanel,
+                    selectedTab: $repositoryToolbarShortcutPanelTab,
                     appearance: appState.appearance,
                     pinnedShortcuts: appState.pinnedRepositoryToolbarShortcuts,
                     isActionDisabled: isRepositoryToolbarShortcutDisabled,
                     onPerformAction: performRepositoryToolbarShortcut,
                     onSetPinned: { shortcut, isPinned in
                         appState.setRepositoryToolbarShortcut(shortcut, isPinned: isPinned)
-                    }
+                    },
+                    repositoryAIController: repositoryAIChatController,
+                    aiProviderController: aiProviderController,
+                    repositoryChatAccess: featureAccessController.decision(
+                        for: .repositoryChat,
+                        entitlement: accountController.entitlement
+                    ),
+                    isSignedIn: accountController.account != nil,
+                    onRequestRepositoryChatAccess: requestRepositoryChatAccess
                 )
             }
+        }
+    }
+
+    private func requestRepositoryChatAccess() {
+        guard accountController.account != nil else {
+            accountController.presentAuthentication(.signIn)
+            return
+        }
+
+        switch featureAccessController.decision(
+            for: .repositoryChat,
+            entitlement: accountController.entitlement
+        ) {
+        case .allowed:
+            break
+        case .denied(.requiresPro):
+            proUpgradeErrorMessage = nil
+            proUpgradePresentation = ProUpgradePresentation(feature: .repositoryChat)
+        case .denied(let denial):
+            featureAccessNotice = FeatureAccessNotice(feature: .repositoryChat, denial: denial)
+        }
+    }
+
+    private func explainCommitWithRepositoryAI(_ commit: Commit) {
+        repositoryToolbarShortcutPanelTab = .chat
+        showingToolbarShortcutPanel = true
+
+        let accessDecision = featureAccessController.decision(
+            for: .repositoryChat,
+            entitlement: accountController.entitlement
+        )
+        guard accessDecision.isAllowed else {
+            requestRepositoryChatAccess()
+            return
+        }
+
+        repositoryAIChatController.startNewConversation()
+        Task {
+            await repositoryAIChatController.explainCommit(
+                RepositoryAICommitChoice(hash: commit.hash, subject: commit.message)
+            )
         }
     }
 

@@ -43,6 +43,7 @@ struct HistoryView: View {
     var syncState: SyncState? = nil
     let onRunRepositoryOperation: RepositoryOperationRunner
     let onRequestCheckout: (String, Bool) -> Void
+    let onRequestExplainCommit: (Commit) -> Void
     @EnvironmentObject private var appState: AppState
     private static let historyScrollSpaceName = "historyScroll"
     
@@ -112,7 +113,8 @@ struct HistoryView: View {
         onRunRepositoryOperation: @escaping RepositoryOperationRunner = { _, operation in
             Task { await operation() }
         },
-        onRequestCheckout: @escaping (String, Bool) -> Void = { _, _ in }
+        onRequestCheckout: @escaping (String, Bool) -> Void = { _, _ in },
+        onRequestExplainCommit: @escaping (Commit) -> Void = { _ in }
     ) {
         self.repositoryURL = repositoryURL
         self.selectedBranch = selectedBranch
@@ -120,6 +122,7 @@ struct HistoryView: View {
         self.syncState = syncState
         self.onRunRepositoryOperation = onRunRepositoryOperation
         self.onRequestCheckout = onRequestCheckout
+        self.onRequestExplainCommit = onRequestExplainCommit
         let storedPageSize = UserDefaults.standard.integer(forKey: "advanced.historyLoadSize")
         self._paging = State(
             initialValue: HistoryPagingState(
@@ -930,6 +933,10 @@ struct HistoryView: View {
                 }
             }
             .disabled(!canCherryPick)
+
+            Button("AI Explain This Commit", systemImage: "sparkles") {
+                onRequestExplainCommit(commit)
+            }
             
             Divider()
             

@@ -28,6 +28,7 @@ final class AIProviderController: ObservableObject {
 
     private let registry: AIProviderRegistry
     private let snapshotLoader: any CommitChangeSnapshotLoading
+    private let repositoryToolExecutor: any RepositoryAIToolExecuting
     private let defaults: UserDefaults
     private let credentialStore: any AIProviderCredentialStore
     private let modelStore: any AIProviderModelStore
@@ -39,6 +40,7 @@ final class AIProviderController: ObservableObject {
         self.init(
             registry: .live(credentialStore: credentialStore, modelStore: modelStore),
             snapshotLoader: GitStatusService.shared,
+            repositoryToolExecutor: GitStatusService.shared,
             defaults: .standard,
             credentialStore: credentialStore,
             modelStore: modelStore
@@ -48,12 +50,14 @@ final class AIProviderController: ObservableObject {
     init(
         registry: AIProviderRegistry,
         snapshotLoader: any CommitChangeSnapshotLoading,
+        repositoryToolExecutor: any RepositoryAIToolExecuting = GitStatusService.shared,
         defaults: UserDefaults,
         credentialStore: any AIProviderCredentialStore = KeychainAIProviderCredentialStore(),
         modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore()
     ) {
         self.registry = registry
         self.snapshotLoader = snapshotLoader
+        self.repositoryToolExecutor = repositoryToolExecutor
         self.defaults = defaults
         self.credentialStore = credentialStore
         self.modelStore = modelStore
@@ -232,5 +236,60 @@ final class AIProviderController: ObservableObject {
             throw CommitMessageGenerationError.changesChanged(changeSource)
         }
         return generated
+    }
+
+    func answerRepositoryQuestion(
+        repositoryURL: URL,
+        branchName: String?,
+        question: String,
+        tool: RepositoryAIToolCall
+    ) async throws -> String {
+        let normalizedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuestion.isEmpty else {
+            throw RepositoryAIError.emptyQuestion
+        }
+        guard !isGenerating else {
+            throw CommitMessageGenerationError.providerUnavailable("Another AI request is already running.")
+        }
+        guard let provider = registry.provider(for: selectedProviderID) else {
+            throw CommitMessageGenerationError.providerNotImplemented
+        }
+
+        let providerID = selectedProviderID
+        let providerAvailability = await provider.availability()
+        availabilityByProviderID[providerID] = providerAvailability
+        guard providerAvailability.isAvailable else {
+            throw CommitMessageGenerationError.providerUnavailable(providerAvailability.detail)
+        }
+
+        isGenerating = true
+        defer { isGenerating = false }
+
+        let result = try await repositoryToolExecutor.execute(
+            tool,
+            in: repositoryURL,
+            characterBudget: provider.descriptor.inputCharacterBudget
+        )
+        let request = RepositoryAIRequest(
+            repositoryName: repositoryURL.lastPathComponent,
+            branchName: branchName,
+            question: normalizedQuestion,
+            toolResult: result
+        )
+        let response = try await provider.generateRepositoryResponse(request: request)
+        let currentFingerprint = try await repositoryToolExecutor.fingerprint(
+            for: tool,
+            in: repositoryURL
+        )
+        guard providerID == selectedProviderID,
+              currentFingerprint == result.fingerprint else {
+            throw RepositoryAIError.contextChanged
+        }
+
+        let normalizedResponse = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedResponse.isEmpty else {
+            throw RepositoryAIError.emptyResponse
+        }
+        return normalizedResponse
     }
 }
