@@ -19,8 +19,15 @@
 import SwiftUI
 
 struct RepositoryToolbarShortcutPanel: View {
-    static let panelWidth: CGFloat = 340
+    static let minimumWidth: CGFloat = 280
+    static let defaultWidth: CGFloat = 340
+    static let maximumWidth: CGFloat = 560
     static let cornerRadius: CGFloat = 28
+
+    static func clampedWidth(_ width: CGFloat) -> CGFloat {
+        guard width.isFinite else { return defaultWidth }
+        return min(maximumWidth, max(minimumWidth, width))
+    }
 
     let onDismiss: () -> Void
     @ObservedObject var repositoryAIController: RepositoryAIChatController
@@ -50,7 +57,7 @@ struct RepositoryToolbarShortcutPanel: View {
             )
             .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: Self.panelWidth)
+        .frame(maxWidth: .infinity)
         .frame(maxHeight: .infinity, alignment: .top)
         .glassEffect(
             .regular.tint(Color(nsColor: .controlBackgroundColor).opacity(0.24)),
@@ -61,6 +68,7 @@ struct RepositoryToolbarShortcutPanel: View {
                 .stroke(.white.opacity(0.18), lineWidth: 1)
         }
         .clipShape(panelShape)
+        .shadow(color: .black.opacity(0.2), radius: 18, x: -5)
     }
 
     private var header: some View {

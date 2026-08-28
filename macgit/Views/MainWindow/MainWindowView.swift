@@ -179,6 +179,7 @@ struct MainWindowView: View {
     @State private var showingExternalEditorChooser = false
     @State private var externalEditorApplications: [IntegrationApplication] = []
     @State private var showingRepositoryAIChatPanel = false
+    @AppStorage("repositoryAIChat.panelWidth") private var storedRepositoryAIChatPanelWidth = 340.0
     @State private var showingToolbarShortcutPopover = false
     @StateObject private var repositoryAIChatController: RepositoryAIChatController
     @ObservedObject var operationProgress: RepositoryOperationProgress
@@ -504,6 +505,21 @@ struct MainWindowView: View {
     private var mainContent: some View {
         ZStack {
             rootView
+
+            if showingRepositoryAIChatPanel {
+                RepositoryAIChatOverlayPanel(
+                    width: repositoryAIChatPanelWidthBinding,
+                    onDismiss: { showingRepositoryAIChatPanel = false },
+                    repositoryAIController: repositoryAIChatController,
+                    aiProviderController: aiProviderController,
+                    repositoryChatAccess: featureAccessController.decision(
+                        for: .repositoryChat,
+                        entitlement: accountController.entitlement
+                    ),
+                    isSignedIn: accountController.account != nil,
+                    onRequestRepositoryChatAccess: requestRepositoryChatAccess
+                )
+            }
 
             if showingSearchModal {
                 ZStack(alignment: .top) {
@@ -1288,20 +1304,6 @@ struct MainWindowView: View {
             .padding(.trailing, 6)
             .padding(.vertical, 1)
             .help(showingRepositoryAIChatPanel ? "Hide Repository AI Chat" : "Show Repository AI Chat")
-            .background {
-                RepositoryToolbarShortcutPanelPresenter(
-                    isPresented: $showingRepositoryAIChatPanel,
-                    appearance: appState.appearance,
-                    repositoryAIController: repositoryAIChatController,
-                    aiProviderController: aiProviderController,
-                    repositoryChatAccess: featureAccessController.decision(
-                        for: .repositoryChat,
-                        entitlement: accountController.entitlement
-                    ),
-                    isSignedIn: accountController.account != nil,
-                    onRequestRepositoryChatAccess: requestRepositoryChatAccess
-                )
-            }
         }
     }
 
@@ -1323,6 +1325,21 @@ struct MainWindowView: View {
         case .denied(let denial):
             featureAccessNotice = FeatureAccessNotice(feature: .repositoryChat, denial: denial)
         }
+    }
+
+    private var repositoryAIChatPanelWidthBinding: Binding<CGFloat> {
+        Binding(
+            get: {
+                RepositoryToolbarShortcutPanel.clampedWidth(
+                    CGFloat(storedRepositoryAIChatPanelWidth)
+                )
+            },
+            set: { width in
+                storedRepositoryAIChatPanelWidth = Double(
+                    RepositoryToolbarShortcutPanel.clampedWidth(width)
+                )
+            }
+        )
     }
 
     private func explainCommitWithRepositoryAI(_ commit: Commit) {
