@@ -21,12 +21,7 @@ import SwiftUI
 
 struct RepositoryToolbarShortcutPanelPresenter: NSViewRepresentable {
     @Binding var isPresented: Bool
-    @Binding var selectedTab: RepositoryToolbarShortcutPanelTab
     let appearance: AppAppearance
-    let pinnedShortcuts: [RepositoryToolbarShortcut]
-    let isActionDisabled: (RepositoryToolbarShortcut) -> Bool
-    let onPerformAction: (RepositoryToolbarShortcut) -> Void
-    let onSetPinned: (RepositoryToolbarShortcut, Bool) -> Void
     @ObservedObject var repositoryAIController: RepositoryAIChatController
     @ObservedObject var aiProviderController: AIProviderController
     let repositoryChatAccess: FeatureAccessDecision
@@ -56,17 +51,12 @@ struct RepositoryToolbarShortcutPanelPresenter: NSViewRepresentable {
 
     private func makePanelContent() -> RepositoryToolbarShortcutPanel {
         RepositoryToolbarShortcutPanel(
-            pinnedShortcuts: pinnedShortcuts,
-            isActionDisabled: isActionDisabled,
-            onPerformAction: onPerformAction,
-            onSetPinned: onSetPinned,
             onDismiss: { isPresented = false },
             repositoryAIController: repositoryAIController,
             aiProviderController: aiProviderController,
             repositoryChatAccess: repositoryChatAccess,
             isSignedIn: isSignedIn,
-            onRequestRepositoryChatAccess: onRequestRepositoryChatAccess,
-            selectedTab: $selectedTab
+            onRequestRepositoryChatAccess: onRequestRepositoryChatAccess
         )
     }
 

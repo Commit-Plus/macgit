@@ -178,8 +178,8 @@ struct MainWindowView: View {
     @State private var isPerformingBranchDropOperation = false
     @State private var showingExternalEditorChooser = false
     @State private var externalEditorApplications: [IntegrationApplication] = []
-    @State private var showingToolbarShortcutPanel = false
-    @State private var repositoryToolbarShortcutPanelTab: RepositoryToolbarShortcutPanelTab = .shortcuts
+    @State private var showingRepositoryAIChatPanel = false
+    @State private var showingToolbarShortcutPopover = false
     @StateObject private var repositoryAIChatController: RepositoryAIChatController
     @ObservedObject var operationProgress: RepositoryOperationProgress
 
@@ -1259,25 +1259,39 @@ struct MainWindowView: View {
         }
 
         ToolbarItem(placement: .automatic) {
-            Button("Toolbar shortcuts", systemImage: "sidebar.right") {
-                showingToolbarShortcutPanel.toggle()
+            Button("Toolbar shortcuts", systemImage: "square.grid.2x2") {
+                showingToolbarShortcutPopover.toggle()
             }
             .controlSize(.large)
             .labelStyle(.iconOnly)
-            .padding(.horizontal, 6)
+            .padding(.leading, 6)
             .padding(.vertical, 1)
-            .help(showingToolbarShortcutPanel ? "Hide Toolbar Shortcuts" : "Show Toolbar Shortcuts")
-            .background {
-                RepositoryToolbarShortcutPanelPresenter(
-                    isPresented: $showingToolbarShortcutPanel,
-                    selectedTab: $repositoryToolbarShortcutPanelTab,
-                    appearance: appState.appearance,
+            .help("Toolbar Shortcuts")
+            .popover(isPresented: $showingToolbarShortcutPopover) {
+                RepositoryToolbarShortcutPopover(
                     pinnedShortcuts: appState.pinnedRepositoryToolbarShortcuts,
                     isActionDisabled: isRepositoryToolbarShortcutDisabled,
                     onPerformAction: performRepositoryToolbarShortcut,
                     onSetPinned: { shortcut, isPinned in
                         appState.setRepositoryToolbarShortcut(shortcut, isPinned: isPinned)
-                    },
+                    }
+                )
+            }
+        }
+
+        ToolbarItem(placement: .automatic) {
+            Button("Repository AI Chat", systemImage: "sidebar.right") {
+                showingRepositoryAIChatPanel.toggle()
+            }
+            .controlSize(.large)
+            .labelStyle(.iconOnly)
+            .padding(.trailing, 6)
+            .padding(.vertical, 1)
+            .help(showingRepositoryAIChatPanel ? "Hide Repository AI Chat" : "Show Repository AI Chat")
+            .background {
+                RepositoryToolbarShortcutPanelPresenter(
+                    isPresented: $showingRepositoryAIChatPanel,
+                    appearance: appState.appearance,
                     repositoryAIController: repositoryAIChatController,
                     aiProviderController: aiProviderController,
                     repositoryChatAccess: featureAccessController.decision(
@@ -1312,8 +1326,7 @@ struct MainWindowView: View {
     }
 
     private func explainCommitWithRepositoryAI(_ commit: Commit) {
-        repositoryToolbarShortcutPanelTab = .chat
-        showingToolbarShortcutPanel = true
+        showingRepositoryAIChatPanel = true
 
         let accessDecision = featureAccessController.decision(
             for: .repositoryChat,
@@ -1354,7 +1367,7 @@ struct MainWindowView: View {
 
     private func performRepositoryToolbarShortcut(_ shortcut: RepositoryToolbarShortcut) {
         guard !isRepositoryToolbarShortcutDisabled(shortcut) else { return }
-        showingToolbarShortcutPanel = false
+        showingToolbarShortcutPopover = false
 
         switch shortcut {
         case .undo:
