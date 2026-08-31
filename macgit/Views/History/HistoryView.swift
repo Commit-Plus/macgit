@@ -681,6 +681,9 @@ struct HistoryView: View {
                                                     )
                                                 }
                                             )
+                                            .onClick(left: { _ in }, right: {
+                                                selectCommitForContextMenu(commit)
+                                            })
                                             .contextMenu {
                                                 commitContextMenu(for: commit)
                                             }
@@ -915,7 +918,7 @@ struct HistoryView: View {
         )
 
         return Group {
-            Button("Checkout Commit") {
+            Button("Checkout Commit", systemImage: "arrow.right.to.line") {
                 guard let singleCommit else { return }
                 pendingCommit = singleCommit
                 discardLocalChanges = false
@@ -923,7 +926,10 @@ struct HistoryView: View {
             }
             .disabled(singleCommit == nil)
 
-            Button(contextCommits.count > 1 ? "Cherry Pick \(contextCommits.count) Commits" : "Cherry Pick") {
+            Button(
+                contextCommits.count > 1 ? "Cherry Pick \(contextCommits.count) Commits" : "Cherry Pick",
+                systemImage: "arrow.down.doc"
+            ) {
                 onRunRepositoryOperation(
                     cherryPickCommits.count == 1
                         ? "Cherry-picking \(cherryPickCommits[0].hash.prefix(7))..."
@@ -940,7 +946,7 @@ struct HistoryView: View {
             
             Divider()
             
-            Button("Merge...") {
+            Button("Merge...", systemImage: "arrow.triangle.merge") {
                 guard let singleCommit else { return }
                 pendingCommit = singleCommit
                 mergeCommitImmediately = true
@@ -949,7 +955,7 @@ struct HistoryView: View {
             }
             .disabled(singleCommit == nil)
 
-            Button("Rebase...") {
+            Button("Rebase...", systemImage: "arrow.triangle.swap") {
                 guard let singleCommit else { return }
                 pendingCommit = singleCommit
                 showingRebaseConfirmation = true
@@ -958,7 +964,7 @@ struct HistoryView: View {
 
             Divider()
 
-            Button("Squash Commits") {
+            Button("Squash Commits", systemImage: "rectangle.compress.vertical") {
                 squashSheetPresentation = SquashSheetPresentation(
                     commits: squashCommits,
                     message: squashCommits.map(\.message).joined(separator: "\n")
@@ -968,7 +974,7 @@ struct HistoryView: View {
             
             Divider()
             
-            Button("Tag...") {
+            Button("Tag...", systemImage: "tag") {
                 guard let singleCommit else { return }
                 pendingCommit = singleCommit
                 tagNameInput = ""
@@ -976,7 +982,7 @@ struct HistoryView: View {
             }
             .disabled(singleCommit == nil)
 
-            Button("Branch...") {
+            Button("Branch...", systemImage: "arrow.triangle.branch") {
                 guard let singleCommit else { return }
                 pendingCommit = singleCommit
                 branchNameInput = ""
@@ -987,7 +993,7 @@ struct HistoryView: View {
             
             Divider()
             
-            Button("Reset to this commit") {
+            Button("Reset to this commit", systemImage: "arrow.counterclockwise") {
                 guard let singleCommit else { return }
                 pendingCommit = singleCommit
                 resetMode = .mixed
@@ -1001,7 +1007,7 @@ struct HistoryView: View {
             }
             .disabled(singleCommit == nil)
 
-            Button("Reverse commit...") {
+            Button("Reverse commit...", systemImage: "arrow.uturn.backward") {
                 guard let singleCommit else { return }
                 pendingCommit = singleCommit
                 showingRevertConfirmation = true
@@ -1010,7 +1016,10 @@ struct HistoryView: View {
             
             Divider()
             
-            Button(contextCommits.count > 1 ? "Copy Hashes" : "Copy Hash") {
+            Button(
+                contextCommits.count > 1 ? "Copy Hashes" : "Copy Hash",
+                systemImage: "doc.on.doc"
+            ) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(
                     contextCommits.map(\.hash).joined(separator: "\n"),
@@ -1019,7 +1028,10 @@ struct HistoryView: View {
             }
             .disabled(contextCommits.isEmpty)
 
-            Button(contextCommits.count > 1 ? "Copy Messages" : "Copy Message") {
+            Button(
+                contextCommits.count > 1 ? "Copy Messages" : "Copy Message",
+                systemImage: "doc.on.doc"
+            ) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(
                     contextCommits.map(\.message).joined(separator: "\n"),
@@ -1323,6 +1335,18 @@ struct HistoryView: View {
             }
             diffHunks = hunks
         }
+    }
+
+    private func selectCommitForContextMenu(_ commit: Commit) {
+        guard !commitSelection.selectedHashes.contains(commit.hash) else { return }
+
+        selectedCommit = Self.selectCommitFromNativeTap(
+            commit.hash,
+            modifierFlags: [],
+            commits: commits,
+            selection: &commitSelection
+        )
+        syncSelectedCommitSnapshot()
     }
     
     private func performCheckoutCommit() async {
