@@ -22,7 +22,7 @@
 //
 import Foundation
 
-enum ConflictSectionResolution: String, CaseIterable {
+enum ConflictSectionResolution: String, CaseIterable, Sendable {
     case current
     case incoming
     case both
@@ -30,12 +30,12 @@ enum ConflictSectionResolution: String, CaseIterable {
     case manual
 }
 
-enum ConflictSectionKind: Equatable {
+enum ConflictSectionKind: Equatable, Sendable {
     case context
     case conflict
 }
 
-struct ConflictResolutionSection: Identifiable, Equatable {
+struct ConflictResolutionSection: Identifiable, Equatable, Sendable {
     let id = UUID()
     let kind: ConflictSectionKind
     var contextText: String
@@ -142,7 +142,7 @@ struct ConflictResolutionSection: Identifiable, Equatable {
     }
 }
 
-struct ConflictResolutionDocument: Equatable {
+struct ConflictResolutionDocument: Equatable, Sendable {
     var sections: [ConflictResolutionSection]
     var currentContent: String
     var incomingContent: String

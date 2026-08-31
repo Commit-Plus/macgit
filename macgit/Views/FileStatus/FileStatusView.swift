@@ -1536,6 +1536,8 @@ struct FileStatusView: View {
             selectedFile: selectedConflictFile,
             repositoryURL: repositoryURL,
             commandContextIdentifier: commandContextIdentifier.rawValue,
+            aiProviderController: aiProviderController,
+            aiProviderAccessDecision: aiProviderAccessDecision,
             onResolved: { [repositoryURL] in
                 Task {
                     await reloadRepositoryState()
@@ -1546,7 +1548,10 @@ struct FileStatusView: View {
             }
         )
 
-        window.contentView = NSHostingView(rootView: view)
+        window.contentView = NSHostingView(rootView: view
+            .environmentObject(accountController)
+            .environmentObject(featureAccessController)
+        )
         window.center()
         windowController.window = window
         windowController.showWindow(nil)

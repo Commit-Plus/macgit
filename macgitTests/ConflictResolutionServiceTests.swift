@@ -73,6 +73,66 @@ final class ConflictResolutionServiceTests: XCTestCase {
         XCTAssertTrue(refreshed.staged.contains(where: { $0.path == file.path }))
     }
 
+    func testLoadConflictAIFileIncludesBaseAndStableSectionIndices() async throws {
+        let repoURL = try makeConflictedRepository()
+        let status = try await GitStatusService.shared.status(for: repoURL)
+        let file = try XCTUnwrap(status.unstaged.first(where: { $0.status == .conflict }))
+
+        let loaded = try await GitStatusService.shared.loadConflictAIFile(
+            file,
+            in: repoURL,
+            characterBudget: 7_000
+        )
+
+        XCTAssertEqual(loaded.snapshot.baseContent, "base\n")
+        XCTAssertEqual(loaded.snapshot.currentContent, "main change\n")
+        XCTAssertEqual(loaded.snapshot.incomingContent, "feature change\n")
+        XCTAssertEqual(loaded.snapshot.sections.count, 1)
+        let sectionIndex = try XCTUnwrap(
+            loaded.document.sections.firstIndex(where: \.isConflict)
+        )
+        XCTAssertEqual(loaded.snapshot.sections[0].sectionIndex, sectionIndex)
+        let currentFingerprint = try await GitStatusService.shared.conflictAIFingerprint(
+            for: file,
+            in: repoURL
+        )
+        XCTAssertEqual(loaded.snapshot.fingerprint, currentFingerprint)
+    }
+
+    func testApplyAIConflictResolutionWritesAndStagesCompleteDocument() async throws {
+        let repoURL = try makeConflictedRepository()
+        let status = try await GitStatusService.shared.status(for: repoURL)
+        let file = try XCTUnwrap(status.unstaged.first(where: { $0.status == .conflict }))
+        let loaded = try await GitStatusService.shared.loadConflictAIFile(
+            file,
+            in: repoURL,
+            characterBudget: 7_000
+        )
+        let sectionIndex = try XCTUnwrap(
+            loaded.document.sections.firstIndex(where: \.isConflict)
+        )
+        var resolvedDocument = loaded.document
+        resolvedDocument.sections[sectionIndex].resolution = .manual
+        resolvedDocument.sections[sectionIndex].manualResult = "main change\nfeature change\n"
+
+        try await GitStatusService.shared.applyAIConflictResolution(
+            file: file,
+            document: resolvedDocument,
+            expectedFingerprint: loaded.snapshot.fingerprint,
+            originalWorkingTreeText: loaded.originalWorkingTreeText,
+            in: repoURL
+        )
+
+        let fileText = try String(
+            contentsOf: repoURL.appendingPathComponent(file.path),
+            encoding: .utf8
+        )
+        XCTAssertEqual(fileText, "main change\nfeature change\n")
+        let refreshed = try await GitStatusService.shared.status(for: repoURL)
+        XCTAssertFalse(refreshed.unstaged.contains { $0.path == file.path && $0.status == .conflict })
+        XCTAssertTrue(refreshed.staged.contains { $0.path == file.path })
+    }
+
     private func makeConflictedRepository() throws -> URL {
         let repoURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("macgit-conflict-tests-\(UUID().uuidString)", isDirectory: true)

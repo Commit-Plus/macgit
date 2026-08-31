@@ -124,6 +124,49 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
         return text
     }
 
+    func generateConflictResolution(
+        request: ConflictAIResolutionRequest
+    ) async throws -> ConflictAIResolutionResponse {
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("OpenAI model is not configured.")
+        }
+        let context = try ConflictAIPrompt.context(
+            for: request.snapshot,
+            characterBudget: descriptor.inputCharacterBudget
+        )
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": model,
+            "instructions": ConflictAIPrompt.instructions,
+            "input": context,
+            "max_output_tokens": 4_000,
+            "store": false,
+            "text": [
+                "format": [
+                    "type": "json_schema",
+                    "name": "conflict_resolution",
+                    "strict": true,
+                    "schema": ConflictAIPrompt.responseSchema,
+                ],
+            ],
+        ])
+
+        let (data, response) = try await httpClient.data(for: urlRequest)
+        try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+        guard let payload = try? JSONDecoder().decode(Response.self, from: data),
+              let text = payload.output.flatMap(\.content)
+                .first(where: { $0.type == "output_text" })?.text else {
+            throw ConflictAIResolutionError.invalidResponse(
+                "OpenAI did not return a conflict-resolution plan."
+            )
+        }
+        return try ConflictAIResolutionResponse.decode(from: text)
+    }
+
     private struct Response: Decodable {
         let output: [Output]
     }

@@ -61,6 +61,69 @@ private struct AppleCommitMessageResponse {
     var body: String
 }
 
+@Generable
+private enum AppleConflictResolutionAction {
+    case current
+    case incoming
+    case bothCurrentFirst
+    case bothIncomingFirst
+    case replace
+    case needsUser
+
+    var modelAction: ConflictAIResolutionAction {
+        switch self {
+        case .current: .current
+        case .incoming: .incoming
+        case .bothCurrentFirst: .bothCurrentFirst
+        case .bothIncomingFirst: .bothIncomingFirst
+        case .replace: .replace
+        case .needsUser: .needsUser
+        }
+    }
+}
+
+@Generable
+private struct AppleConflictResolutionOption {
+    @Guide(description: "A clear behavior-level choice for the user")
+    var label: String
+
+    @Guide(description: "The resolution to apply if the user chooses this option")
+    var action: AppleConflictResolutionAction
+
+    @Guide(description: "Required source text only when action is replace; otherwise empty")
+    var replacementText: String
+}
+
+@Generable
+private struct AppleConflictResolutionDecision {
+    @Guide(description: "The exact sectionIndex supplied for this conflict")
+    var sectionIndex: Int
+
+    @Guide(description: "The automatic resolution, or needsUser only for a genuine product decision")
+    var action: AppleConflictResolutionAction
+
+    @Guide(description: "Required resolved source code only when action is replace; otherwise empty")
+    var replacementText: String
+
+    @Guide(description: "A compact explanation grounded in the supplied code")
+    var reason: String
+
+    @Guide(description: "Required only when action is needsUser; otherwise empty")
+    var question: String
+
+    @Guide(description: "At least two actionable choices only when action is needsUser; otherwise empty")
+    var options: [AppleConflictResolutionOption]
+}
+
+@Generable
+private struct AppleConflictResolutionResponse {
+    @Guide(description: "Exactly one decision for every supplied conflict section")
+    var decisions: [AppleConflictResolutionDecision]
+
+    @Guide(description: "A compact summary of how the file was resolved")
+    var summary: String
+}
+
 struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
     let descriptor = AIProviderDescriptor(
         id: .appleIntelligence,
@@ -167,6 +230,51 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
                 throw RepositoryAIError.emptyResponse
             }
             return response
+        } catch let error as LanguageModelSession.GenerationError {
+            if case .exceededContextWindowSize = error {
+                throw CommitMessageGenerationError.contextTooLarge
+            }
+            throw error
+        }
+    }
+
+    func generateConflictResolution(
+        request: ConflictAIResolutionRequest
+    ) async throws -> ConflictAIResolutionResponse {
+        let currentAvailability = await availability()
+        guard currentAvailability.isAvailable else {
+            throw CommitMessageGenerationError.providerUnavailable(currentAvailability.detail)
+        }
+        let context = try ConflictAIPrompt.context(
+            for: request.snapshot,
+            characterBudget: descriptor.inputCharacterBudget
+        )
+        let session = LanguageModelSession(instructions: ConflictAIPrompt.instructions)
+        do {
+            let generated = try await session.respond(
+                to: context,
+                generating: AppleConflictResolutionResponse.self,
+                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 3_000)
+            ).content
+            return ConflictAIResolutionResponse(
+                decisions: generated.decisions.map { decision in
+                    ConflictAIResolutionDecision(
+                        sectionIndex: decision.sectionIndex,
+                        action: decision.action.modelAction,
+                        replacementText: decision.replacementText,
+                        reason: decision.reason,
+                        question: decision.question,
+                        options: decision.options.map { option in
+                            ConflictAIResolutionOption(
+                                label: option.label,
+                                action: option.action.modelAction,
+                                replacementText: option.replacementText
+                            )
+                        }
+                    )
+                },
+                summary: generated.summary
+            )
         } catch let error as LanguageModelSession.GenerationError {
             if case .exceededContextWindowSize = error {
                 throw CommitMessageGenerationError.contextTooLarge

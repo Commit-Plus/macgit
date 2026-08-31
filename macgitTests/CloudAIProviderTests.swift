@@ -209,6 +209,31 @@ final class CloudAIProviderTests: XCTestCase {
         XCTAssertEqual((body["store"] as? Bool), false)
     }
 
+    func testOpenAIConflictRequestUsesStrictSchemaAndParsesReplacement() async throws {
+        let store = InMemoryAIProviderCredentialStore(keys: [.openAI: "openai-secret"])
+        let client = StubAIProviderHTTPClient(responseBody: """
+            {"output":[{"content":[{"type":"output_text","text":"{\"decisions\":[{\"sectionIndex\":0,\"action\":\"replace\",\"replacementText\":\"merged()\\n\",\"reason\":\"Combines both implementations\",\"question\":\"\",\"options\":[]}],\"summary\":\"Merged both behaviors\"}"}]}]}
+            """)
+        let provider = OpenAICommitMessageProvider(
+            credentialStore: store,
+            httpClient: client
+        )
+
+        let result = try await provider.generateConflictResolution(request: makeConflictRequest())
+        let receivedRequest = await client.receivedRequest()
+        let request = try XCTUnwrap(receivedRequest)
+        let body = try requestJSONObject(request)
+        let text = try XCTUnwrap(body["text"] as? [String: Any])
+        let format = try XCTUnwrap(text["format"] as? [String: Any])
+        let schema = try XCTUnwrap(format["schema"] as? [String: Any])
+
+        XCTAssertEqual(format["type"] as? String, "json_schema")
+        XCTAssertEqual(format["strict"] as? Bool, true)
+        XCTAssertEqual(schema["additionalProperties"] as? Bool, false)
+        XCTAssertEqual(result.decisions.first?.action, .replace)
+        XCTAssertEqual(result.decisions.first?.replacementText, "merged()\n")
+    }
+
     func testAnthropicRequestUsesRequiredHeadersAndParsesResponse() async throws {
         let store = InMemoryAIProviderCredentialStore(keys: [.anthropic: "anthropic-secret"])
         let modelStore = InMemoryAIProviderModelStore(models: [.anthropic: "claude-custom"])
@@ -414,6 +439,26 @@ final class CloudAIProviderTests: XCTestCase {
             ),
             recentCommitSubjects: ["feat: Add Apple Intelligence generation"]
         )
+    }
+
+    private func makeConflictRequest() -> ConflictAIResolutionRequest {
+        ConflictAIResolutionRequest(snapshot: ConflictAIFileSnapshot(
+            repositoryName: "macgit",
+            branchName: "main",
+            filePath: "Example.swift",
+            fingerprint: "conflict-1",
+            baseContent: "func value() { old() }\n",
+            currentContent: "func value() { current() }\n",
+            incomingContent: "func value() { incoming() }\n",
+            sections: [ConflictAISectionSnapshot(
+                sectionIndex: 0,
+                contextBefore: "",
+                currentText: "current()\n",
+                incomingText: "incoming()\n",
+                contextAfter: ""
+            )],
+            isTruncated: false
+        ))
     }
 
     private func requestJSONObject(_ request: URLRequest) throws -> [String: Any] {

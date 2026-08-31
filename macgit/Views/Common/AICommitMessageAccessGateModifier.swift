@@ -22,6 +22,7 @@ struct AICommitMessageAccessGateModifier: ViewModifier {
     @EnvironmentObject private var accountController: AccountSessionController
     @EnvironmentObject private var featureAccessController: FeatureAccessController
     @Binding var isRequested: Bool
+    let feature: PlanFeature
     let requiresProAccess: Bool
     let onAuthorized: () -> Void
 
@@ -38,7 +39,7 @@ struct AICommitMessageAccessGateModifier: ViewModifier {
                 authorizeRequest()
             }
             .sheet(isPresented: $showingLoginRequired) {
-                AICommitMessageLoginRequiredSheet(controller: accountController)
+                AICommitMessageLoginRequiredSheet(controller: accountController, feature: feature)
             }
             .sheet(item: $proUpgradePresentation) { presentation in
                 ProUpgradeSheet(
@@ -71,16 +72,16 @@ struct AICommitMessageAccessGateModifier: ViewModifier {
         }
 
         switch featureAccessController.decision(
-            for: .aiCommitMessage,
+            for: feature,
             entitlement: accountController.entitlement
         ) {
         case .allowed:
             onAuthorized()
         case .denied(.requiresPro):
             proUpgradeErrorMessage = nil
-            proUpgradePresentation = ProUpgradePresentation(feature: .aiCommitMessage)
+            proUpgradePresentation = ProUpgradePresentation(feature: feature)
         case .denied(let denial):
-            featureAccessNotice = FeatureAccessNotice(feature: .aiCommitMessage, denial: denial)
+            featureAccessNotice = FeatureAccessNotice(feature: feature, denial: denial)
         }
     }
 
@@ -119,7 +120,20 @@ extension View {
     ) -> some View {
         modifier(AICommitMessageAccessGateModifier(
             isRequested: isRequested,
+            feature: .aiCommitMessage,
             requiresProAccess: requiresProAccess,
+            onAuthorized: onAuthorized
+        ))
+    }
+
+    func aiConflictResolutionAccessGate(
+        isRequested: Binding<Bool>,
+        onAuthorized: @escaping () -> Void
+    ) -> some View {
+        modifier(AICommitMessageAccessGateModifier(
+            isRequested: isRequested,
+            feature: .aiConflictResolution,
+            requiresProAccess: true,
             onAuthorized: onAuthorized
         ))
     }

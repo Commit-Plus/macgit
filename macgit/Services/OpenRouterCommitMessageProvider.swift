@@ -137,6 +137,60 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
         return text
     }
 
+    func generateConflictResolution(
+        request: ConflictAIResolutionRequest
+    ) async throws -> ConflictAIResolutionResponse {
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("OpenRouter model is not configured.")
+        }
+        let context = try ConflictAIPrompt.context(
+            for: request.snapshot,
+            characterBudget: descriptor.inputCharacterBudget
+        )
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": model,
+            "messages": [
+                ["role": "system", "content": ConflictAIPrompt.instructions],
+                ["role": "user", "content": context],
+            ],
+            "max_completion_tokens": 4_000,
+            "response_format": [
+                "type": "json_schema",
+                "json_schema": [
+                    "name": "conflict_resolution",
+                    "strict": true,
+                    "schema": ConflictAIPrompt.responseSchema,
+                ],
+            ],
+            "provider": ["require_parameters": true],
+            "plugins": [["id": "response-healing"]],
+        ])
+
+        let (data, response) = try await httpClient.data(for: urlRequest)
+        try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+        guard let payload = try? JSONDecoder().decode(Response.self, from: data) else {
+            throw ConflictAIResolutionError.invalidResponse(
+                "OpenRouter did not return a conflict-resolution plan."
+            )
+        }
+        if let providerError = payload.error ?? payload.choices?.first?.error {
+            throw CommitMessageGenerationError.providerRequestFailed(
+                "OpenRouter request failed: \(providerError.message)"
+            )
+        }
+        guard let content = payload.choices?.first?.message?.content else {
+            throw ConflictAIResolutionError.invalidResponse(
+                "OpenRouter did not return a conflict-resolution plan."
+            )
+        }
+        return try content.conflictResolution()
+    }
+
     private struct Response: Decodable {
         let choices: [Choice]?
         let error: ProviderError?
@@ -158,6 +212,7 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
     private enum MessageContent: Decodable {
         case text(String)
         case structured(CloudCommitMessageResponse)
+        case conflict(ConflictAIResolutionResponse)
 
         init(from decoder: any Decoder) throws {
             let container = try decoder.singleValueContainer()
@@ -167,6 +222,10 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
             }
             if let response = try? container.decode(CloudCommitMessageResponse.self) {
                 self = .structured(response)
+                return
+            }
+            if let response = try? container.decode(ConflictAIResolutionResponse.self) {
+                self = .conflict(response)
                 return
             }
             if let parts = try? container.decode([TextPart].self) {
@@ -186,6 +245,8 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
                 try CloudCommitMessageResponse.decode(from: text).formatted()
             case .structured(let response):
                 try response.formatted()
+            case .conflict:
+                throw CommitMessageGenerationError.invalidResponse
             }
         }
 
@@ -195,6 +256,21 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
                 text
             case .structured:
                 nil
+            case .conflict:
+                nil
+            }
+        }
+
+        func conflictResolution() throws -> ConflictAIResolutionResponse {
+            switch self {
+            case .text(let text):
+                try ConflictAIResolutionResponse.decode(from: text)
+            case .conflict(let response):
+                response
+            case .structured:
+                throw ConflictAIResolutionError.invalidResponse(
+                    "OpenRouter returned a commit message instead of a conflict-resolution plan."
+                )
             }
         }
     }

@@ -21,6 +21,7 @@ import SwiftUI
 struct AICommitMessageLoginRequiredSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var controller: AccountSessionController
+    let feature: PlanFeature
     @State private var showingAuthentication = false
 
     var body: some View {
@@ -50,7 +51,7 @@ struct AICommitMessageLoginRequiredSheet: View {
                         .font(.title)
                         .bold()
 
-                    Text("AI commit messages are a Commit+ Pro feature. Sign in so we can securely check your plan before generating a message.")
+                    Text("\(feature.displayName) is a Commit+ Pro feature. Sign in so we can securely check your plan before using it.")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 430)
@@ -58,7 +59,7 @@ struct AICommitMessageLoginRequiredSheet: View {
 
                 VStack(alignment: .leading, spacing: 14) {
                     Label("Your plan is verified with your Commit+ account", systemImage: "checkmark.shield.fill")
-                    Label("Commit content stays on this Mac with Apple Intelligence", systemImage: "lock.macwindow")
+                    Label("Repository content stays on this Mac with Apple Intelligence", systemImage: "lock.macwindow")
                     Label("No repository files are uploaded for plan verification", systemImage: "folder.badge.questionmark")
                 }
                 .foregroundStyle(.secondary)

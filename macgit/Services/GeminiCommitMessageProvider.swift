@@ -178,6 +178,61 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         return text
     }
 
+    func generateConflictResolution(
+        request: ConflictAIResolutionRequest
+    ) async throws -> ConflictAIResolutionResponse {
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("Gemini model is not configured.")
+        }
+        let context = try ConflictAIPrompt.context(
+            for: request.snapshot,
+            characterBudget: descriptor.inputCharacterBudget
+        )
+        let endpoint = modelsEndpoint.appending(path: "\(model):generateContent")
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "systemInstruction": ["parts": [["text": ConflictAIPrompt.instructions]]],
+            "contents": [["role": "user", "parts": [["text": context]]]],
+            "generationConfig": [
+                "maxOutputTokens": 4_096,
+                "responseMimeType": "application/json",
+                "responseJsonSchema": ConflictAIPrompt.responseSchema,
+                "thinkingConfig": ["thinkingLevel": "MINIMAL", "includeThoughts": false],
+            ],
+            "store": false,
+        ])
+
+        let (data, response) = try await httpClient.data(for: urlRequest)
+        try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+        guard let payload = try? JSONDecoder().decode(Response.self, from: data) else {
+            throw ConflictAIResolutionError.invalidResponse(
+                "Gemini did not return a conflict-resolution plan."
+            )
+        }
+        let responseTexts = (payload.candidates ?? [])
+            .compactMap(\.content)
+            .flatMap(\.parts)
+            .filter { $0.thought != true }
+            .compactMap(\.text)
+        for text in responseTexts {
+            if let plan = try? ConflictAIResolutionResponse.decode(from: text) {
+                return plan
+            }
+        }
+        if let blockReason = payload.promptFeedback?.blockReason {
+            throw CommitMessageGenerationError.providerRequestFailed(
+                "Gemini blocked the conflict request (\(blockReason))."
+            )
+        }
+        throw ConflictAIResolutionError.invalidResponse(
+            "Gemini did not return a conflict-resolution plan."
+        )
+    }
+
     private struct Response: Decodable {
         let candidates: [Candidate]?
         let promptFeedback: PromptFeedback?

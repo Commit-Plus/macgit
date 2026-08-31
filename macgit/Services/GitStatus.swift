@@ -22,7 +22,7 @@
 //
 import Foundation
 
-enum FileStatus: String, CaseIterable {
+enum FileStatus: String, CaseIterable, Sendable {
     case modified
     case staged
     case untracked
@@ -47,7 +47,7 @@ enum FileStatus: String, CaseIterable {
     }
 }
 
-struct StatusFile: Identifiable, Equatable, Hashable {
+struct StatusFile: Identifiable, Equatable, Hashable, Sendable {
     let path: String
     let status: FileStatus
     let originalPath: String?

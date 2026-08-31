@@ -26,6 +26,8 @@ struct ConflictMergeToolView: View {
     @State private var allConflictFiles: [StatusFile]
     let repositoryURL: URL
     let commandContextIdentifier: String
+    @ObservedObject var aiProviderController: AIProviderController
+    let aiProviderAccessDecision: FeatureAccessDecision
     let onResolved: () -> Void
     let onClose: () -> Void
 
@@ -48,22 +50,30 @@ struct ConflictMergeToolView: View {
     @State private var showingAbortConfirmation = false
     @State private var conflictUndoStacks: [String: [ConflictUndoSnapshot]] = [:]
     @State private var conflictRedoStacks: [String: [ConflictUndoSnapshot]] = [:]
-    @ObservedObject private var integrationSettings = IntegrationSettingsStore.shared
-
+    @State private var aiResolutionController: ConflictAIResolutionController
+    @State private var isAIResolutionRequested = false
     init(
         allConflictFiles: [StatusFile],
         selectedFile: StatusFile,
         repositoryURL: URL,
         commandContextIdentifier: String,
+        aiProviderController: AIProviderController,
+        aiProviderAccessDecision: FeatureAccessDecision,
         onResolved: @escaping () -> Void,
         onClose: @escaping () -> Void
     ) {
         self._allConflictFiles = State(initialValue: allConflictFiles)
         self.repositoryURL = repositoryURL
         self.commandContextIdentifier = commandContextIdentifier
+        self.aiProviderController = aiProviderController
+        self.aiProviderAccessDecision = aiProviderAccessDecision
         self.onResolved = onResolved
         self.onClose = onClose
         self._selectedFile = State(initialValue: selectedFile)
+        self._aiResolutionController = State(initialValue: ConflictAIResolutionController(
+            repositoryURL: repositoryURL,
+            providerController: aiProviderController
+        ))
     }
 
     var body: some View {
@@ -78,6 +88,9 @@ struct ConflictMergeToolView: View {
         }
         .task {
             await loadMergeContext()
+        }
+        .task {
+            await aiProviderController.refreshAvailability()
         }
         .alert("Error", isPresented: $showingError, actions: {
             Button("OK", role: .cancel) {}
@@ -100,6 +113,23 @@ struct ConflictMergeToolView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This restores the repository to its state before the merge started.")
+        }
+        .sheet(isPresented: $aiResolutionController.isShowingQuestions) {
+            ConflictAIQuestionsView(controller: aiResolutionController) {
+                synchronizeAIResolvedFiles()
+                presentAIFailuresIfNeeded()
+            }
+        }
+        .aiConflictResolutionAccessGate(isRequested: $isAIResolutionRequested) {
+            aiResolutionController.start(files: allConflictFiles)
+        }
+        .onChange(of: aiResolutionController.resolvedFilePaths) { _, _ in
+            synchronizeAIResolvedFiles()
+        }
+        .onChange(of: aiResolutionController.isRunning) { wasRunning, isRunning in
+            guard wasRunning, !isRunning else { return }
+            synchronizeAIResolvedFiles()
+            presentAIFailuresIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .conflictUndoAction)) { notification in
             guard notification.userInfo?["commandContext"] as? String == commandContextIdentifier,
@@ -146,7 +176,7 @@ struct ConflictMergeToolView: View {
                     }
                 }
                 .listStyle(.sidebar)
-                .disabled(isSaving || isPerformingMergeAction)
+                .disabled(isSaving || isPerformingMergeAction || isAIResolutionInProgress)
             }
             .frame(minHeight: 0, maxHeight: .infinity)
 
@@ -172,7 +202,7 @@ struct ConflictMergeToolView: View {
                     }
                 }
                 .listStyle(.sidebar)
-                .disabled(isSaving || isPerformingMergeAction)
+                .disabled(isSaving || isPerformingMergeAction || isAIResolutionInProgress)
             }
             .frame(minHeight: 0, maxHeight: .infinity)
 
@@ -193,7 +223,7 @@ struct ConflictMergeToolView: View {
                             .stroke(.separator, lineWidth: 1)
                     }
                     .frame(minHeight: 100, idealHeight: 120, maxHeight: 160)
-                    .disabled(isPerformingMergeAction)
+                    .disabled(isPerformingMergeAction || isAIResolutionInProgress)
                     .accessibilityLabel("Merge commit message")
             }
             .padding(.horizontal, 10)
@@ -280,7 +310,7 @@ struct ConflictMergeToolView: View {
                 onTextChange: handleResultTextChange,
                 fileExtension: selectedFile.fileExtension,
                 baselineText: document.currentContent,
-                isDisabled: isSaving || isPerformingMergeAction,
+                isDisabled: isSaving || isPerformingMergeAction || isAIResolutionInProgress,
                 undoResetGeneration: resultEditorUndoResetGeneration,
                 scrollController: scrollController
             )
@@ -360,53 +390,52 @@ struct ConflictMergeToolView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            if let document = document, !allConflictFiles.isEmpty {
+        if let document = document, !allConflictFiles.isEmpty {
+            ToolbarItem(placement: .navigation) {
                 let navigation = navigationState(for: document)
-                HStack(spacing: 8) {
-                    HStack(spacing: 0) {
-                        Button {
-                            navigateToConflict(navigation.previousSectionIndex, in: document)
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 12, weight: .semibold))
-                                .frame(width: 28, height: 22)
-                        }
-                        .disabled(!navigation.canNavigatePrevious)
-                        .accessibilityLabel("Previous conflict")
-
-                        Divider()
-                            .frame(height: 12)
-
-                        Button {
-                            navigateToConflict(navigation.nextSectionIndex, in: document)
-                        } label: {
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .semibold))
-                                .frame(width: 28, height: 22)
-                        }
-                        .disabled(!navigation.canNavigateNext)
-                        .accessibilityLabel("Next conflict")
+                HStack(spacing: 0) {
+                    Button {
+                        navigateToConflict(navigation.previousSectionIndex, in: document)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 28, height: 22)
                     }
-                    .background(
-                        Capsule()
-                            .fill(Color(nsColor: .controlBackgroundColor))
-                    )
-                    .overlay(
-                        Capsule()
-                            .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
-                    )
+                    .disabled(!navigation.canNavigatePrevious)
+                    .accessibilityLabel("Previous conflict")
 
-                    Button("External Tool", systemImage: "arrow.up.forward.app") {
-                        Task { await openInExternalTool() }
+                    Divider()
+                        .frame(height: 12)
+
+                    Button {
+                        navigateToConflict(navigation.nextSectionIndex, in: document)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 28, height: 22)
                     }
-                    .disabled(
-                        integrationSettings.selectedApplication(for: .merge) == nil
-                            || isSaving
-                            || isPerformingMergeAction
-                    )
-                    .help("Open in External Tool")
+                    .disabled(!navigation.canNavigateNext)
+                    .accessibilityLabel("Next conflict")
                 }
+                .background(
+                    Capsule()
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
+                )
+            }
+
+            ToolbarSpacer(.fixed, placement: .navigation)
+
+            ToolbarItem(placement: .navigation) {
+                Button("Resolve all conflicts with AI", systemImage: "sparkles") {
+                    isAIResolutionRequested = true
+                }
+                .labelStyle(.iconOnly)
+                .disabled(isAIResolutionActionDisabled)
+                .help(resolveAllWithAIHelp)
             }
         }
 
@@ -433,6 +462,18 @@ struct ConflictMergeToolView: View {
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
+
+                if !aiResolutionController.progressText.isEmpty {
+                    Text(aiResolutionController.progressText)
+                        .font(.subheadline)
+                        .foregroundStyle(
+                            aiResolutionController.failures.isEmpty
+                                ? Color(nsColor: .secondaryLabelColor)
+                                : Color.orange
+                        )
+                        .lineLimit(1)
+                        .help(aiResolutionFailureHelp)
+                }
             }
             .padding(.horizontal)
         }
@@ -442,7 +483,12 @@ struct ConflictMergeToolView: View {
                 showingAbortConfirmation = true
             }
             .buttonStyle(.bordered)
-            .disabled(!isMergeInProgress || isSaving || isPerformingMergeAction)
+            .disabled(
+                !isMergeInProgress
+                    || isSaving
+                    || isPerformingMergeAction
+                    || isAIResolutionInProgress
+            )
         }
 
         ToolbarSpacer(.fixed, placement: .confirmationAction)
@@ -460,6 +506,7 @@ struct ConflictMergeToolView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(
                     isPerformingMergeAction
+                        || isAIResolutionInProgress
                         || (isMergeInProgress && mergeMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 )
             } else {
@@ -484,12 +531,76 @@ struct ConflictMergeToolView: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.plain)
-                .disabled(isSaving || isPerformingMergeAction)
+                .disabled(isSaving || isPerformingMergeAction || isAIResolutionInProgress)
             }
         }
     }
 
     // MARK: - Helpers
+
+    private var isAIResolutionInProgress: Bool {
+        aiResolutionController.isRunning || aiResolutionController.isApplyingAnswers
+    }
+
+    private var isAIResolutionActionDisabled: Bool {
+        isSaving
+            || isPerformingMergeAction
+            || isAIResolutionInProgress
+            || aiProviderController.isGenerating
+            || hasUnsavedChanges
+    }
+
+    private var resolveAllWithAIHelp: String {
+        if hasUnsavedChanges {
+            return "Finish or undo the current manual resolution before resolving all files with AI."
+        }
+        let availability = aiProviderController.selectedProviderAvailability
+        guard availability.isAvailable else { return availability.detail }
+        return "Resolve and stage supported text conflicts with \(aiProviderController.selectedDescriptor.displayName)."
+    }
+
+    private var aiResolutionFailureHelp: String {
+        guard !aiResolutionController.failures.isEmpty else {
+            return aiResolutionController.progressText
+        }
+        return aiResolutionController.failures
+            .map { "\($0.filePath): \($0.message)" }
+            .joined(separator: "\n")
+    }
+
+    private func synchronizeAIResolvedFiles() {
+        let resolvedPathSet = Set(aiResolutionController.resolvedFilePaths)
+        let newlyResolved = allConflictFiles.filter { resolvedPathSet.contains($0.path) }
+        guard !newlyResolved.isEmpty else { return }
+
+        let selectedWasResolved = newlyResolved.contains(selectedFile)
+        allConflictFiles.removeAll { resolvedPathSet.contains($0.path) }
+        for file in newlyResolved where !resolvedFiles.contains(file) {
+            resolvedFiles.append(file)
+        }
+        resolvedFiles.sort { $0.path < $1.path }
+        onResolved()
+
+        if allConflictFiles.isEmpty {
+            document = nil
+            resultTextBuffer.text = ""
+            selectedConflictSectionIndex = nil
+            hasUnsavedChanges = false
+        } else if selectedWasResolved, let nextFile = allConflictFiles.first {
+            selectedFile = nextFile
+        }
+    }
+
+    private func presentAIFailuresIfNeeded() {
+        guard aiResolutionController.pendingQuestions.isEmpty,
+              !aiResolutionController.failures.isEmpty else {
+            return
+        }
+        errorMessage = aiResolutionController.failures
+            .map { "\($0.filePath): \($0.message)" }
+            .joined(separator: "\n\n")
+        showingError = true
+    }
 
     private func headerSelectionControl(for side: ConflictPaneSelectionSide) -> some View {
         let selected = allConflictsSelected(side)
@@ -773,40 +884,6 @@ struct ConflictMergeToolView: View {
             mergeMessage = loadedMessage.isEmpty && loadedMergeInProgress
                 ? "Merge changes"
                 : loadedMessage
-        }
-    }
-
-    private func openInExternalTool() async {
-        guard !allConflictFiles.isEmpty else { return }
-        isPerformingMergeAction = true
-        defer { isPerformingMergeAction = false }
-
-        do {
-            try await integrationSettings.openExternalMerge(
-                for: selectedFile,
-                in: repositoryURL
-            )
-            let updatedDocument = try await GitStatusService.shared.conflictDocument(
-                for: selectedFile,
-                in: repositoryURL
-            )
-            let stillHasConflicts = updatedDocument.sections.contains(where: \.isConflict)
-            if stillHasConflicts {
-                resultTextBuffer.text = updatedDocument.resolvedText
-                document = updatedDocument
-                hasUnsavedChanges = false
-                focusCurrentConflict(in: updatedDocument, preferredSectionIndex: nil, scroll: true)
-            } else {
-                try await GitStatusService.shared.resolveConflict(
-                    file: selectedFile,
-                    in: repositoryURL,
-                    with: updatedDocument
-                )
-                markSelectedFileResolved()
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-            showingError = true
         }
     }
 

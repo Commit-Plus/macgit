@@ -117,6 +117,43 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
         return text
     }
 
+    func generateConflictResolution(
+        request: ConflictAIResolutionRequest
+    ) async throws -> ConflictAIResolutionResponse {
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("DeepSeek model is not configured.")
+        }
+        let context = try ConflictAIPrompt.context(
+            for: request.snapshot,
+            characterBudget: descriptor.inputCharacterBudget
+        )
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": model,
+            "messages": [
+                ["role": "system", "content": ConflictAIPrompt.instructions],
+                ["role": "user", "content": context],
+            ],
+            "max_tokens": 4_000,
+            "response_format": ["type": "json_object"],
+            "thinking": ["type": "disabled"],
+        ])
+
+        let (data, response) = try await httpClient.data(for: urlRequest)
+        try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+        guard let payload = try? JSONDecoder().decode(Response.self, from: data),
+              let text = payload.choices.first?.message.content else {
+            throw ConflictAIResolutionError.invalidResponse(
+                "DeepSeek did not return a conflict-resolution plan."
+            )
+        }
+        return try ConflictAIResolutionResponse.decode(from: text)
+    }
+
     private struct Response: Decodable {
         let choices: [Choice]
     }

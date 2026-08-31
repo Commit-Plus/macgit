@@ -27,6 +27,9 @@ protocol CommitMessageAIProvider: Sendable {
     func generateRepositoryResponse(
         request: RepositoryAIRequest
     ) async throws -> String
+    func generateConflictResolution(
+        request: ConflictAIResolutionRequest
+    ) async throws -> ConflictAIResolutionResponse
 }
 
 extension CommitMessageAIProvider {
@@ -34,6 +37,30 @@ extension CommitMessageAIProvider {
         request: RepositoryAIRequest
     ) async throws -> String {
         throw CommitMessageGenerationError.providerNotImplemented
+    }
+
+    func generateConflictResolution(
+        request: ConflictAIResolutionRequest
+    ) async throws -> ConflictAIResolutionResponse {
+        let snapshot = request.snapshot
+        let context = try ConflictAIPrompt.context(
+            for: snapshot,
+            characterBudget: descriptor.inputCharacterBudget
+        )
+        let repositoryRequest = RepositoryAIRequest(
+            repositoryName: snapshot.repositoryName,
+            branchName: snapshot.branchName,
+            question: ConflictAIPrompt.question,
+            toolResult: RepositoryAIToolResult(
+                toolName: "merge_conflict",
+                title: "Conflict in \(snapshot.filePath)",
+                fingerprint: snapshot.fingerprint,
+                content: context,
+                isTruncated: snapshot.isTruncated
+            )
+        )
+        let text = try await generateRepositoryResponse(request: repositoryRequest)
+        return try ConflictAIResolutionResponse.decode(from: text)
     }
 }
 

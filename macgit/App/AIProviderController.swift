@@ -292,4 +292,33 @@ final class AIProviderController: ObservableObject {
         }
         return normalizedResponse
     }
+
+    func generateConflictResolution(
+        request: ConflictAIResolutionRequest
+    ) async throws -> ConflictAIResolutionResponse {
+        guard !isGenerating else {
+            throw CommitMessageGenerationError.providerUnavailable("Another AI request is already running.")
+        }
+        guard let provider = registry.provider(for: selectedProviderID) else {
+            throw CommitMessageGenerationError.providerNotImplemented
+        }
+
+        let providerID = selectedProviderID
+        let providerAvailability = await provider.availability()
+        availabilityByProviderID[providerID] = providerAvailability
+        guard providerAvailability.isAvailable else {
+            throw CommitMessageGenerationError.providerUnavailable(providerAvailability.detail)
+        }
+
+        isGenerating = true
+        defer { isGenerating = false }
+
+        let response = try await provider.generateConflictResolution(request: request)
+        guard providerID == selectedProviderID else {
+            throw ConflictAIResolutionError.staleFile(
+                "The selected AI provider changed while conflicts were being resolved."
+            )
+        }
+        return response
+    }
 }
