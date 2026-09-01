@@ -28,6 +28,8 @@ struct SidebarBranchesSection: View {
     let expandedFolders: Set<String>
     let branchSyncStatus: [String: BranchSyncStatus]
     let currentBranchFallbackSyncStatus: BranchSyncStatus?
+    let currentBranchIntegrationStatus: CurrentBranchIntegrationStatus?
+    let canUpdateCurrentBranch: Bool
     let upstreamByBranch: [String: String]
     let remoteNames: [String]
     let branchesByRemote: [String: [String]]
@@ -96,6 +98,8 @@ struct SidebarBranchesSection: View {
                             currentBranch: currentBranch,
                             gitFlowConfiguration: gitFlowConfiguration,
                             currentBranchFallbackSyncStatus: currentBranchFallbackSyncStatus,
+                            currentBranchIntegrationStatus: currentBranchIntegrationStatus,
+                            canUpdateCurrentBranch: canUpdateCurrentBranch,
                             expandedFolders: expandedFolders,
                             isCurrentBranchDropTargeted: isCurrentBranchDropTargeted,
                             branchSyncStatus: branchSyncStatus,

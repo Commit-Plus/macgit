@@ -456,17 +456,30 @@ struct MainWindowView: View {
                     globalValue: appState.refreshOnAppActive
                 ) else { return }
                 Task {
+                    var didFetchRemoteRefs = false
                     if let credentialResolver = await credentialResolverForFetch(
                         options: GitStatusService.FetchOptions()
                     ) {
-                        try? await GitStatusService.shared.fetch(
-                            options: GitStatusService.FetchOptions(),
-                            in: repositoryURL,
-                            credentialResolver: credentialResolver
-                        )
+                        do {
+                            try await GitStatusService.shared.fetch(
+                                options: GitStatusService.FetchOptions(),
+                                in: repositoryURL,
+                                credentialResolver: credentialResolver
+                            )
+                            didFetchRemoteRefs = true
+                        } catch {
+                            // App-active refresh remains best effort. Manual fetch surfaces errors.
+                        }
                     }
                     await syncState.refresh(repositoryURL: repositoryURL)
                     await MainActor.run {
+                        if didFetchRemoteRefs {
+                            NotificationCenter.default.post(
+                                name: .repositoryRemoteRefsDidRefresh,
+                                object: nil,
+                                userInfo: ["repositoryURL": repositoryURL]
+                            )
+                        }
                         NotificationCenter.default.post(
                             name: .repositoryLocalStateDidRefresh,
                             object: nil,
@@ -687,19 +700,22 @@ struct MainWindowView: View {
             selection: $selectedItem,
             undoManager: undoManager,
             currentBranchFallbackSyncStatus: currentBranchFallbackSyncStatus,
+            defaultRemoteName: repoSettings.defaultRemoteName,
             isAccountMenuDisabled: operationProgress.activeOperation != nil,
             gitFlowConfiguration: gitFlowConfiguration,
             gitFlowFinishCheckpoint: gitFlowFinishCheckpoint,
             gitFlowRecoveryIssue: gitFlowRecoveryIssue,
             isGitFlowOperationDisabled: operationProgress.activeOperation != nil,
             isBranchSyncing: { branch in
-                BranchSyncBadgePolicy.shouldShowLoading(
+                (syncState.isUpdatingCurrentBranch && syncState.activeSyncBranch == branch)
+                    || BranchSyncBadgePolicy.shouldShowLoading(
                     for: branch,
                     isPulling: syncState.isPulling,
                     isPushing: syncState.isPushing,
                     activeSyncBranch: syncState.activeSyncBranch
                 )
             },
+            canUpdateCurrentBranch: canUpdateCurrentBranch,
             onRequestCheckout: { ref, isTag in
                 if isTag {
                     tagToCheckout = ref
@@ -765,6 +781,7 @@ struct MainWindowView: View {
                     }
                 }
             },
+            onRequestUpdateCurrentBranch: requestCurrentBranchIntegrationUpdate,
             onRequestRenameBranch: { branch in
                 branchToRename = branch
                 showingRenameBranchSheet = true
@@ -1005,6 +1022,32 @@ struct MainWindowView: View {
         return BranchSyncStatus(ahead: ahead, behind: behind)
     }
 
+    private var canUpdateCurrentBranch: Bool {
+        syncState.commitBadgeCount == 0
+            && syncState.inProgressOperation == nil
+            && !syncState.isAnySyncing
+            && operationProgress.activeOperation == nil
+    }
+
+    private func requestCurrentBranchIntegrationUpdate(_ status: CurrentBranchIntegrationStatus) {
+        runRemoteOperation("Updating \(status.branch)...", remotes: [status.remote]) { credentialResolver in
+            await syncState.performCurrentBranchIntegrationUpdate(
+                status: status,
+                preferredRemote: repoSettings.defaultRemoteName,
+                gitFlowConfiguration: gitFlowConfiguration,
+                pullStrategy: repoSettings.pullStrategy,
+                repositoryURL: repositoryURL,
+                undoManager: undoManager,
+                credentialResolver: credentialResolver
+            )
+            if await GitStatusService.shared.hasConflicts(in: repositoryURL) {
+                await MainActor.run {
+                    selectedItem = .item(.fileStatus)
+                }
+            }
+        }
+    }
+
     private var tagDetailsSheetPresented: Binding<Bool> {
         Binding(
             get: { displayedTagDetails != nil },
@@ -1045,6 +1088,10 @@ struct MainWindowView: View {
                     aiProviderController: aiProviderController,
                     syncState: syncState,
                     undoManager: undoManager,
+                    preferredRemote: repoSettings.defaultRemoteName,
+                    gitFlowConfiguration: gitFlowConfiguration,
+                    canUpdateCurrentBranch: canUpdateCurrentBranch,
+                    onRequestUpdateCurrentBranch: requestCurrentBranchIntegrationUpdate,
                     onRequestApplyStash: { ref in
                         requestStashAction(ref: ref, action: .apply)
                     },

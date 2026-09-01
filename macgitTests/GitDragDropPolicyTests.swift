@@ -172,6 +172,24 @@ final class GitDragDropPolicyTests: XCTestCase {
         )
     }
 
+    func testNativeBranchDropTargetPassesTrailingControlClicksThrough() {
+        let dropTargetView = SidebarBranchDropTarget.DropTargetView(
+            passthroughTrailingWidth: 96,
+            onTap: {},
+            onTargetedChange: { _ in },
+            fallbackPayload: { nil },
+            canAcceptDrop: { _ in false },
+            dragPayload: { nil },
+            dragTitle: { "" },
+            onDragEnded: { _ in },
+            onDrop: { _ in false }
+        )
+        dropTargetView.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
+
+        XCTAssertIdentical(dropTargetView.hitTest(NSPoint(x: 100, y: 12)), dropTargetView)
+        XCTAssertNil(dropTargetView.hitTest(NSPoint(x: 250, y: 12)))
+    }
+
     func testNativeBranchDropTargetRestoresCommitPreviewSizeAroundItsCenter() {
         let shrunkenFrame = NSRect(x: 120, y: 80, width: 332, height: 12)
 

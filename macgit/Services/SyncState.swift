@@ -27,6 +27,7 @@ import Network
 extension Notification.Name {
     static let repositoryDidChange = Notification.Name("macgit.repositoryDidChange")
     static let repositoryLocalStateDidRefresh = Notification.Name("macgit.repositoryLocalStateDidRefresh")
+    static let repositoryRemoteRefsDidRefresh = Notification.Name("macgit.repositoryRemoteRefsDidRefresh")
     static let repositoryCurrentBranchDidChange = Notification.Name("macgit.repositoryCurrentBranchDidChange")
     static let repositoryBranchDidCreate = Notification.Name("macgit.repositoryBranchDidCreate")
 }
@@ -49,11 +50,12 @@ class SyncState: ObservableObject {
     @Published var isFetching: Bool = false
     @Published var isMerging: Bool = false
     @Published var isStashing: Bool = false
+    @Published var isUpdatingCurrentBranch: Bool = false
     @Published var activeSyncBranch: String? = nil
     @Published var inProgressOperation: GitInProgressOperation? = nil
 
     var isAnySyncing: Bool {
-        isCommitting || isPushing || isPulling || isFetching || isMerging || isStashing
+        isCommitting || isPushing || isPulling || isFetching || isMerging || isStashing || isUpdatingCurrentBranch
     }
 
     private var backgroundTask: Task<Void, Never>? = nil
@@ -125,11 +127,22 @@ class SyncState: ObservableObject {
                 if autoFetchEnabled,
                    networkMonitor.currentPath.status == .satisfied,
                    Date.now.timeIntervalSince(lastAutoFetchDate) >= Self.autoFetchInterval {
-                    try? await GitStatusService.shared.fetch(
-                        options: GitStatusService.FetchOptions(),
-                        in: repositoryURL
-                    )
-                    lastAutoFetchDate = Date.now
+                    do {
+                        try await GitStatusService.shared.fetch(
+                            options: GitStatusService.FetchOptions(),
+                            in: repositoryURL
+                        )
+                        lastAutoFetchDate = Date.now
+                        await MainActor.run {
+                            NotificationCenter.default.post(
+                                name: .repositoryRemoteRefsDidRefresh,
+                                object: nil,
+                                userInfo: ["repositoryURL": repositoryURL]
+                            )
+                        }
+                    } catch {
+                        // Background fetch remains best effort. Manual actions surface errors.
+                    }
                 }
                 await refresh(repositoryURL: repositoryURL)
                 try? await Task.sleep(for: Self.backgroundRefreshInterval)
@@ -504,6 +517,118 @@ class SyncState: ObservableObject {
                 showConflict("Merge conflicts occurred while updating \(branch). Please resolve them in the File status view.")
             } else {
                 showError(message)
+            }
+        }
+    }
+
+    func performCurrentBranchIntegrationUpdate(
+        status: CurrentBranchIntegrationStatus,
+        preferredRemote: String?,
+        gitFlowConfiguration: GitFlowConfiguration,
+        pullStrategy: PullStrategy,
+        repositoryURL: URL,
+        undoManager: GitUndoManager? = nil,
+        credentialResolver: GitProviderCredentialResolver? = nil
+    ) async {
+        let operationAlreadyRunning = await MainActor.run { isAnySyncing }
+        guard !operationAlreadyRunning else {
+            showInfo("Wait for the current repository operation to finish.")
+            return
+        }
+        guard !(await checkConflicts(repositoryURL: repositoryURL)) else { return }
+        guard await GitStatusService.shared.inProgressOperation(in: repositoryURL) == nil else {
+            showInfo("Finish the current Git operation before updating this branch.")
+            return
+        }
+        guard (try? await GitStashUndoSupport().isWorkingTreeClean(in: repositoryURL)) == true else {
+            showInfo("Commit or stash your working copy changes before updating this branch.")
+            return
+        }
+        guard await GitStatusService.shared.currentBranch(in: repositoryURL) == status.branch else {
+            showInfo("The current branch changed. Review the warning again before updating.")
+            return
+        }
+
+        await MainActor.run {
+            isUpdatingCurrentBranch = true
+            activeSyncBranch = status.branch
+        }
+        defer {
+            Task { @MainActor in
+                isUpdatingCurrentBranch = false
+                activeSyncBranch = nil
+            }
+        }
+
+        let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
+        do {
+            try await GitStatusService.shared.fetchCurrentBranchIntegrationRefs(
+                status,
+                in: repositoryURL,
+                credentialResolver: credentialResolver
+            )
+
+            var refreshedStatus = await GitStatusService.shared.currentBranchIntegrationStatus(
+                branch: status.branch,
+                preferredRemote: preferredRemote,
+                gitFlowConfiguration: gitFlowConfiguration,
+                in: repositoryURL
+            )
+            if let upstreamStatus = refreshedStatus,
+               upstreamStatus.upstreamBehindCount > 0 {
+                _ = try await GitStatusService.shared.pullBranchFromUpstream(
+                    branch: status.branch,
+                    in: repositoryURL,
+                    options: GitStatusService.PullOptions(
+                        rebaseInstead: pullStrategy == .rebase
+                    ),
+                    credentialResolver: credentialResolver
+                )
+                refreshedStatus = await GitStatusService.shared.currentBranchIntegrationStatus(
+                    branch: status.branch,
+                    preferredRemote: preferredRemote,
+                    gitFlowConfiguration: gitFlowConfiguration,
+                    in: repositoryURL
+                )
+            }
+
+            if let baseStatus = refreshedStatus,
+               baseStatus.baseBehindCount > 0,
+               let baseRef = baseStatus.baseRef {
+                _ = try await GitStatusService.shared.merge(
+                    branch: baseRef,
+                    options: GitStatusService.MergeOptions(
+                        message: "Merge \(baseRef) into \(status.branch)"
+                    ),
+                    in: repositoryURL
+                )
+            }
+
+            if let oldHead,
+               let newHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL),
+               oldHead != newHead {
+                await MainActor.run {
+                    undoManager?.register(
+                        GitUndoEntry(
+                            repositoryURL: repositoryURL,
+                            label: "Update \(status.branch)",
+                            undoOperation: .resetHead(target: oldHead, mode: .hard, expectedHead: newHead),
+                            redoOperation: .resetHead(target: newHead, mode: .hard, expectedHead: oldHead),
+                            confirmationMessage: "Undoing this update will reset \(status.branch) to its previous commit. Continue?"
+                        )
+                    )
+                }
+            }
+
+            await refresh(repositoryURL: repositoryURL)
+            notifyRepositoryChanged(repositoryURL)
+        } catch {
+            await refresh(repositoryURL: repositoryURL)
+            notifyRepositoryChanged(repositoryURL)
+            if await GitStatusService.shared.hasConflicts(in: repositoryURL) {
+                showConflict("Updating \(status.branch) produced conflicts. Resolve them in the File status view.")
+            } else {
+                showError(error.localizedDescription)
             }
         }
     }

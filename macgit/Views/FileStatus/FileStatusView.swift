@@ -30,6 +30,10 @@ struct FileStatusView: View {
     @EnvironmentObject private var featureAccessController: FeatureAccessController
     var syncState: SyncState? = nil
     var undoManager: GitUndoManager? = nil
+    var preferredRemote: String? = nil
+    var gitFlowConfiguration: GitFlowConfiguration = GitFlowConfiguration()
+    var canUpdateCurrentBranch = false
+    var onRequestUpdateCurrentBranch: (CurrentBranchIntegrationStatus) -> Void = { _ in }
     var onRequestApplyStash: (String) -> Void = { _ in }
     var onRequestPushAfterCommit: (String, String) async throws -> Void
 
@@ -57,6 +61,8 @@ struct FileStatusView: View {
     @State private var pushAfterCommit = false
     @State private var commitAuthor: String?
     @State private var currentBranch: String?
+    @State private var currentBranchIntegrationStatus: CurrentBranchIntegrationStatus?
+    @State private var potentialConflictPresentation: PotentialConflictFilePresentation?
     @State private var recentCommits: [(hash: String, message: String)] = []
     @State private var ignoreTargetFile: StatusFile? = nil
     @State private var conflictResolverWindowController = NSWindowController(window: nil)
@@ -254,6 +260,14 @@ struct FileStatusView: View {
                 }
             )
         }
+        .sheet(item: $potentialConflictPresentation) { presentation in
+            PotentialConflictFileDetailSheet(
+                presentation: presentation,
+                repositoryURL: repositoryURL,
+                canUpdateCurrentBranch: canUpdateCurrentBranch,
+                onUpdateCurrentBranch: onRequestUpdateCurrentBranch
+            )
+        }
 
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task {
@@ -261,6 +275,13 @@ struct FileStatusView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { notification in
+            if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
+                Task {
+                    await loadStatus()
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryRemoteRefsDidRefresh)) { notification in
             if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
                 Task {
                     await loadStatus()
@@ -400,6 +421,7 @@ struct FileStatusView: View {
         let quickAction = FileStatusRowQuickAction(isStaged: isStaged)
         let dragPaths = actionSelection.dragPaths(startingAt: file, isStaged: isStaged)
         let dragPayload = GitDragPayload.files(dragPaths, repositoryURL: repositoryURL)
+        let isPotentialConflict = hasPotentialConflict(file)
 
         return HStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -416,38 +438,46 @@ struct FileStatusView: View {
                 .toggleStyle(.checkbox)
                 .labelsHidden()
 
-                Image(systemName: fileIcon(for: file))
-                    .foregroundStyle(fileColor(for: file))
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 18)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(file.displayName)
-                        .font(.system(size: 13, weight: .medium))
-                        .lineLimit(1)
-                    if let original = file.originalPath {
-                        Text("\(original) → \(file.path)")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    } else {
-                        Text(file.directory)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
+                if isPotentialConflict {
+                    PotentialConflictFileIndicator(
+                        baseRef: currentBranchIntegrationStatus?.baseRef
+                    )
+                } else {
+                    Image(systemName: fileIcon(for: file))
+                        .foregroundStyle(fileColor(for: file))
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(width: 18)
                 }
 
-                Spacer()
+                HStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(file.displayName)
+                            .font(.system(size: 13, weight: .medium))
+                            .lineLimit(1)
+                        if let original = file.originalPath {
+                            Text("\(original) → \(file.path)")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        } else {
+                            Text(file.directory)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+                .onDrag {
+                    makeFileItemProvider(payload: dragPayload)
+                } preview: {
+                    FileDragPreview(pathCount: dragPaths.count, fallbackPath: file.path)
+                }
             }
             .padding(.vertical, 3)
             .padding(.horizontal, 2)
-            .contentShape(Rectangle())
-            .onDrag {
-                makeFileItemProvider(payload: dragPayload)
-            } preview: {
-                FileDragPreview(pathCount: dragPaths.count, fallbackPath: file.path)
-            }
 
             quickActionButton(quickAction, file: file)
                 .padding(.trailing, 2)
@@ -534,6 +564,12 @@ struct FileStatusView: View {
                 .disabled(selection.isSingleFileActionDisabled)
             Button("Show in Finder") { showInFinder(file: file) }
                 .disabled(selection.isSingleFileActionDisabled)
+            if hasPotentialConflict(file) {
+                Button("View Potential Conflict Details…", systemImage: "exclamationmark.triangle") {
+                    presentPotentialConflictDetails(for: file)
+                }
+                .disabled(selection.isSingleFileActionDisabled)
+            }
             Divider()
 
             if isStaged {
@@ -636,6 +672,12 @@ struct FileStatusView: View {
                 || integrationSettings.selectedApplication(for: .diff) == nil
                 || selection.isSingleFileActionDisabled
         )
+        if hasPotentialConflict(file) {
+            Button("View Potential Conflict Details…", systemImage: "exclamationmark.triangle") {
+                presentPotentialConflictDetails(for: file)
+            }
+            .disabled(selection.isSingleFileActionDisabled)
+        }
         Divider()
 
         if isStaged {
@@ -1137,13 +1179,47 @@ struct FileStatusView: View {
         }
     }
 
+    private func hasPotentialConflict(_ file: StatusFile) -> Bool {
+        guard file.status != .conflict,
+              let conflictPaths = currentBranchIntegrationStatus?.potentialConflictPaths
+        else {
+            return false
+        }
+
+        return conflictPaths.contains(file.path)
+            || file.originalPath.map(conflictPaths.contains) == true
+    }
+
+    private func presentPotentialConflictDetails(for file: StatusFile) {
+        guard hasPotentialConflict(file), let currentBranchIntegrationStatus else { return }
+        potentialConflictPresentation = PotentialConflictFilePresentation(
+            file: file,
+            status: currentBranchIntegrationStatus
+        )
+    }
+
     private func loadStatus() async {
         isLoading = true
         defer { isLoading = false }
         do {
             let loadedStatus = try await GitStatusService.shared.status(for: repositoryURL)
+            let loadedCurrentBranch = await GitStatusService.shared.currentBranch(in: repositoryURL)
+            let loadedIntegrationStatus: CurrentBranchIntegrationStatus?
+            if let loadedCurrentBranch {
+                loadedIntegrationStatus = await GitStatusService.shared.currentBranchIntegrationStatus(
+                    branch: loadedCurrentBranch,
+                    preferredRemote: preferredRemote,
+                    gitFlowConfiguration: gitFlowConfiguration,
+                    in: repositoryURL
+                )
+            } else {
+                loadedIntegrationStatus = nil
+            }
+
             gitStatus = loadedStatus
             changedFiles = loadedStatus.unstaged + loadedStatus.untracked
+            currentBranch = loadedCurrentBranch
+            currentBranchIntegrationStatus = loadedIntegrationStatus
             visibleStagedFileCount = min(
                 max(visibleStagedFileCount, fileDisplayPageSize),
                 loadedStatus.staged.count

@@ -25,6 +25,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct SidebarBranchDropTarget: NSViewRepresentable {
+    var passthroughTrailingWidth: CGFloat = 0
     let onTap: () -> Void
     let onTargetedChange: (Bool) -> Void
     let fallbackPayload: () -> GitDragPayload?
@@ -36,6 +37,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
 
     func makeNSView(context: Context) -> DropTargetView {
         DropTargetView(
+            passthroughTrailingWidth: passthroughTrailingWidth,
             onTap: onTap,
             onTargetedChange: onTargetedChange,
             fallbackPayload: fallbackPayload,
@@ -48,6 +50,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: DropTargetView, context: Context) {
+        nsView.passthroughTrailingWidth = passthroughTrailingWidth
         nsView.onTap = onTap
         nsView.onTargetedChange = onTargetedChange
         nsView.fallbackPayload = fallbackPayload
@@ -68,6 +71,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         private static let payloadType = NSPasteboard.PasteboardType(payloadIdentifier)
 
         var onTap: () -> Void
+        var passthroughTrailingWidth: CGFloat
         var onTargetedChange: (Bool) -> Void
         var fallbackPayload: () -> GitDragPayload?
         var canAcceptDrop: (GitDragPayload) -> Bool
@@ -81,6 +85,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         private var activeDragPayload: GitDragPayload?
 
         init(
+            passthroughTrailingWidth: CGFloat = 0,
             onTap: @escaping () -> Void,
             onTargetedChange: @escaping (Bool) -> Void,
             fallbackPayload: @escaping () -> GitDragPayload?,
@@ -90,6 +95,7 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
             onDragEnded: @escaping (GitDragPayload) -> Void,
             onDrop: @escaping (GitDragPayload) -> Bool
         ) {
+            self.passthroughTrailingWidth = passthroughTrailingWidth
             self.onTap = onTap
             self.onTargetedChange = onTargetedChange
             self.fallbackPayload = fallbackPayload
@@ -105,6 +111,18 @@ struct SidebarBranchDropTarget: NSViewRepresentable {
         @available(*, unavailable)
         required init?(coder: NSCoder) {
             fatalError("init(coder:) has not been implemented")
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard let hitView = super.hitTest(point) else { return nil }
+
+            let localPoint = superview.map { convert(point, from: $0) } ?? point
+            let passthroughStart = bounds.maxX - max(0, passthroughTrailingWidth)
+            if bounds.contains(localPoint), localPoint.x >= passthroughStart {
+                return nil
+            }
+
+            return hitView
         }
 
         override func mouseDown(with event: NSEvent) {

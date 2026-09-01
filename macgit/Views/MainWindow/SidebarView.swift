@@ -33,17 +33,20 @@ struct SidebarView: View {
     @Binding var selection: SidebarSelection?
     let undoManager: GitUndoManager?
     let currentBranchFallbackSyncStatus: BranchSyncStatus?
+    let defaultRemoteName: String?
     let isAccountMenuDisabled: Bool
     let gitFlowConfiguration: GitFlowConfiguration
     let gitFlowFinishCheckpoint: GitFlowFinishCheckpoint?
     let gitFlowRecoveryIssue: GitFlowLocalStateIssue?
     let isGitFlowOperationDisabled: Bool
     let isBranchSyncing: (String) -> Bool
+    let canUpdateCurrentBranch: Bool
     let onRequestCheckout: (String, Bool) -> Void
     let onRequestFetchBranch: (String) -> Void
     let onRequestPullRemoteBranch: (String, String) -> Void
     let onRequestPullTracked: (String) -> Void
     let onRequestPushToTracked: (String) -> Void
+    let onRequestUpdateCurrentBranch: (CurrentBranchIntegrationStatus) -> Void
     let onRequestRenameBranch: (String) -> Void
     let onRequestCreatePullRequest: (String) -> Void
     let onRequestCreateBranchFromBranch: (String) -> Void
@@ -96,6 +99,7 @@ struct SidebarView: View {
     @State var currentBranch: String = ""
     @State var headHash: String = ""
     @State var branchSyncStatus: [String: BranchSyncStatus] = [:]
+    @State var currentBranchIntegrationStatus: CurrentBranchIntegrationStatus?
     @State var activeBranchSyncLoadID: UUID?
     @State var loadedBranchSyncBranches: Set<String> = []
     @State var syncingBranchSyncBranches: Set<String> = []
@@ -184,17 +188,20 @@ struct SidebarView: View {
         selection: Binding<SidebarSelection?>,
         undoManager: GitUndoManager? = nil,
         currentBranchFallbackSyncStatus: BranchSyncStatus? = nil,
+        defaultRemoteName: String? = nil,
         isAccountMenuDisabled: Bool = false,
         gitFlowConfiguration: GitFlowConfiguration = GitFlowConfiguration(),
         gitFlowFinishCheckpoint: GitFlowFinishCheckpoint? = nil,
         gitFlowRecoveryIssue: GitFlowLocalStateIssue? = nil,
         isGitFlowOperationDisabled: Bool = false,
         isBranchSyncing: @escaping (String) -> Bool = { _ in false },
+        canUpdateCurrentBranch: Bool = true,
         onRequestCheckout: @escaping (String, Bool) -> Void,
         onRequestFetchBranch: @escaping (String) -> Void,
         onRequestPullRemoteBranch: @escaping (String, String) -> Void = { _, _ in },
         onRequestPullTracked: @escaping (String) -> Void = { _ in },
         onRequestPushToTracked: @escaping (String) -> Void = { _ in },
+        onRequestUpdateCurrentBranch: @escaping (CurrentBranchIntegrationStatus) -> Void = { _ in },
         onRequestRenameBranch: @escaping (String) -> Void = { _ in },
         onRequestCreatePullRequest: @escaping (String) -> Void = { _ in },
         onRequestCreateBranchFromBranch: @escaping (String) -> Void = { _ in },
@@ -249,17 +256,20 @@ struct SidebarView: View {
         self._selection = selection
         self.undoManager = undoManager
         self.currentBranchFallbackSyncStatus = currentBranchFallbackSyncStatus
+        self.defaultRemoteName = defaultRemoteName
         self.isAccountMenuDisabled = isAccountMenuDisabled
         self.gitFlowConfiguration = gitFlowConfiguration
         self.gitFlowFinishCheckpoint = gitFlowFinishCheckpoint
         self.gitFlowRecoveryIssue = gitFlowRecoveryIssue
         self.isGitFlowOperationDisabled = isGitFlowOperationDisabled
         self.isBranchSyncing = isBranchSyncing
+        self.canUpdateCurrentBranch = canUpdateCurrentBranch
         self.onRequestCheckout = onRequestCheckout
         self.onRequestFetchBranch = onRequestFetchBranch
         self.onRequestPullRemoteBranch = onRequestPullRemoteBranch
         self.onRequestPullTracked = onRequestPullTracked
         self.onRequestPushToTracked = onRequestPushToTracked
+        self.onRequestUpdateCurrentBranch = onRequestUpdateCurrentBranch
         self.onRequestRenameBranch = onRequestRenameBranch
         self.onRequestCreatePullRequest = onRequestCreatePullRequest
         self.onRequestCreateBranchFromBranch = onRequestCreateBranchFromBranch
@@ -349,6 +359,7 @@ struct SidebarView: View {
             fetch: onRequestFetchBranch,
             pullTracked: onRequestPullTracked,
             pushTracked: onRequestPushToTracked,
+            updateCurrentBranch: onRequestUpdateCurrentBranch,
             rename: onRequestRenameBranch,
             createPullRequest: onRequestCreatePullRequest,
             createBranchFrom: onRequestCreateBranchFromBranch,
@@ -660,6 +671,13 @@ struct SidebarView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryRemoteRefsDidRefresh)) { notification in
+            if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
+                Task {
+                    await loadBranches(force: true)
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .repositoryCurrentBranchDidChange)) { notification in
             if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
                 Task {
@@ -729,6 +747,8 @@ struct SidebarView: View {
             expandedFolders: expandedFolders,
             branchSyncStatus: branchSyncStatus,
             currentBranchFallbackSyncStatus: currentBranchFallbackSyncStatus,
+            currentBranchIntegrationStatus: currentBranchIntegrationStatus,
+            canUpdateCurrentBranch: canUpdateCurrentBranch,
             upstreamByBranch: upstreamByBranch,
             remoteNames: remoteNames,
             branchesByRemote: branchesByRemote,

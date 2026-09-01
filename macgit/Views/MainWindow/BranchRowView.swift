@@ -31,6 +31,9 @@ struct BranchRowContent: View, Equatable {
     let dropLabel: String
     let isBranchSyncing: Bool
     let syncStatus: BranchSyncStatus?
+    let integrationStatus: CurrentBranchIntegrationStatus?
+    let canUpdateCurrentBranch: Bool
+    let updateCurrentBranch: () -> Void
     let headBadgeVisible: Bool
     let folderIsExpanded: Bool
     let isCurrentBranchPrefix: Bool
@@ -43,6 +46,8 @@ struct BranchRowContent: View, Equatable {
             && lhs.dropLabel == rhs.dropLabel
             && lhs.isBranchSyncing == rhs.isBranchSyncing
             && lhs.syncStatus == rhs.syncStatus
+            && lhs.integrationStatus == rhs.integrationStatus
+            && lhs.canUpdateCurrentBranch == rhs.canUpdateCurrentBranch
             && lhs.headBadgeVisible == rhs.headBadgeVisible
             && lhs.folderIsExpanded == rhs.folderIsExpanded
             && lhs.isCurrentBranchPrefix == rhs.isCurrentBranchPrefix
@@ -77,6 +82,13 @@ struct BranchRowContent: View, Equatable {
                     BranchDropLabel(text: dropLabel)
                 } else {
                     BranchSyncBadge(isSyncing: isBranchSyncing, status: syncStatus)
+                    if let integrationStatus {
+                        CurrentBranchIntegrationWarning(
+                            status: integrationStatus,
+                            canUpdate: canUpdateCurrentBranch,
+                            onUpdate: updateCurrentBranch
+                        )
+                    }
                     if headBadgeVisible {
                         BranchHeadBadge()
                     }

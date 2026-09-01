@@ -22,7 +22,7 @@
 //
 import Foundation
 
-enum DiffLineType {
+enum DiffLineType: Sendable {
     case context
     case added
     case removed
@@ -30,7 +30,7 @@ enum DiffLineType {
     case conflictMarker
 }
 
-struct DiffLine: Identifiable {
+struct DiffLine: Identifiable, Sendable {
     let id = UUID()
     let oldLineNumber: Int?
     let newLineNumber: Int?
@@ -38,7 +38,7 @@ struct DiffLine: Identifiable {
     let type: DiffLineType
 }
 
-struct DiffHunk: Identifiable {
+struct DiffHunk: Identifiable, Sendable {
     let id = UUID()
     let header: String
     let lines: [DiffLine]

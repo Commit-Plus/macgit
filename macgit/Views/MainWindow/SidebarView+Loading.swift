@@ -23,6 +23,7 @@ extension SidebarView {
         currentBranch = ""
         headHash = ""
         branchSyncStatus = [:]
+        currentBranchIntegrationStatus = nil
         loadedBranchSyncBranches = []
         syncingBranchSyncBranches = []
         expandedFolders = []
@@ -163,6 +164,9 @@ extension SidebarView {
             currentBranch = current
             headHash = ""
             branchSyncStatus = [:]
+            if currentBranchIntegrationStatus?.branch != current {
+                currentBranchIntegrationStatus = nil
+            }
             loadedBranchSyncBranches = []
             syncingBranchSyncBranches = []
             // Reveal the current branch only on the initial load. Refreshes
@@ -189,6 +193,18 @@ extension SidebarView {
                 }
         }
         startBranchSync(for: initiallyVisibleBranches, loadID: loadID)
+        if !current.isEmpty {
+            let integrationStatus = await GitStatusService.shared.currentBranchIntegrationStatus(
+                branch: current,
+                preferredRemote: defaultRemoteName,
+                gitFlowConfiguration: gitFlowConfiguration,
+                in: repositoryURL
+            )
+            await MainActor.run {
+                guard activeBranchSyncLoadID == loadID else { return }
+                currentBranchIntegrationStatus = integrationStatus
+            }
+        }
     }
 
     func startBranchSync(for branches: [String], loadID: UUID) {

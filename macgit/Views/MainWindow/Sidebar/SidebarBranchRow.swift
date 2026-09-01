@@ -20,10 +20,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct SidebarBranchRow: View {
+    private static let currentBranchTrailingControlsWidth: CGFloat = 96
+
     let row: BranchRowItem
     let currentBranch: String
     let gitFlowConfiguration: GitFlowConfiguration
     let currentBranchFallbackSyncStatus: BranchSyncStatus?
+    let currentBranchIntegrationStatus: CurrentBranchIntegrationStatus?
+    let canUpdateCurrentBranch: Bool
     let expandedFolders: Set<String>
     let isCurrentBranchDropTargeted: Bool
     let branchSyncStatus: [String: BranchSyncStatus]
@@ -90,6 +94,7 @@ struct SidebarBranchRow: View {
             rowView
                 .overlay {
                     SidebarBranchDropTarget(
+                        passthroughTrailingWidth: Self.currentBranchTrailingControlsWidth,
                         onTap: { actions.select(.branch(row.fullPath)) },
                         onTargetedChange: actions.setCurrentDropTargeted,
                         fallbackPayload: actions.drop.activePayload,
@@ -135,6 +140,13 @@ struct SidebarBranchRow: View {
             dropLabel: isActiveDropRow ? actions.currentDropLabel() : "",
             isBranchSyncing: isBranchSyncing(row.fullPath),
             syncStatus: resolvedSyncStatus,
+            integrationStatus: isCurrentBranch ? currentBranchIntegrationStatus : nil,
+            canUpdateCurrentBranch: canUpdateCurrentBranch,
+            updateCurrentBranch: {
+                if let currentBranchIntegrationStatus {
+                    actions.updateCurrentBranch(currentBranchIntegrationStatus)
+                }
+            },
             headBadgeVisible: isCurrentBranch && !row.isFolder,
             folderIsExpanded: expandedFolders.contains(row.fullPath),
             isCurrentBranchPrefix: isCurrentBranchPrefix,

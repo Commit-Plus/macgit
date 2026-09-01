@@ -25,6 +25,7 @@ struct SidebarBranchSectionActions {
     let fetch: (String) -> Void
     let pullTracked: (String) -> Void
     let pushTracked: (String) -> Void
+    let updateCurrentBranch: (CurrentBranchIntegrationStatus) -> Void
     let rename: (String) -> Void
     let createPullRequest: (String) -> Void
     let createBranchFrom: (String) -> Void
