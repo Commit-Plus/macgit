@@ -12,3 +12,7 @@ firebase-tests/
 functions/node_modules/
 *.log
 *.map
+
+# Untracked social promotion copy
+SOCIAL_POST_EN.md
+SOCIAL_POST_VI.md
