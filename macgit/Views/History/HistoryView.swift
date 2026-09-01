@@ -661,16 +661,6 @@ struct HistoryView: View {
                                                 authorWidth: CGFloat(authorColumnWidth),
                                                 dateWidth: CGFloat(dateColumnWidth),
                                                 commitWidth: CGFloat(commitColumnWidth),
-                                                onClick: {
-                                                    guard !consumeSuppressedCommitClick(commit.hash) else { return }
-                                                    selectedCommit = Self.selectCommitFromNativeTap(
-                                                        commit.hash,
-                                                        modifierFlags: NSEvent.modifierFlags,
-                                                        commits: commits,
-                                                        selection: &commitSelection
-                                                    )
-                                                    syncSelectedCommitSnapshot()
-                                                },
                                                 onDoubleClick: {
                                                     handleCommitDoubleClick(commit)
                                                 }
@@ -684,7 +674,12 @@ struct HistoryView: View {
                                                     )
                                                 }
                                             )
-                                            .onClick(left: { _ in }, right: {
+                                            .onClick(left: { modifierFlags in
+                                                selectCommitFromLeftClick(
+                                                    commit,
+                                                    modifierFlags: modifierFlags
+                                                )
+                                            }, right: {
                                                 selectCommitForContextMenu(commit)
                                             })
                                             .contextMenu {
@@ -1346,6 +1341,21 @@ struct HistoryView: View {
         selectedCommit = Self.selectCommitFromNativeTap(
             commit.hash,
             modifierFlags: [],
+            commits: commits,
+            selection: &commitSelection
+        )
+        syncSelectedCommitSnapshot()
+    }
+
+    private func selectCommitFromLeftClick(
+        _ commit: Commit,
+        modifierFlags: NSEvent.ModifierFlags
+    ) {
+        guard !consumeSuppressedCommitClick(commit.hash) else { return }
+
+        selectedCommit = Self.selectCommitFromNativeTap(
+            commit.hash,
+            modifierFlags: modifierFlags,
             commits: commits,
             selection: &commitSelection
         )
