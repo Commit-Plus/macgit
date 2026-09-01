@@ -209,7 +209,10 @@ struct HistoryView: View {
         .task(id: historyLoadKey) {
             await loadHistory(reset: true)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { notification in
+        .onReceive(Publishers.Merge(
+            NotificationCenter.default.publisher(for: .repositoryDidChange),
+            NotificationCenter.default.publisher(for: .repositoryLocalStateDidRefresh)
+        )) { notification in
             if let url = notification.userInfo?["repositoryURL"] as? URL,
                url == repositoryURL {
                 historyCache.removeAll()

@@ -26,6 +26,7 @@ import Network
 
 extension Notification.Name {
     static let repositoryDidChange = Notification.Name("macgit.repositoryDidChange")
+    static let repositoryLocalStateDidRefresh = Notification.Name("macgit.repositoryLocalStateDidRefresh")
     static let repositoryCurrentBranchDidChange = Notification.Name("macgit.repositoryCurrentBranchDidChange")
     static let repositoryBranchDidCreate = Notification.Name("macgit.repositoryBranchDidCreate")
 }

@@ -653,6 +653,13 @@ struct SidebarView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryLocalStateDidRefresh)) { notification in
+            if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
+                Task {
+                    await loadLocalRefreshSections()
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .repositoryCurrentBranchDidChange)) { notification in
             if let url = notification.userInfo?["repositoryURL"] as? URL, url == repositoryURL {
                 Task {

@@ -84,6 +84,20 @@ extension SidebarView {
         }
     }
 
+    func loadLocalRefreshSections() async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                await loadTags()
+            }
+            group.addTask {
+                await loadStashes()
+            }
+            group.addTask {
+                await loadWorktrees(force: true)
+            }
+        }
+    }
+
     func loadSectionIfNeeded(_ section: SidebarSection) async {
         switch section {
         case .branches:

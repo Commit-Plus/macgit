@@ -466,6 +466,13 @@ struct MainWindowView: View {
                         )
                     }
                     await syncState.refresh(repositoryURL: repositoryURL)
+                    await MainActor.run {
+                        NotificationCenter.default.post(
+                            name: .repositoryLocalStateDidRefresh,
+                            object: nil,
+                            userInfo: ["repositoryURL": repositoryURL]
+                        )
+                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .showSearchModal)) { notification in
