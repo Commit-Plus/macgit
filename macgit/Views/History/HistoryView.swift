@@ -646,6 +646,9 @@ struct HistoryView: View {
                             return
                         }
                         await tableScrollCoordinator.scrollToRowWhenReady(row)
+                        if self.scrollTarget == scrollTarget {
+                            self.scrollTarget = nil
+                        }
                     }
 
                     if paging.isLoadingMore {
@@ -1220,7 +1223,10 @@ struct HistoryView: View {
             } else {
                 commitSelection.prune(visibleHashes: visibleHashes)
             }
-            if (skip == 0 || commitSelection.selectedHashes.isEmpty), let newSelectedCommit {
+            let shouldSelectDefaultCommit =
+                (skip == 0 && !preservingSelectionAndScroll)
+                || commitSelection.selectedHashes.isEmpty
+            if shouldSelectDefaultCommit, let newSelectedCommit {
                 commitSelection.select(
                     newSelectedCommit.hash,
                     modifiers: [],
