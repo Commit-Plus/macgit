@@ -553,6 +553,7 @@ struct HistoryView: View {
                                 rowIndex: rowIndexByHash[commit.hash] ?? 0,
                                 isDragActive: activeDragCommitHashes.contains(commit.hash),
                                 scrollCoordinator: tableScrollCoordinator,
+                                desiredColumnRatios: tableColumnRatios,
                                 onColumnResize: tableColumnResizeHandler,
                                 onAppear: {
                                     handleHistoryCommitCellAppearance(commit)
@@ -701,6 +702,15 @@ struct HistoryView: View {
             update(dateRatio, key: "date")
             update(commitRatio, key: "commit")
         }
+    }
+
+    private var tableColumnRatios: [String: Double] {
+        [
+            "message": messageColumnRatio,
+            "author": authorColumnRatio,
+            "date": dateColumnRatio,
+            "commit": commitColumnRatio,
+        ]
     }
     
     // MARK: - Bottom Panel

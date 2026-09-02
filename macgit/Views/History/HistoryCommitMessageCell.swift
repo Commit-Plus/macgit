@@ -23,6 +23,7 @@ struct HistoryCommitMessageCell: View {
     let rowIndex: Int
     let isDragActive: Bool
     let scrollCoordinator: HistoryTableScrollCoordinator
+    let desiredColumnRatios: [String: Double]
     let onColumnResize: (([String: CGFloat], CGFloat) -> Void)?
     let onAppear: () -> Void
 
@@ -61,6 +62,7 @@ struct HistoryCommitMessageCell: View {
         .background {
             HistoryTableIntrospectionView(
                 coordinator: scrollCoordinator,
+                desiredColumnRatios: desiredColumnRatios,
                 onColumnResize: onColumnResize
             )
         }

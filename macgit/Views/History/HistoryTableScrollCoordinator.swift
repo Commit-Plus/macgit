@@ -24,25 +24,80 @@ final class HistoryTableScrollCoordinator {
     private weak var tableView: NSTableView?
     private weak var observedTableView: NSTableView?
     private var columnResizeObserver: NSObjectProtocol?
+    private var applyColumnRatiosTask: Task<Void, Never>?
+    private var isApplyingColumnRatios = false
 
     var onColumnResize: (([String: CGFloat], CGFloat) -> Void)?
+    var desiredColumnRatios: [String: Double] = [:]
 
     deinit {
+        applyColumnRatiosTask?.cancel()
         if let columnResizeObserver {
             NotificationCenter.default.removeObserver(columnResizeObserver)
         }
     }
 
-    func attach(from view: NSView) {
+    @discardableResult
+    func attach(from view: NSView) -> Bool {
         var candidate = view.superview
         while let current = candidate {
             if let tableView = current as? NSTableView {
+                let isNewTableView = self.tableView !== tableView
                 self.tableView = tableView
                 observeColumnResizing(of: tableView)
-                return
+                if isNewTableView {
+                    scheduleApplyingColumnRatios()
+                }
+                return true
             }
             candidate = current.superview
         }
+        return false
+    }
+
+    private func scheduleApplyingColumnRatios() {
+        applyColumnRatiosTask?.cancel()
+        applyColumnRatiosTask = Task { @MainActor [weak self] in
+            for _ in 0..<30 {
+                guard !Task.isCancelled else { return }
+                if self?.applyColumnRatios() == true {
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }
+    }
+
+    @discardableResult
+    private func applyColumnRatios() -> Bool {
+        guard let tableView,
+              !desiredColumnRatios.isEmpty,
+              let scrollView = tableView.enclosingScrollView else {
+            return false
+        }
+
+        tableView.layoutSubtreeIfNeeded()
+        let availableWidth = scrollView.contentView.bounds.width
+        guard availableWidth > 0 else { return false }
+
+        let visibleColumns = tableView.tableColumns.enumerated().compactMap { index, column -> (NSTableColumn, Double)? in
+            guard let key = Self.columnKey(for: column, fallbackIndex: index),
+                  let ratio = desiredColumnRatios[key],
+                  ratio > 0 else {
+                return nil
+            }
+            return (column, ratio)
+        }
+        let totalRatio = visibleColumns.reduce(0) { $0 + $1.1 }
+        guard totalRatio > 0 else { return false }
+
+        isApplyingColumnRatios = true
+        defer { isApplyingColumnRatios = false }
+        for (column, ratio) in visibleColumns {
+            let targetWidth = availableWidth * CGFloat(ratio / totalRatio)
+            column.width = min(column.maxWidth, max(column.minWidth, targetWidth))
+        }
+        return true
     }
 
     private func observeColumnResizing(of tableView: NSTableView) {
@@ -64,28 +119,38 @@ final class HistoryTableScrollCoordinator {
     }
 
     private func captureColumnWidths() {
-        guard let tableView else { return }
+        guard !isApplyingColumnRatios,
+              let tableView else { return }
         let columns = tableView.tableColumns
         let totalWidth = columns.reduce(CGFloat.zero) { $0 + $1.width }
         guard totalWidth > 0 else { return }
 
         var widths: [String: CGFloat] = [:]
-        for column in columns {
-            guard let key = Self.columnKey(for: column) else { continue }
+        for (index, column) in columns.enumerated() {
+            guard let key = Self.columnKey(for: column, fallbackIndex: index) else { continue }
             widths[key] = column.width
         }
         onColumnResize?(widths, totalWidth)
     }
 
-    private static func columnKey(for column: NSTableColumn) -> String? {
+    private static func columnKey(
+        for column: NSTableColumn,
+        fallbackIndex: Int? = nil
+    ) -> String? {
         let knownKeys = Set(["message", "author", "date", "commit"])
         let identifier = column.identifier.rawValue.lowercased()
         if knownKeys.contains(identifier) {
             return identifier
         }
 
-        let title = column.headerCell.stringValue.lowercased()
-        return knownKeys.contains(title) ? title : nil
+        let titles = [column.title.lowercased(), column.headerCell.stringValue.lowercased()]
+        if let title = titles.first(where: knownKeys.contains) {
+            return title
+        }
+
+        guard let fallbackIndex,
+              knownKeys.count > fallbackIndex else { return nil }
+        return ["message", "author", "date", "commit"][fallbackIndex]
     }
 
     func scrollToRowWhenReady(_ row: Int) async {
@@ -95,6 +160,10 @@ final class HistoryTableScrollCoordinator {
             }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
+    }
+
+    func persistCurrentColumnWidths() {
+        captureColumnWidths()
     }
 
     @discardableResult
@@ -128,14 +197,17 @@ final class HistoryTableScrollCoordinator {
 
 struct HistoryTableIntrospectionView: NSViewRepresentable {
     let coordinator: HistoryTableScrollCoordinator
+    let desiredColumnRatios: [String: Double]
     let onColumnResize: (([String: CGFloat], CGFloat) -> Void)?
 
     func makeNSView(context: Context) -> HistoryTableIntrospectionNSView {
+        coordinator.desiredColumnRatios = desiredColumnRatios
         coordinator.onColumnResize = onColumnResize
         return HistoryTableIntrospectionNSView(coordinator: coordinator)
     }
 
     func updateNSView(_ nsView: HistoryTableIntrospectionNSView, context: Context) {
+        coordinator.desiredColumnRatios = desiredColumnRatios
         coordinator.onColumnResize = onColumnResize
         nsView.coordinator = coordinator
         nsView.attachIfPossible()
@@ -144,6 +216,7 @@ struct HistoryTableIntrospectionView: NSViewRepresentable {
 
 final class HistoryTableIntrospectionNSView: NSView {
     weak var coordinator: HistoryTableScrollCoordinator?
+    private var attachRetryCount = 0
 
     init(coordinator: HistoryTableScrollCoordinator) {
         self.coordinator = coordinator
@@ -166,6 +239,21 @@ final class HistoryTableIntrospectionNSView: NSView {
     }
 
     func attachIfPossible() {
-        coordinator?.attach(from: self)
+        guard let coordinator else { return }
+        if coordinator.attach(from: self) {
+            attachRetryCount = 0
+        } else if attachRetryCount < 30 {
+            attachRetryCount += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { [weak self] in
+                self?.attachIfPossible()
+            }
+        }
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            coordinator?.persistCurrentColumnWidths()
+        }
+        super.viewWillMove(toWindow: newWindow)
     }
 }
