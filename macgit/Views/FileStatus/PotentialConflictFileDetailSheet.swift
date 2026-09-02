@@ -26,6 +26,9 @@ struct PotentialConflictFileDetailSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var analysis: PotentialConflictFileAnalysis?
+    @State private var visibleConflictBlockCount = 4
+
+    private let conflictBlockPageSize = 4
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,8 +38,16 @@ struct PotentialConflictFileDetailSheet: View {
             Divider()
             footer
         }
-        .frame(minWidth: 760, idealWidth: 900, minHeight: 560, idealHeight: 640)
+        .frame(
+            minWidth: 760,
+            idealWidth: 900,
+            minHeight: 560,
+            idealHeight: 640,
+            maxHeight: 640,
+            alignment: .top
+        )
         .task(id: presentation.id) {
+            visibleConflictBlockCount = conflictBlockPageSize
             analysis = await GitStatusService.shared.potentialConflictFileAnalysis(
                 for: presentation.file,
                 status: presentation.status,
@@ -56,8 +67,17 @@ struct PotentialConflictFileDetailSheet: View {
                 .font(.headline)
                 .textSelection(.enabled)
 
-            Text("Local changes may interact with updates from \(presentation.status.baseRef ?? "the base branch"). The file is not currently conflicted.")
+            if let baseRef = presentation.status.baseRef {
+                (
+                    Text("Local changes may interact with updates from ")
+                        + Text(baseRef).bold()
+                        + Text(". The file is not currently conflicted.")
+                )
                 .foregroundStyle(.secondary)
+            } else {
+                Text("Local changes may interact with updates from the base branch. The file is not currently conflicted.")
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
@@ -68,23 +88,9 @@ struct PotentialConflictFileDetailSheet: View {
         if let analysis {
             VStack(alignment: .leading, spacing: 12) {
                 analysisSummary(analysis)
-
-                TabView {
-                    DiffView(hunks: analysis.localHunks, filePath: presentation.file.path)
-                        .tabItem {
-                            Label("Local Changes", systemImage: "desktopcomputer")
-                        }
-
-                    DiffView(hunks: analysis.incomingHunks, filePath: presentation.file.path)
-                        .tabItem {
-                            Label(
-                                "Incoming from \(presentation.status.baseRef ?? "Base")",
-                                systemImage: "arrow.down.doc"
-                            )
-                        }
-                }
             }
             .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else {
             VStack(spacing: 12) {
                 ProgressView()
@@ -97,88 +103,57 @@ struct PotentialConflictFileDetailSheet: View {
 
     @ViewBuilder
     private func analysisSummary(_ analysis: PotentialConflictFileAnalysis) -> some View {
-        if let conflictPreview = analysis.conflictPreview {
+        if !analysis.conflictBlocks.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Textual overlap predicted", systemImage: "exclamationmark.triangle.fill")
                     .bold()
                     .foregroundStyle(.orange)
 
                 ScrollView([.horizontal, .vertical]) {
-                    Text(highlightedConflictPreview(conflictPreview))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(Array(analysis.conflictBlocks.prefix(visibleConflictBlockCount))) { block in
+                            PotentialConflictCodeBlockView(
+                                block: block,
+                                fileExtension: presentation.file.fileExtension
+                            )
+                        }
+
+                        if visibleConflictBlockCount < analysis.conflictBlocks.count {
+                            Button("Load more conflict blocks", systemImage: "ellipsis") {
+                                loadMoreConflictBlocks(totalCount: analysis.conflictBlocks.count)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxHeight: 180)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(10)
                 .background(.secondary.opacity(0.08), in: .rect(cornerRadius: 8))
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else if analysis.exactAnalysisPerformed {
             Label(
-                "No exact textual overlap was produced, but both local and incoming changes touch this file.",
+                "No exact textual overlap was produced, but both local and incoming changes touch this file. Review the local changes before updating.",
                 systemImage: "info.circle"
             )
             .foregroundStyle(.secondary)
         } else {
             Label(
-                "Exact line-level analysis is unavailable for this file. Compare the local and incoming changes below.",
+                "Exact line-level analysis is unavailable for this file. Review the local changes before updating.",
                 systemImage: "info.circle"
             )
             .foregroundStyle(.secondary)
         }
     }
 
-    private func highlightedConflictPreview(_ preview: String) -> AttributedString {
-        let lines = preview.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let highlighter = SyntaxHighlighter(fileExtension: presentation.file.fileExtension)
-        var result = AttributedString()
-        var section = 0
-
-        for (index, line) in lines.enumerated() {
-            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-            var markerColor: Color?
-
-            if trimmedLine.hasPrefix("<<<<<<<") {
-                section = 1
-                markerColor = .red
-            } else if trimmedLine.hasPrefix("|||||||") {
-                section = 2
-                markerColor = .orange
-            } else if trimmedLine.hasPrefix("=======") {
-                section = 3
-                markerColor = .green
-            } else if trimmedLine.hasPrefix(">>>>>>>") {
-                markerColor = .green
-            }
-
-            var attributedLine = highlighter.attributedString(for: line, fontSize: 12)
-            if let markerColor {
-                attributedLine.foregroundColor = markerColor
-                attributedLine.backgroundColor = markerColor.opacity(0.16)
-                attributedLine.font = .system(size: 12, weight: .semibold, design: .monospaced)
-            } else {
-                switch section {
-                case 1:
-                    attributedLine.backgroundColor = Color.red.opacity(0.10)
-                case 2:
-                    attributedLine.backgroundColor = Color.orange.opacity(0.08)
-                case 3:
-                    attributedLine.backgroundColor = Color.green.opacity(0.10)
-                default:
-                    break
-                }
-            }
-
-            result.append(attributedLine)
-            if index < lines.count - 1 {
-                result.append(AttributedString("\n"))
-            }
-
-            if trimmedLine.hasPrefix(">>>>>>>") {
-                section = 0
-            }
-        }
-
-        return result
+    private func loadMoreConflictBlocks(totalCount: Int) {
+        visibleConflictBlockCount = min(
+            visibleConflictBlockCount + conflictBlockPageSize,
+            totalCount
+        )
     }
 
     private var footer: some View {

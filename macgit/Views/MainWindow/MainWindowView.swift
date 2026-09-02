@@ -460,18 +460,14 @@ struct MainWindowView: View {
                     if let credentialResolver = await credentialResolverForFetch(
                         options: GitStatusService.FetchOptions()
                     ) {
-                        do {
-                            try await GitStatusService.shared.fetch(
-                                options: GitStatusService.FetchOptions(),
-                                in: repositoryURL,
-                                credentialResolver: credentialResolver
-                            )
-                            didFetchRemoteRefs = true
-                        } catch {
-                            // App-active refresh remains best effort. Manual fetch surfaces errors.
-                        }
+                        didFetchRemoteRefs = await syncState.performAutomaticFetch(
+                            options: GitStatusService.FetchOptions(),
+                            repositoryURL: repositoryURL,
+                            credentialResolver: credentialResolver,
+                            force: true
+                        )
                     }
-                    await syncState.refresh(repositoryURL: repositoryURL)
+                    await syncState.refresh(repositoryURL: repositoryURL, force: true)
                     await MainActor.run {
                         if didFetchRemoteRefs {
                             NotificationCenter.default.post(

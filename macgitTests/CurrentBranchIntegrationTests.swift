@@ -90,9 +90,7 @@ final class CurrentBranchIntegrationTests: XCTestCase {
             in: fixture.localURL
         )
         XCTAssertTrue(analysis.exactAnalysisPerformed)
-        XCTAssertNotNil(analysis.conflictPreview)
-        XCTAssertFalse(analysis.localHunks.isEmpty)
-        XCTAssertFalse(analysis.incomingHunks.isEmpty)
+        XCTAssertFalse(analysis.conflictBlocks.isEmpty)
     }
 
     func testMergeTreeConflictPathParserSupportsNULTerminatedNames() {
@@ -112,7 +110,7 @@ final class CurrentBranchIntegrationTests: XCTestCase {
         )
     }
 
-    func testConflictPreviewKeepsOnlyConflictRegionsWithContext() {
+    func testConflictBlocksKeepsOnlyConflictRegionsWithContext() {
         let output = """
         first
         second
@@ -127,22 +125,73 @@ final class CurrentBranchIntegrationTests: XCTestCase {
         last
         """
 
-        let preview = GitStatusService.conflictPreview(from: output, contextLineCount: 1)
+        let blocks = GitStatusService.conflictBlocks(from: output, contextLineCount: 1)
 
         XCTAssertEqual(
-            preview,
+            blocks.map { $0.lines.map(\.text).joined(separator: "\n") },
+            [
+                """
+                second
+                <<<<<<< Local changes
+                local
+                ||||||| Merge base
+                base
+                =======
+                incoming
+                >>>>>>> origin/main
+                after
+                """
+            ]
+        )
+    }
+
+    func testConflictBlocksCanExcludeContextOutsideConflictRegions() {
+        let output = """
+        before
+        <<<<<<< Local changes
+        local
+        =======
+        incoming
+        >>>>>>> origin/main
+        after
+        """
+
+        let blocks = GitStatusService.conflictBlocks(from: output, contextLineCount: 0)
+
+        XCTAssertEqual(
+            blocks.first?.lines.map(\.text).joined(separator: "\n"),
             """
-            second
             <<<<<<< Local changes
             local
-            ||||||| Merge base
-            base
             =======
             incoming
             >>>>>>> origin/main
-            after
             """
         )
+    }
+
+    func testConflictBlocksRenderEveryConflictAndKeepOriginalLineNumbers() {
+        let output = """
+        before
+        <<<<<<< Local changes
+        local one
+        =======
+        incoming one
+        >>>>>>> origin/main
+        between
+        <<<<<<< Local changes
+        local two
+        =======
+        incoming two
+        >>>>>>> origin/main
+        after
+        """
+
+        let blocks = GitStatusService.conflictBlocks(from: output, contextLineCount: 0)
+
+        XCTAssertEqual(blocks.count, 2)
+        XCTAssertEqual(blocks[0].lines.map(\.lineNumber), Array(2...6))
+        XCTAssertEqual(blocks[1].lines.map(\.lineNumber), Array(8...12))
     }
 
     func testGitFlowFeatureUsesConfiguredDevelopBranchAsBase() async throws {

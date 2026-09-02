@@ -48,13 +48,6 @@ extension GitStatusService {
         status: CurrentBranchIntegrationStatus,
         in repositoryURL: URL
     ) async -> PotentialConflictFileAnalysis {
-        let localHunks = (try? await diff(for: file, in: repositoryURL)) ?? []
-        let incomingHunks = await incomingDiffHunks(
-            path: file.path,
-            currentRef: status.branch,
-            incomingRef: status.baseRef,
-            in: repositoryURL
-        )
         let exactAnalysis = await exactConflictPreview(
             for: file,
             currentRef: status.branch,
@@ -63,9 +56,7 @@ extension GitStatusService {
         )
 
         return PotentialConflictFileAnalysis(
-            localHunks: localHunks,
-            incomingHunks: incomingHunks,
-            conflictPreview: exactAnalysis.preview,
+            conflictBlocks: exactAnalysis.blocks,
             exactAnalysisPerformed: exactAnalysis.wasPerformed
         )
     }
@@ -265,36 +256,12 @@ extension GitStatusService {
         return Self.pathList(from: output)
     }
 
-    private func incomingDiffHunks(
-        path: String,
-        currentRef: String,
-        incomingRef: String?,
-        in repositoryURL: URL
-    ) async -> [DiffHunk] {
-        guard let incomingRef,
-              let output = try? await runGit(
-                arguments: [
-                    "diff",
-                    "--no-color",
-                    "-U3",
-                    "\(currentRef)...\(incomingRef)",
-                    "--",
-                    path
-                ],
-                in: repositoryURL
-              )
-        else {
-            return []
-        }
-        return DiffParser.parse(output)
-    }
-
     private func exactConflictPreview(
         for file: StatusFile,
         currentRef: String,
         incomingRef: String?,
         in repositoryURL: URL
-    ) async -> (wasPerformed: Bool, preview: String?) {
+    ) async -> (wasPerformed: Bool, blocks: [PotentialConflictBlock]) {
         guard let incomingRef,
               let mergeBase = try? await runGit(
                 arguments: ["merge-base", currentRef, incomingRef],
@@ -303,7 +270,7 @@ extension GitStatusService {
               !mergeBase.isEmpty,
               let currentData = await currentFileData(for: file, in: repositoryURL)
         else {
-            return (false, nil)
+            return (false, [])
         }
 
         let candidatePaths = [file.path, file.originalPath]
@@ -330,7 +297,7 @@ extension GitStatusService {
         do {
             try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
         } catch {
-            return (false, nil)
+            return (false, [])
         }
         defer {
             try? fileManager.removeItem(at: temporaryDirectory)
@@ -358,14 +325,15 @@ extension GitStatusService {
                 ],
                 in: repositoryURL
             )
-            return (true, nil)
+            return (true, [])
         } catch GitError.commandFailed(let output) {
-            guard let preview = Self.conflictPreview(from: output) else {
-                return (false, nil)
+            let blocks = Self.conflictBlocks(from: output, contextLineCount: 0)
+            guard !blocks.isEmpty else {
+                return (false, [])
             }
-            return (true, preview)
+            return (true, blocks)
         } catch {
-            return (false, nil)
+            return (false, [])
         }
     }
 
@@ -424,12 +392,15 @@ extension GitStatusService {
         return Set(output.split(whereSeparator: \.isNewline).map(String.init))
     }
 
-    nonisolated static func conflictPreview(from output: String, contextLineCount: Int = 3) -> String? {
+    nonisolated static func conflictBlocks(
+        from output: String,
+        contextLineCount: Int = 3
+    ) -> [PotentialConflictBlock] {
         let lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        var sections: [String] = []
+        var blocks: [PotentialConflictBlock] = []
         var searchIndex = 0
 
-        while searchIndex < lines.count, sections.count < 4 {
+        while searchIndex < lines.count {
             guard let startIndex = lines[searchIndex...].firstIndex(where: {
                 $0.trimmingCharacters(in: .whitespaces).hasPrefix("<<<<<<<")
             }),
@@ -441,12 +412,48 @@ extension GitStatusService {
 
             let lowerBound = max(0, startIndex - contextLineCount)
             let upperBound = min(lines.count - 1, endIndex + contextLineCount)
-            sections.append(lines[lowerBound...upperBound].joined(separator: "\n"))
+            var region: PotentialConflictLineRegion = .context
+            var blockLines: [PotentialConflictLine] = []
+
+            for lineIndex in lowerBound...upperBound {
+                let line = lines[lineIndex]
+                let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+                let isMarker: Bool
+
+                if trimmedLine.hasPrefix("<<<<<<<") {
+                    region = .local
+                    isMarker = true
+                } else if trimmedLine.hasPrefix("|||||||") {
+                    region = .mergeBase
+                    isMarker = true
+                } else if trimmedLine.hasPrefix("=======") {
+                    region = .incoming
+                    isMarker = true
+                } else if trimmedLine.hasPrefix(">>>>>>>") {
+                    isMarker = true
+                } else {
+                    isMarker = false
+                }
+
+                blockLines.append(
+                    PotentialConflictLine(
+                        lineNumber: lineIndex + 1,
+                        text: line,
+                        region: region,
+                        isMarker: isMarker
+                    )
+                )
+
+                if trimmedLine.hasPrefix(">>>>>>>") {
+                    region = .context
+                }
+            }
+
+            blocks.append(PotentialConflictBlock(lines: blockLines))
             searchIndex = endIndex + 1
         }
 
-        guard !sections.isEmpty else { return nil }
-        return sections.joined(separator: "\n\n...\n\n")
+        return blocks
     }
 
     private static func remoteName(from ref: String) -> String? {

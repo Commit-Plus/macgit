@@ -35,10 +35,14 @@ struct CurrentBranchIntegrationWarningDetails: View {
             .foregroundStyle(status.predictsBaseConflict ? Color.red : .primary)
 
             if let upstreamRef = status.upstreamRef, status.upstreamBehindCount > 0 {
-                Text("\(upstreamRef) has \(status.upstreamBehindCount) new \(commitLabel(status.upstreamBehindCount)).")
+                Text(upstreamRef).bold()
+                    + Text(" has \(status.upstreamBehindCount) new \(commitLabel(status.upstreamBehindCount)).")
             }
             if let baseRef = status.baseRef, status.baseBehindCount > 0 {
-                Text("\(baseRef) has \(status.baseBehindCount) \(commitLabel(status.baseBehindCount)) not in \(status.branch).")
+                Text(baseRef).bold()
+                    + Text(" has \(status.baseBehindCount) \(commitLabel(status.baseBehindCount)) not in ")
+                    + Text(status.branch).bold()
+                    + Text(".")
             }
             if status.predictsBaseConflict {
                 Text("Git predicts textual conflicts while merging the base branch.")

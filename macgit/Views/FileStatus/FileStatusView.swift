@@ -440,7 +440,8 @@ struct FileStatusView: View {
 
                 if isPotentialConflict {
                     PotentialConflictFileIndicator(
-                        baseRef: currentBranchIntegrationStatus?.baseRef
+                        baseRef: currentBranchIntegrationStatus?.baseRef,
+                        onOpenDetails: { presentPotentialConflictDetails(for: file) }
                     )
                 } else {
                     Image(systemName: fileIcon(for: file))

@@ -20,6 +20,7 @@ import SwiftUI
 
 struct PotentialConflictFileDetails: View {
     let baseRef: String?
+    let onOpenDetails: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -30,13 +31,19 @@ struct PotentialConflictFileDetails: View {
             Text("This file is not currently conflicted.")
 
             if let baseRef {
-                Text("It has local changes and is also changed by \(baseRef).")
+                Text("It has local changes and is also changed by ")
+                    + Text(baseRef).bold()
+                    + Text(".")
             } else {
                 Text("It has local changes and is also changed by the incoming branch update.")
             }
 
             Text("Review, commit, or stash the local changes before updating the current branch.")
                 .foregroundStyle(.secondary)
+
+            Button("Open Potential Update Conflict…", systemImage: "arrow.up.right.square", action: onOpenDetails)
+                .buttonStyle(.borderedProminent)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding()
         .frame(width: 300)

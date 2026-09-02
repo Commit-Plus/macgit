@@ -32,6 +32,56 @@ extension Notification.Name {
     static let repositoryBranchDidCreate = Notification.Name("macgit.repositoryBranchDidCreate")
 }
 
+private actor SyncRefreshCoordinator {
+    private var localRefreshInFlight = false
+    private var lastLocalRefreshDate: Date?
+    private var automaticFetchInFlight = false
+    private var lastAutomaticFetchDate = Date.distantPast
+
+    func beginLocalRefresh(
+        force: Bool,
+        minimumInterval: TimeInterval,
+        now: Date
+    ) -> Bool {
+        guard !localRefreshInFlight else { return false }
+        if !force,
+           let lastLocalRefreshDate,
+           now.timeIntervalSince(lastLocalRefreshDate) < minimumInterval {
+            return false
+        }
+
+        localRefreshInFlight = true
+        return true
+    }
+
+    func finishLocalRefresh(at date: Date) {
+        localRefreshInFlight = false
+        lastLocalRefreshDate = date
+    }
+
+    func beginAutomaticFetch(
+        force: Bool,
+        minimumInterval: TimeInterval,
+        now: Date
+    ) -> Bool {
+        guard !automaticFetchInFlight else { return false }
+        if !force,
+           now.timeIntervalSince(lastAutomaticFetchDate) < minimumInterval {
+            return false
+        }
+
+        automaticFetchInFlight = true
+        return true
+    }
+
+    func finishAutomaticFetch(succeeded: Bool, at date: Date) {
+        automaticFetchInFlight = false
+        if succeeded {
+            lastAutomaticFetchDate = date
+        }
+    }
+}
+
 class SyncState: ObservableObject {
     @Published var commitBadgeCount: Int = 0
     @Published var stagedBadgeCount: Int = 0
@@ -61,9 +111,11 @@ class SyncState: ObservableObject {
     private var backgroundTask: Task<Void, Never>? = nil
     private let networkMonitor = NWPathMonitor()
     private let networkMonitorQueue = DispatchQueue(label: "dev.thanhtran.macgit.sync-state.network")
+    private let refreshCoordinator = SyncRefreshCoordinator()
     private var refreshGeneration = 0
     private var refreshedCurrentBranches: [URL: String] = [:]
-    private static let backgroundRefreshInterval: Duration = .seconds(5)
+    private static let backgroundRefreshInterval: Duration = .seconds(10)
+    private static let localRefreshCoalescingInterval: TimeInterval = 2
     private static let autoFetchInterval: TimeInterval = 60
 
     init() {
@@ -74,7 +126,15 @@ class SyncState: ObservableObject {
         networkMonitor.cancel()
     }
 
-    func refresh(repositoryURL: URL) async {
+    func refresh(repositoryURL: URL, force: Bool = true) async {
+        guard await refreshCoordinator.beginLocalRefresh(
+            force: force,
+            minimumInterval: Self.localRefreshCoalescingInterval,
+            now: .now
+        ) else {
+            return
+        }
+
         let generation = await MainActor.run { () -> Int in
             refreshGeneration += 1
             return refreshGeneration
@@ -112,6 +172,8 @@ class SyncState: ObservableObject {
                 userInfo: ["repositoryURL": repositoryURL]
             )
         }
+
+        await refreshCoordinator.finishLocalRefresh(at: .now)
     }
 
     func startBackgroundSync(
@@ -122,17 +184,14 @@ class SyncState: ObservableObject {
         stopBackgroundSync()
         let autoFetchEnabled = settings.resolvedAutoFetchEnabled(globalValue: globalAutoFetchEnabled)
         backgroundTask = Task {
-            var lastAutoFetchDate = Date.distantPast
             while !Task.isCancelled {
                 if autoFetchEnabled,
                    networkMonitor.currentPath.status == .satisfied,
-                   Date.now.timeIntervalSince(lastAutoFetchDate) >= Self.autoFetchInterval {
-                    do {
-                        try await GitStatusService.shared.fetch(
-                            options: GitStatusService.FetchOptions(),
-                            in: repositoryURL
-                        )
-                        lastAutoFetchDate = Date.now
+                   await performAutomaticFetch(
+                       options: GitStatusService.FetchOptions(),
+                       repositoryURL: repositoryURL,
+                       force: false
+                   ) {
                         await MainActor.run {
                             NotificationCenter.default.post(
                                 name: .repositoryRemoteRefsDidRefresh,
@@ -140,13 +199,40 @@ class SyncState: ObservableObject {
                                 userInfo: ["repositoryURL": repositoryURL]
                             )
                         }
-                    } catch {
-                        // Background fetch remains best effort. Manual actions surface errors.
-                    }
                 }
-                await refresh(repositoryURL: repositoryURL)
+                await refresh(repositoryURL: repositoryURL, force: false)
                 try? await Task.sleep(for: Self.backgroundRefreshInterval)
             }
+        }
+    }
+
+    @discardableResult
+    func performAutomaticFetch(
+        options: GitStatusService.FetchOptions,
+        repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver? = nil,
+        force: Bool
+    ) async -> Bool {
+        guard await refreshCoordinator.beginAutomaticFetch(
+            force: force,
+            minimumInterval: Self.autoFetchInterval,
+            now: .now
+        ) else {
+            return false
+        }
+
+        do {
+            try await GitStatusService.shared.fetch(
+                options: options,
+                in: repositoryURL,
+                credentialResolver: credentialResolver
+            )
+            await refreshCoordinator.finishAutomaticFetch(succeeded: true, at: .now)
+            return true
+        } catch {
+            // Automatic fetch remains best effort. Manual actions surface errors.
+            await refreshCoordinator.finishAutomaticFetch(succeeded: false, at: .now)
+            return false
         }
     }
 

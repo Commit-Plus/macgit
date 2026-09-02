@@ -18,9 +18,27 @@
 
 import Foundation
 
+enum PotentialConflictLineRegion: Sendable {
+    case context
+    case local
+    case mergeBase
+    case incoming
+}
+
+struct PotentialConflictLine: Identifiable, Sendable {
+    let id = UUID()
+    let lineNumber: Int
+    let text: String
+    let region: PotentialConflictLineRegion
+    let isMarker: Bool
+}
+
+struct PotentialConflictBlock: Identifiable, Sendable {
+    let id = UUID()
+    let lines: [PotentialConflictLine]
+}
+
 struct PotentialConflictFileAnalysis: Sendable {
-    let localHunks: [DiffHunk]
-    let incomingHunks: [DiffHunk]
-    let conflictPreview: String?
+    let conflictBlocks: [PotentialConflictBlock]
     let exactAnalysisPerformed: Bool
 }

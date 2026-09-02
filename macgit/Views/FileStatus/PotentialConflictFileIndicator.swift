@@ -20,6 +20,7 @@ import SwiftUI
 
 struct PotentialConflictFileIndicator: View {
     let baseRef: String?
+    let onOpenDetails: () -> Void
 
     @State private var showingDetails = false
 
@@ -35,7 +36,10 @@ struct PotentialConflictFileIndicator: View {
             .accessibilityHint(helpText)
             .onContinuousHover(perform: updateCursor)
             .popover(isPresented: $showingDetails) {
-                PotentialConflictFileDetails(baseRef: baseRef)
+                PotentialConflictFileDetails(
+                    baseRef: baseRef,
+                    onOpenDetails: openDetails
+                )
             }
     }
 
@@ -49,6 +53,11 @@ struct PotentialConflictFileIndicator: View {
 
     private func showDetails() {
         showingDetails.toggle()
+    }
+
+    private func openDetails() {
+        showingDetails = false
+        onOpenDetails()
     }
 
     private func updateCursor(_ phase: HoverPhase) {
