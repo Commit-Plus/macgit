@@ -131,54 +131,6 @@ final class HistoryViewTests: XCTestCase {
         )
     }
 
-    func testHistoryRowDoesNotAutoCenterWhenVisible() {
-        let rowFrames = ["abc123": CGRect(x: 0, y: 0, width: 100, height: 24)]
-
-        XCTAssertFalse(
-            HistoryView.shouldAutoCenterCommit(
-                targetHash: "abc123",
-                rowFrames: rowFrames,
-                viewportHeight: 200
-            )
-        )
-    }
-
-    func testHistoryRowDoesNotAutoCenterWhenPartiallyVisible() {
-        let rowFrames = ["abc123": CGRect(x: 0, y: 190, width: 100, height: 24)]
-
-        XCTAssertFalse(
-            HistoryView.shouldAutoCenterCommit(
-                targetHash: "abc123",
-                rowFrames: rowFrames,
-                viewportHeight: 200
-            )
-        )
-    }
-
-    func testHistoryRowAutoCentersWhenAboveViewport() {
-        let rowFrames = ["abc123": CGRect(x: 0, y: -24, width: 100, height: 24)]
-
-        XCTAssertTrue(
-            HistoryView.shouldAutoCenterCommit(
-                targetHash: "abc123",
-                rowFrames: rowFrames,
-                viewportHeight: 200
-            )
-        )
-    }
-
-    func testHistoryRowAutoCentersWhenBelowViewport() {
-        let rowFrames = ["abc123": CGRect(x: 0, y: 220, width: 100, height: 24)]
-
-        XCTAssertTrue(
-            HistoryView.shouldAutoCenterCommit(
-                targetHash: "abc123",
-                rowFrames: rowFrames,
-                viewportHeight: 200
-            )
-        )
-    }
-
     func testDraggedCommitsUseSelectionForSelectedRowInOldestFirstOrder() {
         let commits = [
             makeCommit(hash: "newest", message: "Newest"),
@@ -360,6 +312,52 @@ final class HistoryViewTests: XCTestCase {
 
         XCTAssertTrue(presentation.showsStack)
         XCTAssertEqual(presentation.countBadgeText, "3 commits")
+    }
+
+    func testNativeTableSelectionMakesNewlyAddedRowPrimary() {
+        XCTAssertEqual(
+            HistoryView.primaryHashForTableSelection(
+                oldSelection: ["newest"],
+                newSelection: ["newest", "middle"],
+                previousPrimaryHash: "newest",
+                visibleHashes: ["newest", "middle", "oldest"]
+            ),
+            "middle"
+        )
+    }
+
+    func testNativeTableRangeSelectionUsesFarthestAddedEndpoint() {
+        XCTAssertEqual(
+            HistoryView.primaryHashForTableSelection(
+                oldSelection: ["middle"],
+                newSelection: ["middle", "older", "oldest"],
+                previousPrimaryHash: "middle",
+                visibleHashes: ["newest", "middle", "older", "oldest"]
+            ),
+            "oldest"
+        )
+
+        XCTAssertEqual(
+            HistoryView.primaryHashForTableSelection(
+                oldSelection: ["older"],
+                newSelection: ["newest", "middle", "older"],
+                previousPrimaryHash: "older",
+                visibleHashes: ["newest", "middle", "older", "oldest"]
+            ),
+            "newest"
+        )
+    }
+
+    func testNativeTableRemovalPreservesPrimaryWhenStillSelected() {
+        XCTAssertEqual(
+            HistoryView.primaryHashForTableSelection(
+                oldSelection: ["newest", "middle", "oldest"],
+                newSelection: ["newest", "middle"],
+                previousPrimaryHash: "middle",
+                visibleHashes: ["newest", "middle", "oldest"]
+            ),
+            "middle"
+        )
     }
 
     private func makeCommit(

@@ -62,9 +62,10 @@ struct BranchGraphCanvas: View {
                 Self.path(
                     for: graphPath,
                     rowHeight: rowHeight,
-                    laneWidth: laneWidth
+                    laneWidth: laneWidth,
+                    rowOffset: 0
                 ),
-                with: .color(lineColor(
+                with: .color(Self.lineColor(
                     colorIndex: graphPath.colorIndex,
                     isHighlighted: graphPath.isHighlighted
                 )),
@@ -77,9 +78,10 @@ struct BranchGraphCanvas: View {
                 Self.linkPath(
                     for: link,
                     rowHeight: rowHeight,
-                    laneWidth: laneWidth
+                    laneWidth: laneWidth,
+                    rowOffset: 0
                 ),
-                with: .color(lineColor(
+                with: .color(Self.lineColor(
                     colorIndex: link.colorIndex,
                     isHighlighted: link.isHighlighted
                 )),
@@ -88,35 +90,49 @@ struct BranchGraphCanvas: View {
         }
 
         for dot in model.dots {
-            drawDot(dot, in: &context)
+            Self.drawDot(
+                dot,
+                in: &context,
+                rowHeight: rowHeight,
+                laneWidth: laneWidth,
+                dotSize: dotSize,
+                rowOffset: 0,
+                background: Color(nsColor: .windowBackgroundColor)
+            )
         }
     }
 
-    private func lineColor(colorIndex: Int, isHighlighted: Bool) -> Color {
+    static func lineColor(colorIndex: Int, isHighlighted: Bool) -> Color {
         isHighlighted
             ? GraphPalette.color(for: colorIndex)
             : Color.gray.opacity(0.4)
     }
 
-    private func drawDot(
+    static func drawDot(
         _ dot: GraphDot,
-        in context: inout GraphicsContext
+        in context: inout GraphicsContext,
+        rowHeight: CGFloat,
+        laneWidth: CGFloat,
+        dotSize: CGFloat,
+        rowOffset: Double,
+        background: Color
     ) {
         let center = Self.position(
             for: dot.center,
             rowHeight: rowHeight,
-            laneWidth: laneWidth
+            laneWidth: laneWidth,
+            rowOffset: rowOffset
         )
         let color = lineColor(
             colorIndex: dot.colorIndex,
             isHighlighted: dot.isHighlighted
         )
-        let background = Color(nsColor: .windowBackgroundColor)
         let outerPath = Self.dotPath(
             for: dot,
             rowHeight: rowHeight,
             laneWidth: laneWidth,
-            dotSize: dotSize
+            dotSize: dotSize,
+            rowOffset: rowOffset
         )
 
         switch dot.type {
@@ -163,7 +179,8 @@ struct BranchGraphCanvas: View {
     static func path(
         for graphPath: GraphPath,
         rowHeight: CGFloat,
-        laneWidth: CGFloat
+        laneWidth: CGFloat,
+        rowOffset: Double = 0
     ) -> Path {
         var path = Path()
         let points = graphPath.points
@@ -172,7 +189,8 @@ struct BranchGraphCanvas: View {
         var last = position(
             for: points[0],
             rowHeight: rowHeight,
-            laneWidth: laneWidth
+            laneWidth: laneWidth,
+            rowOffset: rowOffset
         )
         path.move(to: last)
 
@@ -180,7 +198,8 @@ struct BranchGraphCanvas: View {
             let current = position(
                 for: points[index],
                 rowHeight: rowHeight,
-                laneWidth: laneWidth
+                laneWidth: laneWidth,
+                rowOffset: rowOffset
             )
 
             if current.x > last.x {
@@ -215,24 +234,28 @@ struct BranchGraphCanvas: View {
     static func linkPath(
         for link: GraphLink,
         rowHeight: CGFloat,
-        laneWidth: CGFloat
+        laneWidth: CGFloat,
+        rowOffset: Double = 0
     ) -> Path {
         var path = Path()
         path.move(to: position(
             for: link.start,
             rowHeight: rowHeight,
-            laneWidth: laneWidth
+            laneWidth: laneWidth,
+            rowOffset: rowOffset
         ))
         path.addQuadCurve(
             to: position(
                 for: link.end,
                 rowHeight: rowHeight,
-                laneWidth: laneWidth
+                laneWidth: laneWidth,
+                rowOffset: rowOffset
             ),
             control: position(
                 for: link.control,
                 rowHeight: rowHeight,
-                laneWidth: laneWidth
+                laneWidth: laneWidth,
+                rowOffset: rowOffset
             )
         )
         return path
@@ -242,12 +265,14 @@ struct BranchGraphCanvas: View {
         for dot: GraphDot,
         rowHeight: CGFloat,
         laneWidth: CGFloat,
-        dotSize: CGFloat
+        dotSize: CGFloat,
+        rowOffset: Double = 0
     ) -> Path {
         let center = position(
             for: dot.center,
             rowHeight: rowHeight,
-            laneWidth: laneWidth
+            laneWidth: laneWidth,
+            rowOffset: rowOffset
         )
         let size = dot.type == .default ? dotSize : dotSize + 4
         return Path(ellipseIn: CGRect(
@@ -258,14 +283,15 @@ struct BranchGraphCanvas: View {
         ))
     }
 
-    private static func position(
+    static func position(
         for point: CGPoint,
         rowHeight: CGFloat,
-        laneWidth: CGFloat
+        laneWidth: CGFloat,
+        rowOffset: Double = 0
     ) -> CGPoint {
         CGPoint(
             x: CGFloat((point.x - 10) / 12) * laneWidth + laneWidth / 2,
-            y: CGFloat(point.y) * rowHeight
+            y: CGFloat(point.y - rowOffset) * rowHeight
         )
     }
 }

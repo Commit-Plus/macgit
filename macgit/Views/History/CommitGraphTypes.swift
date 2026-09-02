@@ -65,8 +65,29 @@ nonisolated struct CommitGraphModel: Sendable {
     let paths: [GraphPath]
     let links: [GraphLink]
     let dots: [GraphDot]
+    let rowSlices: [CommitGraphRowSlice]
     let laneCount: Int
     let commitMetadata: [String: GraphCommitMetadata]
+
+    init(
+        paths: [GraphPath],
+        links: [GraphLink],
+        dots: [GraphDot],
+        laneCount: Int,
+        commitMetadata: [String: GraphCommitMetadata]
+    ) {
+        self.paths = paths
+        self.links = links
+        self.dots = dots
+        self.rowSlices = CommitGraphRowSlice.makeRows(
+            paths: paths,
+            links: links,
+            dots: dots,
+            rowCount: dots.count
+        )
+        self.laneCount = laneCount
+        self.commitMetadata = commitMetadata
+    }
 }
 
 struct GraphPalette {

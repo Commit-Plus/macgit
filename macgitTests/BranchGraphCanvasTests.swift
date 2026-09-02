@@ -103,6 +103,34 @@ final class BranchGraphCanvasTests: XCTestCase {
         XCTAssertEqual(rect.maxY, 20, accuracy: 0.001)
     }
 
+    func testRowOffsetPreservesPathGeometryAndTranslatesItsOrigin() {
+        let graphPath = GraphPath(
+            points: [
+                CGPoint(x: 10, y: 1.5),
+                CGPoint(x: 22, y: 2.5),
+            ],
+            colorIndex: 0,
+            isHighlighted: true
+        )
+
+        let fullPath = BranchGraphCanvas.path(
+            for: graphPath,
+            rowHeight: 20,
+            laneWidth: 10
+        )
+        let rowPath = BranchGraphCanvas.path(
+            for: graphPath,
+            rowHeight: 20,
+            laneWidth: 10,
+            rowOffset: 1
+        )
+
+        XCTAssertEqual(rowPath.boundingRect.minX, fullPath.boundingRect.minX, accuracy: 0.001)
+        XCTAssertEqual(rowPath.boundingRect.maxX, fullPath.boundingRect.maxX, accuracy: 0.001)
+        XCTAssertEqual(rowPath.boundingRect.minY, fullPath.boundingRect.minY - 20, accuracy: 0.001)
+        XCTAssertEqual(rowPath.boundingRect.maxY, fullPath.boundingRect.maxY - 20, accuracy: 0.001)
+    }
+
     func testDotPathsUseSourceGitStyleSizes() {
         let center = CGPoint(x: 10, y: 0.5)
 

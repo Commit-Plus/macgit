@@ -25,11 +25,6 @@ import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
-@MainActor
-private final class HistorySelectionStore: ObservableObject {
-    @Published var selectedCommits: [Commit] = []
-}
-
 struct HistoryView: View {
     private struct SquashSheetPresentation: Identifiable {
         let id = UUID()
@@ -45,12 +40,10 @@ struct HistoryView: View {
     let onRequestCheckout: (String, Bool) -> Void
     let onRequestExplainCommit: (Commit) -> Void
     @EnvironmentObject private var appState: AppState
-    private static let historyScrollSpaceName = "historyScroll"
     
     @State private var commits: [Commit] = []
     @State private var graphModel: CommitGraphModel? = nil
     @State private var commitSelection = HistoryCommitSelection()
-    @StateObject private var historySelectionStore = HistorySelectionStore()
     @State private var activeDragCommitHashes: Set<String> = []
     @State private var activeCommitDragPayload: GitDragPayload?
     @State private var suppressedCommitClickHash: String?
@@ -66,10 +59,13 @@ struct HistoryView: View {
     @State private var diffHunks: [DiffHunk] = []
     @State private var commitFilesLoadID = UUID()
     @State private var diffLoadID = UUID()
-    @AppStorage("history.messageWidth") private var messageColumnWidth: Double = 200
-    @AppStorage("history.authorWidth") private var authorColumnWidth: Double = 120
-    @AppStorage("history.dateWidth") private var dateColumnWidth: Double = 80
-    @AppStorage("history.commitWidth") private var commitColumnWidth: Double = 70
+    @AppStorage("history.tableColumns") private var tableColumnCustomization = TableColumnCustomization<Commit>()
+    @AppStorage("history.tableColumn.messageRatio") private var messageColumnRatio: Double = 0.45
+    @AppStorage("history.tableColumn.authorRatio") private var authorColumnRatio: Double = 0.25
+    @AppStorage("history.tableColumn.dateRatio") private var dateColumnRatio: Double = 0.18
+    @AppStorage("history.tableColumn.commitRatio") private var commitColumnRatio: Double = 0.12
+    @State private var tableSelection: Set<String> = []
+    @State private var tableScrollCoordinator = HistoryTableScrollCoordinator()
     @AppStorage("advanced.historyLoadSize") private var historyLoadSizeRaw = 120
     @State private var isLoading = false
     @State private var isRefreshingHistory = false
@@ -77,7 +73,6 @@ struct HistoryView: View {
     @State private var errorMessage: String?
     @State private var showingError = false
     @State private var scrollTarget: String? = nil
-    @State private var rowFrames: [String: CGRect] = [:]
     @State private var paging = HistoryPagingState(pageSize: 120)
     @State private var historyCache: [String: HistorySnapshot] = [:]
     @State private var historySearchText = ""
@@ -528,260 +523,184 @@ struct HistoryView: View {
     
     // MARK: - Top Panel
     
-    private var graphWidth: CGFloat {
-        let maxLane = graphModel?.laneCount ?? 1
-        return CGFloat(maxLane) * 14 + 4
-    }
-
-    private func commitListHeader(messageWidth: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            Color.clear
-                .frame(width: graphWidth, height: 16)
-                .fixedSize()
-
-            Text("Message")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .frame(width: messageWidth, alignment: .leading)
-
-            ColumnResizer(
-                leftWidth: Binding(
-                    // Include viewport fill space so the divider can resize the
-                    // full visible Message column, not only its persisted base.
-                    get: { messageWidth },
-                    set: { messageColumnWidth = Double($0) }
-                ),
-                rightWidth: Binding(
-                    get: { CGFloat(authorColumnWidth) },
-                    set: { authorColumnWidth = Double($0) }
-                ),
-                minimumLeftWidth: 27
-            )
-
-            Text("Author")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .frame(width: CGFloat(authorColumnWidth), alignment: .leading)
-
-            ColumnResizer(
-                leftWidth: Binding(
-                    get: { CGFloat(authorColumnWidth) },
-                    set: { authorColumnWidth = Double($0) }
-                ),
-                rightWidth: Binding(
-                    get: { CGFloat(dateColumnWidth) },
-                    set: { dateColumnWidth = Double($0) }
-                )
-            )
-
-            Text("Date")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .frame(width: CGFloat(dateColumnWidth), alignment: .trailing)
-
-            ColumnResizer(
-                leftWidth: Binding(
-                    get: { CGFloat(dateColumnWidth) },
-                    set: { dateColumnWidth = Double($0) }
-                ),
-                rightWidth: Binding(
-                    get: { CGFloat(commitColumnWidth) },
-                    set: { commitColumnWidth = Double($0) }
-                )
-            )
-
-            Text("Commit")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .frame(width: CGFloat(commitColumnWidth), alignment: .trailing)
-
-            ColumnResizer(
-                leftWidth: Binding(
-                    get: { CGFloat(commitColumnWidth) },
-                    set: { commitColumnWidth = Double($0) }
-                ),
-                rightWidth: Binding(
-                    get: { CGFloat(0) },
-                    set: { _ in }
-                )
-            )
-        }
-        .padding(.leading, 8)
-        .padding(.trailing, 16)
-        .frame(height: 20)
-        .background(.thinMaterial)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(.separator)
-                .frame(height: 0.5)
-        }
-    }
-
     private var commitGraphList: some View {
-        GeometryReader { geometry in
-            let viewportWidth = geometry.size.width
-            let resizers: CGFloat = 4 * 6
-            let padding: CGFloat = 8 + 16
-            let fixedWidth = graphWidth + CGFloat(messageColumnWidth) + CGFloat(authorColumnWidth) + CGFloat(dateColumnWidth) + CGFloat(commitColumnWidth) + resizers + padding
-            let extraSpace = max(0, viewportWidth - fixedWidth)
-            let effectiveMessageWidth = CGFloat(messageColumnWidth) + extraSpace
+        Group {
+            if let graphModel {
+                let rowIndexByHash = Dictionary(
+                    uniqueKeysWithValues: commits.enumerated().map { ($0.element.hash, $0.offset) }
+                )
+                GeometryReader { proxy in
+                let tableWidths = Self.tableColumnWidths(
+                    for: proxy.size.width,
+                    ratios: (
+                        message: messageColumnRatio,
+                        author: authorColumnRatio,
+                        date: dateColumnRatio,
+                        commit: commitColumnRatio
+                    )
+                )
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    commitListHeader(messageWidth: effectiveMessageWidth)
-
-                    ScrollViewReader { proxy in
-                        ScrollView(.vertical) {
-                            ZStack(alignment: .topLeading) {
-                                // Graph lines
-                                if let model = graphModel {
-                                    BranchGraphCanvas(model: model)
-                                    .padding(.leading, 4)
+                    ZStack(alignment: .bottom) {
+                    Table(
+                        of: Commit.self,
+                        selection: $tableSelection,
+                        columnCustomization: $tableColumnCustomization
+                    ) {
+                        TableColumn("Message") { commit in
+                            HistoryCommitMessageCell(
+                                commit: commit,
+                                graphModel: graphModel,
+                                rowIndex: rowIndexByHash[commit.hash] ?? 0,
+                                isDragActive: activeDragCommitHashes.contains(commit.hash),
+                                scrollCoordinator: tableScrollCoordinator,
+                                onColumnResize: tableColumnResizeHandler,
+                                onAppear: {
+                                    handleHistoryCommitCellAppearance(commit)
                                 }
-
-                                // Commit rows overlay
-                                LazyVStack(alignment: .leading, spacing: 0) {
-                                    if graphModel != nil {
-                                        ForEach(commits) { commit in
-                                            let draggedCommits = Self.draggedCommits(
-                                                startingAt: commit.hash,
-                                                commits: commits,
-                                                selection: commitSelection
-                                            )
-                                            let draggedHashes = Set(draggedCommits.map(\.hash))
-                                            let draggedPayload = GitDragPayload.commits(
-                                                draggedCommits,
-                                                repositoryURL: repositoryURL
-                                            )
-
-                                            CommitRowView(
-                                                commit: commit,
-                                                graphWidth: graphWidth,
-                                                isSelected: commitSelection.selectedHashes.contains(commit.hash),
-                                                isDragActive: activeDragCommitHashes.contains(commit.hash),
-                                                graphColorIndex: graphModel?.commitMetadata[commit.hash]?.colorIndex,
-                                                messageWidth: effectiveMessageWidth,
-                                                authorWidth: CGFloat(authorColumnWidth),
-                                                dateWidth: CGFloat(dateColumnWidth),
-                                                commitWidth: CGFloat(commitColumnWidth),
-                                                onDoubleClick: {
-                                                    handleCommitDoubleClick(commit)
-                                                }
-                                            )
-                                            .id(commit.hash)
-                                            .background(
-                                                GeometryReader { geo in
-                                                    Color.clear.preference(
-                                                        key: CommitRowFramePreferenceKey.self,
-                                                        value: [commit.hash: geo.frame(in: .named(Self.historyScrollSpaceName))]
-                                                    )
-                                                }
-                                            )
-                                            .onClick(left: { modifierFlags in
-                                                selectCommitFromLeftClick(
-                                                    commit,
-                                                    modifierFlags: modifierFlags
-                                                )
-                                            }, right: {
-                                                selectCommitForContextMenu(commit)
-                                            })
-                                            .contextMenu {
-                                                commitContextMenu(for: commit)
-                                            }
-                                            .onDrag {
-                                                let liveDraggedCommits = Self.draggedCommits(
-                                                    startingAt: commit.hash,
-                                                    commits: commits,
-                                                    selection: commitSelection
-                                                )
-                                                let livePayload = GitDragPayload.commits(
-                                                    liveDraggedCommits,
-                                                    repositoryURL: repositoryURL
-                                                )
-                                                beginCommitDrag(
-                                                    startingAt: commit.hash,
-                                                    payload: livePayload
-                                                )
-                                                if !commitSelection.selectedHashes.contains(commit.hash) {
-                                                    selectedCommit = Self.selectCommitFromNativeTap(
-                                                        commit.hash,
-                                                        modifierFlags: [],
-                                                        commits: commits,
-                                                        selection: &commitSelection
-                                                    )
-                                                    syncSelectedCommitSnapshot()
-                                                }
-                                                return makeCommitItemProvider(payload: livePayload)
-                                            } preview: {
-                                                CommitDragPreview(
-                                                    presentation: CommitDragPreviewPresentation(
-                                                        commit: commit,
-                                                        commitCount: activeCommitDragPayload?.commits.count
-                                                            ?? draggedCommits.count
-                                                    ),
-                                                    onDragStateChange: { isActive in
-                                                        updateCommitDragState(
-                                                            isActive: isActive,
-                                                            hashes: draggedHashes,
-                                                            payload: draggedPayload
-                                                        )
-                                                    }
-                                                )
-                                            }
-                                            .onAppear {
-                                                if commit.hash == commits.last?.hash {
-                                                    Task {
-                                                        await loadOlderHistoryIfNeeded()
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if paging.isLoadingMore {
-                                        HStack {
-                                            Spacer()
-                                            ProgressView("Loading older commits…")
-                                                .font(.caption)
-                                                .padding(.vertical, 12)
-                                            Spacer()
-                                        }
-                                    }
-                                }
-                                .padding(.leading, 4)
-                            }
+                            )
                         }
-                        .coordinateSpace(name: Self.historyScrollSpaceName)
-                        .onPreferenceChange(CommitRowFramePreferenceKey.self) { frames in
-                            rowFrames = frames
+                        .width(
+                            min: 120,
+                            ideal: tableWidths.message,
+                            max: .infinity
+                        )
+                        .customizationID("message")
+                        .disabledCustomizationBehavior([.reorder, .visibility])
+
+                        TableColumn("Author") { commit in
+                            Text("\(commit.author) <\(commit.email)>")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .help("\(commit.author) <\(commit.email)>")
                         }
-                        .task(id: scrollTarget) {
-                            guard let target = scrollTarget else { return }
-                            let viewportHeight = max(0, geometry.size.height - 20)
-                            var attempts = 0
-                            while rowFrames[target] == nil, attempts < 5 {
-                                attempts += 1
-                                await Task.yield()
-                            }
-                            if Self.shouldAutoCenterCommit(
-                                targetHash: target,
-                                rowFrames: rowFrames,
-                                viewportHeight: viewportHeight
-                            ) {
-                                withAnimation(.easeOut(duration: 0.3)) {
-                                    proxy.scrollTo(target, anchor: .center)
+                        .width(
+                            min: 140,
+                            ideal: tableWidths.author,
+                            max: .infinity
+                        )
+                        .customizationID("author")
+
+                        TableColumn("Date") { commit in
+                            Text(
+                                commit.date,
+                                format: .dateTime
+                                    .hour()
+                                    .minute()
+                                    .day()
+                                    .month(.abbreviated)
+                                    .year()
+                            )
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                        }
+                        .width(
+                            min: 100,
+                            ideal: tableWidths.date,
+                            max: .infinity
+                        )
+                        .alignment(.leading)
+                        .customizationID("date")
+
+                        TableColumn("Commit") { commit in
+                            Text(commit.shortHash)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                                .help(commit.hash)
+                        }
+                        .width(
+                            min: 72,
+                            ideal: tableWidths.commit,
+                            max: .infinity
+                        )
+                        .alignment(.leading)
+                        .customizationID("commit")
+                    } rows: {
+                        ForEach(commits) { commit in
+                            TableRow(commit)
+                                .itemProvider {
+                                    makeCommitItemProvider(startingAt: commit)
                                 }
-                            }
                         }
                     }
+                    .tableStyle(.bordered)
+                    .alternatingRowBackgrounds(.enabled)
+                    .controlSize(.small)
+                    .contextMenu(forSelectionType: String.self) { selectedHashes in
+                        if !selectedHashes.isEmpty {
+                            commitContextMenu(for: selectedHashes)
+                        }
+                    } primaryAction: { selectedHashes in
+                        handleCommitTablePrimaryAction(selectedHashes)
+                    }
+                    .onChange(of: tableSelection) { oldSelection, newSelection in
+                        applyTableSelection(from: oldSelection, to: newSelection)
+                    }
+                    .task(id: scrollTarget) {
+                        guard let scrollTarget,
+                              let row = commits.firstIndex(where: { $0.hash == scrollTarget }) else {
+                            return
+                        }
+                        await tableScrollCoordinator.scrollToRowWhenReady(row)
+                    }
+
+                    if paging.isLoadingMore {
+                        ProgressView("Loading older commits…")
+                            .font(.caption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.regularMaterial, in: Capsule())
+                            .padding(.bottom, 8)
+                    }
+                    }
                 }
-                .frame(minWidth: viewportWidth)
             }
         }
         .id(historyLoadKey)
+    }
+
+    private static func tableColumnWidths(
+        for availableWidth: CGFloat,
+        ratios: (message: Double, author: Double, date: Double, commit: Double)
+    ) -> (message: CGFloat, author: CGFloat, date: CGFloat, commit: CGFloat) {
+        let width = max(1, availableWidth - 1)
+        let totalRatio = max(
+            0.01,
+            ratios.message + ratios.author + ratios.date + ratios.commit
+        )
+        return (
+            message: width * ratios.message / totalRatio,
+            author: width * ratios.author / totalRatio,
+            date: width * ratios.date / totalRatio,
+            commit: width * ratios.commit / totalRatio
+        )
+    }
+
+    private var tableColumnResizeHandler: ([String: CGFloat], CGFloat) -> Void {
+        let messageRatio = $messageColumnRatio
+        let authorRatio = $authorColumnRatio
+        let dateRatio = $dateColumnRatio
+        let commitRatio = $commitColumnRatio
+
+        return { widths, totalWidth in
+            guard totalWidth > 0 else { return }
+
+            func update(_ binding: Binding<Double>, key: String) {
+                guard let width = widths[key] else { return }
+                let ratio = Double(width / totalWidth)
+                if abs(binding.wrappedValue - ratio) > 0.001 {
+                    binding.wrappedValue = ratio
+                }
+            }
+
+            update(messageRatio, key: "message")
+            update(authorRatio, key: "author")
+            update(dateRatio, key: "date")
+            update(commitRatio, key: "commit")
+        }
     }
     
     // MARK: - Bottom Panel
@@ -982,19 +901,16 @@ struct HistoryView: View {
     
     // MARK: - Context Menu
     
-    private func commitContextMenu(for commit: Commit) -> some View {
-        let contextCommits = Self.contextMenuCommits(
-            startingAt: commit.hash,
-            commits: commits,
-            selection: commitSelection
-        )
+    private func commitContextMenu(for selectedHashes: Set<String>) -> some View {
+        let contextCommits = commits.filter { selectedHashes.contains($0.hash) }
         let singleCommit = contextCommits.count == 1 ? contextCommits[0] : nil
+        let primaryCommit = selectedCommit.flatMap { selectedHashes.contains($0.hash) ? $0 : nil }
+            ?? singleCommit
+            ?? contextCommits.first
         let cherryPickCommits = Self.cherryPickCommits(from: contextCommits)
         let canCherryPick = !cherryPickCommits.isEmpty
             && cherryPickCommits.allSatisfy { !$0.isMerge }
-        let squashCommits = commitSelection.selectedHashes.contains(commit.hash)
-            ? squashableCommits
-            : contextCommits
+        let squashCommits = contextCommits
         let canSquashCommits = Self.canSquashCommits(
             squashCommits,
             selectedHashes: squashCommits.map(\.hash),
@@ -1025,8 +941,10 @@ struct HistoryView: View {
             .disabled(!canCherryPick)
 
             Button("AI Explain This Commit", systemImage: "sparkles") {
-                onRequestExplainCommit(commit)
+                guard let primaryCommit else { return }
+                onRequestExplainCommit(primaryCommit)
             }
+            .disabled(primaryCommit == nil)
             
             Divider()
             
@@ -1143,11 +1061,11 @@ struct HistoryView: View {
             await MainActor.run {
                 paging.reset()
                 scrollTarget = nil
-                rowFrames = [:]
                 cancelHistoryRefreshIndicator()
                 if commits.isEmpty {
                     graphModel = nil
                     selectedCommit = nil
+                    tableSelection = []
                     fileChanges = []
                     selectedFile = nil
                     diffHunks = []
@@ -1286,7 +1204,7 @@ struct HistoryView: View {
                 )
             }
             selectedCommit = Self.commit(withHash: commitSelection.primaryHash, in: loadedCommits)
-            syncSelectedCommitSnapshot(from: loadedCommits)
+            tableSelection = Set(commitSelection.selectedHashes)
             if skip == 0 {
                 scrollTarget = Self.reloadTargetHash(
                     reset: true,
@@ -1303,16 +1221,6 @@ struct HistoryView: View {
                 selectedCommitHash: selectedCommit?.hash
             )
         }
-    }
-
-    private var squashableCommits: [Commit] {
-        historySelectionStore.selectedCommits
-    }
-
-    private func syncSelectedCommitSnapshot(from visibleCommits: [Commit]? = nil) {
-        let source = visibleCommits ?? commits
-        let commitsByHash = Dictionary(uniqueKeysWithValues: source.map { ($0.hash, $0) })
-        historySelectionStore.selectedCommits = commitSelection.selectedHashes.compactMap { commitsByHash[$0] }
     }
 
     static func canSquashCommits(
@@ -1337,7 +1245,6 @@ struct HistoryView: View {
         paging.reset()
         paging.finishLoadingMore(loaded: snapshot.commits.count)
         scrollTarget = snapshot.selectedCommitHash
-        rowFrames = [:]
         currentHeadHash = Self.resolvedHeadHash(from: snapshot.commits)
 
         commits = snapshot.commits
@@ -1352,7 +1259,7 @@ struct HistoryView: View {
             commitSelection.select(first.hash, modifiers: [], visibleHashes: visibleHashes)
         }
         selectedCommit = Self.commit(withHash: commitSelection.primaryHash, in: snapshot.commits)
-        syncSelectedCommitSnapshot(from: snapshot.commits)
+        tableSelection = Set(commitSelection.selectedHashes)
 
         isLoading = false
         isRefreshingHistory = false
@@ -1421,31 +1328,54 @@ struct HistoryView: View {
         }
     }
 
-    private func selectCommitForContextMenu(_ commit: Commit) {
-        guard !commitSelection.selectedHashes.contains(commit.hash) else { return }
+    private func applyTableSelection(
+        from oldSelection: Set<String>,
+        to newSelection: Set<String>
+    ) {
+        let visibleHashes = commits.map(\.hash)
+        let visibleSet = Set(visibleHashes)
+        let normalizedSelection = newSelection.intersection(visibleSet)
+        guard normalizedSelection == newSelection else {
+            tableSelection = normalizedSelection
+            return
+        }
 
-        selectedCommit = Self.selectCommitFromNativeTap(
-            commit.hash,
-            modifierFlags: [],
-            commits: commits,
-            selection: &commitSelection
+        guard !newSelection.isEmpty else {
+            commitSelection = HistoryCommitSelection()
+            selectedCommit = nil
+            return
+        }
+
+        let orderedHashes = visibleHashes.filter(newSelection.contains)
+        let primaryHash = Self.primaryHashForTableSelection(
+            oldSelection: oldSelection,
+            newSelection: newSelection,
+            previousPrimaryHash: commitSelection.primaryHash,
+            visibleHashes: visibleHashes
         )
-        syncSelectedCommitSnapshot()
+        commitSelection = HistoryCommitSelection(
+            selectedHashes: orderedHashes,
+            primaryHash: primaryHash,
+            anchorHash: primaryHash
+        )
+        selectedCommit = Self.commit(withHash: primaryHash, in: commits)
     }
 
-    private func selectCommitFromLeftClick(
-        _ commit: Commit,
-        modifierFlags: NSEvent.ModifierFlags
-    ) {
-        guard !consumeSuppressedCommitClick(commit.hash) else { return }
+    private func handleCommitTablePrimaryAction(_ selectedHashes: Set<String>) {
+        let primaryCommit = selectedCommit.flatMap { selectedHashes.contains($0.hash) ? $0 : nil }
+            ?? commits.first(where: { selectedHashes.contains($0.hash) })
+        guard let primaryCommit,
+              !consumeSuppressedCommitClick(primaryCommit.hash) else {
+            return
+        }
+        handleCommitDoubleClick(primaryCommit)
+    }
 
-        selectedCommit = Self.selectCommitFromNativeTap(
-            commit.hash,
-            modifierFlags: modifierFlags,
-            commits: commits,
-            selection: &commitSelection
-        )
-        syncSelectedCommitSnapshot()
+    private func handleHistoryCommitCellAppearance(_ commit: Commit) {
+        guard commit.hash == commits.last?.hash else { return }
+        Task {
+            await loadOlderHistoryIfNeeded()
+        }
     }
     
     private func performCheckoutCommit() async {
@@ -1911,6 +1841,39 @@ struct HistoryView: View {
         return commit(withHash: selection.primaryHash, in: commits)
     }
 
+    static func primaryHashForTableSelection(
+        oldSelection: Set<String>,
+        newSelection: Set<String>,
+        previousPrimaryHash: String?,
+        visibleHashes: [String]
+    ) -> String? {
+        guard !newSelection.isEmpty else { return nil }
+
+        let addedHashes = newSelection.subtracting(oldSelection)
+        if addedHashes.count == 1 {
+            return addedHashes.first
+        }
+
+        let indexByHash = Dictionary(
+            uniqueKeysWithValues: visibleHashes.enumerated().map { ($0.element, $0.offset) }
+        )
+        if addedHashes.count > 1,
+           let previousPrimaryHash,
+           let previousIndex = indexByHash[previousPrimaryHash] {
+            return addedHashes.max { lhs, rhs in
+                abs((indexByHash[lhs] ?? previousIndex) - previousIndex)
+                    < abs((indexByHash[rhs] ?? previousIndex) - previousIndex)
+            }
+        }
+
+        if let previousPrimaryHash,
+           newSelection.contains(previousPrimaryHash) {
+            return previousPrimaryHash
+        }
+
+        return visibleHashes.last(where: newSelection.contains)
+    }
+
     static func normalizedSearchQuery(_ query: String) -> String {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= 3 else { return "" }
@@ -1947,19 +1910,6 @@ struct HistoryView: View {
                 $0 == "HEAD" || $0.hasPrefix("HEAD -> ")
             }
         })?.hash
-    }
-
-    static func shouldAutoCenterCommit(
-        targetHash: String,
-        rowFrames: [String: CGRect],
-        viewportHeight: CGFloat
-    ) -> Bool {
-        guard let frame = rowFrames[targetHash], viewportHeight > 0 else { return true }
-        return !isRowVisible(frame, viewportHeight: viewportHeight)
-    }
-
-    static func isRowVisible(_ frame: CGRect, viewportHeight: CGFloat) -> Bool {
-        frame.maxY > 0 && frame.minY < viewportHeight
     }
 
     static func commit(withHash hash: String?, in commits: [Commit]) -> Commit? {
@@ -2003,6 +1953,34 @@ struct HistoryView: View {
             }
     }
 
+    private func makeCommitItemProvider(startingAt commit: Commit) -> NSItemProvider? {
+        let selectionHashes: [String]
+        if tableSelection.contains(commit.hash) {
+            selectionHashes = commits.map(\.hash).filter(tableSelection.contains)
+        } else {
+            selectionHashes = [commit.hash]
+            tableSelection = [commit.hash]
+        }
+
+        let dragSelection = HistoryCommitSelection(
+            selectedHashes: selectionHashes,
+            primaryHash: commit.hash,
+            anchorHash: commit.hash
+        )
+        let draggedCommits = Self.draggedCommits(
+            startingAt: commit.hash,
+            commits: commits,
+            selection: dragSelection
+        )
+        let payload = GitDragPayload.commits(
+            draggedCommits,
+            repositoryURL: repositoryURL
+        )
+        activeDragCommitHashes = Set(draggedCommits.map(\.hash))
+        beginCommitDrag(startingAt: commit.hash, payload: payload)
+        return makeCommitItemProvider(payload: payload)
+    }
+
     private func makeCommitItemProvider(payload: GitDragPayload) -> NSItemProvider {
         GitDragPayloadStore.set(payload)
 
@@ -2018,22 +1996,6 @@ struct HistoryView: View {
         }
         provider.register(payload)
         return provider
-    }
-
-    private func updateCommitDragState(
-        isActive: Bool,
-        hashes: Set<String>,
-        payload: GitDragPayload
-    ) {
-        let effectivePayload = activeCommitDragPayload ?? payload
-        let payloadHashes = Set(effectivePayload.commits.map(\.hash))
-        let effectiveHashes = payloadHashes.isEmpty ? hashes : payloadHashes
-
-        if isActive, activeCommitDragPayload != nil {
-            activeDragCommitHashes = effectiveHashes
-        } else if activeDragCommitHashes == effectiveHashes || activeDragCommitHashes == hashes {
-            finishCommitDrag(payload: effectivePayload, clearsPayload: true)
-        }
     }
 
     private func beginCommitDrag(startingAt hash: String, payload: GitDragPayload) {
@@ -2113,13 +2075,5 @@ private extension ResetMode {
         case .mixed: return .mixed
         case .hard: return .hard
         }
-    }
-}
-
-private struct CommitRowFramePreferenceKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
-
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
