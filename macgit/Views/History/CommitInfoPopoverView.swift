@@ -98,7 +98,7 @@ struct CommitInfoPopoverView: View {
                 Group {
                     if let fullMessage {
                         ScrollView {
-                            Text(fullMessage.isEmpty ? "(empty message)" : fullMessage)
+                            Text(displayCommitMessage(fullMessage))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .textSelection(.enabled)
                         }
@@ -165,6 +165,12 @@ struct CommitInfoPopoverView: View {
                 }
             }
         }
+    }
+
+    private func displayCommitMessage(_ message: String) -> String {
+        message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "<empty message>"
+            : message
     }
 
     private func updateCopyCursor(_ phase: HoverPhase) {

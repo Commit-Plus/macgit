@@ -18,6 +18,8 @@
 import SwiftUI
 
 struct HistoryCommitMessageCell: View {
+    private static let emptyMessagePlaceholder = "<empty message>"
+
     let commit: Commit
     let graphModel: CommitGraphModel
     let rowIndex: Int
@@ -26,6 +28,11 @@ struct HistoryCommitMessageCell: View {
     let desiredColumnRatios: [String: Double]
     let onColumnResize: (([String: CGFloat], CGFloat) -> Void)?
     let onAppear: () -> Void
+
+    private var displayMessage: String {
+        let trimmedMessage = commit.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedMessage.isEmpty ? Self.emptyMessagePlaceholder : commit.message
+    }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -50,12 +57,12 @@ struct HistoryCommitMessageCell: View {
                 .fixedSize(horizontal: true, vertical: false)
             }
 
-            Text(commit.message)
+            Text(displayMessage)
                 .font(.callout)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .help(commit.message)
+                .help(displayMessage)
         }
         .frame(height: 16)
         .opacity(isDragActive ? 0.4 : 1)

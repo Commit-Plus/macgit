@@ -754,7 +754,7 @@ struct HistoryView: View {
                 .foregroundStyle(.secondary)
             
             VStack(alignment: .leading, spacing: 1) {
-                Text(commit.message)
+                Text(displayCommitMessage(commit.message))
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
                 HStack(spacing: 8) {
@@ -829,6 +829,12 @@ struct HistoryView: View {
                 .fill(.separator)
                 .frame(height: 0.5)
         }
+    }
+
+    private func displayCommitMessage(_ message: String) -> String {
+        message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "<empty message>"
+            : message
     }
 
     private func updateCommitInfoCursor(_ phase: HoverPhase) {
