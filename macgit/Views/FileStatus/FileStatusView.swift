@@ -24,6 +24,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct FileStatusView: View {
+    private enum EmptyCommitAction: Hashable {
+        case allowEmptyCommit
+        case commitChangedFiles
+    }
+
     let repositoryURL: URL
     @ObservedObject var aiProviderController: AIProviderController
     @EnvironmentObject private var accountController: AccountSessionController
@@ -55,6 +60,9 @@ struct FileStatusView: View {
     @State private var isCommitBarExpanded = false
     @State private var commitMessage = ""
     @FocusState private var isCommitMessageFocused: Bool
+    @State private var showingEmptyCommitConfirmation = false
+    @State private var emptyCommitAction: EmptyCommitAction?
+    @State private var allowEmptyMessage = false
     @State private var amendLastCommit = false
     @State private var bypassHooks = false
     @State private var signOffCommit = false
@@ -90,7 +98,7 @@ struct FileStatusView: View {
     }
 
     private var canCommit: Bool {
-        !commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !gitStatus.staged.isEmpty
+        !commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || gitStatus.staged.isEmpty
     }
 
     private var actionSelection: FileStatusActionSelection {
@@ -245,6 +253,9 @@ struct FileStatusView: View {
         }, message: {
             Text(errorMessage ?? "An unknown error occurred")
         })
+        .sheet(isPresented: $showingEmptyCommitConfirmation) {
+            emptyCommitConfirmation
+        }
         .sheet(item: $ignoreTargetFile) { file in
             IgnoreOptionsView(
                 file: file,
@@ -1003,7 +1014,13 @@ struct FileStatusView: View {
 
                 Button("Commit") {
                     Task {
-                        await performCommit()
+                        if gitStatus.staged.isEmpty {
+                            emptyCommitAction = nil
+                            allowEmptyMessage = false
+                            showingEmptyCommitConfirmation = true
+                        } else {
+                            await performCommit(allowEmpty: false)
+                        }
                     }
                 }
                 .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 12))
@@ -1023,6 +1040,63 @@ struct FileStatusView: View {
                 await generateCommitMessage()
             }
         }
+    }
+
+    private var emptyCommitConfirmation: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label("No files staged", systemImage: "exclamationmark.triangle.fill")
+                .font(.headline)
+                .foregroundStyle(.orange)
+
+            Text("No files are staged. Choose whether to create an empty commit or stage all changed files before committing.")
+                .foregroundStyle(.secondary)
+
+            Picker("Commit action", selection: $emptyCommitAction) {
+                Text("Create empty commit (no staged files)")
+                    .tag(EmptyCommitAction.allowEmptyCommit as EmptyCommitAction?)
+                Text("Commit all changed files")
+                    .tag(EmptyCommitAction.commitChangedFiles as EmptyCommitAction?)
+            }
+            .pickerStyle(.radioGroup)
+
+            if commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Toggle("Commit with empty message", isOn: $allowEmptyMessage)
+                    .toggleStyle(.checkbox)
+            }
+
+            HStack {
+                Spacer()
+
+                Button("Cancel", role: .cancel) {
+                    showingEmptyCommitConfirmation = false
+                    emptyCommitAction = nil
+                    allowEmptyMessage = false
+                }
+
+                Button("Commit") {
+                    showingEmptyCommitConfirmation = false
+                    guard let emptyCommitAction else { return }
+                    let shouldAllowEmptyCommit = emptyCommitAction == .allowEmptyCommit
+                    let shouldAllowEmptyMessage = allowEmptyMessage
+                    self.emptyCommitAction = nil
+                    allowEmptyMessage = false
+                    Task {
+                        await performCommit(
+                            allowEmpty: shouldAllowEmptyCommit,
+                            commitChangedFiles: !shouldAllowEmptyCommit,
+                            allowEmptyMessage: shouldAllowEmptyMessage
+                        )
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(
+                    emptyCommitAction == nil
+                        || (commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !allowEmptyMessage)
+                )
+            }
+        }
+        .padding(24)
+        .frame(width: 380)
     }
 
     private var canGenerateCommitMessage: Bool {
@@ -1066,17 +1140,25 @@ struct FileStatusView: View {
         }
     }
 
-    private func performCommit() async {
+    private func performCommit(
+        allowEmpty: Bool = false,
+        commitChangedFiles: Bool = false,
+        allowEmptyMessage: Bool = false
+    ) async {
         let message = commitMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !message.isEmpty else { return }
+        guard !message.isEmpty || allowEmptyMessage else { return }
         do {
+            if commitChangedFiles {
+                try await GitStatusService.shared.stageAllChanges(in: repositoryURL)
+            }
             let oldHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
             try await GitStatusService.shared.commit(
                 message: message,
                 in: repositoryURL,
                 amend: amendLastCommit,
                 noVerify: bypassHooks,
-                signOff: signOffCommit
+                signOff: signOffCommit,
+                allowEmpty: allowEmpty
             )
             let newHead = await GitStatusService.shared.tipHash(for: "HEAD", in: repositoryURL)
             if !amendLastCommit, let oldHead, let newHead, oldHead != newHead {

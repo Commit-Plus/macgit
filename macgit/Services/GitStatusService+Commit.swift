@@ -83,8 +83,16 @@ extension GitStatusService {
         try await commit(message: message, in: repositoryURL)
     }
 
-    func commit(message: String, in repositoryURL: URL, amend: Bool = false, noVerify: Bool = false, signOff: Bool = false) async throws {
+    func commit(
+        message: String,
+        in repositoryURL: URL,
+        amend: Bool = false,
+        noVerify: Bool = false,
+        signOff: Bool = false,
+        allowEmpty: Bool = false
+    ) async throws {
         var arguments = ["commit"]
+        if allowEmpty { arguments.append("--allow-empty") }
         if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             arguments.append("--allow-empty-message")
         }
