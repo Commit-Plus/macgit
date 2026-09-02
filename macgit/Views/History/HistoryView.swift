@@ -57,6 +57,10 @@ struct HistoryView: View {
     @State private var dragClickSuppressionTask: Task<Void, Never>?
     @State private var dragCompletionMonitorTask: Task<Void, Never>?
     @State private var selectedCommit: Commit? = nil
+    @State private var showingCommitInfo = false
+    @State private var fullCommitMessage: String?
+    @State private var isLoadingFullCommitMessage = false
+    @State private var fullCommitMessageLoadID = UUID()
     @State private var fileChanges: [CommitFileChange] = []
     @State private var selectedFile: CommitFileChange? = nil
     @State private var diffHunks: [DiffHunk] = []
@@ -177,6 +181,9 @@ struct HistoryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .onChange(of: selectedCommit) { _, newCommit in
+            showingCommitInfo = false
+            fullCommitMessage = nil
+            isLoadingFullCommitMessage = false
             Task {
                 await loadFileChanges(for: newCommit)
             }
@@ -822,16 +829,57 @@ struct HistoryView: View {
                     Text(commit.author)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Text("•")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                    Text(commit.email)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Text("•")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                    Text(commit.date, format: .dateTime.year().month().day().hour().minute())
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                     Text("•")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                     Text(commit.hash)
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.tertiary)
+                        .lineLimit(1)
                 }
             }
             
             Spacer()
+
+            Button("Show commit details", systemImage: "info.circle") {
+                showCommitInfo(for: commit)
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .frame(width: 28, height: 28)
+            .contentShape(Rectangle())
+            .padding(.trailing, 8)
+            .help("Show full commit message and details")
+            .accessibilityLabel("Show full commit message and details")
+            .onContinuousHover(perform: updateCommitInfoCursor)
+            .popover(isPresented: $showingCommitInfo, arrowEdge: .bottom) {
+                CommitInfoPopoverView(
+                    commit: commit,
+                    fullMessage: fullCommitMessage,
+                    isLoadingMessage: isLoadingFullCommitMessage,
+                    onCopyMessage: {
+                        copyToPasteboard(fullCommitMessage ?? commit.message)
+                    },
+                    onCopyHash: {
+                        copyToPasteboard(commit.hash)
+                    }
+                )
+            }
             
             if !commit.refs.isEmpty {
                 HStack(spacing: 4) {
@@ -850,7 +898,16 @@ struct HistoryView: View {
                 .frame(height: 0.5)
         }
     }
-    
+
+    private func updateCommitInfoCursor(_ phase: HoverPhase) {
+        switch phase {
+        case .active:
+            NSCursor.pointingHand.set()
+        case .ended:
+            NSCursor.arrow.set()
+        }
+    }
+
     private var commitDiffViewer: some View {
         Group {
             if let file = selectedFile {
@@ -892,6 +949,35 @@ struct HistoryView: View {
                 )
             }
         }
+    }
+
+    private func showCommitInfo(for commit: Commit) {
+        let loadID = UUID()
+        fullCommitMessageLoadID = loadID
+        fullCommitMessage = nil
+        isLoadingFullCommitMessage = true
+        showingCommitInfo = true
+
+        Task {
+            let message = await GitStatusService.shared.fullCommitMessage(
+                for: commit.hash,
+                in: repositoryURL
+            )
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard fullCommitMessageLoadID == loadID,
+                      selectedCommit?.hash == commit.hash else {
+                    return
+                }
+                fullCommitMessage = message
+                isLoadingFullCommitMessage = false
+            }
+        }
+    }
+
+    private func copyToPasteboard(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
     
     // MARK: - Context Menu

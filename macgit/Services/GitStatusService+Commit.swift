@@ -210,6 +210,18 @@ extension GitStatusService {
         return parseCommitLog(output)
     }
 
+    func fullCommitMessage(for hash: String, in repositoryURL: URL) async -> String? {
+        let trimmedHash = hash.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedHash.isEmpty else { return nil }
+
+        let output = try? await runGit(
+            arguments: ["show", "-s", "--no-notes", "--format=%B", trimmedHash],
+            in: repositoryURL
+        )
+        guard let output else { return nil }
+        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     func searchCommitHistory(
         allBranches: Bool,
         query: String,
