@@ -60,7 +60,7 @@ struct FileStatusView: View {
     @State private var isCommitBarExpanded = false
     @State private var commitMessage = ""
     @FocusState private var isCommitMessageFocused: Bool
-    @State private var showingEmptyCommitConfirmation = false
+    @State private var showingCommitConfirmation = false
     @State private var emptyCommitAction: EmptyCommitAction?
     @State private var allowEmptyMessage = false
     @State private var amendLastCommit = false
@@ -97,8 +97,17 @@ struct FileStatusView: View {
         !gitStatus.isEmpty
     }
 
-    private var canCommit: Bool {
-        !commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || gitStatus.staged.isEmpty
+    private var isCommitMessageEmpty: Bool {
+        commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var needsCommitConfirmation: Bool {
+        gitStatus.staged.isEmpty || isCommitMessageEmpty
+    }
+
+    private var canConfirmCommit: Bool {
+        (!gitStatus.staged.isEmpty || emptyCommitAction != nil)
+            && (!isCommitMessageEmpty || allowEmptyMessage)
     }
 
     private var actionSelection: FileStatusActionSelection {
@@ -253,8 +262,8 @@ struct FileStatusView: View {
         }, message: {
             Text(errorMessage ?? "An unknown error occurred")
         })
-        .sheet(isPresented: $showingEmptyCommitConfirmation) {
-            emptyCommitConfirmation
+        .sheet(isPresented: $showingCommitConfirmation) {
+            commitConfirmation
         }
         .sheet(item: $ignoreTargetFile) { file in
             IgnoreOptionsView(
@@ -1014,17 +1023,16 @@ struct FileStatusView: View {
 
                 Button("Commit") {
                     Task {
-                        if gitStatus.staged.isEmpty {
+                        if needsCommitConfirmation {
                             emptyCommitAction = nil
                             allowEmptyMessage = false
-                            showingEmptyCommitConfirmation = true
+                            showingCommitConfirmation = true
                         } else {
                             await performCommit(allowEmpty: false)
                         }
                     }
                 }
                 .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 12))
-                .disabled(!canCommit)
             }
         }
         .padding(.horizontal, 16)
@@ -1042,24 +1050,26 @@ struct FileStatusView: View {
         }
     }
 
-    private var emptyCommitConfirmation: some View {
+    private var commitConfirmation: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("No files staged", systemImage: "exclamationmark.triangle.fill")
+            Label(commitConfirmationTitle, systemImage: "exclamationmark.triangle.fill")
                 .font(.headline)
                 .foregroundStyle(.orange)
 
-            Text("No files are staged. Choose whether to create an empty commit or stage all changed files before committing.")
+            Text(commitConfirmationMessage)
                 .foregroundStyle(.secondary)
 
-            Picker("Commit action", selection: $emptyCommitAction) {
-                Text("Create empty commit (no staged files)")
-                    .tag(EmptyCommitAction.allowEmptyCommit as EmptyCommitAction?)
-                Text("Commit all changed files")
-                    .tag(EmptyCommitAction.commitChangedFiles as EmptyCommitAction?)
+            if gitStatus.staged.isEmpty {
+                Picker("Commit action", selection: $emptyCommitAction) {
+                    Text("Create empty commit (no staged files)")
+                        .tag(EmptyCommitAction.allowEmptyCommit as EmptyCommitAction?)
+                    Text("Commit all changed files")
+                        .tag(EmptyCommitAction.commitChangedFiles as EmptyCommitAction?)
+                }
+                .pickerStyle(.radioGroup)
             }
-            .pickerStyle(.radioGroup)
 
-            if commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if isCommitMessageEmpty {
                 Toggle("Commit with empty message", isOn: $allowEmptyMessage)
                     .toggleStyle(.checkbox)
             }
@@ -1068,35 +1078,52 @@ struct FileStatusView: View {
                 Spacer()
 
                 Button("Cancel", role: .cancel) {
-                    showingEmptyCommitConfirmation = false
+                    showingCommitConfirmation = false
                     emptyCommitAction = nil
                     allowEmptyMessage = false
                 }
 
                 Button("Commit") {
-                    showingEmptyCommitConfirmation = false
-                    guard let emptyCommitAction else { return }
-                    let shouldAllowEmptyCommit = emptyCommitAction == .allowEmptyCommit
+                    showingCommitConfirmation = false
+                    let shouldAllowEmptyCommit = gitStatus.staged.isEmpty
+                        && emptyCommitAction == .allowEmptyCommit
+                    let shouldCommitChangedFiles = gitStatus.staged.isEmpty
+                        && emptyCommitAction == .commitChangedFiles
                     let shouldAllowEmptyMessage = allowEmptyMessage
                     self.emptyCommitAction = nil
                     allowEmptyMessage = false
                     Task {
                         await performCommit(
                             allowEmpty: shouldAllowEmptyCommit,
-                            commitChangedFiles: !shouldAllowEmptyCommit,
+                            commitChangedFiles: shouldCommitChangedFiles,
                             allowEmptyMessage: shouldAllowEmptyMessage
                         )
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(
-                    emptyCommitAction == nil
-                        || (commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !allowEmptyMessage)
-                )
+                .disabled(!canConfirmCommit)
             }
         }
         .padding(24)
         .frame(width: 380)
+    }
+
+    private var commitConfirmationTitle: String {
+        if gitStatus.staged.isEmpty {
+            "No files staged"
+        } else {
+            "Empty commit message"
+        }
+    }
+
+    private var commitConfirmationMessage: String {
+        if gitStatus.staged.isEmpty && isCommitMessageEmpty {
+            "No files are staged and the commit message is empty. Choose how to handle changed files, then confirm the empty message."
+        } else if gitStatus.staged.isEmpty {
+            "No files are staged. Choose whether to create an empty commit or stage all changed files before committing."
+        } else {
+            "The commit message is empty. Confirm that you want to commit the staged files without a message."
+        }
     }
 
     private var canGenerateCommitMessage: Bool {
