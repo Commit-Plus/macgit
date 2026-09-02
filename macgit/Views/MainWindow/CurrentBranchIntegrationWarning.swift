@@ -34,6 +34,7 @@ struct CurrentBranchIntegrationWarning: View {
             .contentShape(Rectangle())
             .help(helpText)
             .accessibilityHint(helpText)
+            .onContinuousHover(perform: updateCursor)
             .popover(isPresented: $showingDetails, arrowEdge: .trailing) {
                 CurrentBranchIntegrationWarningDetails(
                     status: status,
@@ -59,6 +60,15 @@ struct CurrentBranchIntegrationWarning: View {
 
     private func showDetails() {
         showingDetails.toggle()
+    }
+
+    private func updateCursor(_ phase: HoverPhase) {
+        switch phase {
+        case .active:
+            NSCursor.pointingHand.set()
+        case .ended:
+            NSCursor.arrow.set()
+        }
     }
 
     private func performUpdate() {

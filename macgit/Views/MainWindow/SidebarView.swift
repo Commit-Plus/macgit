@@ -849,11 +849,15 @@ private struct SidebarScrollIndicatorController: NSViewRepresentable {
 }
 
 private final class SidebarScrollIndicatorBridgeView: NSView {
+    private static let overflowTolerance: CGFloat = 0.5
+
     private weak var scrollView: NSScrollView?
+    private weak var observedDocumentView: NSView?
     private var showsIndicators = false
     private var onScroll: (() -> Void)?
-    private var boundsObserver: NSObjectProtocol?
+    private var observationTokens: [NSObjectProtocol] = []
     private var resolutionTask: Task<Void, Never>?
+    private var indicatorRefreshTask: Task<Void, Never>?
     private var lastContentOffset: CGPoint?
 
     func configure(showsIndicators: Bool, onScroll: @escaping () -> Void) {
@@ -866,12 +870,11 @@ private final class SidebarScrollIndicatorBridgeView: NSView {
     func detach() {
         resolutionTask?.cancel()
         resolutionTask = nil
-        if let boundsObserver {
-            NotificationCenter.default.removeObserver(boundsObserver)
-        }
-        boundsObserver = nil
-        scrollView?.hasVerticalScroller = true
+        indicatorRefreshTask?.cancel()
+        indicatorRefreshTask = nil
+        removeObservers()
         scrollView = nil
+        observedDocumentView = nil
         lastContentOffset = nil
         onScroll = nil
     }
@@ -894,28 +897,74 @@ private final class SidebarScrollIndicatorBridgeView: NSView {
                 return
             }
             guard scrollView !== resolvedScrollView else {
+                installObserversIfNeeded(for: resolvedScrollView)
                 applyIndicatorVisibility()
                 return
             }
 
-            if let boundsObserver {
-                NotificationCenter.default.removeObserver(boundsObserver)
-            }
-            scrollView?.hasVerticalScroller = true
+            removeObservers()
             scrollView = resolvedScrollView
             resolvedScrollView.scrollerStyle = .overlay
             resolvedScrollView.autohidesScrollers = false
-            resolvedScrollView.contentView.postsBoundsChangedNotifications = true
             lastContentOffset = resolvedScrollView.contentView.bounds.origin
-            boundsObserver = NotificationCenter.default.addObserver(
+            installObserversIfNeeded(for: resolvedScrollView)
+            applyIndicatorVisibility()
+        }
+    }
+
+    private func installObserversIfNeeded(for scrollView: NSScrollView) {
+        guard observationTokens.isEmpty || observedDocumentView !== scrollView.documentView else {
+            return
+        }
+
+        removeObservers()
+
+        let contentView = scrollView.contentView
+        let documentView = scrollView.documentView
+        contentView.postsBoundsChangedNotifications = true
+        contentView.postsFrameChangedNotifications = true
+        documentView?.postsBoundsChangedNotifications = true
+        documentView?.postsFrameChangedNotifications = true
+        observedDocumentView = documentView
+        lastContentOffset = contentView.bounds.origin
+
+        observationTokens.append(
+            NotificationCenter.default.addObserver(
                 forName: NSView.boundsDidChangeNotification,
-                object: resolvedScrollView.contentView,
+                object: contentView,
                 queue: .main
             ) { [weak self] _ in
                 self?.contentOffsetDidChange()
             }
-            applyIndicatorVisibility()
+        )
+
+        observationTokens.append(
+            NotificationCenter.default.addObserver(
+                forName: NSView.frameDidChangeNotification,
+                object: contentView,
+                queue: .main
+            ) { [weak self] _ in
+                self?.scheduleIndicatorRefresh()
+            }
+        )
+
+        guard let documentView else { return }
+        for notificationName in [NSView.frameDidChangeNotification, NSView.boundsDidChangeNotification] {
+            observationTokens.append(
+                NotificationCenter.default.addObserver(
+                    forName: notificationName,
+                    object: documentView,
+                    queue: .main
+                ) { [weak self] _ in
+                    self?.scheduleIndicatorRefresh()
+                }
+            )
         }
+    }
+
+    private func removeObservers() {
+        observationTokens.forEach { NotificationCenter.default.removeObserver($0) }
+        observationTokens.removeAll()
     }
 
     private func findScrollView() -> NSScrollView? {
@@ -942,16 +991,48 @@ private final class SidebarScrollIndicatorBridgeView: NSView {
     private func contentOffsetDidChange() {
         guard let scrollView else { return }
         let contentOffset = scrollView.contentView.bounds.origin
+        scheduleIndicatorRefresh()
         guard contentOffset != lastContentOffset else { return }
         lastContentOffset = contentOffset
         onScroll?()
     }
 
+    private func scheduleIndicatorRefresh() {
+        indicatorRefreshTask?.cancel()
+        indicatorRefreshTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            self?.applyIndicatorVisibility()
+        }
+    }
+
     private func applyIndicatorVisibility() {
         guard let scrollView else { return }
-        scrollView.hasVerticalScroller = showsIndicators
-        scrollView.verticalScroller?.isHidden = !showsIndicators
-        scrollView.verticalScroller?.alphaValue = showsIndicators ? 1 : 0
+        let contentView = scrollView.contentView
+        let hasVerticalOverflow = contentView.documentRect.height
+            > contentView.bounds.height + Self.overflowTolerance
+        let shouldShowIndicator = hasVerticalOverflow && showsIndicators
+
+        // Keep an overflowing list's overlay scroller installed at all times so
+        // hover changes never alter the List's available content width.
+        if scrollView.scrollerStyle != .overlay {
+            scrollView.scrollerStyle = .overlay
+        }
+        if scrollView.autohidesScrollers {
+            scrollView.autohidesScrollers = false
+        }
+        if scrollView.hasVerticalScroller != hasVerticalOverflow {
+            scrollView.hasVerticalScroller = hasVerticalOverflow
+        }
+        let hidesIndicator = !shouldShowIndicator
+        if scrollView.verticalScroller?.isHidden != hidesIndicator {
+            scrollView.verticalScroller?.isHidden = hidesIndicator
+        }
+
+        let indicatorAlpha: CGFloat = shouldShowIndicator ? 1 : 0
+        if scrollView.verticalScroller?.alphaValue != indicatorAlpha {
+            scrollView.verticalScroller?.alphaValue = indicatorAlpha
+        }
     }
 }
 
