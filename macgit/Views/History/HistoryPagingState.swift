@@ -41,6 +41,12 @@ struct HistoryPagingState {
         isLoadingMore = false
     }
 
+    mutating func replaceLoadedHistory(count: Int, hasMore: Bool) {
+        loadedCount = count
+        self.hasMore = hasMore
+        isLoadingMore = false
+    }
+
     mutating func cancelLoadingMore() {
         isLoadingMore = false
     }

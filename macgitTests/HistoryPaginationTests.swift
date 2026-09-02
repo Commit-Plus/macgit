@@ -67,6 +67,11 @@ final class HistoryPaginationTests: XCTestCase {
 
         XCTAssertFalse(state.isLoadingMore)
 
+        state.replaceLoadedHistory(count: 175, hasMore: true)
+        XCTAssertEqual(state.loadedCount, 175)
+        XCTAssertTrue(state.hasMore)
+        XCTAssertFalse(state.isLoadingMore)
+
         state.reset()
         XCTAssertEqual(state.loadedCount, 0)
         XCTAssertTrue(state.hasMore)

@@ -219,14 +219,14 @@ struct HistoryView: View {
                url == repositoryURL {
                 historyCache.removeAll()
                 Task {
-                    await loadHistory(reset: true)
+                    await loadHistory(reset: true, preservingSelectionAndScroll: true)
                 }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .advancedClearSessionCaches)) { _ in
             historyCache.removeAll()
             Task {
-                await loadHistory(reset: true)
+                await loadHistory(reset: true, preservingSelectionAndScroll: true)
             }
         }
         .alert("Error", isPresented: $showingError, actions: {
@@ -1056,13 +1056,26 @@ struct HistoryView: View {
     
     // MARK: - Data Loading
 
-    private func loadHistory(reset: Bool) async {
+    private func loadHistory(
+        reset: Bool,
+        preservingSelectionAndScroll: Bool = false
+    ) async {
         let cacheKey = historyLoadKey
         if reset, let cached = historyCache[cacheKey] {
             await MainActor.run {
                 applyCachedSnapshot(cached)
             }
             return
+        }
+
+        let preservedLoadLimit = await MainActor.run { () -> Int? in
+            guard reset, preservingSelectionAndScroll else { return nil }
+
+            let selectedIndex = commitSelection.primaryHash.flatMap { primaryHash in
+                commits.firstIndex(where: { $0.hash == primaryHash })
+            }
+            let selectionBufferLimit = selectedIndex.map { $0 + paging.pageSize } ?? 0
+            return max(paging.pageSize, paging.loadedCount, selectionBufferLimit)
         }
 
         isLoading = true
@@ -1087,6 +1100,7 @@ struct HistoryView: View {
         let scope = Self.historyScope(branchFilter: appState.historyBranchFilter)
         let skip = await MainActor.run { paging.loadedCount }
         let pageSize = await MainActor.run { paging.pageSize }
+        let loadLimit = preservedLoadLimit ?? pageSize
         let searchQuery = activeHistorySearchQuery
         let newCommits: [Commit]
         if searchQuery.isEmpty {
@@ -1094,21 +1108,21 @@ struct HistoryView: View {
             case .allBranches:
                 newCommits = await GitStatusService.shared.commitHistory(
                     allBranches: true,
-                    limit: pageSize,
+                    limit: loadLimit,
                     skip: skip,
                     in: repositoryURL
                 )
             case .currentBranch:
                 newCommits = await GitStatusService.shared.commitHistory(
                     allBranches: false,
-                    limit: pageSize,
+                    limit: loadLimit,
                     skip: skip,
                     in: repositoryURL
                 )
             case .ref(let ref):
                 newCommits = await GitStatusService.shared.commitHistory(
                     branch: ref,
-                    limit: pageSize,
+                    limit: loadLimit,
                     skip: skip,
                     in: repositoryURL
                 )
@@ -1119,7 +1133,7 @@ struct HistoryView: View {
                 newCommits = await GitStatusService.shared.searchCommitHistory(
                     allBranches: true,
                     query: searchQuery,
-                    limit: pageSize,
+                    limit: loadLimit,
                     skip: skip,
                     in: repositoryURL
                 )
@@ -1127,7 +1141,7 @@ struct HistoryView: View {
                 newCommits = await GitStatusService.shared.searchCommitHistory(
                     allBranches: false,
                     query: searchQuery,
-                    limit: pageSize,
+                    limit: loadLimit,
                     skip: skip,
                     in: repositoryURL
                 )
@@ -1135,7 +1149,7 @@ struct HistoryView: View {
                 newCommits = await GitStatusService.shared.searchCommitHistory(
                     branch: ref,
                     query: searchQuery,
-                    limit: pageSize,
+                    limit: loadLimit,
                     skip: skip,
                     in: repositoryURL
                 )
@@ -1199,7 +1213,7 @@ struct HistoryView: View {
             commits = loadedCommits
             graphModel = newGraphModel
             let visibleHashes = loadedCommits.map(\.hash)
-            if skip == 0 {
+            if skip == 0 && !preservingSelectionAndScroll {
                 // A branch change must select that branch's tip, even when the
                 // previously selected commit is also reachable from the new branch.
                 commitSelection = HistoryCommitSelection()
@@ -1215,14 +1229,21 @@ struct HistoryView: View {
             }
             selectedCommit = Self.commit(withHash: commitSelection.primaryHash, in: loadedCommits)
             tableSelection = Set(commitSelection.selectedHashes)
-            if skip == 0 {
+            if skip == 0 && !preservingSelectionAndScroll {
                 scrollTarget = Self.reloadTargetHash(
                     reset: true,
                     selectedCommitHash: selectedCommit?.hash,
                     newScrollTarget: newScrollTarget
                 )
             }
-            paging.finishLoadingMore(loaded: newCommits.count)
+            if skip == 0 && preservingSelectionAndScroll {
+                paging.replaceLoadedHistory(
+                    count: newCommits.count,
+                    hasMore: newCommits.count == loadLimit
+                )
+            } else {
+                paging.finishLoadingMore(loaded: newCommits.count)
+            }
             cancelHistoryRefreshIndicator()
 
             historyCache[cacheKey] = HistorySnapshot(
@@ -1230,6 +1251,34 @@ struct HistoryView: View {
                 graphModel: newGraphModel,
                 selectedCommitHash: selectedCommit?.hash
             )
+
+            if preservingSelectionAndScroll, !commitSelection.selectedHashes.isEmpty {
+                restoreSelectionIfTableClearsAfterReload(
+                    commitSelection,
+                    in: loadedCommits
+                )
+            }
+        }
+    }
+
+    private func restoreSelectionIfTableClearsAfterReload(
+        _ selection: HistoryCommitSelection,
+        in reloadedCommits: [Commit]
+    ) {
+        Task { @MainActor in
+            await Task.yield()
+            guard tableSelection.isEmpty else { return }
+
+            var restoredSelection = selection
+            restoredSelection.prune(visibleHashes: reloadedCommits.map(\.hash))
+            guard !restoredSelection.selectedHashes.isEmpty else { return }
+
+            commitSelection = restoredSelection
+            selectedCommit = Self.commit(
+                withHash: restoredSelection.primaryHash,
+                in: reloadedCommits
+            )
+            tableSelection = Set(restoredSelection.selectedHashes)
         }
     }
 
