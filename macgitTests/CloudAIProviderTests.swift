@@ -410,6 +410,9 @@ final class CloudAIProviderTests: XCTestCase {
         let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
         let declarations = try XCTUnwrap(tools.first?["functionDeclarations"] as? [[String: Any]])
         let parameters = try XCTUnwrap(declarations.first?["parameters"] as? [String: Any])
+        let functionCallingConfig = try XCTUnwrap(
+            (try XCTUnwrap(body["toolConfig"] as? [String: Any]))["functionCallingConfig"] as? [String: Any]
+        )
         let contents = try XCTUnwrap(body["contents"] as? [[String: Any]])
         let functionCallPart = try XCTUnwrap(
             (contents.dropLast().last?["parts"] as? [[String: Any]])?.first
@@ -421,6 +424,8 @@ final class CloudAIProviderTests: XCTestCase {
 
         XCTAssertNil(parameters["additionalProperties"])
         XCTAssertEqual(parameters["type"] as? String, "object")
+        XCTAssertEqual(functionCallingConfig["mode"] as? String, "AUTO")
+        XCTAssertNil(functionCallingConfig["allowedFunctionNames"])
         XCTAssertEqual(functionCall["id"] as? String, "gemini-call-1")
         XCTAssertEqual(functionResponse["id"] as? String, "gemini-call-1")
         XCTAssertEqual(functionCallPart["thoughtSignature"] as? String, "opaque-gemini-thought-signature")

@@ -228,6 +228,12 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
                 "parts": [["functionResponse": functionResponse]],
             ])
         }
+        var functionCallingConfig: [String: Any] = [
+            "mode": request.isFirstTurn ? "ANY" : "AUTO",
+        ]
+        if request.isFirstTurn {
+            functionCallingConfig["allowedFunctionNames"] = ["execute_git"]
+        }
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
             "systemInstruction": ["parts": [["text": RepositoryAIPrompt.agentInstructions]]],
             "contents": contents,
@@ -239,10 +245,7 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
                 ]],
             ]],
             "toolConfig": [
-                "functionCallingConfig": [
-                    "mode": request.isFirstTurn ? "ANY" : "AUTO",
-                    "allowedFunctionNames": ["execute_git"],
-                ],
+                "functionCallingConfig": functionCallingConfig,
             ],
             "generationConfig": [
                 "maxOutputTokens": 1_200,
