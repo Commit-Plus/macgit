@@ -546,7 +546,7 @@ final class CloudAIProviderTests: XCTestCase {
         let receivedRequest = try XCTUnwrap(request)
         let body = try requestJSONObject(receivedRequest)
 
-        XCTAssertEqual(result, "No material issues found.")
+        XCTAssertEqual(result.text, "No material issues found.")
         XCTAssertEqual(body["session_id"] as? String, "repository-chat-session")
     }
 
@@ -569,7 +569,7 @@ final class CloudAIProviderTests: XCTestCase {
             request: makeRepositoryRequest(sessionID: "repository-chat-session")
         )
 
-        XCTAssertEqual(result, "Recovered response.")
+        XCTAssertEqual(result.text, "Recovered response.")
         let requestCount = await client.requestCount()
         XCTAssertEqual(requestCount, 2)
     }

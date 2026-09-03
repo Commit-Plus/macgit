@@ -91,7 +91,7 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
         return try CloudCommitMessageResponse.decode(from: text).formatted()
     }
 
-    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> String {
+    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> RepositoryAIAnswer {
         let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
         guard let model = modelStore.model(for: descriptor) else {
             throw CommitMessageGenerationError.providerRequestFailed("DeepSeek model is not configured.")
@@ -107,6 +107,7 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
                 ["role": "user", "content": RepositoryAIPrompt.userPrompt(for: request)],
             ],
             "max_tokens": 1_500,
+            "response_format": ["type": "json_object"],
             "thinking": ["type": "disabled"],
         ])
 
@@ -118,7 +119,7 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
                 "DeepSeek did not return a usable Repository AI response."
             )
         }
-        return text
+        return try RepositoryAIAnswerDecoder.decodeProviderText(text)
     }
 
     func generateRepositoryAgentTurn(

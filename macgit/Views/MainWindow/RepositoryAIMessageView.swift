@@ -16,6 +16,7 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+import AppKit
 import MarkdownUI
 import SwiftUI
 
@@ -48,6 +49,7 @@ struct RepositoryAIMessageView: View {
                             FontSize(.em(0.94))
                         }
                         .textSelection(.enabled)
+                    citations
                 } else {
                     Text(message.text)
                         .font(.callout)
@@ -64,6 +66,36 @@ struct RepositoryAIMessageView: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var citations: some View {
+        if !message.citations.isEmpty {
+            HStack(spacing: 6) {
+                ForEach(message.citations) { citation in
+                    Menu {
+                        Button("Copy citation text") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(citation.label, forType: .string)
+                        }
+                        if let path = message.evidenceManifest?.evidence(for: citation)?.reference.path {
+                            Button("Copy path") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(path, forType: .string)
+                            }
+                        }
+                    } label: {
+                        Label(citation.label, systemImage: "quote.opening")
+                            .font(.caption)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .accessibilityLabel("Citation: \(citation.label)")
+                    .help("Citation actions")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 2)
+        }
     }
 
     private var roleImage: String {

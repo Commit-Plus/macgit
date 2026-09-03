@@ -104,7 +104,7 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
         return try content.formatted()
     }
 
-    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> String {
+    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> RepositoryAIAnswer {
         let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
         guard let model = modelStore.model(for: descriptor) else {
             throw CommitMessageGenerationError.providerRequestFailed("OpenRouter model is not configured.")
@@ -147,7 +147,7 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
             }
             if let text = payload.choices?.first?.message?.content?.plainText,
                !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return text
+                return try RepositoryAIAnswerDecoder.decodeProviderText(text)
             }
             if attempt == 0 { continue }
             throw RepositoryAIError.invalidResponse(payload.repositoryResponseFailureDescription)

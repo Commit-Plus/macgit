@@ -26,6 +26,7 @@ enum RepositoryAIPrompt {
         For reviews, prioritize correctness, security, data loss, concurrency, and regressions. Cite file paths and changed symbols when the evidence supports them. Separate concrete findings from questions or uncertainty. If there are no material findings, say so and summarize what changed.
         For explanations, describe intent, important implementation details, behavior changes, and risks in clear language. Do not invent surrounding code that is not present.
         Keep the response compact and use Markdown when it improves readability. Always include the language identifier on fenced code blocks when it is known.
+        When the context includes an Evidence ID, return JSON only (no code fence or prose outside it): an object with `text` and optional `citations`. Each citation must include its opaque `evidenceID`, a concise label, and either `textRange: { "startLine": 1, "endLine": 1 }` or `diffRange`. Never put local file URLs in Markdown.
         """
 
     static func userPrompt(for request: RepositoryAIRequest) -> String {
@@ -47,6 +48,22 @@ enum RepositoryAIPrompt {
             \(request.toolResult.content)
             </repository_tool_result>
             """
+    }
+
+    static func fileEvidence(_ context: RepositoryAIFileContext) -> String {
+        """
+        <repository_file_context evidence_id="\(context.evidence.id)" source="\(context.reference.source.rawValue)" path="\(context.reference.path)" fingerprint="\(context.evidence.fingerprint)">
+        \(context.content)
+        </repository_file_context>
+        """
+    }
+
+    static func fileEvidence(_ diff: RepositoryAIFileDiff) -> String {
+        """
+        <repository_file_diff evidence_id="\(diff.evidence.id)" source="\(diff.reference.source.rawValue)" path="\(diff.reference.path)" fingerprint="\(diff.evidence.fingerprint)">
+        \(diff.content)
+        </repository_file_diff>
+        """
     }
 
     static let agentInstructions = """

@@ -27,7 +27,7 @@ protocol CommitMessageAIProvider: Sendable {
     ) async throws -> GeneratedCommitMessage
     func generateRepositoryResponse(
         request: RepositoryAIRequest
-    ) async throws -> String
+    ) async throws -> RepositoryAIAnswer
     func generateRepositoryAgentTurn(
         request: RepositoryAIAgentRequest
     ) async throws -> RepositoryAIAgentTurn
@@ -41,7 +41,7 @@ extension CommitMessageAIProvider {
 
     func generateRepositoryResponse(
         request: RepositoryAIRequest
-    ) async throws -> String {
+    ) async throws -> RepositoryAIAnswer {
         throw CommitMessageGenerationError.providerNotImplemented
     }
 
@@ -71,8 +71,8 @@ extension CommitMessageAIProvider {
                 isTruncated: snapshot.isTruncated
             )
         )
-        let text = try await generateRepositoryResponse(request: repositoryRequest)
-        return try ConflictAIResolutionResponse.decode(from: text)
+        let answer = try await generateRepositoryResponse(request: repositoryRequest)
+        return try ConflictAIResolutionResponse.decode(from: answer.text)
     }
 }
 

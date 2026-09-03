@@ -243,7 +243,7 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
         }
     }
 
-    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> String {
+    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> RepositoryAIAnswer {
         let currentAvailability = await availability()
         guard currentAvailability.isAvailable else {
             throw CommitMessageGenerationError.providerUnavailable(currentAvailability.detail)
@@ -257,7 +257,7 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
             guard !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw RepositoryAIError.emptyResponse
             }
-            return response
+            return try RepositoryAIAnswerDecoder.decodeProviderText(response)
         } catch let error as LanguageModelSession.GenerationError {
             if case .exceededContextWindowSize = error {
                 throw CommitMessageGenerationError.contextTooLarge

@@ -137,7 +137,7 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         )
     }
 
-    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> String {
+    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> RepositoryAIAnswer {
         let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
         guard let model = modelStore.model(for: descriptor) else {
             throw CommitMessageGenerationError.providerRequestFailed("Gemini model is not configured.")
@@ -179,7 +179,7 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
             }
             throw RepositoryAIError.emptyResponse
         }
-        return text
+        return try RepositoryAIAnswerDecoder.decodeProviderText(text)
     }
 
     func generateRepositoryAgentTurn(

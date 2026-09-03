@@ -80,7 +80,7 @@ final class RepositoryAITests: XCTestCase {
             tool: .workingTreeChanges
         )
 
-        XCTAssertEqual(response, "Reviewed working_tree_changes in example")
+        XCTAssertEqual(response.text, "Reviewed working_tree_changes in example")
         let receivedTool = await toolExecutor.receivedTool()
         let receivedBudget = await toolExecutor.receivedBudget()
         XCTAssertEqual(receivedTool, .workingTreeChanges)
@@ -176,8 +176,8 @@ private struct StubRepositoryAIProvider: CommitMessageAIProvider {
         GeneratedCommitMessage(subject: "test: message", body: nil)
     }
 
-    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> String {
-        "Reviewed \(request.toolResult.toolName) in \(request.repositoryName)"
+    func generateRepositoryResponse(request: RepositoryAIRequest) async throws -> RepositoryAIAnswer {
+        RepositoryAIAnswer("Reviewed \(request.toolResult.toolName) in \(request.repositoryName)")
     }
 }
 

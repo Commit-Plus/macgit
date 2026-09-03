@@ -79,19 +79,25 @@ nonisolated struct RepositoryAIMessage: Identifiable, Sendable {
     let text: String
     let contextTitle: String?
     let toolResult: RepositoryAIAgentToolResult?
+    let citations: [RepositoryAICitation]
+    let evidenceManifest: RepositoryAIEvidenceManifest?
 
     init(
         id: UUID = UUID(),
         role: RepositoryAIMessageRole,
         text: String,
         contextTitle: String? = nil,
-        toolResult: RepositoryAIAgentToolResult? = nil
+        toolResult: RepositoryAIAgentToolResult? = nil,
+        citations: [RepositoryAICitation] = [],
+        evidenceManifest: RepositoryAIEvidenceManifest? = nil
     ) {
         self.id = id
         self.role = role
         self.text = text
         self.contextTitle = contextTitle
         self.toolResult = toolResult
+        self.citations = citations
+        self.evidenceManifest = evidenceManifest
     }
 }
 

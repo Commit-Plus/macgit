@@ -56,13 +56,15 @@ struct RepositoryAIChatView: View {
                     onSelectCommit: explainCommit,
                     onSubmitReference: explainCommitReference
                 )
+            } else if controller.isChoosingFile {
+                RepositoryAIFilePickerView(controller: controller, onSelect: reviewFile)
             } else if controller.messages.isEmpty {
                 welcomeContent
             } else {
                 transcript
             }
 
-            if !controller.isChoosingCommit {
+            if !controller.isChoosingCommit && !controller.isChoosingFile {
                 composer
             }
         }
@@ -97,6 +99,16 @@ struct RepositoryAIChatView: View {
                     title: "Explain commit",
                     detail: "Summarize intent, behavior, and risks",
                     systemImage: "text.magnifyingglass"
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(controller.isRunning)
+
+            Button(action: runReviewFile) {
+                quickActionLabel(
+                    title: "Review file",
+                    detail: "Inspect a staged or working-tree file diff",
+                    systemImage: "doc.text.magnifyingglass"
                 )
             }
             .buttonStyle(.plain)
@@ -212,6 +224,18 @@ struct RepositoryAIChatView: View {
             return
         }
         Task { await controller.prepareCommitExplanation() }
+    }
+
+    private func runReviewFile() {
+        guard accessDecision.isAllowed else {
+            onRequestAccess()
+            return
+        }
+        Task { await controller.prepareFileReview() }
+    }
+
+    private func reviewFile(_ file: RepositoryAIFileReference) {
+        Task { await controller.reviewFile(file) }
     }
 
     private func explainCommit(_ commit: RepositoryAICommitChoice) {
