@@ -119,7 +119,9 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
         try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
         guard let payload = try? JSONDecoder().decode(Response.self, from: data),
               let text = payload.content.first(where: { $0.type == "text" })?.text else {
-            throw CommitMessageGenerationError.invalidResponse
+            throw RepositoryAIError.invalidResponse(
+                "Claude did not return a usable Repository AI response."
+            )
         }
         return text
     }

@@ -119,7 +119,9 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
         guard let payload = try? JSONDecoder().decode(Response.self, from: data),
               let text = payload.output.flatMap(\.content)
                 .first(where: { $0.type == "output_text" })?.text else {
-            throw CommitMessageGenerationError.invalidResponse
+            throw RepositoryAIError.invalidResponse(
+                "OpenAI did not return a usable Repository AI response."
+            )
         }
         return text
     }

@@ -50,6 +50,21 @@ nonisolated struct RepositoryAIRequest: Sendable {
     let branchName: String?
     let question: String
     let toolResult: RepositoryAIToolResult
+    let sessionID: String?
+
+    init(
+        repositoryName: String,
+        branchName: String?,
+        question: String,
+        toolResult: RepositoryAIToolResult,
+        sessionID: String? = nil
+    ) {
+        self.repositoryName = repositoryName
+        self.branchName = branchName
+        self.question = question
+        self.toolResult = toolResult
+        self.sessionID = sessionID
+    }
 }
 
 nonisolated enum RepositoryAIMessageRole: Sendable {
@@ -82,6 +97,7 @@ nonisolated enum RepositoryAIError: LocalizedError, Equatable {
     case noRepositoryData(String)
     case contextChanged
     case emptyResponse
+    case invalidResponse(String)
 
     var errorDescription: String? {
         switch self {
@@ -95,6 +111,8 @@ nonisolated enum RepositoryAIError: LocalizedError, Equatable {
             "The repository context changed while AI was responding. Ask again to use the latest changes."
         case .emptyResponse:
             "The AI provider returned an empty response."
+        case .invalidResponse(let message):
+            message
         }
     }
 }

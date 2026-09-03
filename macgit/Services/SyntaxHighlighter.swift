@@ -277,6 +277,7 @@ struct SyntaxHighlighter {
                 ("\"([^\"\\\\\\\\]|\\\\\\\\.)*\"", .string),
                 ("'([^'\\\\\\\\]|\\\\\\\\.)*'", .string),
                 ("\\b(?:\(SyntaxHighlighter.keywordPattern))\\b", .keyword),
+                ("\\b[A-Z][A-Za-z0-9_]*\\b", .type),
                 ("\\b\\d+(\\.\\d+)?\\b", .number),
             ]
         }

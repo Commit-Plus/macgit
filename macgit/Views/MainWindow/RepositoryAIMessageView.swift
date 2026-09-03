@@ -23,39 +23,44 @@ struct RepositoryAIMessageView: View {
     let message: RepositoryAIMessage
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 5) {
-                Image(systemName: message.role == .user ? "person.crop.circle" : "sparkles")
-                Text(message.role == .user ? "You" : "Commit+")
-                if let contextTitle = message.contextTitle {
-                    Text("· \(contextTitle)")
-                        .foregroundStyle(.tertiary)
+        RepositoryAIMessageRowLayout(
+            alignsTrailing: message.role == .user,
+            maximumWidthFraction: 0.82
+        ) {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 5) {
+                    Image(systemName: message.role == .user ? "person.crop.circle" : "sparkles")
+                    Text(message.role == .user ? "You" : "Commit+")
+                    if let contextTitle = message.contextTitle {
+                        Text("· \(contextTitle)")
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+                if message.role == .assistant {
+                    Markdown(message.text)
+                        .markdownCodeSyntaxHighlighter(RepositoryAICodeSyntaxHighlighter())
+                        .markdownTextStyle {
+                            FontSize(.em(0.94))
+                        }
+                        .textSelection(.enabled)
+                } else {
+                    Text(message.text)
+                        .font(.callout)
+                        .textSelection(.enabled)
                 }
             }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-
-            if message.role == .assistant {
-                Markdown(message.text)
-                    .markdownTextStyle {
-                        FontSize(.em(0.94))
-                    }
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text(message.text)
-                    .font(.callout)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .background {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(message.role == .user
+                        ? Color.accentColor.opacity(0.11)
+                        : Color.primary.opacity(0.065))
+                    .stroke(.primary.opacity(0.09), lineWidth: 1)
             }
         }
-        .padding(10)
-        .background {
-            RoundedRectangle(cornerRadius: 14)
-                .fill(message.role == .user
-                    ? Color.accentColor.opacity(0.11)
-                    : Color.primary.opacity(0.065))
-                .stroke(.primary.opacity(0.09), lineWidth: 1)
-        }
+        .frame(maxWidth: .infinity)
     }
 }

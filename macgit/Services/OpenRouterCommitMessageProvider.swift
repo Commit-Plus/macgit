@@ -111,30 +111,49 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+        var requestBody: [String: Any] = [
             "model": model,
             "messages": [
                 ["role": "system", "content": RepositoryAIPrompt.instructions],
                 ["role": "user", "content": RepositoryAIPrompt.userPrompt(for: request)],
             ],
             "max_completion_tokens": 1_500,
-        ])
+        ]
+        if let sessionID = request.sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !sessionID.isEmpty {
+            requestBody["session_id"] = sessionID
+        }
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
-        let (data, response) = try await httpClient.data(for: urlRequest)
-        try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
-        guard let payload = try? JSONDecoder().decode(Response.self, from: data) else {
-            throw CommitMessageGenerationError.invalidResponse
-        }
-        if let providerError = payload.error ?? payload.choices?.first?.error {
-            throw CommitMessageGenerationError.providerRequestFailed(
-                "OpenRouter request failed: \(providerError.message)"
+        for attempt in 0..<2 {
+            let (data, response) = try await httpClient.data(for: urlRequest)
+            try CloudAIProviderSupport.validate(
+                response: response,
+                data: data,
+                providerName: descriptor.displayName
             )
+            guard let payload = try? JSONDecoder().decode(Response.self, from: data) else {
+                if attempt == 0 { continue }
+                throw RepositoryAIError.invalidResponse(
+                    "OpenRouter returned an unreadable Repository AI response after retrying."
+                )
+            }
+            if let providerError = payload.error ?? payload.choices?.first?.error {
+                throw CommitMessageGenerationError.providerRequestFailed(
+                    "OpenRouter request failed: \(providerError.message)"
+                )
+            }
+            if let text = payload.choices?.first?.message?.content?.plainText,
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return text
+            }
+            if attempt == 0 { continue }
+            throw RepositoryAIError.invalidResponse(payload.repositoryResponseFailureDescription)
         }
-        guard let content = payload.choices?.first?.message?.content,
-              let text = content.plainText else {
-            throw CommitMessageGenerationError.invalidResponse
-        }
-        return text
+
+        throw RepositoryAIError.invalidResponse(
+            "OpenRouter did not return a usable Repository AI response."
+        )
     }
 
     func generateConflictResolution(
@@ -192,13 +211,41 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
     }
 
     private struct Response: Decodable {
+        let model: String?
         let choices: [Choice]?
         let error: ProviderError?
+
+        var repositoryResponseFailureDescription: String {
+            let provider = model.map { "OpenRouter (\($0))" } ?? "OpenRouter"
+            let choice = choices?.first
+            let finishReason = choice?.finishReason ?? choice?.nativeFinishReason
+            switch finishReason?.lowercased() {
+            case "length", "max_tokens":
+                return "\(provider) reached its output limit before returning a final answer."
+            case "content_filter":
+                return "\(provider) blocked the Repository AI response."
+            case "error":
+                return "\(provider) stopped before returning a final answer."
+            case let reason?:
+                return "\(provider) stopped with finish reason '\(reason)' without returning a final answer."
+            case nil:
+                return "\(provider) did not return a usable Repository AI response."
+            }
+        }
     }
 
     private struct Choice: Decodable {
         let message: Message?
         let error: ProviderError?
+        let finishReason: String?
+        let nativeFinishReason: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case message
+            case error
+            case finishReason = "finish_reason"
+            case nativeFinishReason = "native_finish_reason"
+        }
     }
 
     private struct Message: Decodable {
@@ -226,6 +273,12 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
             }
             if let response = try? container.decode(ConflictAIResolutionResponse.self) {
                 self = .conflict(response)
+                return
+            }
+            if let part = try? container.decode(TextPart.self),
+               let text = part.text,
+               !text.isEmpty {
+                self = .text(text)
                 return
             }
             if let parts = try? container.decode([TextPart].self) {

@@ -161,7 +161,9 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         let (data, response) = try await httpClient.data(for: urlRequest)
         try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
         guard let payload = try? JSONDecoder().decode(Response.self, from: data) else {
-            throw CommitMessageGenerationError.invalidResponse
+            throw RepositoryAIError.invalidResponse(
+                "Gemini did not return a usable Repository AI response."
+            )
         }
         let text = (payload.candidates ?? [])
             .compactMap(\.content)

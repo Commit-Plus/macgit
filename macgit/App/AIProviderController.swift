@@ -242,7 +242,8 @@ final class AIProviderController: ObservableObject {
         repositoryURL: URL,
         branchName: String?,
         question: String,
-        tool: RepositoryAIToolCall
+        tool: RepositoryAIToolCall,
+        sessionID: String? = nil
     ) async throws -> String {
         let normalizedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedQuestion.isEmpty else {
@@ -274,7 +275,8 @@ final class AIProviderController: ObservableObject {
             repositoryName: repositoryURL.lastPathComponent,
             branchName: branchName,
             question: normalizedQuestion,
-            toolResult: result
+            toolResult: result,
+            sessionID: sessionID
         )
         let response = try await provider.generateRepositoryResponse(request: request)
         let currentFingerprint = try await repositoryToolExecutor.fingerprint(

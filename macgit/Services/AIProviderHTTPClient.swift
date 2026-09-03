@@ -26,7 +26,9 @@ struct URLSessionAIProviderHTTPClient: AIProviderHTTPClient {
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let response = response as? HTTPURLResponse else {
-            throw CommitMessageGenerationError.invalidResponse
+            throw CommitMessageGenerationError.providerRequestFailed(
+                "The AI provider returned an invalid HTTP response."
+            )
         }
         return (data, response)
     }

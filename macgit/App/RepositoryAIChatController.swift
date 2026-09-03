@@ -33,6 +33,7 @@ final class RepositoryAIChatController: ObservableObject {
     private let repositoryURL: URL
     private let providerController: AIProviderController
     private let gitService: GitStatusService
+    private var conversationSessionID = UUID().uuidString
 
     init(
         repositoryURL: URL,
@@ -121,6 +122,7 @@ final class RepositoryAIChatController: ObservableObject {
         isChoosingCommit = false
         isLoadingCommits = false
         conversationTitle = "New conversation"
+        conversationSessionID = UUID().uuidString
     }
 
     private func ask(
@@ -149,7 +151,8 @@ final class RepositoryAIChatController: ObservableObject {
                 repositoryURL: repositoryURL,
                 branchName: branch,
                 question: normalized,
-                tool: tool
+                tool: tool,
+                sessionID: conversationSessionID
             )
             messages.append(RepositoryAIMessage(role: .assistant, text: response))
         } catch is CancellationError {

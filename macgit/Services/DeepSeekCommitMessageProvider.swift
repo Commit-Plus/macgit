@@ -112,7 +112,9 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
         try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
         guard let payload = try? JSONDecoder().decode(Response.self, from: data),
               let text = payload.choices.first?.message.content else {
-            throw CommitMessageGenerationError.invalidResponse
+            throw RepositoryAIError.invalidResponse(
+                "DeepSeek did not return a usable Repository AI response."
+            )
         }
         return text
     }

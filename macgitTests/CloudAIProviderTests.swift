@@ -411,6 +411,79 @@ final class CloudAIProviderTests: XCTestCase {
         }
     }
 
+    func testOpenRouterRepositoryResponseUsesStableSessionID() async throws {
+        let store = InMemoryAIProviderCredentialStore(keys: [.openRouter: "openrouter-secret"])
+        let client = StubAIProviderHTTPClient(responseBody: """
+            {"model":"anthropic/claude-sonnet-4.5","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"No material issues found."}}]}
+            """)
+        let provider = OpenRouterCommitMessageProvider(
+            credentialStore: store,
+            httpClient: client
+        )
+
+        let result = try await provider.generateRepositoryResponse(
+            request: makeRepositoryRequest(sessionID: "repository-chat-session")
+        )
+        let request = await client.receivedRequest()
+        let receivedRequest = try XCTUnwrap(request)
+        let body = try requestJSONObject(receivedRequest)
+
+        XCTAssertEqual(result, "No material issues found.")
+        XCTAssertEqual(body["session_id"] as? String, "repository-chat-session")
+    }
+
+    func testOpenRouterRepositoryResponseRetriesMissingContentOnce() async throws {
+        let store = InMemoryAIProviderCredentialStore(keys: [.openRouter: "openrouter-secret"])
+        let client = StubAIProviderHTTPClient(responseBodies: [
+            """
+            {"model":"google/gemini-3.5-flash","choices":[{"finish_reason":"length","message":{"role":"assistant","content":null}}]}
+            """,
+            """
+            {"model":"anthropic/claude-sonnet-4.5","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"Recovered response."}}]}
+            """,
+        ])
+        let provider = OpenRouterCommitMessageProvider(
+            credentialStore: store,
+            httpClient: client
+        )
+
+        let result = try await provider.generateRepositoryResponse(
+            request: makeRepositoryRequest(sessionID: "repository-chat-session")
+        )
+
+        XCTAssertEqual(result, "Recovered response.")
+        let requestCount = await client.requestCount()
+        XCTAssertEqual(requestCount, 2)
+    }
+
+    func testOpenRouterRepositoryResponseReportsResolvedModelAfterRetry() async {
+        let store = InMemoryAIProviderCredentialStore(keys: [.openRouter: "openrouter-secret"])
+        let response = """
+            {"model":"google/gemini-3.5-flash","choices":[{"finish_reason":"length","message":{"role":"assistant","content":null}}]}
+            """
+        let client = StubAIProviderHTTPClient(responseBodies: [response, response])
+        let provider = OpenRouterCommitMessageProvider(
+            credentialStore: store,
+            httpClient: client
+        )
+
+        do {
+            _ = try await provider.generateRepositoryResponse(
+                request: makeRepositoryRequest(sessionID: "repository-chat-session")
+            )
+            XCTFail("Expected the missing response to fail")
+        } catch let error as RepositoryAIError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    "OpenRouter (google/gemini-3.5-flash) reached its output limit before returning a final answer."
+                )
+            )
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testCloudProviderRejectsGenerationWithoutAPIKey() async {
         let provider = OpenAICommitMessageProvider(
             credentialStore: InMemoryAIProviderCredentialStore(),
@@ -438,6 +511,22 @@ final class CloudAIProviderTests: XCTestCase {
                 isTruncated: false
             ),
             recentCommitSubjects: ["feat: Add Apple Intelligence generation"]
+        )
+    }
+
+    private func makeRepositoryRequest(sessionID: String? = nil) -> RepositoryAIRequest {
+        RepositoryAIRequest(
+            repositoryName: "macgit",
+            branchName: "main",
+            question: "Review the current changes",
+            toolResult: RepositoryAIToolResult(
+                toolName: "working_tree_changes",
+                title: "Working changes",
+                fingerprint: "tree-1",
+                content: "M\tmacgit/App/AIProviderController.swift",
+                isTruncated: false
+            ),
+            sessionID: sessionID
         )
     }
 
@@ -518,17 +607,23 @@ final class InMemoryAIProviderModelStore: AIProviderModelStore, @unchecked Senda
 }
 
 private actor StubAIProviderHTTPClient: AIProviderHTTPClient {
-    private let responseBody: String
+    private let responseBodies: [String]
     private let statusCode: Int
-    private var request: URLRequest?
+    private var requests: [URLRequest] = []
 
     init(responseBody: String, statusCode: Int = 200) {
-        self.responseBody = responseBody
+        responseBodies = [responseBody]
+        self.statusCode = statusCode
+    }
+
+    init(responseBodies: [String], statusCode: Int = 200) {
+        self.responseBodies = responseBodies
         self.statusCode = statusCode
     }
 
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        self.request = request
+        let responseIndex = min(requests.count, max(0, responseBodies.count - 1))
+        requests.append(request)
         guard let url = request.url,
               let response = HTTPURLResponse(
                 url: url,
@@ -538,11 +633,16 @@ private actor StubAIProviderHTTPClient: AIProviderHTTPClient {
               ) else {
             throw CommitMessageGenerationError.invalidResponse
         }
+        let responseBody = responseBodies.isEmpty ? "{}" : responseBodies[responseIndex]
         return (Data(responseBody.utf8), response)
     }
 
     func receivedRequest() -> URLRequest? {
-        request
+        requests.last
+    }
+
+    func requestCount() -> Int {
+        requests.count
     }
 }
 
