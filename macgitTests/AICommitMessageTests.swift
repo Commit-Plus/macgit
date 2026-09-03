@@ -19,6 +19,36 @@ import XCTest
 @testable import macgit
 
 final class AICommitMessageTests: XCTestCase {
+    func testAppleRepositoryGitArgumentsDropOneExecutablePrefix() {
+        XCTAssertEqual(
+            AppleIntelligenceCommitMessageProvider.normalizedRepositoryGitArguments([
+                "git", "diff", "--cached"
+            ]),
+            ["diff", "--cached"]
+        )
+        XCTAssertEqual(
+            AppleIntelligenceCommitMessageProvider.normalizedRepositoryGitArguments([
+                " Git ", "status", "--short"
+            ]),
+            ["status", "--short"]
+        )
+    }
+
+    func testAppleRepositoryGitArgumentsKeepValidInputAndDropOnlyOnePrefix() {
+        XCTAssertEqual(
+            AppleIntelligenceCommitMessageProvider.normalizedRepositoryGitArguments([
+                "diff", "--cached"
+            ]),
+            ["diff", "--cached"]
+        )
+        XCTAssertEqual(
+            AppleIntelligenceCommitMessageProvider.normalizedRepositoryGitArguments([
+                "git", "git", "status"
+            ]),
+            ["git", "status"]
+        )
+    }
+
     func testContextBuilderBoundsLargePatch() {
         let patch = String(repeating: "+let generated = true\n", count: 500)
 

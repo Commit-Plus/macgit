@@ -135,7 +135,7 @@ private struct AppleRepositoryAgentResponse {
     @Guide(description: "Choose executeGit until Git evidence is sufficient; the first response must choose executeGit")
     var action: AppleRepositoryAgentAction
 
-    @Guide(description: "The Git subcommand and arguments without the git executable. Required only for executeGit.")
+    @Guide(description: "The Git subcommand and arguments without the git executable. Example: [\"diff\", \"--cached\"], never [\"git\", \"diff\", \"--cached\"]. Required only for executeGit.")
     var arguments: [String]
 
     @Guide(description: "The user-facing answer. Required only for answer and otherwise empty.")
@@ -157,6 +157,14 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
     )
 
     var supportsRepositoryAgent: Bool { true }
+
+    static func normalizedRepositoryGitArguments(_ arguments: [String]) -> [String] {
+        guard let firstArgument = arguments.first?.trimmingCharacters(in: .whitespacesAndNewlines),
+              firstArgument.caseInsensitiveCompare("git") == .orderedSame else {
+            return arguments
+        }
+        return Array(arguments.dropFirst())
+    }
 
     func availability() async -> AIProviderAvailability {
         switch SystemLanguageModel.default.availability {
@@ -268,6 +276,7 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
         let session = LanguageModelSession(instructions: """
             \(RepositoryAIPrompt.agentInstructions)
             Return executeGit with one Git argument array whenever more repository evidence is needed. On the first turn, you must return executeGit. Return answer only after the supplied Git evidence is sufficient.
+            Arguments start with the Git subcommand. Use ["diff", "--cached"], never include "git" as the first argument.
             """)
         do {
             let response = try await session.respond(
@@ -277,12 +286,13 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
             ).content
             switch response.action {
             case .executeGit:
+                let arguments = Self.normalizedRepositoryGitArguments(response.arguments)
                 return RepositoryAIAgentTurn(
                     text: "",
                     toolCalls: [RepositoryAIAgentToolCall(
                         id: UUID().uuidString,
                         name: "execute_git",
-                        arguments: response.arguments
+                        arguments: arguments
                     )]
                 )
             case .answer:
