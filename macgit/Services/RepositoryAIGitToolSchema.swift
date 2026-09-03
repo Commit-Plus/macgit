@@ -31,4 +31,18 @@ nonisolated enum RepositoryAIGitToolSchema {
         "required": ["arguments"],
         "additionalProperties": false,
     ]
+
+    /// Gemini FunctionDeclaration accepts a narrower OpenAPI subset than the
+    /// JSON Schema dialect used by the OpenAI-compatible tool adapters.
+    static let geminiFunctionParameters: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "arguments": [
+                "type": "array",
+                "items": ["type": "string"],
+                "description": "Git subcommand and arguments, without the git executable.",
+            ],
+        ],
+        "required": ["arguments"],
+    ]
 }

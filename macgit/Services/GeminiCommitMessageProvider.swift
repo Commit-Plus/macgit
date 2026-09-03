@@ -203,6 +203,7 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
                 "role": "model",
                 "parts": [[
                     "functionCall": [
+                        "id": toolResult.toolCall.id,
                         "name": toolResult.toolCall.name,
                         "args": ["arguments": toolResult.toolCall.arguments],
                     ],
@@ -212,6 +213,7 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
                 "role": "user",
                 "parts": [[
                     "functionResponse": [
+                        "id": toolResult.toolCall.id,
                         "name": toolResult.toolCall.name,
                         "response": ["output": toolResult.commandResult.output],
                     ],
@@ -225,7 +227,7 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
                 "functionDeclarations": [[
                     "name": "execute_git",
                     "description": "Run one bounded, read-only Git query in the current repository.",
-                    "parameters": RepositoryAIGitToolSchema.parameters,
+                    "parameters": RepositoryAIGitToolSchema.geminiFunctionParameters,
                 ]],
             ]],
             "toolConfig": [

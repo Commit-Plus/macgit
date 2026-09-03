@@ -366,6 +366,61 @@ final class CloudAIProviderTests: XCTestCase {
         }
     }
 
+    func testGeminiAgentUsesCompatibleFunctionSchemaAndMatchesCallIDs() async throws {
+        let store = InMemoryAIProviderCredentialStore(keys: [.googleGemini: "gemini-secret"])
+        let modelStore = InMemoryAIProviderModelStore(models: [.googleGemini: "gemini-custom"])
+        let client = StubAIProviderHTTPClient(responseBody: """
+            {"candidates":[{"content":{"parts":[{"functionCall":{"id":"gemini-call-1","name":"execute_git","args":{"arguments":["diff","--cached"]}}}]}}]}
+            """)
+        let provider = GeminiCommitMessageProvider(
+            credentialStore: store,
+            modelStore: modelStore,
+            httpClient: client
+        )
+        let call = RepositoryAIAgentToolCall(
+            id: "gemini-call-1",
+            name: "execute_git",
+            arguments: ["diff", "--cached"]
+        )
+        let request = RepositoryAIAgentRequest(
+            repositoryName: "macgit",
+            branchName: "main",
+            question: "Review staged files",
+            conversation: [],
+            previousToolResults: [RepositoryAIAgentToolResult(
+                toolCall: call,
+                commandResult: RepositoryAIGitCommandResult(
+                    displayCommand: "git diff --cached",
+                    output: "diff --git a/App.swift b/App.swift",
+                    succeeded: true,
+                    isTruncated: false
+                )
+            )],
+            isFirstTurn: false
+        )
+
+        let turn = try await provider.generateRepositoryAgentTurn(request: request)
+        let receivedRequest = await client.receivedRequest()
+        let body = try requestJSONObject(try XCTUnwrap(receivedRequest))
+        let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+        let declarations = try XCTUnwrap(tools.first?["functionDeclarations"] as? [[String: Any]])
+        let parameters = try XCTUnwrap(declarations.first?["parameters"] as? [String: Any])
+        let contents = try XCTUnwrap(body["contents"] as? [[String: Any]])
+        let functionCall = try XCTUnwrap(
+            (contents.dropLast().last?["parts"] as? [[String: Any]])?.first?["functionCall"] as? [String: Any]
+        )
+        let functionResponse = try XCTUnwrap(
+            (contents.last?["parts"] as? [[String: Any]])?.first?["functionResponse"] as? [String: Any]
+        )
+
+        XCTAssertNil(parameters["additionalProperties"])
+        XCTAssertEqual(parameters["type"] as? String, "object")
+        XCTAssertEqual(functionCall["id"] as? String, "gemini-call-1")
+        XCTAssertEqual(functionResponse["id"] as? String, "gemini-call-1")
+        XCTAssertEqual(turn.toolCalls.first?.id, "gemini-call-1")
+        XCTAssertEqual(turn.toolCalls.first?.arguments, ["diff", "--cached"])
+    }
+
     func testDeepSeekRequestUsesBearerKeyAndJSONMode() async throws {
         let store = InMemoryAIProviderCredentialStore(keys: [.deepSeek: "deepseek-secret"])
         let modelStore = InMemoryAIProviderModelStore(models: [.deepSeek: "deepseek-custom"])
