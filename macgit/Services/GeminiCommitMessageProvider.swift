@@ -199,25 +199,33 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
             "parts": [["text": RepositoryAIPrompt.agentPrompt(for: request)]],
         ]]
         for toolResult in request.previousToolResults {
+            let geminiState = toolResult.toolCall.geminiFunctionCallState
+            var functionCall: [String: Any] = [
+                "name": toolResult.toolCall.name,
+                "args": ["arguments": toolResult.toolCall.arguments],
+            ]
+            if let callID = geminiState?.callID {
+                functionCall["id"] = callID
+            }
+            var functionCallPart: [String: Any] = ["functionCall": functionCall]
+            if let thoughtSignature = geminiState?.thoughtSignature {
+                functionCallPart["thoughtSignature"] = thoughtSignature
+            }
+
+            var functionResponse: [String: Any] = [
+                "name": toolResult.toolCall.name,
+                "response": ["output": toolResult.commandResult.output],
+            ]
+            if let callID = geminiState?.callID {
+                functionResponse["id"] = callID
+            }
             contents.append([
                 "role": "model",
-                "parts": [[
-                    "functionCall": [
-                        "id": toolResult.toolCall.id,
-                        "name": toolResult.toolCall.name,
-                        "args": ["arguments": toolResult.toolCall.arguments],
-                    ],
-                ]],
+                "parts": [functionCallPart],
             ])
             contents.append([
                 "role": "user",
-                "parts": [[
-                    "functionResponse": [
-                        "id": toolResult.toolCall.id,
-                        "name": toolResult.toolCall.name,
-                        "response": ["output": toolResult.commandResult.output],
-                    ],
-                ]],
+                "parts": [["functionResponse": functionResponse]],
             ])
         }
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
@@ -249,7 +257,7 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
             throw RepositoryAIError.invalidResponse("Gemini did not return a usable Git tool response.")
         }
         let parts = (payload.candidates ?? []).compactMap(\.content).flatMap(\.parts)
-        let toolCalls: [RepositoryAIAgentToolCall] = try parts.compactMap { part in
+        let toolCalls: [RepositoryAIAgentToolCall] = try parts.compactMap { part -> RepositoryAIAgentToolCall? in
             guard let functionCall = part.functionCall else { return nil }
             guard let arguments = functionCall.args?.arguments else {
                 throw RepositoryAIError.invalidResponse("Gemini returned an invalid Git tool call.")
@@ -257,7 +265,11 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
             return RepositoryAIAgentToolCall(
                 id: functionCall.id ?? UUID().uuidString,
                 name: functionCall.name,
-                arguments: arguments
+                arguments: arguments,
+                geminiFunctionCallState: RepositoryAIGeminiFunctionCallState(
+                    callID: functionCall.id,
+                    thoughtSignature: part.thoughtSignature
+                )
             )
         }
         let text = parts
@@ -340,6 +352,7 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
     private struct Part: Decodable {
         let text: String?
         let thought: Bool?
+        let thoughtSignature: String?
         let functionCall: FunctionCall?
     }
 

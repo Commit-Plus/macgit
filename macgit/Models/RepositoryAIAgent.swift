@@ -18,10 +18,30 @@
 
 import Foundation
 
+nonisolated struct RepositoryAIGeminiFunctionCallState: Equatable, Sendable {
+    /// The model-owned values that must be replayed unchanged in Gemini's
+    /// stateless generateContent function-calling history.
+    let callID: String?
+    let thoughtSignature: String?
+}
+
 nonisolated struct RepositoryAIAgentToolCall: Equatable, Sendable {
     let id: String
     let name: String
     let arguments: [String]
+    let geminiFunctionCallState: RepositoryAIGeminiFunctionCallState?
+
+    init(
+        id: String,
+        name: String,
+        arguments: [String],
+        geminiFunctionCallState: RepositoryAIGeminiFunctionCallState? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.arguments = arguments
+        self.geminiFunctionCallState = geminiFunctionCallState
+    }
 }
 
 nonisolated struct RepositoryAIAgentTurn: Equatable, Sendable {

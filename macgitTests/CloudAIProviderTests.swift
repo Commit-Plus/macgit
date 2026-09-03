@@ -370,18 +370,23 @@ final class CloudAIProviderTests: XCTestCase {
         let store = InMemoryAIProviderCredentialStore(keys: [.googleGemini: "gemini-secret"])
         let modelStore = InMemoryAIProviderModelStore(models: [.googleGemini: "gemini-custom"])
         let client = StubAIProviderHTTPClient(responseBody: """
-            {"candidates":[{"content":{"parts":[{"functionCall":{"id":"gemini-call-1","name":"execute_git","args":{"arguments":["diff","--cached"]}}}]}}]}
+            {"candidates":[{"content":{"parts":[{"thoughtSignature":"opaque-gemini-thought-signature","functionCall":{"id":"gemini-call-1","name":"execute_git","args":{"arguments":["diff","--cached"]}}}]}}]}
             """)
         let provider = GeminiCommitMessageProvider(
             credentialStore: store,
             modelStore: modelStore,
             httpClient: client
         )
-        let call = RepositoryAIAgentToolCall(
-            id: "gemini-call-1",
-            name: "execute_git",
-            arguments: ["diff", "--cached"]
+        let firstRequest = RepositoryAIAgentRequest(
+            repositoryName: "macgit",
+            branchName: "main",
+            question: "Review staged files",
+            conversation: [],
+            previousToolResults: [],
+            isFirstTurn: true
         )
+        let firstTurn = try await provider.generateRepositoryAgentTurn(request: firstRequest)
+        let call = try XCTUnwrap(firstTurn.toolCalls.first)
         let request = RepositoryAIAgentRequest(
             repositoryName: "macgit",
             branchName: "main",
@@ -406,9 +411,10 @@ final class CloudAIProviderTests: XCTestCase {
         let declarations = try XCTUnwrap(tools.first?["functionDeclarations"] as? [[String: Any]])
         let parameters = try XCTUnwrap(declarations.first?["parameters"] as? [String: Any])
         let contents = try XCTUnwrap(body["contents"] as? [[String: Any]])
-        let functionCall = try XCTUnwrap(
-            (contents.dropLast().last?["parts"] as? [[String: Any]])?.first?["functionCall"] as? [String: Any]
+        let functionCallPart = try XCTUnwrap(
+            (contents.dropLast().last?["parts"] as? [[String: Any]])?.first
         )
+        let functionCall = try XCTUnwrap(functionCallPart["functionCall"] as? [String: Any])
         let functionResponse = try XCTUnwrap(
             (contents.last?["parts"] as? [[String: Any]])?.first?["functionResponse"] as? [String: Any]
         )
@@ -417,8 +423,10 @@ final class CloudAIProviderTests: XCTestCase {
         XCTAssertEqual(parameters["type"] as? String, "object")
         XCTAssertEqual(functionCall["id"] as? String, "gemini-call-1")
         XCTAssertEqual(functionResponse["id"] as? String, "gemini-call-1")
+        XCTAssertEqual(functionCallPart["thoughtSignature"] as? String, "opaque-gemini-thought-signature")
         XCTAssertEqual(turn.toolCalls.first?.id, "gemini-call-1")
         XCTAssertEqual(turn.toolCalls.first?.arguments, ["diff", "--cached"])
+        XCTAssertEqual(call.geminiFunctionCallState?.thoughtSignature, "opaque-gemini-thought-signature")
     }
 
     func testDeepSeekRequestUsesBearerKeyAndJSONMode() async throws {
