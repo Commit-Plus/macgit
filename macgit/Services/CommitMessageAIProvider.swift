@@ -28,6 +28,10 @@ protocol CommitMessageAIProvider: Sendable {
     func generateRepositoryResponse(
         request: RepositoryAIRequest
     ) async throws -> RepositoryAIAnswer
+    func streamRepositoryResponse(
+        request: RepositoryAIRequest,
+        onTextDelta: @escaping @Sendable (String) async -> Void
+    ) async throws -> RepositoryAIAnswer
     func generateRepositoryAgentTurn(
         request: RepositoryAIAgentRequest
     ) async throws -> RepositoryAIAgentTurn
@@ -43,6 +47,18 @@ extension CommitMessageAIProvider {
         request: RepositoryAIRequest
     ) async throws -> RepositoryAIAnswer {
         throw CommitMessageGenerationError.providerNotImplemented
+    }
+
+    /// Providers without a native streaming endpoint still participate in the
+    /// Repository AI rendering flow. They publish their completed response as
+    /// one delta, while providers that support SSE override this method.
+    func streamRepositoryResponse(
+        request: RepositoryAIRequest,
+        onTextDelta: @escaping @Sendable (String) async -> Void
+    ) async throws -> RepositoryAIAnswer {
+        let answer = try await generateRepositoryResponse(request: request)
+        await onTextDelta(answer.text)
+        return answer
     }
 
     func generateRepositoryAgentTurn(

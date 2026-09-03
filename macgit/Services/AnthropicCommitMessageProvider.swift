@@ -109,8 +109,8 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": model,
-            "max_tokens": 1_200,
-            "system": RepositoryAIPrompt.instructions,
+            "max_tokens": 3_000,
+            "system": RepositoryAIPrompt.instructions(for: request),
             "messages": [[
                 "role": "user",
                 "content": RepositoryAIPrompt.userPrompt(for: request),
@@ -125,7 +125,7 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
                 "Claude did not return a usable Repository AI response."
             )
         }
-        return try RepositoryAIAnswerDecoder.decodeProviderText(text)
+        return try RepositoryAIAnswerDecoder.decodeProviderText(text, requiresStructuredResponse: request.requiresStructuredResponse)
     }
 
     func generateRepositoryAgentTurn(

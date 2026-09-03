@@ -502,6 +502,60 @@ final class PullRequestController: ObservableObject {
         }
     }
 
+    /// Loads read-only evidence for the canonical provider repository at the
+    /// requested working-copy URL. Repository AI can be opened independently of
+    /// the Pull Requests view, so this hydrates the existing account/repository
+    /// context before reading a PR.
+    func repositoryAIContext(
+        number: Int?,
+        repositoryURL: URL
+    ) async throws -> RepositoryAIPullRequestContext {
+        try await prepareRepositoryAIContext(for: repositoryURL)
+        guard let repository = activeRepository,
+              let token = activeToken,
+              let service = services[repository.provider] else {
+            throw RepositoryAIError.invalidResponse(errorMessage ?? "No authenticated pull request is available for this repository.")
+        }
+        let requestedNumber = number ?? selectedDetail?.summary.number
+        guard let requestedNumber, requestedNumber > 0 else {
+            throw RepositoryAIError.noRepositoryData("a selected pull request number")
+        }
+        return try await RepositoryAIPullRequestContextService(provider: service).load(
+            repository: repository,
+            token: token,
+            number: requestedNumber
+        )
+    }
+
+    func repositoryAIFingerprint(
+        number: Int,
+        repositoryURL: URL
+    ) async throws -> String {
+        try await prepareRepositoryAIContext(for: repositoryURL)
+        guard let repository = activeRepository,
+              let token = activeToken,
+              let service = services[repository.provider] else {
+            throw RepositoryAIError.invalidResponse(errorMessage ?? "No authenticated pull request is available for this repository.")
+        }
+        return try await RepositoryAIPullRequestContextService(provider: service).fingerprint(
+            repository: repository,
+            token: token,
+            number: number
+        )
+    }
+
+    private func prepareRepositoryAIContext(for repositoryURL: URL) async throws {
+        let hasCurrentContext = activeRepositoryURL?.standardizedFileURL == repositoryURL.standardizedFileURL
+            && activeRepository != nil
+            && activeToken != nil
+        guard !hasCurrentContext else { return }
+
+        await loadPullRequests(repositoryURL: repositoryURL)
+        guard activeRepository != nil, activeToken != nil else {
+            throw RepositoryAIError.invalidResponse(errorMessage ?? "No authenticated pull request is available for this repository.")
+        }
+    }
+
     func openChangesInBrowser(_ detail: PullRequestDetail) {
         _ = openURL(detail.changesURL)
     }

@@ -24,6 +24,7 @@ struct RepositoryAIChatView: View {
     let accessDecision: FeatureAccessDecision
     let isSignedIn: Bool
     let onRequestAccess: () -> Void
+    @State private var followsStreaming = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -58,13 +59,17 @@ struct RepositoryAIChatView: View {
                 )
             } else if controller.isChoosingFile {
                 RepositoryAIFilePickerView(controller: controller, onSelect: reviewFile)
+            } else if controller.isChoosingComparison {
+                RepositoryAIRefComparisonPickerView(controller: controller, onSubmit: compareRefs)
+            } else if controller.isChoosingPullRequest {
+                RepositoryAIPullRequestPickerView(controller: controller, onSubmit: analyzePullRequest)
             } else if controller.messages.isEmpty {
                 welcomeContent
             } else {
                 transcript
             }
 
-            if !controller.isChoosingCommit && !controller.isChoosingFile {
+            if !controller.isChoosingCommit && !controller.isChoosingFile && !controller.isChoosingComparison && !controller.isChoosingPullRequest {
                 composer
             }
         }
@@ -79,7 +84,7 @@ struct RepositoryAIChatView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Label("Repository AI", systemImage: "sparkles")
                     .font(.headline)
-                Text("Review local changes or explain a commit using bounded, read-only Git context.")
+                Text("Review local changes, compare refs, or analyze an authenticated pull request.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -114,6 +119,26 @@ struct RepositoryAIChatView: View {
             .buttonStyle(.plain)
             .disabled(controller.isRunning)
 
+            Button(action: runCompareRefs) {
+                quickActionLabel(
+                    title: "Compare branches or refs",
+                    detail: "Review a bounded three-dot diff",
+                    systemImage: "arrow.left.arrow.right"
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(controller.isRunning)
+
+            Button(action: runAnalyzePullRequest) {
+                quickActionLabel(
+                    title: "Analyze pull request",
+                    detail: "Use current-repository GitHub or GitLab context",
+                    systemImage: "arrow.triangle.branch"
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(controller.isRunning)
+
             if !accessDecision.isAllowed {
                 Button(accessButtonTitle, systemImage: "lock.open", action: onRequestAccess)
                     .buttonStyle(.borderedProminent)
@@ -138,19 +163,37 @@ struct RepositoryAIChatView: View {
                         HStack(spacing: 8) {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("Reading repository context…")
+                            Text("Thinking…")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
-                            Button("Cancel", systemImage: "xmark", action: controller.cancelActiveRequest)
-                                .controlSize(.small)
                         }
                     }
                 }
             }
             .onChange(of: controller.messages.count) {
-                guard let lastID = controller.messages.last?.id else { return }
+                guard followsStreaming,
+                      let lastID = controller.messages.last?.id else { return }
                 withAnimation(.snappy) {
                     proxy.scrollTo(lastID, anchor: .bottom)
+                }
+            }
+            .onChange(of: controller.streamingRevision) {
+                guard followsStreaming,
+                      controller.isRunning,
+                      let lastID = controller.messages.last?.id else { return }
+                proxy.scrollTo(lastID, anchor: .bottom)
+            }
+            .onScrollPhaseChange { _, newPhase, context in
+                switch newPhase {
+                case .tracking, .interacting:
+                    followsStreaming = false
+                case .idle:
+                    followsStreaming = context.geometry.visibleRect.maxY
+                        >= context.geometry.contentSize.height - 24
+                case .decelerating, .animating:
+                    break
+                @unknown default:
+                    break
                 }
             }
         }
@@ -172,12 +215,20 @@ struct RepositoryAIChatView: View {
                 .disabled(controller.isRunning)
                 .onSubmit(submitDraft)
 
-            Button("Send question", systemImage: "arrow.up", action: submitDraft)
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
-                .disabled(!controller.canSubmit)
-                .help("Send")
+            if controller.isRunning {
+                Button("Stop generating", systemImage: "stop.fill", action: controller.cancelActiveRequest)
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.circle)
+                    .help("Stop generating")
+            } else {
+                Button("Send question", systemImage: "arrow.up", action: submitDraft)
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.circle)
+                    .disabled(!controller.canSubmit)
+                    .help("Send")
+            }
         }
     }
 
@@ -234,6 +285,22 @@ struct RepositoryAIChatView: View {
         Task { await controller.prepareFileReview() }
     }
 
+    private func runCompareRefs() {
+        guard accessDecision.isAllowed else {
+            onRequestAccess()
+            return
+        }
+        controller.prepareRefComparison()
+    }
+
+    private func runAnalyzePullRequest() {
+        guard accessDecision.isAllowed else {
+            onRequestAccess()
+            return
+        }
+        controller.preparePullRequestAnalysis()
+    }
+
     private func reviewFile(_ file: RepositoryAIFileReference) {
         Task { await controller.reviewFile(file) }
     }
@@ -244,6 +311,14 @@ struct RepositoryAIChatView: View {
 
     private func explainCommitReference() {
         Task { await controller.explainCommitReference() }
+    }
+
+    private func compareRefs() {
+        Task { await controller.compareRefs() }
+    }
+
+    private func analyzePullRequest() {
+        Task { await controller.analyzePullRequest() }
     }
 
     private func submitDraft() {

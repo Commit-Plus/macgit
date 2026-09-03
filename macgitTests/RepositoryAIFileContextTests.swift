@@ -92,6 +92,36 @@ final class RepositoryAIFileContextTests: XCTestCase {
         XCTAssertEqual(answer.citations[0].textRange?.endLine, 379)
     }
 
+    func testNonFileContextRecoversTextFromMalformedJSONInsteadOfRenderingTheWrapper() throws {
+        let payload = #"{ "text": "The PR titled "implement Create Pull Request" is ready." }"#
+
+        let answer = try RepositoryAIAnswerDecoder.decodeProviderText(payload)
+
+        XCTAssertEqual(answer.text, "The PR titled \"implement Create Pull Request\" is ready.")
+        XCTAssertTrue(answer.citations.isEmpty)
+    }
+
+    func testNonFileContextRecoversTextFromAnOutputLimitedJSONResponse() throws {
+        let payload = #"{ "text": "The analysis was cut off before the JSON wrapper""#
+
+        let answer = try RepositoryAIAnswerDecoder.decodeProviderText(payload)
+
+        XCTAssertEqual(answer.text, "The analysis was cut off before the JSON wrapper")
+    }
+
+    func testFileContextStillRejectsMalformedCitationJSON() {
+        let payload = #"{"summary":"Missing the required text field."}"#
+
+        XCTAssertThrowsError(
+            try RepositoryAIAnswerDecoder.decodeProviderText(payload, requiresStructuredResponse: true)
+        ) { error in
+            XCTAssertEqual(
+                error as? RepositoryAIError,
+                .invalidResponse("Repository AI returned malformed structured output.")
+            )
+        }
+    }
+
     private func makeRepository() throws -> URL {
         let repository = FileManager.default.temporaryDirectory.appending(path: "repository-ai-file-context-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: repository, withIntermediateDirectories: true)

@@ -1045,6 +1045,49 @@ final class PullRequestControllerTests: XCTestCase {
         XCTAssertEqual(service.listCallCount, 2)
     }
 
+    func testRepositoryAIContextHydratesTheCurrentRepositoryBeforeLoadingPR() async throws {
+        let account = makeAccount()
+        let token = makeToken()
+        let summary = makeSummary(number: 12)
+        let detail = PullRequestDetail(
+            summary: summary,
+            body: "Review this change.",
+            assignees: [],
+            comments: [],
+            changesURL: URL(string: "https://github.com/octocat/Hello-World/pull/12/files")!
+        )
+        let service = FakePullRequestProvider(
+            result: .success([summary]),
+            detailResult: .success(detail)
+        )
+        let accountController = GitProviderAccountController(
+            store: FakePullRequestAccountStore(accounts: [account]),
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token])
+        )
+        await accountController.updateMacgitAccount(AccountSnapshot(
+            uid: "macgit-user-1",
+            email: "user@example.com",
+            displayName: nil,
+            providerIDs: []
+        ))
+        let controller = PullRequestController(
+            providerAccountController: accountController,
+            tokenVault: FakePullRequestTokenVault(tokensByAccountID: [account.id: token]),
+            services: [.github: service],
+            remoteNameProvider: { _ in "origin" },
+            remoteURLProvider: { _, _ in "https://github.com/octocat/Hello-World.git" }
+        )
+
+        let context = try await controller.repositoryAIContext(
+            number: summary.number,
+            repositoryURL: URL(filePath: "/tmp/repository-ai-pr-context")
+        )
+
+        XCTAssertEqual(context.detail.summary.number, summary.number)
+        XCTAssertEqual(service.receivedRepository?.owner, "octocat")
+        XCTAssertEqual(service.receivedDetailNumber, summary.number)
+    }
+
     private func makeAccount(
         id: String = "macgit-user-1:github:github.com:583231",
         scopes: [String] = ["repo", "read:user"],

@@ -36,6 +36,7 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
     private let modelStore: any AIProviderModelStore
     private let httpClient: any AIProviderHTTPClient
     private let endpoint: URL
+    private let streamingSession: URLSession
 
     var supportsRepositoryAgent: Bool { true }
 
@@ -43,12 +44,14 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
         credentialStore: any AIProviderCredentialStore,
         modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore(),
         httpClient: any AIProviderHTTPClient = URLSessionAIProviderHTTPClient(),
-        endpoint: URL = URL(string: "https://api.deepseek.com/chat/completions")!
+        endpoint: URL = URL(string: "https://api.deepseek.com/chat/completions")!,
+        streamingSession: URLSession = .shared
     ) {
         self.credentialStore = credentialStore
         self.modelStore = modelStore
         self.httpClient = httpClient
         self.endpoint = endpoint
+        self.streamingSession = streamingSession
     }
 
     func availability() async -> AIProviderAvailability {
@@ -100,16 +103,19 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+        var body: [String: Any] = [
             "model": model,
             "messages": [
-                ["role": "system", "content": RepositoryAIPrompt.instructions],
+                ["role": "system", "content": RepositoryAIPrompt.instructions(for: request)],
                 ["role": "user", "content": RepositoryAIPrompt.userPrompt(for: request)],
             ],
-            "max_tokens": 1_500,
-            "response_format": ["type": "json_object"],
+            "max_tokens": 3_000,
             "thinking": ["type": "disabled"],
-        ])
+        ]
+        if request.requiresStructuredResponse {
+            body["response_format"] = ["type": "json_object"]
+        }
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await httpClient.data(for: urlRequest)
         try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
@@ -119,7 +125,72 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
                 "DeepSeek did not return a usable Repository AI response."
             )
         }
-        return try RepositoryAIAnswerDecoder.decodeProviderText(text)
+        return try RepositoryAIAnswerDecoder.decodeProviderText(text, requiresStructuredResponse: request.requiresStructuredResponse)
+    }
+
+    func streamRepositoryResponse(
+        request: RepositoryAIRequest,
+        onTextDelta: @escaping @Sendable (String) async -> Void
+    ) async throws -> RepositoryAIAnswer {
+        guard !request.requiresStructuredResponse else {
+            return try await generateRepositoryResponse(request: request)
+        }
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("DeepSeek model is not configured.")
+        }
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": model,
+            "messages": [
+                ["role": "system", "content": RepositoryAIPrompt.instructions(for: request)],
+                ["role": "user", "content": RepositoryAIPrompt.userPrompt(for: request)],
+            ],
+            "max_tokens": 3_000,
+            "stream": true,
+            "thinking": ["type": "disabled"],
+        ])
+
+        let (bytes, urlResponse) = try await streamingSession.bytes(for: urlRequest)
+        guard let response = urlResponse as? HTTPURLResponse else {
+            throw CommitMessageGenerationError.providerRequestFailed(
+                "DeepSeek returned an invalid HTTP response."
+            )
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            var data = Data()
+            for try await byte in bytes {
+                data.append(byte)
+            }
+            try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+            throw RepositoryAIError.invalidResponse("DeepSeek returned an invalid streaming response.")
+        }
+
+        var content = ""
+        var reachedOutputLimit = false
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            if payload == "[DONE]" { break }
+            guard let data = payload.data(using: .utf8),
+                  let event = try? JSONDecoder().decode(StreamEvent.self, from: data),
+                  let choice = event.choices.first else { continue }
+            if let delta = choice.delta?.content, !delta.isEmpty {
+                content.append(delta)
+                await onTextDelta(delta)
+            }
+            if choice.finishReason?.lowercased() == "length" {
+                reachedOutputLimit = true
+            }
+        }
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw RepositoryAIError.emptyResponse
+        }
+        return RepositoryAIAnswer(text: content, isTruncated: reachedOutputLimit)
     }
 
     func generateRepositoryAgentTurn(
@@ -157,14 +228,13 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
             throw RepositoryAIError.invalidResponse("DeepSeek did not return a usable Git tool response.")
         }
         let toolCalls = try (message.toolCalls ?? []).map { toolCall in
-            guard let data = toolCall.function.arguments.data(using: .utf8),
-                  let decoded = try? JSONDecoder().decode(ToolArguments.self, from: data) else {
+            guard let arguments = Self.decodedToolArguments(from: toolCall.function.arguments) else {
                 throw RepositoryAIError.invalidResponse("DeepSeek returned an invalid Git tool call.")
             }
             return RepositoryAIAgentToolCall(
                 id: toolCall.id,
                 name: toolCall.function.name,
-                arguments: decoded.arguments
+                arguments: arguments
             )
         }
         return RepositoryAIAgentTurn(text: message.content ?? "", toolCalls: toolCalls)
@@ -194,6 +264,25 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
             ])
         }
         return messages
+    }
+
+    /// DeepSeek normally returns the schema object, but some compatible-model
+    /// responses serialize the sole array value directly or double-encode the
+    /// object. Both are semantically equivalent and remain subject to the
+    /// read-only Git command policy in the harness.
+    static func decodedToolArguments(from rawArguments: String) -> [String]? {
+        guard let data = rawArguments.data(using: .utf8) else { return nil }
+        if let decoded = try? JSONDecoder().decode(ToolArguments.self, from: data) {
+            return decoded.arguments
+        }
+        if let decoded = try? JSONDecoder().decode([String].self, from: data) {
+            return decoded
+        }
+        guard let encoded = try? JSONDecoder().decode(String.self, from: data),
+              encoded != rawArguments else {
+            return nil
+        }
+        return decodedToolArguments(from: encoded)
     }
 
     func generateConflictResolution(
@@ -239,6 +328,24 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
 
     private struct Choice: Decodable {
         let message: Message
+    }
+
+    private struct StreamEvent: Decodable {
+        let choices: [StreamChoice]
+    }
+
+    private struct StreamChoice: Decodable {
+        let delta: StreamDelta?
+        let finishReason: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case delta
+            case finishReason = "finish_reason"
+        }
+    }
+
+    private struct StreamDelta: Decodable {
+        let content: String?
     }
 
     private struct Message: Decodable {

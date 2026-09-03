@@ -158,10 +158,12 @@ nonisolated struct RepositoryAICitation: Identifiable, Codable, Equatable, Hasha
 nonisolated struct RepositoryAIAnswer: Equatable, Sendable {
     let text: String
     let citations: [RepositoryAICitation]
+    let isTruncated: Bool
 
-    init(text: String, citations: [RepositoryAICitation] = []) {
+    init(text: String, citations: [RepositoryAICitation] = [], isTruncated: Bool = false) {
         self.text = text
         self.citations = citations
+        self.isTruncated = isTruncated
     }
 
     /// Keeps Phase 1 provider adapters source-compatible while they migrate to
@@ -178,18 +180,52 @@ nonisolated enum RepositoryAIAnswerDecoder {
     }
 
     /// Cloud adapters use this as a compatibility boundary while providers
-    /// roll out native structured output. A non-JSON reply remains useful,
-    /// but malformed JSON is never presented as a fabricated citation set.
-    static func decodeProviderText(_ text: String) throws -> RepositoryAIAnswer {
+    /// roll out native structured output. Only file-evidence requests require
+    /// the citation schema; other contexts retain their provider text without
+    /// ever manufacturing a citation set.
+    static func decodeProviderText(
+        _ text: String,
+        requiresStructuredResponse: Bool = false
+    ) throws -> RepositoryAIAnswer {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw RepositoryAIError.emptyResponse }
         guard trimmed.hasPrefix("{") else { return RepositoryAIAnswer(trimmed) }
         guard let data = trimmed.data(using: .utf8),
               let decoded = try? JSONDecoder().decode(WireAnswer.self, from: data),
               !decoded.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw RepositoryAIError.invalidResponse("Repository AI returned malformed structured output.")
+            guard !requiresStructuredResponse else {
+                throw RepositoryAIError.invalidResponse("Repository AI returned malformed structured output.")
+            }
+            if let recoveredText = recoveredText(fromMalformedJSONObject: trimmed) {
+                return RepositoryAIAnswer(recoveredText)
+            }
+            return RepositoryAIAnswer(trimmed)
         }
         return RepositoryAIAnswer(text: decoded.text, citations: decoded.citations ?? [])
+    }
+
+    /// A provider can occasionally emit a JSON-shaped response whose `text`
+    /// value contains unescaped quotes. It is not valid JSON, but displaying
+    /// the wrapper is worse than safely recovering the only user-facing field.
+    /// Citations are deliberately never recovered this way.
+    private static func recoveredText(fromMalformedJSONObject text: String) -> String? {
+        guard let prefixRange = text.range(of: #"^\s*\{\s*\"text\"\s*:\s*\""#, options: .regularExpression) else {
+            return nil
+        }
+        let body = String(text[prefixRange.upperBound...])
+        let content: String
+        if let suffixRange = body.range(of: #"\"\s*\}\s*$"#, options: [.regularExpression, .backwards]) {
+            content = String(body[..<suffixRange.lowerBound])
+        } else {
+            // A provider can reach its output cap before the JSON wrapper is
+            // closed. The text value remains safe to display as prose.
+            content = body
+        }
+        let recovered = content
+            .replacing("\\n", with: "\n")
+            .replacing("\\\"", with: "\"")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return recovered.isEmpty ? nil : recovered
     }
 }
 

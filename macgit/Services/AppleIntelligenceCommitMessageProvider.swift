@@ -248,7 +248,7 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
         guard currentAvailability.isAvailable else {
             throw CommitMessageGenerationError.providerUnavailable(currentAvailability.detail)
         }
-        let session = LanguageModelSession(instructions: RepositoryAIPrompt.instructions)
+        let session = LanguageModelSession(instructions: RepositoryAIPrompt.instructions(for: request))
         do {
             let response = try await session.respond(
                 to: RepositoryAIPrompt.userPrompt(for: request),
@@ -257,7 +257,7 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
             guard !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw RepositoryAIError.emptyResponse
             }
-            return try RepositoryAIAnswerDecoder.decodeProviderText(response)
+            return try RepositoryAIAnswerDecoder.decodeProviderText(response, requiresStructuredResponse: request.requiresStructuredResponse)
         } catch let error as LanguageModelSession.GenerationError {
             if case .exceededContextWindowSize = error {
                 throw CommitMessageGenerationError.contextTooLarge

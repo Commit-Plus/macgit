@@ -251,7 +251,8 @@ final class AIProviderController: ObservableObject {
         branchName: String?,
         question: String,
         tool: RepositoryAIToolCall,
-        sessionID: String? = nil
+        sessionID: String? = nil,
+        onTextDelta: (@Sendable (String) async -> Void)? = nil
     ) async throws -> RepositoryAIAnswer {
         let normalizedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedQuestion.isEmpty else {
@@ -285,7 +286,15 @@ final class AIProviderController: ObservableObject {
             toolResult: result,
             sessionID: sessionID
         )
-        let response = try await provider.generateRepositoryResponse(request: request)
+        let response: RepositoryAIAnswer
+        if let onTextDelta {
+            response = try await provider.streamRepositoryResponse(
+                request: request,
+                onTextDelta: onTextDelta
+            )
+        } else {
+            response = try await provider.generateRepositoryResponse(request: request)
+        }
         let currentFingerprint = try await repositoryToolExecutor.fingerprint(
             for: tool,
             in: repositoryURL
@@ -295,6 +304,61 @@ final class AIProviderController: ObservableObject {
             throw RepositoryAIError.contextChanged
         }
 
+        guard !response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw RepositoryAIError.emptyResponse
+        }
+        return response
+    }
+
+    /// Sends already-loaded, provider-neutral evidence through the same standalone
+    /// Repository AI path. The caller owns context loading and must re-resolve its
+    /// immutable fingerprint after generation.
+    func answerRepositoryAnalysisQuestion(
+        repositoryURL: URL,
+        branchName: String?,
+        question: String,
+        result: RepositoryAIToolResult,
+        currentFingerprint: @escaping () async throws -> String,
+        sessionID: String? = nil,
+        onTextDelta: (@Sendable (String) async -> Void)? = nil
+    ) async throws -> RepositoryAIAnswer {
+        let normalizedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuestion.isEmpty else { throw RepositoryAIError.emptyQuestion }
+        guard !isGenerating else {
+            throw CommitMessageGenerationError.providerUnavailable("Another AI request is already running.")
+        }
+        guard let provider = registry.provider(for: selectedProviderID) else {
+            throw CommitMessageGenerationError.providerNotImplemented
+        }
+        let providerID = selectedProviderID
+        let availability = await provider.availability()
+        availabilityByProviderID[providerID] = availability
+        guard availability.isAvailable else {
+            throw CommitMessageGenerationError.providerUnavailable(availability.detail)
+        }
+
+        isGenerating = true
+        defer { isGenerating = false }
+        let request = RepositoryAIRequest(
+            repositoryName: repositoryURL.lastPathComponent,
+            branchName: branchName,
+            question: normalizedQuestion,
+            toolResult: result,
+            sessionID: sessionID
+        )
+        let response: RepositoryAIAnswer
+        if let onTextDelta {
+            response = try await provider.streamRepositoryResponse(
+                request: request,
+                onTextDelta: onTextDelta
+            )
+        } else {
+            response = try await provider.generateRepositoryResponse(request: request)
+        }
+        guard providerID == selectedProviderID,
+              try await currentFingerprint() == result.fingerprint else {
+            throw RepositoryAIError.contextChanged
+        }
         guard !response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw RepositoryAIError.emptyResponse
         }

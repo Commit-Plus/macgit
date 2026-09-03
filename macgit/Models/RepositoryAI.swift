@@ -65,6 +65,16 @@ nonisolated struct RepositoryAIRequest: Sendable {
         self.toolResult = toolResult
         self.sessionID = sessionID
     }
+
+    /// Only file contexts expose opaque evidence IDs that can be cited and
+    /// subsequently validated. Other Repository AI contexts accept normal
+    /// Markdown responses, even if a provider chooses JSON-like prose.
+    var requiresStructuredResponse: Bool {
+        switch toolResult.toolName {
+        case "read_file_context", "read_file_diff": true
+        default: false
+        }
+    }
 }
 
 nonisolated enum RepositoryAIMessageRole: Sendable {
@@ -104,6 +114,7 @@ nonisolated struct RepositoryAIMessage: Identifiable, Sendable {
 nonisolated enum RepositoryAIError: LocalizedError, Equatable {
     case emptyQuestion
     case invalidCommitReference
+    case invalidRefReference
     case noRepositoryData(String)
     case contextChanged
     case emptyResponse
@@ -115,6 +126,8 @@ nonisolated enum RepositoryAIError: LocalizedError, Equatable {
             "Ask a question about the selected repository context."
         case .invalidCommitReference:
             "Enter a valid commit hash, branch, tag, or HEAD."
+        case .invalidRefReference:
+            "Enter a valid local, remote-tracking, tag, or HEAD ref."
         case .noRepositoryData(let context):
             "No \(context) are available to analyze."
         case .contextChanged:

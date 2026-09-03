@@ -23,30 +23,42 @@ import Foundation
 final class RepositoryAIChatController: ObservableObject {
     @Published var draft = ""
     @Published var commitReferenceDraft = ""
+    @Published var comparisonBaseDraft = ""
+    @Published var comparisonHeadDraft = ""
+    @Published var pullRequestNumberDraft = ""
     @Published private(set) var conversationTitle = "New conversation"
     @Published private(set) var messages: [RepositoryAIMessage] = []
     @Published private(set) var recentCommits: [RepositoryAICommitChoice] = []
     @Published private(set) var isRunning = false
     @Published private(set) var isChoosingCommit = false
     @Published private(set) var isChoosingFile = false
+    @Published private(set) var isChoosingComparison = false
+    @Published private(set) var isChoosingPullRequest = false
     @Published private(set) var isLoadingCommits = false
     @Published private(set) var isLoadingFiles = false
     @Published private(set) var changedFiles: [RepositoryAIFileReference] = []
+    @Published private(set) var streamingRevision = 0
 
     private let repositoryURL: URL
     private let providerController: AIProviderController
     private let gitService: GitStatusService
+    private let pullRequestContextLoader: ((Int?, URL) async throws -> RepositoryAIPullRequestContext)?
+    private let pullRequestFingerprintLoader: ((Int, URL) async throws -> String)?
     private var conversationSessionID = UUID().uuidString
     private var activeRequestTask: Task<Void, Never>?
 
     init(
         repositoryURL: URL,
         providerController: AIProviderController,
-        gitService: GitStatusService = .shared
+        gitService: GitStatusService = .shared,
+        pullRequestContextLoader: ((Int?, URL) async throws -> RepositoryAIPullRequestContext)? = nil,
+        pullRequestFingerprintLoader: ((Int, URL) async throws -> String)? = nil
     ) {
         self.repositoryURL = repositoryURL
         self.providerController = providerController
         self.gitService = gitService
+        self.pullRequestContextLoader = pullRequestContextLoader
+        self.pullRequestFingerprintLoader = pullRequestFingerprintLoader
     }
 
     var canSubmit: Bool {
@@ -62,7 +74,7 @@ final class RepositoryAIChatController: ObservableObject {
     func reviewChanges() async {
         await startRequest(
             "Review the current repository changes. Focus on concrete bugs, regressions, security issues, and missing tests.",
-            mode: .agent,
+            mode: .fixedTool(.workingTreeChanges),
             contextTitle: "Repository analysis",
             conversationTitle: "Review changes"
         )
@@ -120,6 +132,60 @@ final class RepositoryAIChatController: ObservableObject {
         changedFiles.removeAll()
     }
 
+    func prepareRefComparison() {
+        guard !isRunning else { return }
+        if comparisonHeadDraft.isEmpty { comparisonHeadDraft = "HEAD" }
+        isChoosingComparison = true
+    }
+
+    func compareRefs() async {
+        guard !isRunning else { return }
+        guard let base = RepositoryAIRef(comparisonBaseDraft),
+              let head = RepositoryAIRef(comparisonHeadDraft) else {
+            messages.append(RepositoryAIMessage(role: .assistant, text: RepositoryAIError.invalidRefReference.localizedDescription))
+            return
+        }
+        isChoosingComparison = false
+        await startRequest(
+            "Compare these refs as a review. Explain meaningful behavior changes, risks, and missing tests.",
+            mode: .comparison(base, head),
+            contextTitle: "Compare \(base.name) → \(head.name)",
+            conversationTitle: "Compare \(base.name) → \(head.name)"
+        )
+    }
+
+    func cancelRefComparison() {
+        guard !isRunning else { return }
+        isChoosingComparison = false
+    }
+
+    func preparePullRequestAnalysis() {
+        guard !isRunning else { return }
+        isChoosingPullRequest = true
+    }
+
+    func analyzePullRequest() async {
+        guard !isRunning, pullRequestContextLoader != nil, pullRequestFingerprintLoader != nil else { return }
+        let number = Int(pullRequestNumberDraft.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard number == nil || number! > 0 else {
+            messages.append(RepositoryAIMessage(role: .assistant, text: "Enter a positive pull request number."))
+            return
+        }
+        isChoosingPullRequest = false
+        let label = number.map { "Pull request #\($0)" } ?? "Selected pull request"
+        await startRequest(
+            "Analyze this pull request. Focus on concrete behavior changes, review risks, and missing tests.",
+            mode: .pullRequest(number),
+            contextTitle: label,
+            conversationTitle: label
+        )
+    }
+
+    func cancelPullRequestAnalysis() {
+        guard !isRunning else { return }
+        isChoosingPullRequest = false
+    }
+
     private func explainCommit(reference: String, subject: String?) async {
         let normalizedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedReference.isEmpty else { return }
@@ -137,9 +203,12 @@ final class RepositoryAIChatController: ObservableObject {
     func submitDraft() async {
         let question = draft
         draft = ""
+        let mode: RepositoryAIRequestMode = isWorkingTreeReviewRequest(question)
+            ? .fixedTool(.workingTreeChanges)
+            : .agent
         await startRequest(
             question,
-            mode: .agent,
+            mode: mode,
             contextTitle: "Repository analysis"
         )
     }
@@ -152,6 +221,8 @@ final class RepositoryAIChatController: ObservableObject {
         recentCommits.removeAll()
         isChoosingCommit = false
         isChoosingFile = false
+        isChoosingComparison = false
+        isChoosingPullRequest = false
         isLoadingCommits = false
         isLoadingFiles = false
         changedFiles.removeAll()
@@ -203,6 +274,7 @@ final class RepositoryAIChatController: ObservableObject {
         isRunning = true
         defer { isRunning = false }
 
+        var streamingMessageID: UUID?
         do {
             let branch = await gitService.currentBranch(in: repositoryURL)
             switch mode {
@@ -222,14 +294,20 @@ final class RepositoryAIChatController: ObservableObject {
                 }
                 messages.append(RepositoryAIMessage(role: .assistant, text: result.answer))
             case .fixedTool(let tool):
+                let messageID = beginStreamingAssistant()
+                streamingMessageID = messageID
                 let response = try await providerController.answerRepositoryQuestion(
                     repositoryURL: repositoryURL,
                     branchName: branch,
                     question: normalized,
                     tool: tool,
-                    sessionID: conversationSessionID
+                    sessionID: conversationSessionID,
+                    onTextDelta: { [weak self] delta in
+                        await self?.appendStreamingDelta(delta, to: messageID)
+                    }
                 )
-                messages.append(RepositoryAIMessage(role: .assistant, text: response.text))
+                completeStreamingAssistant(messageID, with: response)
+                streamingMessageID = nil
             case .file(let reference, let includeDiff):
                 let response = try await providerController.answerRepositoryFileQuestion(
                     repositoryURL: repositoryURL,
@@ -245,10 +323,59 @@ final class RepositoryAIChatController: ObservableObject {
                     citations: response.answer.citations,
                     evidenceManifest: response.manifest
                 ))
+            case .comparison(let base, let head):
+                let budget = providerController.selectedDescriptor.inputCharacterBudget
+                let comparison = try await gitService.compareRefs(
+                    base: base,
+                    head: head,
+                    in: repositoryURL,
+                    characterBudget: budget
+                )
+                let messageID = beginStreamingAssistant()
+                streamingMessageID = messageID
+                let response = try await providerController.answerRepositoryAnalysisQuestion(
+                    repositoryURL: repositoryURL,
+                    branchName: branch,
+                    question: normalized,
+                    result: comparison.toolResult(characterBudget: budget),
+                    currentFingerprint: { [gitService, repositoryURL] in
+                        try await gitService.currentComparisonFingerprint(base: base, head: head, in: repositoryURL)
+                    },
+                    sessionID: conversationSessionID,
+                    onTextDelta: { [weak self] delta in
+                        await self?.appendStreamingDelta(delta, to: messageID)
+                    }
+                )
+                completeStreamingAssistant(messageID, with: response)
+                streamingMessageID = nil
+            case .pullRequest(let number):
+                guard let pullRequestContextLoader, let pullRequestFingerprintLoader else {
+                    throw RepositoryAIError.noRepositoryData("an authenticated pull request for the current repository")
+                }
+                let context = try await pullRequestContextLoader(number, repositoryURL)
+                let messageID = beginStreamingAssistant()
+                streamingMessageID = messageID
+                let response = try await providerController.answerRepositoryAnalysisQuestion(
+                    repositoryURL: repositoryURL,
+                    branchName: branch,
+                    question: normalized,
+                    result: context.toolResult(characterBudget: providerController.selectedDescriptor.inputCharacterBudget),
+                    currentFingerprint: {
+                        try await pullRequestFingerprintLoader(context.detail.summary.number, self.repositoryURL)
+                    },
+                    sessionID: conversationSessionID,
+                    onTextDelta: { [weak self] delta in
+                        await self?.appendStreamingDelta(delta, to: messageID)
+                    }
+                )
+                completeStreamingAssistant(messageID, with: response)
+                streamingMessageID = nil
             }
         } catch is CancellationError {
+            removeStreamingAssistant(streamingMessageID)
             messages.append(RepositoryAIMessage(role: .assistant, text: "The AI request was cancelled."))
         } catch {
+            removeStreamingAssistant(streamingMessageID)
             messages.append(RepositoryAIMessage(
                 role: .assistant,
                 text: error.localizedDescription
@@ -256,10 +383,70 @@ final class RepositoryAIChatController: ObservableObject {
         }
     }
 
+    private func beginStreamingAssistant() -> UUID {
+        let message = RepositoryAIMessage(role: .assistant, text: "Generating analysis…")
+        messages.append(message)
+        return message.id
+    }
+
+    private func appendStreamingDelta(_ delta: String, to id: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        let message = messages[index]
+        let existingText = message.text == "Generating analysis…" ? "" : message.text
+        messages[index] = RepositoryAIMessage(
+            id: message.id,
+            role: message.role,
+            text: existingText + delta,
+            contextTitle: message.contextTitle,
+            toolResult: message.toolResult,
+            citations: message.citations,
+            evidenceManifest: message.evidenceManifest
+        )
+        streamingRevision &+= 1
+    }
+
+    private func completeStreamingAssistant(_ id: UUID, with answer: RepositoryAIAnswer) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        let message = messages[index]
+        let truncationNotice = answer.isTruncated
+            ? "\n\n> The provider reached its output limit. Ask “continue” to finish this analysis."
+            : ""
+        messages[index] = RepositoryAIMessage(
+            id: message.id,
+            role: message.role,
+            text: answer.text + truncationNotice,
+            contextTitle: message.contextTitle,
+            toolResult: message.toolResult,
+            citations: message.citations,
+            evidenceManifest: message.evidenceManifest
+        )
+        streamingRevision &+= 1
+    }
+
+    private func removeStreamingAssistant(_ id: UUID?) {
+        guard let id else { return }
+        messages.removeAll { $0.id == id }
+    }
+
+    private func isWorkingTreeReviewRequest(_ question: String) -> Bool {
+        let normalized = question
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        return [
+            "review changes",
+            "review the changes",
+            "review current changes",
+            "review the current changes",
+            "review uncommitted changes",
+        ].contains(normalized)
+    }
+
     private enum RepositoryAIRequestMode {
         case agent
         case fixedTool(RepositoryAIToolCall)
         case file(RepositoryAIFileReference, includeDiff: Bool)
+        case comparison(RepositoryAIRef, RepositoryAIRef)
+        case pullRequest(Int?)
     }
 
     private func makeConversationTitle(from text: String) -> String {

@@ -459,6 +459,27 @@ final class CloudAIProviderTests: XCTestCase {
         XCTAssertEqual((body["thinking"] as? [String: Any])?["type"] as? String, "disabled")
     }
 
+    func testDeepSeekAgentAcceptsAnEquivalentRawArgumentArray() async throws {
+        let store = InMemoryAIProviderCredentialStore(keys: [.deepSeek: "deepseek-secret"])
+        let client = StubAIProviderHTTPClient(responseBody: """
+            {"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"call-1","function":{"name":"execute_git","arguments":"[\\"diff\\",\\"--cached\\"]"}}]}}]}
+            """)
+        let provider = DeepSeekCommitMessageProvider(credentialStore: store, httpClient: client)
+        let request = RepositoryAIAgentRequest(
+            repositoryName: "macgit",
+            branchName: "main",
+            question: "Review changes",
+            conversation: [],
+            previousToolResults: [],
+            isFirstTurn: true
+        )
+
+        let turn = try await provider.generateRepositoryAgentTurn(request: request)
+
+        XCTAssertEqual(turn.toolCalls.first?.name, "execute_git")
+        XCTAssertEqual(turn.toolCalls.first?.arguments, ["diff", "--cached"])
+    }
+
     func testOpenRouterRequestUsesBearerKeyAndStructuredOutput() async throws {
         let store = InMemoryAIProviderCredentialStore(keys: [.openRouter: "openrouter-secret"])
         let modelStore = InMemoryAIProviderModelStore(models: [.openRouter: "vendor/model"])

@@ -36,6 +36,7 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
     private let modelStore: any AIProviderModelStore
     private let httpClient: any AIProviderHTTPClient
     private let endpoint: URL
+    private let streamingSession: URLSession
 
     var supportsRepositoryAgent: Bool { true }
 
@@ -43,12 +44,14 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
         credentialStore: any AIProviderCredentialStore,
         modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore(),
         httpClient: any AIProviderHTTPClient = URLSessionAIProviderHTTPClient(),
-        endpoint: URL = URL(string: "https://openrouter.ai/api/v1/chat/completions")!
+        endpoint: URL = URL(string: "https://openrouter.ai/api/v1/chat/completions")!,
+        streamingSession: URLSession = .shared
     ) {
         self.credentialStore = credentialStore
         self.modelStore = modelStore
         self.httpClient = httpClient
         self.endpoint = endpoint
+        self.streamingSession = streamingSession
     }
 
     func availability() async -> AIProviderAvailability {
@@ -116,10 +119,10 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
         var requestBody: [String: Any] = [
             "model": model,
             "messages": [
-                ["role": "system", "content": RepositoryAIPrompt.instructions],
+                ["role": "system", "content": RepositoryAIPrompt.instructions(for: request)],
                 ["role": "user", "content": RepositoryAIPrompt.userPrompt(for: request)],
             ],
-            "max_completion_tokens": 1_500,
+            "max_completion_tokens": 3_000,
         ]
         if let sessionID = request.sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
            !sessionID.isEmpty {
@@ -147,7 +150,7 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
             }
             if let text = payload.choices?.first?.message?.content?.plainText,
                !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return try RepositoryAIAnswerDecoder.decodeProviderText(text)
+                return try RepositoryAIAnswerDecoder.decodeProviderText(text, requiresStructuredResponse: request.requiresStructuredResponse)
             }
             if attempt == 0 { continue }
             throw RepositoryAIError.invalidResponse(payload.repositoryResponseFailureDescription)
@@ -156,6 +159,74 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
         throw RepositoryAIError.invalidResponse(
             "OpenRouter did not return a usable Repository AI response."
         )
+    }
+
+    func streamRepositoryResponse(
+        request: RepositoryAIRequest,
+        onTextDelta: @escaping @Sendable (String) async -> Void
+    ) async throws -> RepositoryAIAnswer {
+        guard !request.requiresStructuredResponse else {
+            return try await generateRepositoryResponse(request: request)
+        }
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("OpenRouter model is not configured.")
+        }
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        var body: [String: Any] = [
+            "model": model,
+            "messages": [
+                ["role": "system", "content": RepositoryAIPrompt.instructions(for: request)],
+                ["role": "user", "content": RepositoryAIPrompt.userPrompt(for: request)],
+            ],
+            "max_completion_tokens": 3_000,
+            "stream": true,
+        ]
+        if let sessionID = request.sessionID?.trimmingCharacters(in: .whitespacesAndNewlines), !sessionID.isEmpty {
+            body["session_id"] = sessionID
+        }
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (bytes, urlResponse) = try await streamingSession.bytes(for: urlRequest)
+        guard let response = urlResponse as? HTTPURLResponse else {
+            throw CommitMessageGenerationError.providerRequestFailed(
+                "OpenRouter returned an invalid HTTP response."
+            )
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            var data = Data()
+            for try await byte in bytes {
+                data.append(byte)
+            }
+            try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+            throw RepositoryAIError.invalidResponse("OpenRouter returned an invalid streaming response.")
+        }
+
+        var content = ""
+        var reachedOutputLimit = false
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            if payload == "[DONE]" { break }
+            guard let data = payload.data(using: .utf8),
+                  let event = try? JSONDecoder().decode(StreamEvent.self, from: data),
+                  let choice = event.choices.first else { continue }
+            if let delta = choice.delta?.content, !delta.isEmpty {
+                content.append(delta)
+                await onTextDelta(delta)
+            }
+            if ["length", "max_tokens"].contains(choice.finishReason?.lowercased()) {
+                reachedOutputLimit = true
+            }
+        }
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw RepositoryAIError.emptyResponse
+        }
+        return RepositoryAIAnswer(text: content, isTruncated: reachedOutputLimit)
     }
 
     func generateRepositoryAgentTurn(
@@ -332,6 +403,24 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
             case finishReason = "finish_reason"
             case nativeFinishReason = "native_finish_reason"
         }
+    }
+
+    private struct StreamEvent: Decodable {
+        let choices: [StreamChoice]
+    }
+
+    private struct StreamChoice: Decodable {
+        let delta: StreamDelta?
+        let finishReason: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case delta
+            case finishReason = "finish_reason"
+        }
+    }
+
+    private struct StreamDelta: Decodable {
+        let content: String?
     }
 
     private struct Message: Decodable {

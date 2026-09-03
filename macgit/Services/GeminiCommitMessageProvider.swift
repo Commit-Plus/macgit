@@ -148,13 +148,13 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
-            "systemInstruction": ["parts": [["text": RepositoryAIPrompt.instructions]]],
+            "systemInstruction": ["parts": [["text": RepositoryAIPrompt.instructions(for: request)]]],
             "contents": [[
                 "role": "user",
                 "parts": [["text": RepositoryAIPrompt.userPrompt(for: request)]],
             ]],
             "generationConfig": [
-                "maxOutputTokens": 1_500,
+                "maxOutputTokens": 3_000,
                 "thinkingConfig": ["thinkingLevel": "MINIMAL", "includeThoughts": false],
             ],
             "store": false,
@@ -179,7 +179,7 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
             }
             throw RepositoryAIError.emptyResponse
         }
-        return try RepositoryAIAnswerDecoder.decodeProviderText(text)
+        return try RepositoryAIAnswerDecoder.decodeProviderText(text, requiresStructuredResponse: request.requiresStructuredResponse)
     }
 
     func generateRepositoryAgentTurn(

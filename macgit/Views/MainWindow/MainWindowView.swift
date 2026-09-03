@@ -198,15 +198,22 @@ struct MainWindowView: View {
         self.onOpenConnections = onOpenConnections
         self.windowContext = windowContext
         self.operationProgress = operationProgress
-        _pullRequestController = StateObject(wrappedValue: PullRequestController(
+        let pullRequestController = PullRequestController(
             providerAccountController: providerAccountController,
             tokenVault: KeychainGitProviderTokenVault(),
             services: [.github: GitHubPullRequestService(), .gitlab: GitLabPullRequestService()],
             openURL: NSWorkspace.shared.open
-        ))
+        )
+        _pullRequestController = StateObject(wrappedValue: pullRequestController)
         _repositoryAIChatController = StateObject(wrappedValue: RepositoryAIChatController(
             repositoryURL: repositoryURL,
-            providerController: aiProviderController
+            providerController: aiProviderController,
+            pullRequestContextLoader: { number, repositoryURL in
+                try await pullRequestController.repositoryAIContext(number: number, repositoryURL: repositoryURL)
+            },
+            pullRequestFingerprintLoader: { number, repositoryURL in
+                try await pullRequestController.repositoryAIFingerprint(number: number, repositoryURL: repositoryURL)
+            }
         ))
     }
 

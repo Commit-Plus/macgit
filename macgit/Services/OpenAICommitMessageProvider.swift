@@ -36,6 +36,7 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
     private let modelStore: any AIProviderModelStore
     private let httpClient: any AIProviderHTTPClient
     private let endpoint: URL
+    private let streamingSession: URLSession
 
     var supportsRepositoryAgent: Bool { true }
 
@@ -43,12 +44,14 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
         credentialStore: any AIProviderCredentialStore,
         modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore(),
         httpClient: any AIProviderHTTPClient = URLSessionAIProviderHTTPClient(),
-        endpoint: URL = URL(string: "https://api.openai.com/v1/responses")!
+        endpoint: URL = URL(string: "https://api.openai.com/v1/responses")!,
+        streamingSession: URLSession = .shared
     ) {
         self.credentialStore = credentialStore
         self.modelStore = modelStore
         self.httpClient = httpClient
         self.endpoint = endpoint
+        self.streamingSession = streamingSession
     }
 
     func availability() async -> AIProviderAvailability {
@@ -107,7 +110,7 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": model,
-            "instructions": RepositoryAIPrompt.instructions,
+            "instructions": RepositoryAIPrompt.instructions(for: request),
             "input": RepositoryAIPrompt.userPrompt(for: request),
             "max_output_tokens": 1_200,
             "store": false,
@@ -121,7 +124,69 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
                 "OpenAI did not return a usable Repository AI response."
             )
         }
-        return try RepositoryAIAnswerDecoder.decodeProviderText(text)
+        return try RepositoryAIAnswerDecoder.decodeProviderText(text, requiresStructuredResponse: request.requiresStructuredResponse)
+    }
+
+    func streamRepositoryResponse(
+        request: RepositoryAIRequest,
+        onTextDelta: @escaping @Sendable (String) async -> Void
+    ) async throws -> RepositoryAIAnswer {
+        guard !request.requiresStructuredResponse else {
+            return try await generateRepositoryResponse(request: request)
+        }
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("OpenAI model is not configured.")
+        }
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": model,
+            "instructions": RepositoryAIPrompt.instructions(for: request),
+            "input": RepositoryAIPrompt.userPrompt(for: request),
+            "max_output_tokens": 3_000,
+            "stream": true,
+            "store": false,
+        ])
+
+        let (bytes, urlResponse) = try await streamingSession.bytes(for: urlRequest)
+        guard let response = urlResponse as? HTTPURLResponse else {
+            throw CommitMessageGenerationError.providerRequestFailed(
+                "OpenAI returned an invalid HTTP response."
+            )
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            var data = Data()
+            for try await byte in bytes {
+                data.append(byte)
+            }
+            try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+            throw RepositoryAIError.invalidResponse("OpenAI returned an invalid streaming response.")
+        }
+
+        var content = ""
+        var reachedOutputLimit = false
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            guard let data = payload.data(using: .utf8),
+                  let event = try? JSONDecoder().decode(StreamEvent.self, from: data) else { continue }
+            if event.type == "response.output_text.delta", let delta = event.delta, !delta.isEmpty {
+                content.append(delta)
+                await onTextDelta(delta)
+            }
+            if event.type == "response.completed",
+               event.response?.incompleteDetails?.reason == "max_output_tokens" {
+                reachedOutputLimit = true
+            }
+        }
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw RepositoryAIError.emptyResponse
+        }
+        return RepositoryAIAnswer(text: content, isTruncated: reachedOutputLimit)
     }
 
     func generateRepositoryAgentTurn(
@@ -296,5 +361,23 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
     private struct Content: Decodable {
         let type: String
         let text: String?
+    }
+
+    private struct StreamEvent: Decodable {
+        let type: String
+        let delta: String?
+        let response: StreamResponse?
+    }
+
+    private struct StreamResponse: Decodable {
+        let incompleteDetails: IncompleteDetails?
+
+        private enum CodingKeys: String, CodingKey {
+            case incompleteDetails = "incomplete_details"
+        }
+    }
+
+    private struct IncompleteDetails: Decodable {
+        let reason: String?
     }
 }
