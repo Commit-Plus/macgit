@@ -1,0 +1,120 @@
+# Repository AI Phase 5: Confirmed Git Mutations
+
+**Branch:** `codex/repository-ai-confirmed-git-mutations`
+
+## Goal
+
+Allow Repository AI to propose a small set of semantic Git actions, show the exact impact to the user, execute only after explicit confirmation and expected-state validation, and integrate successful operations with existing Git Undo and repository refresh behavior.
+
+## Independent delivery
+
+- This phase may start from the completed Phase 1 baseline without Phase 2, Phase 3, or Phase 4.
+- Without Phase 2, the app builds a bounded status/branch snapshot, asks the selected provider for one structured semantic proposal, validates it, and presents confirmation. No generic agent loop is required.
+- With Phase 2 present, semantic mutation requests can arrive through its provider tool transport, but execution pauses outside the model loop until the user confirms. The read-only `execute_git` tool remains unchanged.
+- Without Phase 3 citations or Phase 4 analysis, proposals use validated current status paths and local refs. Optional context integrations may improve previews but cannot widen authority.
+
+## Architecture
+
+```text
+User request
+  -> provider proposes RepositoryAIMutationProposal
+  -> RepositoryAIMutationPolicy validates semantic inputs
+  -> RepositoryAIMutationPreview builds exact impact and preconditions
+  -> user explicitly confirms or cancels
+  -> RepositoryAIMutationExecutor calls existing high-level Git services
+  -> register Git Undo after success
+  -> refresh SyncState and post repositoryDidChange
+  -> report deterministic result to chat
+```
+
+The provider never supplies raw Git arguments for a mutation. App-owned high-level operations translate validated semantic inputs into existing `GitStatusService` and Git Undo flows.
+
+## Initial action set
+
+- `stage_files(paths:)`
+- `unstage_files(paths:)`
+- `create_commit(message:)`
+- `checkout_branch(name:)`
+
+Every action is separately typed, validated, previewed, confirmed, and tested. Unsupported requests receive an explanation; they are not approximated with another Git command.
+
+## Task 1 — Proposal and pending-approval models
+
+- [ ] Add `RepositoryAIMutationProposal` as an enum with one case per semantic action and typed arguments.
+- [ ] Add provider-neutral structured-generation support for exactly one proposal or a typed unsupported response.
+- [ ] Add `RepositoryAIMutationPrecondition` containing repository identity, branch/HEAD, index tree/fingerprint, working-tree fingerprint, selected paths and their expected statuses, plus action-specific state.
+- [ ] Add `PendingRepositoryAIMutation` with immutable proposal, preview, preconditions, originating conversation/message IDs, provider ID, and creation timestamp.
+- [ ] Pending proposals are in-memory only, belong to one repository window, expire when state changes or the window/repository closes, and never resume automatically after launch.
+
+## Task 2 — Pure mutation policy
+
+- [ ] Add `RepositoryAIMutationPolicy` as a pure validator returning an allowed preview model or a concrete rejection reason.
+- [ ] Paths must come from the current trusted status snapshot, use repository-relative canonical identity, and preserve staged/unstaged duplicates and rename pairs correctly.
+- [ ] Stage accepts only currently eligible selected changes and follows existing Personal Changes protections.
+- [ ] Unstage accepts only currently staged eligible paths and preserves working-tree bytes.
+- [ ] Commit requires a non-empty validated message, a non-empty index, existing commit identity checks, configured author handling, and current Personal Changes commit protection.
+- [ ] Checkout resolves an existing local branch through app code, rejects the current branch, rejects in-progress Git operations, and initially requires a clean safe checkout according to existing checkout policy.
+- [ ] Reject hidden fallback behavior, wildcard/all-path interpretation, path escape, arbitrary refs, force flags, amend, signing changes, hook overrides, remote operations, and command strings.
+
+## Task 3 — Reuse existing execution and Git Undo seams
+
+- [ ] Add `RepositoryAIMutationExecutor` that switches over validated proposal cases and calls existing high-level services such as stage/unstage, commit, and checkout coordination. It must not call `runGit` with provider-generated arguments.
+- [ ] Revalidate every precondition immediately before execution. Any mismatch cancels the pending operation and asks the user to review a newly generated proposal.
+- [ ] Register the existing `GitUndoEntry.stageFiles`, `unstageFiles`, commit, and branch-action entries only after the original action succeeds.
+- [ ] Preserve current conflict, in-progress-operation, Git Flow, worktree, Personal Changes, identity, signing, and checkout safeguards instead of recreating weaker AI-specific versions.
+- [ ] After success, refresh `SyncState`, post `.repositoryDidChange`, and update the chat result from actual service output/state.
+- [ ] On partial or failed execution, do not fabricate success, do not register an invalid undo entry, and present the existing actionable Git error.
+
+## Task 4 — Confirmation and lifecycle UI
+
+- [ ] Present one app-owned confirmation sheet per proposal; provider-authored text may explain rationale but cannot alter the title, destructive warning, button label, paths, branch, commit message, or impact summary.
+- [ ] Stage/unstage previews list exact files and source states. Commit previews show the exact message, staged file count/statistics, author/signing behavior, and resulting action. Checkout previews show current/target branch and why the checkout is considered safe.
+- [ ] Require a direct click on the action-specific confirmation button. Pressing Return must not confirm a destructive or ambiguous action accidentally.
+- [ ] Cancel, repository changes, provider changes, conversation reset, window close, and expiration invalidate the pending proposal.
+- [ ] Disable overlapping repository mutation controls while execution is active using the existing repository operation progress/state boundary.
+- [ ] Report Confirmed, Cancelled, Stale, Rejected, Failed, and Succeeded states in the transcript without relying on color alone.
+
+## Task 5 — Standalone provider path
+
+- [ ] Build a bounded mutation-planning prompt from current status, current branch/HEAD, eligible paths, protected-state summaries, and the user's request.
+- [ ] Apple Intelligence returns a typed `@Generable` proposal. Cloud providers use strict structured output where supported and validated JSON otherwise.
+- [ ] Require provider output to choose only an action and typed arguments from the supplied eligible IDs; resolve paths/refs through the trusted manifest rather than raw model strings.
+- [ ] A proposal is never executed in the provider completion callback. It first enters pending approval and returns control to the UI.
+- [ ] If the request needs unsupported context or action, produce a normal explanation and leave repository state untouched.
+
+## Task 6 — Optional Phase 2 harness integration
+
+- [ ] Register separate semantic tool definitions only when the Phase 2 tool transport exists; never add mutation subcommands to `execute_git`.
+- [ ] A mutation tool invocation creates a pending proposal and suspends that conversation run with an approval-required event.
+- [ ] After confirmation, return the actual execution result to the provider only if the originating run is still valid; otherwise append a deterministic app-generated result to the transcript.
+- [ ] Cancellation or denial returns an explicit denied/cancelled result so the model cannot retry the same mutation repeatedly in the same turn.
+- [ ] Count proposed mutation calls against harness limits and permit at most one pending mutation per repository conversation.
+
+## Task 7 — Focused action tests
+
+- [ ] Proposal decoding tests reject unknown actions, raw commands, unknown path/ref IDs, extra destructive fields, malformed messages, and provider prose masquerading as structured output.
+- [ ] Policy tests cover staged/unstaged duplicates, renames, untracked files, Personal Changes, conflicts, sequencer operations, detached HEAD, worktrees, protected branches, dirty checkout, empty index, identity/signing errors, and stale fingerprints.
+- [ ] Integration tests use real temporary repositories to prove stage, unstage, commit, and safe local checkout behavior plus their registered undo/redo operations.
+- [ ] Verify no operation occurs before confirmation, after cancellation, after expiration, after any relevant state change, or when a different repository window owns the request.
+- [ ] Verify successful operations refresh repository state exactly once through established coordination and failures register no undo entry.
+- [ ] If Phase 2 is present, test approval suspension/resumption, denial, repeated-call prevention, stale originating runs, and separation from the read-only executor.
+- [ ] Run `git diff --check`, focused Repository AI/mutation/Git Undo tests, the full suite for this non-trivial change, and the macOS build sequentially without launching the app. Do not rerun the documented Firebase bootstrap abort.
+
+## Acceptance criteria
+
+- Phase 5 can ship on the Phase 1 baseline: a user request produces a validated proposal and no Git mutation occurs until the user confirms its exact app-owned preview.
+- Stage, unstage, commit, and clean local checkout reuse existing high-level services, protections, refresh behavior, and Git Undo support.
+- A stale proposal, policy failure, cancellation, denial, provider change, or execution failure leaves the repository in the behavior guaranteed by the existing underlying service and never reports false success.
+- The provider cannot submit raw mutation arguments, widen scope from selected files, choose force/destructive flags, access credentials, or bypass confirmation.
+- Phase 2, Phase 3, and Phase 4 integrations remain optional and do not change mutation authority.
+
+## Non-goals
+
+- `reset`, `clean`, discard/remove, stash, merge, rebase, cherry-pick, revert, tag deletion, branch deletion, worktree/submodule/subtree mutation, fetch, pull, push, force push, or pull-request mutation.
+- Automatically executing a sequence of mutations from one confirmation.
+- Persisting or remotely syncing pending approvals.
+- Letting the model edit files, author patches, run hooks/scripts, invoke a shell, or bypass existing Personal Changes/Git Flow/worktree safeguards.
+
+## Cross-phase integration contract
+
+Phase 5 exports semantic proposal, policy, preview, and execution seams. Phase 2 may transport proposals, Phase 3 may cite exact files in previews, and Phase 4 may supply validated refs or PR context. The user-confirmation boundary, high-level service execution, precondition checks, and Git Undo registration always remain owned by Phase 5 app code.
