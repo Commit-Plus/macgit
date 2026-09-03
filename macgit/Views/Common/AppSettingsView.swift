@@ -18,13 +18,13 @@
 import SwiftUI
 
 struct AppSettingsView: View {
-    @Environment(\.dismiss) private var dismiss
     @ObservedObject var appState: AppState
     @ObservedObject var accountController: AccountSessionController
     @ObservedObject var featureAccessController: FeatureAccessController
     @ObservedObject var providerAccountController: GitProviderAccountController
     @ObservedObject var aiProviderController: AIProviderController
     @ObservedObject var appUpdateController: AppUpdateController
+    @Binding private var isPresented: Bool
     @Binding private var selectedSection: AppSettingsSection
     @State private var aiProviderDrafts: [AIProviderConfigurationDraft]
     @State private var saveErrorMessage: String?
@@ -37,6 +37,7 @@ struct AppSettingsView: View {
         providerAccountController: GitProviderAccountController,
         aiProviderController: AIProviderController,
         appUpdateController: AppUpdateController,
+        isPresented: Binding<Bool>,
         selectedSection: Binding<AppSettingsSection>
     ) {
         self.appState = appState
@@ -45,6 +46,7 @@ struct AppSettingsView: View {
         self.providerAccountController = providerAccountController
         self.aiProviderController = aiProviderController
         self.appUpdateController = appUpdateController
+        _isPresented = isPresented
         _selectedSection = selectedSection
         _aiProviderDrafts = State(initialValue: aiProviderController.configurationDrafts())
     }
@@ -80,7 +82,7 @@ struct AppSettingsView: View {
                 HStack {
                     Spacer()
 
-                    Button("Cancel", action: dismiss.callAsFunction)
+                    Button("Cancel", action: close)
                         .keyboardShortcut(.cancelAction)
 
                     Button("Done", action: saveChangesAndDismiss)
@@ -105,12 +107,16 @@ struct AppSettingsView: View {
                 aiProviderDrafts,
                 restrictedProviderAccess: restrictedAIProviderAccess
             )
+            close()
             Task { await aiProviderController.refreshAvailability() }
-            dismiss()
         } catch {
             saveErrorMessage = error.localizedDescription
             isShowingSaveError = true
         }
+    }
+
+    private func close() {
+        isPresented = false
     }
 
     private var restrictedAIProviderAccess: FeatureAccessDecision {

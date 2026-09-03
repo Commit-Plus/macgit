@@ -220,6 +220,7 @@ struct macgitApp: App {
                         providerAccountController: providerAccountController,
                         aiProviderController: aiProviderController,
                         appUpdateController: appUpdateController,
+                        isPresented: $showingAppSettings,
                         selectedSection: $selectedAppSettingsSection
                     )
                         .environmentObject(featureAccessController)
