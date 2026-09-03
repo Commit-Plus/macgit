@@ -29,6 +29,7 @@ final class AIProviderController: ObservableObject {
     private let registry: AIProviderRegistry
     private let snapshotLoader: any CommitChangeSnapshotLoading
     private let repositoryToolExecutor: any RepositoryAIToolExecuting
+    private let repositoryFileContextService: any RepositoryAIFileContextServicing
     private let repositoryAgentHarness: RepositoryAIAgentHarness
     private let defaults: UserDefaults
     private let credentialStore: any AIProviderCredentialStore
@@ -42,6 +43,7 @@ final class AIProviderController: ObservableObject {
             registry: .live(credentialStore: credentialStore, modelStore: modelStore),
             snapshotLoader: GitStatusService.shared,
             repositoryToolExecutor: GitStatusService.shared,
+            repositoryFileContextService: GitStatusService.shared,
             repositoryAgentHarness: RepositoryAIAgentHarness(),
             defaults: .standard,
             credentialStore: credentialStore,
@@ -53,6 +55,7 @@ final class AIProviderController: ObservableObject {
         registry: AIProviderRegistry,
         snapshotLoader: any CommitChangeSnapshotLoading,
         repositoryToolExecutor: any RepositoryAIToolExecuting = GitStatusService.shared,
+        repositoryFileContextService: any RepositoryAIFileContextServicing = GitStatusService.shared,
         repositoryAgentHarness: RepositoryAIAgentHarness = RepositoryAIAgentHarness(),
         defaults: UserDefaults,
         credentialStore: any AIProviderCredentialStore = KeychainAIProviderCredentialStore(),
@@ -61,6 +64,7 @@ final class AIProviderController: ObservableObject {
         self.registry = registry
         self.snapshotLoader = snapshotLoader
         self.repositoryToolExecutor = repositoryToolExecutor
+        self.repositoryFileContextService = repositoryFileContextService
         self.repositoryAgentHarness = repositoryAgentHarness
         self.defaults = defaults
         self.credentialStore = credentialStore
@@ -248,7 +252,7 @@ final class AIProviderController: ObservableObject {
         question: String,
         tool: RepositoryAIToolCall,
         sessionID: String? = nil
-    ) async throws -> String {
+    ) async throws -> RepositoryAIAnswer {
         let normalizedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedQuestion.isEmpty else {
             throw RepositoryAIError.emptyQuestion
@@ -291,11 +295,85 @@ final class AIProviderController: ObservableObject {
             throw RepositoryAIError.contextChanged
         }
 
-        let normalizedResponse = response.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedResponse.isEmpty else {
+        guard !response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw RepositoryAIError.emptyResponse
         }
-        return normalizedResponse
+        return response
+    }
+
+    func answerRepositoryFileQuestion(
+        repositoryURL: URL,
+        branchName: String?,
+        question: String,
+        reference: RepositoryAIFileReference,
+        includeDiff: Bool,
+        sessionID: String? = nil
+    ) async throws -> (answer: RepositoryAIAnswer, manifest: RepositoryAIEvidenceManifest) {
+        let normalizedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuestion.isEmpty else { throw RepositoryAIError.emptyQuestion }
+        guard !isGenerating else {
+            throw CommitMessageGenerationError.providerUnavailable("Another AI request is already running.")
+        }
+        guard let provider = registry.provider(for: selectedProviderID) else {
+            throw CommitMessageGenerationError.providerNotImplemented
+        }
+        let providerID = selectedProviderID
+        let availability = await provider.availability()
+        availabilityByProviderID[providerID] = availability
+        guard availability.isAvailable else {
+            throw CommitMessageGenerationError.providerUnavailable(availability.detail)
+        }
+
+        isGenerating = true
+        defer { isGenerating = false }
+        let budget = provider.descriptor.inputCharacterBudget
+        let result: RepositoryAIToolResult
+        let manifest: RepositoryAIEvidenceManifest
+        if includeDiff {
+            let diff = try await repositoryFileContextService.readFileDiff(
+                reference,
+                contextLines: 3,
+                maximumHunks: 12,
+                characterBudget: budget,
+                in: repositoryURL
+            )
+            manifest = diff.manifest
+            result = RepositoryAIToolResult(
+                toolName: "read_file_diff",
+                title: diff.reference.displayLabel,
+                fingerprint: diff.evidence.fingerprint,
+                content: RepositoryAIPrompt.fileEvidence(diff),
+                isTruncated: diff.isTruncated
+            )
+        } else {
+            let context = try await repositoryFileContextService.readFileContext(
+                reference,
+                lineRange: nil,
+                characterBudget: budget,
+                in: repositoryURL
+            )
+            manifest = context.manifest
+            result = RepositoryAIToolResult(
+                toolName: "read_file_context",
+                title: context.reference.displayLabel,
+                fingerprint: context.evidence.fingerprint,
+                content: RepositoryAIPrompt.fileEvidence(context),
+                isTruncated: context.isTruncated
+            )
+        }
+        let response = try await provider.generateRepositoryResponse(request: RepositoryAIRequest(
+            repositoryName: repositoryURL.lastPathComponent,
+            branchName: branchName,
+            question: normalizedQuestion,
+            toolResult: result,
+            sessionID: sessionID
+        ))
+        guard providerID == selectedProviderID else { throw RepositoryAIError.contextChanged }
+        guard let evidence = manifest.evidence.first else { throw RepositoryAIError.invalidResponse("Repository AI did not receive file evidence.") }
+        let currentFingerprint = try await repositoryFileContextService.currentFingerprint(for: evidence.reference, in: repositoryURL)
+        guard currentFingerprint == evidence.fingerprint else { throw RepositoryAIError.contextChanged }
+        let validated = manifest.validatedCitations(from: response.citations)
+        return (RepositoryAIAnswer(text: response.text, citations: validated.accepted), manifest)
     }
 
     func answerRepositoryQuestionWithAgent(

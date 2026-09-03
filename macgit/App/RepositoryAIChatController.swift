@@ -28,7 +28,10 @@ final class RepositoryAIChatController: ObservableObject {
     @Published private(set) var recentCommits: [RepositoryAICommitChoice] = []
     @Published private(set) var isRunning = false
     @Published private(set) var isChoosingCommit = false
+    @Published private(set) var isChoosingFile = false
     @Published private(set) var isLoadingCommits = false
+    @Published private(set) var isLoadingFiles = false
+    @Published private(set) var changedFiles: [RepositoryAIFileReference] = []
 
     private let repositoryURL: URL
     private let providerController: AIProviderController
@@ -90,6 +93,33 @@ final class RepositoryAIChatController: ObservableObject {
         commitReferenceDraft = ""
     }
 
+    func prepareFileReview() async {
+        guard !isRunning, !isLoadingFiles else { return }
+        isChoosingFile = true
+        isLoadingFiles = true
+        changedFiles = (try? await gitService.listChangedFiles(in: repositoryURL)) ?? []
+        isLoadingFiles = false
+    }
+
+    func reviewFile(_ reference: RepositoryAIFileReference, includeDiff: Bool = true) async {
+        guard !isRunning else { return }
+        isChoosingFile = false
+        await startRequest(
+            includeDiff
+                ? "Review this file diff. Focus on concrete bugs, regressions, security issues, and missing tests."
+                : "Explain this selected file context, including behavior and risks.",
+            mode: .file(reference, includeDiff: includeDiff),
+            contextTitle: reference.displayLabel,
+            conversationTitle: "Review \(reference.path)"
+        )
+    }
+
+    func cancelFileSelection() {
+        guard !isRunning, !isLoadingFiles else { return }
+        isChoosingFile = false
+        changedFiles.removeAll()
+    }
+
     private func explainCommit(reference: String, subject: String?) async {
         let normalizedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedReference.isEmpty else { return }
@@ -121,7 +151,10 @@ final class RepositoryAIChatController: ObservableObject {
         messages.removeAll()
         recentCommits.removeAll()
         isChoosingCommit = false
+        isChoosingFile = false
         isLoadingCommits = false
+        isLoadingFiles = false
+        changedFiles.removeAll()
         conversationTitle = "New conversation"
         conversationSessionID = UUID().uuidString
     }
@@ -196,7 +229,22 @@ final class RepositoryAIChatController: ObservableObject {
                     tool: tool,
                     sessionID: conversationSessionID
                 )
-                messages.append(RepositoryAIMessage(role: .assistant, text: response))
+                messages.append(RepositoryAIMessage(role: .assistant, text: response.text))
+            case .file(let reference, let includeDiff):
+                let response = try await providerController.answerRepositoryFileQuestion(
+                    repositoryURL: repositoryURL,
+                    branchName: branch,
+                    question: normalized,
+                    reference: reference,
+                    includeDiff: includeDiff,
+                    sessionID: conversationSessionID
+                )
+                messages.append(RepositoryAIMessage(
+                    role: .assistant,
+                    text: response.answer.text,
+                    citations: response.answer.citations,
+                    evidenceManifest: response.manifest
+                ))
             }
         } catch is CancellationError {
             messages.append(RepositoryAIMessage(role: .assistant, text: "The AI request was cancelled."))
@@ -211,6 +259,7 @@ final class RepositoryAIChatController: ObservableObject {
     private enum RepositoryAIRequestMode {
         case agent
         case fixedTool(RepositoryAIToolCall)
+        case file(RepositoryAIFileReference, includeDiff: Bool)
     }
 
     private func makeConversationTitle(from text: String) -> String {
