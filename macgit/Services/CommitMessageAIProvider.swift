@@ -19,6 +19,7 @@ import Foundation
 
 protocol CommitMessageAIProvider: Sendable {
     var descriptor: AIProviderDescriptor { get }
+    var supportsRepositoryAgent: Bool { get }
 
     func availability() async -> AIProviderAvailability
     func generateCommitMessage(
@@ -27,15 +28,26 @@ protocol CommitMessageAIProvider: Sendable {
     func generateRepositoryResponse(
         request: RepositoryAIRequest
     ) async throws -> String
+    func generateRepositoryAgentTurn(
+        request: RepositoryAIAgentRequest
+    ) async throws -> RepositoryAIAgentTurn
     func generateConflictResolution(
         request: ConflictAIResolutionRequest
     ) async throws -> ConflictAIResolutionResponse
 }
 
 extension CommitMessageAIProvider {
+    var supportsRepositoryAgent: Bool { false }
+
     func generateRepositoryResponse(
         request: RepositoryAIRequest
     ) async throws -> String {
+        throw CommitMessageGenerationError.providerNotImplemented
+    }
+
+    func generateRepositoryAgentTurn(
+        request: RepositoryAIAgentRequest
+    ) async throws -> RepositoryAIAgentTurn {
         throw CommitMessageGenerationError.providerNotImplemented
     }
 

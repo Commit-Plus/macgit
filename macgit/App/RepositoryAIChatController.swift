@@ -34,6 +34,7 @@ final class RepositoryAIChatController: ObservableObject {
     private let providerController: AIProviderController
     private let gitService: GitStatusService
     private var conversationSessionID = UUID().uuidString
+    private var activeRequestTask: Task<Void, Never>?
 
     init(
         repositoryURL: URL,
@@ -56,10 +57,10 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     func reviewChanges() async {
-        await ask(
+        await startRequest(
             "Review the current repository changes. Focus on concrete bugs, regressions, security issues, and missing tests.",
-            tool: .workingTreeChanges,
-            contextTitle: "Working changes",
+            mode: .agent,
+            contextTitle: "Repository analysis",
             conversationTitle: "Review changes"
         )
     }
@@ -95,9 +96,9 @@ final class RepositoryAIChatController: ObservableObject {
 
         isChoosingCommit = false
         commitReferenceDraft = ""
-        await ask(
+        await startRequest(
             "Explain what this commit changes, why it likely exists, and any behavior or risks a reviewer should understand.",
-            tool: .commitChanges(reference: normalizedReference),
+            mode: .fixedTool(.commitChanges(reference: normalizedReference)),
             contextTitle: "Commit \(normalizedReference)",
             conversationTitle: subject.map { "Explain \($0)" } ?? "Explain \(normalizedReference)"
         )
@@ -106,10 +107,10 @@ final class RepositoryAIChatController: ObservableObject {
     func submitDraft() async {
         let question = draft
         draft = ""
-        await ask(
+        await startRequest(
             question,
-            tool: .workingTreeChanges,
-            contextTitle: "Working changes"
+            mode: .agent,
+            contextTitle: "Repository analysis"
         )
     }
 
@@ -125,9 +126,33 @@ final class RepositoryAIChatController: ObservableObject {
         conversationSessionID = UUID().uuidString
     }
 
+    func cancelActiveRequest() {
+        activeRequestTask?.cancel()
+    }
+
+    private func startRequest(
+        _ question: String,
+        mode: RepositoryAIRequestMode,
+        contextTitle: String,
+        conversationTitle preferredTitle: String? = nil
+    ) async {
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.ask(
+                question,
+                mode: mode,
+                contextTitle: contextTitle,
+                conversationTitle: preferredTitle
+            )
+        }
+        activeRequestTask = task
+        await task.value
+        activeRequestTask = nil
+    }
+
     private func ask(
         _ question: String,
-        tool: RepositoryAIToolCall,
+        mode: RepositoryAIRequestMode,
         contextTitle: String,
         conversationTitle preferredTitle: String? = nil
     ) async {
@@ -147,14 +172,32 @@ final class RepositoryAIChatController: ObservableObject {
 
         do {
             let branch = await gitService.currentBranch(in: repositoryURL)
-            let response = try await providerController.answerRepositoryQuestion(
-                repositoryURL: repositoryURL,
-                branchName: branch,
-                question: normalized,
-                tool: tool,
-                sessionID: conversationSessionID
-            )
-            messages.append(RepositoryAIMessage(role: .assistant, text: response))
+            switch mode {
+            case .agent:
+                let result = try await providerController.answerRepositoryQuestionWithAgent(
+                    repositoryURL: repositoryURL,
+                    branchName: branch,
+                    question: normalized,
+                    conversation: messages
+                )
+                for toolResult in result.toolResults {
+                    messages.append(RepositoryAIMessage(
+                        role: .toolActivity,
+                        text: toolResult.commandResult.displayCommand,
+                        toolResult: toolResult
+                    ))
+                }
+                messages.append(RepositoryAIMessage(role: .assistant, text: result.answer))
+            case .fixedTool(let tool):
+                let response = try await providerController.answerRepositoryQuestion(
+                    repositoryURL: repositoryURL,
+                    branchName: branch,
+                    question: normalized,
+                    tool: tool,
+                    sessionID: conversationSessionID
+                )
+                messages.append(RepositoryAIMessage(role: .assistant, text: response))
+            }
         } catch is CancellationError {
             messages.append(RepositoryAIMessage(role: .assistant, text: "The AI request was cancelled."))
         } catch {
@@ -163,6 +206,11 @@ final class RepositoryAIChatController: ObservableObject {
                 text: error.localizedDescription
             ))
         }
+    }
+
+    private enum RepositoryAIRequestMode {
+        case agent
+        case fixedTool(RepositoryAIToolCall)
     }
 
     private func makeConversationTitle(from text: String) -> String {

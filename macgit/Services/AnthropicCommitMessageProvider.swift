@@ -37,6 +37,8 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
     private let httpClient: any AIProviderHTTPClient
     private let endpoint: URL
 
+    var supportsRepositoryAgent: Bool { true }
+
     init(
         credentialStore: any AIProviderCredentialStore,
         modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore(),
@@ -126,6 +128,78 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
         return text
     }
 
+    func generateRepositoryAgentTurn(
+        request: RepositoryAIAgentRequest
+    ) async throws -> RepositoryAIAgentTurn {
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("Claude model is not configured.")
+        }
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        urlRequest.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var messages: [[String: Any]] = [[
+            "role": "user",
+            "content": RepositoryAIPrompt.agentPrompt(for: request),
+        ]]
+        for toolResult in request.previousToolResults {
+            messages.append([
+                "role": "assistant",
+                "content": [[
+                    "type": "tool_use",
+                    "id": toolResult.toolCall.id,
+                    "name": toolResult.toolCall.name,
+                    "input": ["arguments": toolResult.toolCall.arguments],
+                ]],
+            ])
+            messages.append([
+                "role": "user",
+                "content": [[
+                    "type": "tool_result",
+                    "tool_use_id": toolResult.toolCall.id,
+                    "content": toolResult.commandResult.output,
+                ]],
+            ])
+        }
+        var body: [String: Any] = [
+            "model": model,
+            "max_tokens": 1_200,
+            "system": RepositoryAIPrompt.agentInstructions,
+            "messages": messages,
+            "tools": [[
+                "name": "execute_git",
+                "description": "Run one bounded, read-only Git query in the current repository.",
+                "input_schema": RepositoryAIGitToolSchema.parameters,
+            ]],
+        ]
+        if request.isFirstTurn {
+            body["tool_choice"] = ["type": "tool", "name": "execute_git"]
+        }
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await httpClient.data(for: urlRequest)
+        try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+        guard let payload = try? JSONDecoder().decode(Response.self, from: data) else {
+            throw RepositoryAIError.invalidResponse("Claude did not return a usable Git tool response.")
+        }
+        let toolCalls: [RepositoryAIAgentToolCall] = try payload.content.compactMap { content in
+            guard content.type == "tool_use" else { return nil }
+            guard let id = content.id,
+                  let name = content.name,
+                  let arguments = content.input?.arguments else {
+                throw RepositoryAIError.invalidResponse("Claude returned an invalid Git tool call.")
+            }
+            return RepositoryAIAgentToolCall(id: id, name: name, arguments: arguments)
+        }
+        let text = payload.content
+            .filter { $0.type == "text" }
+            .compactMap(\.text)
+            .joined(separator: "\n")
+        return RepositoryAIAgentTurn(text: text, toolCalls: toolCalls)
+    }
+
     func generateConflictResolution(
         request: ConflictAIResolutionRequest
     ) async throws -> ConflictAIResolutionResponse {
@@ -173,5 +247,12 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
     private struct Content: Decodable {
         let type: String
         let text: String?
+        let id: String?
+        let name: String?
+        let input: ToolInput?
+    }
+
+    private struct ToolInput: Decodable {
+        let arguments: [String]
     }
 }

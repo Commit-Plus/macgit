@@ -70,6 +70,7 @@ nonisolated struct RepositoryAIRequest: Sendable {
 nonisolated enum RepositoryAIMessageRole: Sendable {
     case user
     case assistant
+    case toolActivity
 }
 
 nonisolated struct RepositoryAIMessage: Identifiable, Sendable {
@@ -77,17 +78,20 @@ nonisolated struct RepositoryAIMessage: Identifiable, Sendable {
     let role: RepositoryAIMessageRole
     let text: String
     let contextTitle: String?
+    let toolResult: RepositoryAIAgentToolResult?
 
     init(
         id: UUID = UUID(),
         role: RepositoryAIMessageRole,
         text: String,
-        contextTitle: String? = nil
+        contextTitle: String? = nil,
+        toolResult: RepositoryAIAgentToolResult? = nil
     ) {
         self.id = id
         self.role = role
         self.text = text
         self.contextTitle = contextTitle
+        self.toolResult = toolResult
     }
 }
 

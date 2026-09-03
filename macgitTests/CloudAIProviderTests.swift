@@ -211,9 +211,13 @@ final class CloudAIProviderTests: XCTestCase {
 
     func testOpenAIConflictRequestUsesStrictSchemaAndParsesReplacement() async throws {
         let store = InMemoryAIProviderCredentialStore(keys: [.openAI: "openai-secret"])
-        let client = StubAIProviderHTTPClient(responseBody: """
-            {"output":[{"content":[{"type":"output_text","text":"{\"decisions\":[{\"sectionIndex\":0,\"action\":\"replace\",\"replacementText\":\"merged()\\n\",\"reason\":\"Combines both implementations\",\"question\":\"\",\"options\":[]}],\"summary\":\"Merged both behaviors\"}"}]}]}
-            """)
+        let plan = """
+            {"decisions":[{"sectionIndex":0,"action":"replace","replacementText":"merged()\\n","reason":"Combines both implementations","question":"","options":[]}],"summary":"Merged both behaviors"}
+            """
+        let responseData = try JSONSerialization.data(withJSONObject: [
+            "output": [["content": [["type": "output_text", "text": plan]]]],
+        ])
+        let client = StubAIProviderHTTPClient(responseBody: String(decoding: responseData, as: UTF8.self))
         let provider = OpenAICommitMessageProvider(
             credentialStore: store,
             httpClient: client
@@ -232,6 +236,52 @@ final class CloudAIProviderTests: XCTestCase {
         XCTAssertEqual(schema["additionalProperties"] as? Bool, false)
         XCTAssertEqual(result.decisions.first?.action, .replace)
         XCTAssertEqual(result.decisions.first?.replacementText, "merged()\n")
+    }
+
+    func testOpenAIAgentRequestUsesStrictGitToolAndCarriesToolOutput() async throws {
+        let store = InMemoryAIProviderCredentialStore(keys: [.openAI: "openai-secret"])
+        let client = StubAIProviderHTTPClient(responseBody: """
+            {"output":[{"type":"function_call","call_id":"call_staged","name":"execute_git","arguments":"{\\"arguments\\":[\\"diff\\",\\"--cached\\"]}"}]}
+            """)
+        let provider = OpenAICommitMessageProvider(
+            credentialStore: store,
+            httpClient: client
+        )
+        let priorCall = RepositoryAIAgentToolCall(
+            id: "call_status",
+            name: "execute_git",
+            arguments: ["status", "--short"]
+        )
+        let request = RepositoryAIAgentRequest(
+            repositoryName: "Example",
+            branchName: "main",
+            question: "Review staged files",
+            conversation: [],
+            previousToolResults: [RepositoryAIAgentToolResult(
+                toolCall: priorCall,
+                commandResult: RepositoryAIGitCommandResult(
+                    displayCommand: "git status --short",
+                    output: "M  App.swift",
+                    succeeded: true,
+                    isTruncated: false
+                )
+            )],
+            isFirstTurn: false
+        )
+
+        let turn = try await provider.generateRepositoryAgentTurn(request: request)
+        let receivedRequest = await client.receivedRequest()
+        let body = try requestJSONObject(try XCTUnwrap(receivedRequest))
+        let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+        let tool = try XCTUnwrap(tools.first)
+        let input = try XCTUnwrap(body["input"] as? [[String: Any]])
+
+        XCTAssertEqual(tool["name"] as? String, "execute_git")
+        XCTAssertEqual(tool["strict"] as? Bool, true)
+        XCTAssertEqual(input.dropFirst().first?["type"] as? String, "function_call")
+        XCTAssertEqual(input.last?["type"] as? String, "function_call_output")
+        XCTAssertEqual(input.last?["call_id"] as? String, "call_status")
+        XCTAssertEqual(turn.toolCalls.first?.arguments, ["diff", "--cached"])
     }
 
     func testAnthropicRequestUsesRequiredHeadersAndParsesResponse() async throws {

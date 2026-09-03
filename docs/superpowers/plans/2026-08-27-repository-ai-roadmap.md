@@ -20,7 +20,7 @@ Build a repository-scoped AI assistant in the toolbar side panel. The assistant 
   - Replace the placeholder Chat tab with quick actions, context selection, provider selection, and a conversation transcript.
   - Gate execution through the existing `repositoryChat` feature policy.
   - Plan: [Repository AI Phase 1: Review Changes and Explain Commits](2026-08-27-repository-ai-phase-1-review-and-explain.md)
-- [pending] **Phase 2 — Agentic read-only Git harness**
+- [completed] **Phase 2 — Agentic read-only Git harness**
   - Replace the caller-selected context tool with a provider-neutral tool-calling loop where the model can request bounded Git arguments and inspect each result before answering.
   - Reuse `GitStatusService.runGit(arguments:in:)` behind an AI-only command policy; never expose arbitrary shell execution or unrestricted Git commands.
   - Make staged-only review work naturally through `git diff --cached`, preserve multi-turn context, and reject answers built from stale repository state.
@@ -32,10 +32,14 @@ Build a repository-scoped AI assistant in the toolbar side panel. The assistant 
 - [pending] **Phase 4 — Broader repository analysis**
   - Add branch comparison, history search, and pull-request context tools.
   - Plan: [Repository AI Phase 4: Broader Repository Analysis](2026-09-03-repository-ai-phase-4-broader-repository-analysis.md)
-- [pending] **Phase 5 — Confirmed Git mutations**
-  - Add semantic stage, unstage, commit, checkout, and related tools one operation at a time.
+- [pending] **Phase 5 — Confirmed local Git mutations**
+  - Add semantic stage, unstage, commit, create/check out branches, and apply an existing Conflict AI resolution one operation at a time.
   - Require explicit user confirmation, expected-state validation, Git Undo integration where supported, and normal repository refresh notifications.
   - Plan: [Repository AI Phase 5: Confirmed Git Mutations](2026-09-03-repository-ai-phase-5-confirmed-git-mutations.md)
+- [pending] **Phase 6 — Confirmed remote Git operations**
+  - Add preflighted fetch, pull, and push proposals using existing remote/account flows; force and destructive remote operations remain separate later work.
+  - Require an explicit remote/branch/refspec preview and confirmation, then revalidate state immediately before execution.
+  - Plan: [Repository AI Phase 6: Confirmed Remote Git Operations](2026-09-03-repository-ai-phase-6-confirmed-remote-git-operations.md)
 
 ## Roadmap-wide guardrails
 

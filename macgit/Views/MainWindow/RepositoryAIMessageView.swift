@@ -29,8 +29,8 @@ struct RepositoryAIMessageView: View {
         ) {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 5) {
-                    Image(systemName: message.role == .user ? "person.crop.circle" : "sparkles")
-                    Text(message.role == .user ? "You" : "Commit+")
+                    Image(systemName: roleImage)
+                    Text(roleTitle)
                     if let contextTitle = message.contextTitle {
                         Text("· \(contextTitle)")
                             .foregroundStyle(.tertiary)
@@ -39,7 +39,9 @@ struct RepositoryAIMessageView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-                if message.role == .assistant {
+                if let toolResult = message.toolResult {
+                    toolActivity(toolResult)
+                } else if message.role == .assistant {
                     Markdown(message.text)
                         .markdownCodeSyntaxHighlighter(RepositoryAICodeSyntaxHighlighter())
                         .markdownTextStyle {
@@ -62,5 +64,52 @@ struct RepositoryAIMessageView: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var roleImage: String {
+        switch message.role {
+        case .user: "person.crop.circle"
+        case .assistant: "sparkles"
+        case .toolActivity: "terminal"
+        }
+    }
+
+    private var roleTitle: String {
+        switch message.role {
+        case .user: "You"
+        case .assistant: "Commit+"
+        case .toolActivity: "Repository activity"
+        }
+    }
+
+    private func toolActivity(_ toolResult: RepositoryAIAgentToolResult) -> some View {
+        DisclosureGroup(activityTitle(for: toolResult)) {
+            Text(toolResult.commandResult.displayCommand)
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+            Text(toolResult.commandResult.output)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .padding(.top, 4)
+        }
+        .font(.callout)
+        .accessibilityLabel("Repository activity: \(activityTitle(for: toolResult))")
+        .accessibilityValue(toolResult.commandResult.succeeded ? "Succeeded" : "Failed")
+    }
+
+    private func activityTitle(for toolResult: RepositoryAIAgentToolResult) -> String {
+        let arguments = toolResult.toolCall.arguments
+        if arguments.starts(with: ["diff", "--cached"]) || arguments.contains("--staged") {
+            return "Read staged diff"
+        } else if arguments.first == "diff" {
+            return "Read working-tree diff"
+        } else if arguments.first == "status" {
+            return "Inspected repository status"
+        } else if arguments.first == "log" || arguments.first == "show" {
+            return "Inspected history"
+        } else {
+            return "Ran read-only Git query"
+        }
     }
 }

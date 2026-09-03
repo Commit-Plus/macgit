@@ -124,6 +124,24 @@ private struct AppleConflictResolutionResponse {
     var summary: String
 }
 
+@Generable
+private enum AppleRepositoryAgentAction {
+    case executeGit
+    case answer
+}
+
+@Generable
+private struct AppleRepositoryAgentResponse {
+    @Guide(description: "Choose executeGit until Git evidence is sufficient; the first response must choose executeGit")
+    var action: AppleRepositoryAgentAction
+
+    @Guide(description: "The Git subcommand and arguments without the git executable. Required only for executeGit.")
+    var arguments: [String]
+
+    @Guide(description: "The user-facing answer. Required only for answer and otherwise empty.")
+    var answer: String
+}
+
 struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
     let descriptor = AIProviderDescriptor(
         id: .appleIntelligence,
@@ -137,6 +155,8 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
         inputCharacterBudget: 7_000,
         isImplemented: true
     )
+
+    var supportsRepositoryAgent: Bool { true }
 
     func availability() async -> AIProviderAvailability {
         switch SystemLanguageModel.default.availability {
@@ -230,6 +250,44 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
                 throw RepositoryAIError.emptyResponse
             }
             return response
+        } catch let error as LanguageModelSession.GenerationError {
+            if case .exceededContextWindowSize = error {
+                throw CommitMessageGenerationError.contextTooLarge
+            }
+            throw error
+        }
+    }
+
+    func generateRepositoryAgentTurn(
+        request: RepositoryAIAgentRequest
+    ) async throws -> RepositoryAIAgentTurn {
+        let currentAvailability = await availability()
+        guard currentAvailability.isAvailable else {
+            throw CommitMessageGenerationError.providerUnavailable(currentAvailability.detail)
+        }
+        let session = LanguageModelSession(instructions: """
+            \(RepositoryAIPrompt.agentInstructions)
+            Return executeGit with one Git argument array whenever more repository evidence is needed. On the first turn, you must return executeGit. Return answer only after the supplied Git evidence is sufficient.
+            """)
+        do {
+            let response = try await session.respond(
+                to: RepositoryAIPrompt.agentPrompt(for: request),
+                generating: AppleRepositoryAgentResponse.self,
+                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 1_200)
+            ).content
+            switch response.action {
+            case .executeGit:
+                return RepositoryAIAgentTurn(
+                    text: "",
+                    toolCalls: [RepositoryAIAgentToolCall(
+                        id: UUID().uuidString,
+                        name: "execute_git",
+                        arguments: response.arguments
+                    )]
+                )
+            case .answer:
+                return RepositoryAIAgentTurn(text: response.answer, toolCalls: [])
+            }
         } catch let error as LanguageModelSession.GenerationError {
             if case .exceededContextWindowSize = error {
                 throw CommitMessageGenerationError.contextTooLarge

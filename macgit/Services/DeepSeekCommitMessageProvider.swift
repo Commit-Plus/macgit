@@ -37,6 +37,8 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
     private let httpClient: any AIProviderHTTPClient
     private let endpoint: URL
 
+    var supportsRepositoryAgent: Bool { true }
+
     init(
         credentialStore: any AIProviderCredentialStore,
         modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore(),
@@ -119,6 +121,80 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
         return text
     }
 
+    func generateRepositoryAgentTurn(
+        request: RepositoryAIAgentRequest
+    ) async throws -> RepositoryAIAgentTurn {
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("DeepSeek model is not configured.")
+        }
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let messages = agentMessages(for: request)
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": model,
+            "messages": messages,
+            "tools": [[
+                "type": "function",
+                "function": [
+                    "name": "execute_git",
+                    "description": "Run one bounded, read-only Git query in the current repository.",
+                    "parameters": RepositoryAIGitToolSchema.parameters,
+                ],
+            ]],
+            "tool_choice": request.isFirstTurn ? "required" : "auto",
+            "max_tokens": 1_200,
+            "thinking": ["type": "disabled"],
+        ])
+
+        let (data, response) = try await httpClient.data(for: urlRequest)
+        try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+        guard let payload = try? JSONDecoder().decode(Response.self, from: data),
+              let message = payload.choices.first?.message else {
+            throw RepositoryAIError.invalidResponse("DeepSeek did not return a usable Git tool response.")
+        }
+        let toolCalls = try (message.toolCalls ?? []).map { toolCall in
+            guard let data = toolCall.function.arguments.data(using: .utf8),
+                  let decoded = try? JSONDecoder().decode(ToolArguments.self, from: data) else {
+                throw RepositoryAIError.invalidResponse("DeepSeek returned an invalid Git tool call.")
+            }
+            return RepositoryAIAgentToolCall(
+                id: toolCall.id,
+                name: toolCall.function.name,
+                arguments: decoded.arguments
+            )
+        }
+        return RepositoryAIAgentTurn(text: message.content ?? "", toolCalls: toolCalls)
+    }
+
+    private func agentMessages(for request: RepositoryAIAgentRequest) -> [[String: Any]] {
+        var messages: [[String: Any]] = [
+            ["role": "system", "content": RepositoryAIPrompt.agentInstructions],
+            ["role": "user", "content": RepositoryAIPrompt.agentPrompt(for: request)],
+        ]
+        for toolResult in request.previousToolResults {
+            let arguments = (try? JSONSerialization.data(withJSONObject: ["arguments": toolResult.toolCall.arguments]))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"arguments\":[]}"
+            messages.append([
+                "role": "assistant",
+                "content": NSNull(),
+                "tool_calls": [[
+                    "id": toolResult.toolCall.id,
+                    "type": "function",
+                    "function": ["name": toolResult.toolCall.name, "arguments": arguments],
+                ]],
+            ])
+            messages.append([
+                "role": "tool",
+                "tool_call_id": toolResult.toolCall.id,
+                "content": toolResult.commandResult.output,
+            ])
+        }
+        return messages
+    }
+
     func generateConflictResolution(
         request: ConflictAIResolutionRequest
     ) async throws -> ConflictAIResolutionResponse {
@@ -166,5 +242,25 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
 
     private struct Message: Decodable {
         let content: String?
+        let toolCalls: [ToolCall]?
+
+        private enum CodingKeys: String, CodingKey {
+            case content
+            case toolCalls = "tool_calls"
+        }
+    }
+
+    private struct ToolCall: Decodable {
+        let id: String
+        let function: ToolFunction
+    }
+
+    private struct ToolFunction: Decodable {
+        let name: String
+        let arguments: String
+    }
+
+    private struct ToolArguments: Decodable {
+        let arguments: [String]
     }
 }

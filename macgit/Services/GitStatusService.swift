@@ -22,11 +22,22 @@
 //
 import Foundation
 
+nonisolated struct GitBoundedOutput: Sendable {
+    let text: String
+    let isTruncated: Bool
+}
+
+nonisolated private struct GitProcessResult: Sendable {
+    let data: Data
+    let isTruncated: Bool
+}
+
 nonisolated private final class GitProcessExecution: @unchecked Sendable {
     private let executable: String
     private let arguments: [String]
     private let directory: URL
     private let environment: [String: String]
+    private let outputByteLimit: Int?
     private let lock = NSLock()
     private let outputLock = NSLock()
     private let outputGroup = DispatchGroup()
@@ -36,17 +47,25 @@ nonisolated private final class GitProcessExecution: @unchecked Sendable {
     private var stderr: Pipe?
     private var stdoutData = Data()
     private var stderrData = Data()
-    private var continuation: CheckedContinuation<Data, Error>?
+    private var continuation: CheckedContinuation<GitProcessResult, Error>?
     private var didResume = false
+    private var isOutputTruncated = false
 
-    init(executable: String, arguments: [String], directory: URL, environment: [String: String]) {
+    init(
+        executable: String,
+        arguments: [String],
+        directory: URL,
+        environment: [String: String],
+        outputByteLimit: Int? = nil
+    ) {
         self.executable = executable
         self.arguments = arguments
         self.directory = directory
         self.environment = environment
+        self.outputByteLimit = outputByteLimit
     }
 
-    func run() async throws -> Data {
+    func run() async throws -> GitProcessResult {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 start(continuation: continuation)
@@ -56,7 +75,7 @@ nonisolated private final class GitProcessExecution: @unchecked Sendable {
         }
     }
 
-    private func start(continuation: CheckedContinuation<Data, Error>) {
+    private func start(continuation: CheckedContinuation<GitProcessResult, Error>) {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: executable)
         task.arguments = arguments
@@ -100,16 +119,38 @@ nonisolated private final class GitProcessExecution: @unchecked Sendable {
         let outputGroup = outputGroup
         DispatchQueue.global(qos: .utility).async { [weak self, outputGroup] in
             defer { outputGroup.leave() }
-            let data = handle.readDataToEndOfFile()
-            guard let self else { return }
-
-            outputLock.lock()
-            if intoStandardError {
-                stderrData = data
-            } else {
-                stdoutData = data
+            while true {
+                let data = handle.availableData
+                guard !data.isEmpty else { return }
+                guard let self else { return }
+                append(data, intoStandardError: intoStandardError)
             }
-            outputLock.unlock()
+        }
+    }
+
+    private func append(_ data: Data, intoStandardError: Bool) {
+        outputLock.lock()
+        defer { outputLock.unlock() }
+
+        guard let outputByteLimit else {
+            if intoStandardError {
+                stderrData.append(data)
+            } else {
+                stdoutData.append(data)
+            }
+            return
+        }
+
+        let capturedCount = stdoutData.count + stderrData.count
+        let remaining = max(0, outputByteLimit - capturedCount)
+        let captured = data.prefix(remaining)
+        if intoStandardError {
+            stderrData.append(contentsOf: captured)
+        } else {
+            stdoutData.append(contentsOf: captured)
+        }
+        if captured.count < data.count {
+            isOutputTruncated = true
         }
     }
 
@@ -117,15 +158,16 @@ nonisolated private final class GitProcessExecution: @unchecked Sendable {
         outputLock.lock()
         let outData = stdoutData
         let errData = stderrData
+        let isTruncated = isOutputTruncated
         outputLock.unlock()
-        let errorOutput = String(data: errData, encoding: .utf8) ?? ""
+        let errorOutput = String(decoding: errData, as: UTF8.self)
 
         if process.terminationStatus != 0 {
-            let output = String(data: outData, encoding: .utf8) ?? ""
+            let output = String(decoding: outData, as: UTF8.self)
             let message = errorOutput.isEmpty ? output : errorOutput
             resume(throwing: GitError.commandFailed(message.trimmingCharacters(in: .whitespacesAndNewlines)))
         } else {
-            resume(returning: outData)
+            resume(returning: GitProcessResult(data: outData, isTruncated: isTruncated))
         }
     }
 
@@ -141,9 +183,9 @@ nonisolated private final class GitProcessExecution: @unchecked Sendable {
         resume(throwing: CancellationError())
     }
 
-    private func resume(returning data: Data) {
+    private func resume(returning result: GitProcessResult) {
         complete { continuation in
-            continuation.resume(returning: data)
+            continuation.resume(returning: result)
         }
     }
 
@@ -153,7 +195,7 @@ nonisolated private final class GitProcessExecution: @unchecked Sendable {
         }
     }
 
-    private func complete(_ resume: (CheckedContinuation<Data, Error>) -> Void) {
+    private func complete(_ resume: (CheckedContinuation<GitProcessResult, Error>) -> Void) {
         lock.lock()
         guard !didResume, let continuation else {
             lock.unlock()
@@ -223,7 +265,7 @@ actor GitStatusService {
             }
         }
         let data = try await runGitRaw(arguments: arguments, in: directory)
-        return String(data: data, encoding: .utf8) ?? ""
+        return String(decoding: data, as: UTF8.self)
     }
 
     func runGit(arguments: [String], in directory: URL, environment: [String: String]) async throws -> String {
@@ -253,7 +295,76 @@ actor GitStatusService {
             }
         }
         let data = try await runGitRaw(arguments: arguments, in: directory, environment: environment)
-        return String(data: data, encoding: .utf8) ?? ""
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    func runGitBounded(
+        arguments: [String],
+        in directory: URL,
+        environment: [String: String],
+        outputByteLimit: Int
+    ) async throws -> GitBoundedOutput {
+        let limit = max(1, outputByteLimit)
+        if let runner {
+            let startedAt = Date.now
+            do {
+                let output = try await runner.runGit(
+                    arguments: arguments,
+                    in: directory,
+                    environment: environment
+                )
+                await GitCommandLogStore.shared.record(
+                    arguments: arguments,
+                    directory: directory,
+                    duration: Date.now.timeIntervalSince(startedAt),
+                    error: nil
+                )
+                let bytes = Data(output.utf8)
+                return GitBoundedOutput(
+                    text: String(decoding: bytes.prefix(limit), as: UTF8.self),
+                    isTruncated: bytes.count > limit
+                )
+            } catch {
+                await GitCommandLogStore.shared.record(
+                    arguments: arguments,
+                    directory: directory,
+                    duration: Date.now.timeIntervalSince(startedAt),
+                    error: error
+                )
+                throw error
+            }
+        }
+
+        let startedAt = Date.now
+        do {
+            let context = try await gitExecutionContext(environment: environment)
+            let execution = GitProcessExecution(
+                executable: context.executable,
+                arguments: arguments,
+                directory: directory,
+                environment: context.environment,
+                outputByteLimit: limit
+            )
+            let result = try await execution.run()
+            await GitCommandLogStore.shared.record(
+                arguments: arguments,
+                directory: directory,
+                duration: Date.now.timeIntervalSince(startedAt),
+                error: nil
+            )
+            return GitBoundedOutput(
+                text: String(decoding: result.data, as: UTF8.self),
+                isTruncated: result.isTruncated
+            )
+        } catch {
+            await GitCommandLogStore.shared.record(
+                arguments: arguments,
+                directory: directory,
+                duration: Date.now.timeIntervalSince(startedAt),
+                error: error
+            )
+            throw error
+        }
     }
 
     func runGitRaw(arguments: [String], in directory: URL) async throws -> Data {
@@ -268,7 +379,7 @@ actor GitStatusService {
         let startedAt = Date()
         do {
             let context = try await gitExecutionContext(environment: environment)
-            let data = try await GitProcessExecution(
+            let result = try await GitProcessExecution(
                 executable: context.executable,
                 arguments: arguments,
                 directory: directory,
@@ -280,7 +391,7 @@ actor GitStatusService {
                 duration: Date().timeIntervalSince(startedAt),
                 error: nil
             )
-            return data
+            return result.data
         } catch {
             await GitCommandLogStore.shared.record(
                 arguments: arguments,
@@ -311,12 +422,13 @@ actor GitStatusService {
         in directory: URL,
         environment: [String: String]
     ) async throws -> Data {
-        try await GitProcessExecution(
+        let result = try await GitProcessExecution(
             executable: executableURL.path,
             arguments: arguments,
             directory: directory,
             environment: environment
         ).run()
+        return result.data
     }
 
     struct PushOptions {

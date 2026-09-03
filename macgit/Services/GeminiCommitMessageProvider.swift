@@ -37,6 +37,8 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
     private let httpClient: any AIProviderHTTPClient
     private let modelsEndpoint: URL
 
+    var supportsRepositoryAgent: Bool { true }
+
     init(
         credentialStore: any AIProviderCredentialStore,
         modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore(),
@@ -180,6 +182,89 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         return text
     }
 
+    func generateRepositoryAgentTurn(
+        request: RepositoryAIAgentRequest
+    ) async throws -> RepositoryAIAgentTurn {
+        let apiKey = try CloudAIProviderSupport.apiKey(for: descriptor, credentialStore: credentialStore)
+        guard let model = modelStore.model(for: descriptor) else {
+            throw CommitMessageGenerationError.providerRequestFailed("Gemini model is not configured.")
+        }
+        let endpoint = modelsEndpoint.appending(path: "\(model):generateContent")
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var contents: [[String: Any]] = [[
+            "role": "user",
+            "parts": [["text": RepositoryAIPrompt.agentPrompt(for: request)]],
+        ]]
+        for toolResult in request.previousToolResults {
+            contents.append([
+                "role": "model",
+                "parts": [[
+                    "functionCall": [
+                        "name": toolResult.toolCall.name,
+                        "args": ["arguments": toolResult.toolCall.arguments],
+                    ],
+                ]],
+            ])
+            contents.append([
+                "role": "user",
+                "parts": [[
+                    "functionResponse": [
+                        "name": toolResult.toolCall.name,
+                        "response": ["output": toolResult.commandResult.output],
+                    ],
+                ]],
+            ])
+        }
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "systemInstruction": ["parts": [["text": RepositoryAIPrompt.agentInstructions]]],
+            "contents": contents,
+            "tools": [[
+                "functionDeclarations": [[
+                    "name": "execute_git",
+                    "description": "Run one bounded, read-only Git query in the current repository.",
+                    "parameters": RepositoryAIGitToolSchema.parameters,
+                ]],
+            ]],
+            "toolConfig": [
+                "functionCallingConfig": [
+                    "mode": request.isFirstTurn ? "ANY" : "AUTO",
+                    "allowedFunctionNames": ["execute_git"],
+                ],
+            ],
+            "generationConfig": [
+                "maxOutputTokens": 1_200,
+                "thinkingConfig": ["thinkingLevel": "MINIMAL", "includeThoughts": false],
+            ],
+            "store": false,
+        ])
+
+        let (data, response) = try await httpClient.data(for: urlRequest)
+        try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+        guard let payload = try? JSONDecoder().decode(Response.self, from: data) else {
+            throw RepositoryAIError.invalidResponse("Gemini did not return a usable Git tool response.")
+        }
+        let parts = (payload.candidates ?? []).compactMap(\.content).flatMap(\.parts)
+        let toolCalls: [RepositoryAIAgentToolCall] = try parts.compactMap { part in
+            guard let functionCall = part.functionCall else { return nil }
+            guard let arguments = functionCall.args?.arguments else {
+                throw RepositoryAIError.invalidResponse("Gemini returned an invalid Git tool call.")
+            }
+            return RepositoryAIAgentToolCall(
+                id: functionCall.id ?? UUID().uuidString,
+                name: functionCall.name,
+                arguments: arguments
+            )
+        }
+        let text = parts
+            .filter { $0.thought != true }
+            .compactMap(\.text)
+            .joined(separator: "\n")
+        return RepositoryAIAgentTurn(text: text, toolCalls: toolCalls)
+    }
+
     func generateConflictResolution(
         request: ConflictAIResolutionRequest
     ) async throws -> ConflictAIResolutionResponse {
@@ -253,6 +338,17 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
     private struct Part: Decodable {
         let text: String?
         let thought: Bool?
+        let functionCall: FunctionCall?
+    }
+
+    private struct FunctionCall: Decodable {
+        let id: String?
+        let name: String
+        let args: ToolArguments?
+    }
+
+    private struct ToolArguments: Decodable {
+        let arguments: [String]
     }
 
     private struct PromptFeedback: Decodable {

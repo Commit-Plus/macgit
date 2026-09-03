@@ -29,6 +29,7 @@ final class AIProviderController: ObservableObject {
     private let registry: AIProviderRegistry
     private let snapshotLoader: any CommitChangeSnapshotLoading
     private let repositoryToolExecutor: any RepositoryAIToolExecuting
+    private let repositoryAgentHarness: RepositoryAIAgentHarness
     private let defaults: UserDefaults
     private let credentialStore: any AIProviderCredentialStore
     private let modelStore: any AIProviderModelStore
@@ -41,6 +42,7 @@ final class AIProviderController: ObservableObject {
             registry: .live(credentialStore: credentialStore, modelStore: modelStore),
             snapshotLoader: GitStatusService.shared,
             repositoryToolExecutor: GitStatusService.shared,
+            repositoryAgentHarness: RepositoryAIAgentHarness(),
             defaults: .standard,
             credentialStore: credentialStore,
             modelStore: modelStore
@@ -51,6 +53,7 @@ final class AIProviderController: ObservableObject {
         registry: AIProviderRegistry,
         snapshotLoader: any CommitChangeSnapshotLoading,
         repositoryToolExecutor: any RepositoryAIToolExecuting = GitStatusService.shared,
+        repositoryAgentHarness: RepositoryAIAgentHarness = RepositoryAIAgentHarness(),
         defaults: UserDefaults,
         credentialStore: any AIProviderCredentialStore = KeychainAIProviderCredentialStore(),
         modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore()
@@ -58,6 +61,7 @@ final class AIProviderController: ObservableObject {
         self.registry = registry
         self.snapshotLoader = snapshotLoader
         self.repositoryToolExecutor = repositoryToolExecutor
+        self.repositoryAgentHarness = repositoryAgentHarness
         self.defaults = defaults
         self.credentialStore = credentialStore
         self.modelStore = modelStore
@@ -255,7 +259,6 @@ final class AIProviderController: ObservableObject {
         guard let provider = registry.provider(for: selectedProviderID) else {
             throw CommitMessageGenerationError.providerNotImplemented
         }
-
         let providerID = selectedProviderID
         let providerAvailability = await provider.availability()
         availabilityByProviderID[providerID] = providerAvailability
@@ -293,6 +296,49 @@ final class AIProviderController: ObservableObject {
             throw RepositoryAIError.emptyResponse
         }
         return normalizedResponse
+    }
+
+    func answerRepositoryQuestionWithAgent(
+        repositoryURL: URL,
+        branchName: String?,
+        question: String,
+        conversation: [RepositoryAIMessage] = []
+    ) async throws -> RepositoryAIAgentRunResult {
+        let normalizedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuestion.isEmpty else {
+            throw RepositoryAIError.emptyQuestion
+        }
+        guard !isGenerating else {
+            throw CommitMessageGenerationError.providerUnavailable("Another AI request is already running.")
+        }
+        guard let provider = registry.provider(for: selectedProviderID) else {
+            throw CommitMessageGenerationError.providerNotImplemented
+        }
+        guard provider.supportsRepositoryAgent else {
+            throw RepositoryAIAgentError.unsupportedProvider(provider.descriptor.displayName)
+        }
+
+        let providerID = selectedProviderID
+        let providerAvailability = await provider.availability()
+        availabilityByProviderID[providerID] = providerAvailability
+        guard providerAvailability.isAvailable else {
+            throw CommitMessageGenerationError.providerUnavailable(providerAvailability.detail)
+        }
+
+        isGenerating = true
+        defer { isGenerating = false }
+
+        let result = try await repositoryAgentHarness.answer(
+            question: normalizedQuestion,
+            repositoryURL: repositoryURL,
+            branchName: branchName,
+            conversation: conversation,
+            provider: provider
+        )
+        guard providerID == selectedProviderID else {
+            throw RepositoryAIError.contextChanged
+        }
+        return result
     }
 
     func generateConflictResolution(

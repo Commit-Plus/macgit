@@ -1,10 +1,19 @@
 # Repository AI Phase 2: Agentic Read-Only Git Harness
 
+**Status:** [completed]
+
 **Branch:** `codex/repository-ai-agentic-git-harness`
 
 ## Goal
 
 Let Repository AI decide which safe Git queries it needs, execute them through Commit+'s existing Git runtime, inspect results, recover from ordinary Git command failures, and continue until it can answer the user's repository question. The first required behavior is correctly reviewing staged-only changes when the user asks for them.
+
+## Completion record
+
+- Implemented the shared read-only command policy, bounded process capture, cancellation-aware command/request deadlines, and repository-state revalidation. The policy admits any arguments for a known read-only Git built-in, except execution-context overrides and external helpers; it does not maintain a brittle per-option grammar.
+- Added tool-call transports for Apple Intelligence, OpenAI, Claude, Gemini, DeepSeek, and OpenRouter; each uses the shared executor and policy.
+- Added local bounded follow-up context, accessible Git activity disclosure rows, and cancellation to the Repository AI panel.
+- Verified with `git diff --check`, a macOS `build-for-testing`, and 29 focused tests including a real staged-only temporary repository. The full-suite run completed 928 tests; its remaining failures were the documented Firebase bootstrap abort plus unrelated pre-existing tests.
 
 ## Independent delivery
 
@@ -52,17 +61,10 @@ The existing `GitStatusService.runGit` family remains the only process-execution
 
 ## Task 2 — Read-only Git policy and executor
 
-- [ ] Add `RepositoryAIGitCommandPolicy` as a pure, exhaustively tested validator over `[String]`.
-- [ ] Add `RepositoryAIGitCommandExecutor` that validates arguments and delegates accepted commands to the existing environment-aware `GitStatusService.runGit` overload.
-- [ ] Start with explicit argument grammars for:
-  - `status` in porcelain/read-only forms;
-  - `diff` for working tree, `--cached`, refs, statistics, and bounded patches;
-  - `show` for commit metadata and patches, but not arbitrary blob/file extraction;
-  - `log` with bounded counts and approved formats;
-  - `rev-parse` for validated commit-ish resolution and current repository state;
-  - `ls-files` for index/untracked discovery;
-  - `branch --show-current`, `for-each-ref`, and `merge-base` in approved query forms.
-- [ ] Use positive option allow-lists per subcommand. Reject global Git options supplied by the model, including configuration, executable-path, Git-directory, and work-tree overrides.
+- [x] Add `RepositoryAIGitCommandPolicy` as a pure, exhaustively tested validator over `[String]`.
+- [x] Add `RepositoryAIGitCommandExecutor` that validates arguments and delegates accepted commands to the existing environment-aware `GitStatusService.runGit` overload.
+- [x] Admit normal arguments and pathspecs for known read-only built-ins, including `git diff --cached`; do not maintain a brittle per-option allow-list. The accepted built-ins are explicit, and process/output/time bounds still apply.
+- [x] Reject model-supplied global Git overrides, including configuration, executable-path, Git-directory, work-tree, namespace, output-file, pager, external-diff, textconv, and no-index overrides.
 - [ ] Reject every mutation or network-capable command, including `add`, `rm`, `restore`, `checkout`, `switch`, `reset`, `clean`, `commit`, `merge`, `rebase`, `cherry-pick`, `revert`, `stash`, `tag`, branch mutations, `config`, `fetch`, `pull`, `push`, `clone`, `ls-remote`, submodule mutations, and worktree mutations.
 - [ ] Inject safe execution settings owned by the app: no pager, no terminal prompt, no color, no external diff, and no textconv.
 - [ ] Bound output before it can grow without limit. Enhance the existing Git process seam with a byte ceiling if post-execution truncation cannot provide a real memory bound; do not create a second Git runtime.

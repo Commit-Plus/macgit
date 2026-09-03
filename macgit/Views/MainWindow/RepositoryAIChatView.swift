@@ -129,6 +129,8 @@ struct RepositoryAIChatView: View {
                             Text("Reading repository context…")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
+                            Button("Cancel", systemImage: "xmark", action: controller.cancelActiveRequest)
+                                .controlSize(.small)
                         }
                     }
                 }
