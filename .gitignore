@@ -3,6 +3,7 @@
 .tmp
 .superpowers/
 .env.local
+macgit/GoogleService-Info.plist
 .firebase/
 node_modules/
 functions/lib/

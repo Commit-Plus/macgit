@@ -37,6 +37,46 @@ jobs:
           echo "TAG_VERSION=$TAG_VERSION" >> "$GITHUB_ENV"
           echo "BUILD_VERSION=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 
+      - name: Generate GoogleService-Info.plist
+        run: |
+          cat > macgit/GoogleService-Info.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>API_KEY</key>
+            <string>${{ vars.FIREBASE_API_KEY }}</string>
+            <key>BUNDLE_ID</key>
+            <string>dev.thanhtran.macgit</string>
+            <key>CLIENT_ID</key>
+            <string>${{ vars.FIREBASE_CLIENT_ID }}</string>
+            <key>GOOGLE_APP_ID</key>
+            <string>${{ vars.FIREBASE_GOOGLE_APP_ID }}</string>
+            <key>GCM_SENDER_ID</key>
+            <string>${{ vars.FIREBASE_GCM_SENDER_ID }}</string>
+            <key>IS_ADS_ENABLED</key>
+            <false/>
+            <key>IS_ANALYTICS_ENABLED</key>
+            <false/>
+            <key>IS_APPINVITE_ENABLED</key>
+            <true/>
+            <key>IS_GCM_ENABLED</key>
+            <true/>
+            <key>IS_SIGNIN_ENABLED</key>
+            <true/>
+            <key>PLIST_VERSION</key>
+            <string>1</string>
+            <key>PROJECT_ID</key>
+            <string>${{ vars.FIREBASE_PROJECT_ID }}</string>
+            <key>REVERSED_CLIENT_ID</key>
+            <string>${{ vars.FIREBASE_REVERSED_CLIENT_ID }}</string>
+            <key>STORAGE_BUCKET</key>
+            <string>${{ vars.FIREBASE_STORAGE_BUCKET }}</string>
+          </dict>
+          </plist>
+          PLIST
+
       - name: Import signing assets
         run: scripts/release/import-signing-assets.sh
         env:
