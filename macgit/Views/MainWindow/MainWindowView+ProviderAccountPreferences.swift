@@ -40,6 +40,20 @@ extension MainWindowView {
         }
     }
 
+    func executeRepositoryAIRemoteOperation(
+        _ operation: RepositoryAIValidatedRemoteOperation
+    ) async throws -> RepositoryAIRemoteOperationExecutionResult {
+        let executor = RepositoryAIRemoteOperationExecutor(
+            credentialResolverProvider: { remotes in
+                await credentialResolverForRemoteOperation(remotes: remotes)
+            },
+            undoManager: undoManager,
+            syncState: syncState,
+            operationProgress: operationProgress
+        )
+        return try await executor.execute(operation, in: repositoryURL)
+    }
+
     func credentialResolverForRemoteOperation(
         remotes: [String]
     ) async -> GitProviderCredentialResolver? {

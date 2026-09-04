@@ -22,6 +22,7 @@ actor RepositoryAIAgentHarness {
     private let commandExecutor: any RepositoryAIGitCommandExecuting
     private let stateProvider: any RepositoryAIRepositoryStateProviding
     private let mutationContextProvider: (any RepositoryAIMutationContextProviding)?
+    private let remoteOperationContextProvider: (any RepositoryAIRemoteOperationContextProviding)?
     private let maximumToolCalls: Int
     private let commandTimeout: Duration
     private let requestTimeout: Duration
@@ -30,7 +31,8 @@ actor RepositoryAIAgentHarness {
         self.init(
             commandExecutor: RepositoryAIGitCommandExecutor(),
             stateProvider: RepositoryAIRepositoryStateProvider(),
-            mutationContextProvider: RepositoryAIMutationContextProvider()
+            mutationContextProvider: RepositoryAIMutationContextProvider(),
+            remoteOperationContextProvider: RepositoryAIRemoteOperationContextProvider()
         )
     }
 
@@ -38,6 +40,7 @@ actor RepositoryAIAgentHarness {
         commandExecutor: any RepositoryAIGitCommandExecuting,
         stateProvider: any RepositoryAIRepositoryStateProviding,
         mutationContextProvider: (any RepositoryAIMutationContextProviding)? = nil,
+        remoteOperationContextProvider: (any RepositoryAIRemoteOperationContextProviding)? = nil,
         maximumToolCalls: Int = 10,
         commandTimeout: Duration = .seconds(20),
         requestTimeout: Duration = .seconds(90)
@@ -45,6 +48,7 @@ actor RepositoryAIAgentHarness {
         self.commandExecutor = commandExecutor
         self.stateProvider = stateProvider
         self.mutationContextProvider = mutationContextProvider
+        self.remoteOperationContextProvider = remoteOperationContextProvider
         self.maximumToolCalls = maximumToolCalls
         self.commandTimeout = commandTimeout
         self.requestTimeout = requestTimeout
@@ -90,6 +94,7 @@ actor RepositoryAIAgentHarness {
         // Mutation planning is additive. If its richer bounded snapshot cannot
         // be built, existing read-only Repository AI queries must still work.
         let mutationContext = try? await mutationContextProvider?.context(in: repositoryURL)
+        let remoteOperationContext = try? await remoteOperationContextProvider?.context(in: repositoryURL)
         var results = [RepositoryAIAgentToolResult]()
         var isFirstTurn = true
 
@@ -103,7 +108,8 @@ actor RepositoryAIAgentHarness {
                     conversation: conversation,
                     previousToolResults: results,
                     isFirstTurn: isFirstTurn,
-                    mutationContext: mutationContext
+                    mutationContext: mutationContext,
+                    remoteOperationContext: remoteOperationContext
                 )
             )
             isFirstTurn = false
@@ -174,6 +180,29 @@ actor RepositoryAIAgentHarness {
                         )
                     )
                 }
+            }
+
+            let remoteOperationCalls = turn.toolCalls.filter {
+                RepositoryAIRemoteOperationProposalDecoder.toolNames.contains($0.name)
+            }
+            if !remoteOperationCalls.isEmpty {
+                guard results.isEmpty,
+                      turn.toolCalls.count == 1,
+                      let toolCall = remoteOperationCalls.first,
+                      let remoteOperationContext else {
+                    throw RepositoryAIAgentError.invalidRemoteOperationSelection
+                }
+                guard let operation = try RepositoryAIRemoteOperationProposalDecoder.decode(toolCall) else {
+                    throw RepositoryAIAgentError.invalidRemoteOperationSelection
+                }
+                return RepositoryAIAgentRunResult(
+                    answer: "",
+                    toolResults: [],
+                    remoteOperation: try RepositoryAIRemoteOperationPolicy.validate(
+                        operation,
+                        context: remoteOperationContext
+                    )
+                )
             }
 
             for toolCall in turn.toolCalls {

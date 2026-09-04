@@ -234,7 +234,8 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         let functionDeclarations = RepositoryAIAgentToolSchema.declarations(
             includingQuickActions: request.isFirstTurn,
             forGemini: true,
-            mutationContext: request.mutationContext
+            mutationContext: request.mutationContext,
+            remoteOperationContext: request.remoteOperationContext
         )
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
             "systemInstruction": ["parts": [["text": RepositoryAIPrompt.agentInstructions]]],

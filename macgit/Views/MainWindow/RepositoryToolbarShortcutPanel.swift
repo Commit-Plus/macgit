@@ -35,6 +35,7 @@ struct RepositoryToolbarShortcutPanel: View {
     let repositoryChatAccess: FeatureAccessDecision
     let isSignedIn: Bool
     let onRequestRepositoryChatAccess: () -> Void
+    let onExecuteRemoteOperation: (RepositoryAIValidatedRemoteOperation) async throws -> RepositoryAIRemoteOperationExecutionResult
 
     private var panelShape: UnevenRoundedRectangle {
         UnevenRoundedRectangle(
@@ -53,7 +54,8 @@ struct RepositoryToolbarShortcutPanel: View {
                 providerController: aiProviderController,
                 accessDecision: repositoryChatAccess,
                 isSignedIn: isSignedIn,
-                onRequestAccess: onRequestRepositoryChatAccess
+                onRequestAccess: onRequestRepositoryChatAccess,
+                onExecuteRemoteOperation: onExecuteRemoteOperation
             )
             .frame(maxHeight: .infinity, alignment: .top)
         }

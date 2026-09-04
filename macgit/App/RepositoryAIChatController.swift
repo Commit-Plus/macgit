@@ -40,12 +40,15 @@ final class RepositoryAIChatController: ObservableObject {
     @Published private(set) var streamingRevision = 0
     @Published var pendingMutation: PendingRepositoryAIMutation?
     @Published private(set) var isExecutingMutation = false
+    @Published var pendingRemoteOperation: PendingRepositoryAIRemoteOperation?
+    @Published private(set) var isExecutingRemoteOperation = false
 
     private let repositoryURL: URL
     private let providerController: AIProviderController
     private let gitService: GitStatusService
     private let mutationExecutor: (any RepositoryAIMutationExecuting)?
     private let mutationContextProvider: (any RepositoryAIMutationContextProviding)?
+    private let remoteOperationContextProvider: (any RepositoryAIRemoteOperationContextProviding)?
     private let commitAllPreparer: (any RepositoryAICommitAllPreparing)?
     private let pullRequestContextLoader: ((Int?, URL) async throws -> RepositoryAIPullRequestContext)?
     private let pullRequestFingerprintLoader: ((Int, URL) async throws -> String)?
@@ -53,6 +56,7 @@ final class RepositoryAIChatController: ObservableObject {
     private var activeRequestTask: Task<Void, Never>?
     private var pendingQuickAction: (action: RepositoryAIQuickAction, question: String)?
     private var pendingMutationExpirationTask: Task<Void, Never>?
+    private var pendingRemoteOperationExpirationTask: Task<Void, Never>?
 
     init(
         repositoryURL: URL,
@@ -60,6 +64,7 @@ final class RepositoryAIChatController: ObservableObject {
         gitService: GitStatusService = .shared,
         mutationExecutor: (any RepositoryAIMutationExecuting)? = nil,
         mutationContextProvider: (any RepositoryAIMutationContextProviding)? = nil,
+        remoteOperationContextProvider: (any RepositoryAIRemoteOperationContextProviding)? = nil,
         commitAllPreparer: (any RepositoryAICommitAllPreparing)? = nil,
         pullRequestContextLoader: ((Int?, URL) async throws -> RepositoryAIPullRequestContext)? = nil,
         pullRequestFingerprintLoader: ((Int, URL) async throws -> String)? = nil
@@ -69,6 +74,7 @@ final class RepositoryAIChatController: ObservableObject {
         self.gitService = gitService
         self.mutationExecutor = mutationExecutor
         self.mutationContextProvider = mutationContextProvider
+        self.remoteOperationContextProvider = remoteOperationContextProvider
         self.commitAllPreparer = commitAllPreparer
         self.pullRequestContextLoader = pullRequestContextLoader
         self.pullRequestFingerprintLoader = pullRequestFingerprintLoader
@@ -77,12 +83,18 @@ final class RepositoryAIChatController: ObservableObject {
     var canSubmit: Bool {
         !isRunning
             && !isExecutingMutation
+            && !isExecutingRemoteOperation
             && pendingMutation == nil
+            && pendingRemoteOperation == nil
             && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var isInteractionDisabled: Bool {
-        isRunning || isExecutingMutation || pendingMutation != nil
+        isRunning
+            || isExecutingMutation
+            || isExecutingRemoteOperation
+            || pendingMutation != nil
+            || pendingRemoteOperation != nil
     }
 
     var canExplainCommitReference: Bool {
@@ -260,8 +272,9 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     func startNewConversation() {
-        guard !isRunning, !isExecutingMutation else { return }
+        guard !isRunning, !isExecutingMutation, !isExecutingRemoteOperation else { return }
         invalidatePendingMutation(reason: "Conversation reset.", appendTranscript: false)
+        invalidatePendingRemoteOperation(reason: "Conversation reset.", appendTranscript: false)
         draft = ""
         messages.removeAll()
         dismissSelection()
@@ -339,39 +352,106 @@ final class RepositoryAIChatController: ObservableObject {
         ))
     }
 
+    func confirmPendingRemoteOperation(
+        id: UUID,
+        execute: (RepositoryAIValidatedRemoteOperation) async throws -> RepositoryAIRemoteOperationExecutionResult
+    ) async {
+        guard !isExecutingRemoteOperation,
+              let pending = pendingRemoteOperation,
+              pending.id == id else { return }
+        guard pending.expiresAt > .now else {
+            invalidatePendingRemoteOperation(reason: "The approval expired. Ask Repository AI to prepare a new proposal.")
+            return
+        }
+        guard pending.conversationID == conversationSessionID else {
+            invalidatePendingRemoteOperation(reason: "The originating conversation changed.")
+            return
+        }
+        guard pending.providerID == providerController.selectedProviderID else {
+            invalidatePendingRemoteOperation(reason: "The selected AI provider changed.")
+            return
+        }
+
+        pendingRemoteOperationExpirationTask?.cancel()
+        pendingRemoteOperationExpirationTask = nil
+        pendingRemoteOperation = nil
+        messages.append(RepositoryAIMessage(
+            role: .assistant,
+            text: "Confirmed — executing \(pending.preview.title.lowercased())."
+        ))
+        isExecutingRemoteOperation = true
+        defer { isExecutingRemoteOperation = false }
+
+        do {
+            let result = try await execute(pending.validatedOperation)
+            messages.append(RepositoryAIMessage(role: .assistant, text: result.summary))
+        } catch let error as RepositoryAIRemoteOperationError {
+            let prefix: String
+            switch error {
+            case .stale: prefix = "Stale"
+            case .rejected: prefix = "Rejected"
+            case .cancelled: prefix = "Cancelled"
+            case .invalidProviderResponse, .unavailable: prefix = "Failed"
+            }
+            messages.append(RepositoryAIMessage(role: .assistant, text: "\(prefix) — \(error.localizedDescription)"))
+        } catch is CancellationError {
+            messages.append(RepositoryAIMessage(role: .assistant, text: "Cancelled — the remote operation was not completed."))
+        } catch {
+            messages.append(RepositoryAIMessage(role: .assistant, text: "Failed — \(error.localizedDescription)"))
+        }
+    }
+
+    func cancelPendingRemoteOperation() {
+        guard let pendingRemoteOperation, !isExecutingRemoteOperation else { return }
+        self.pendingRemoteOperation = nil
+        pendingRemoteOperationExpirationTask?.cancel()
+        pendingRemoteOperationExpirationTask = nil
+        messages.append(RepositoryAIMessage(
+            role: .assistant,
+            text: "Cancelled — \(pendingRemoteOperation.preview.title) was not run."
+        ))
+    }
+
     func providerDidChange() {
-        guard let pendingMutation,
-              pendingMutation.providerID != providerController.selectedProviderID else { return }
-        invalidatePendingMutation(reason: "The selected AI provider changed.")
+        if let pendingMutation,
+           pendingMutation.providerID != providerController.selectedProviderID {
+            invalidatePendingMutation(reason: "The selected AI provider changed.")
+        }
+        if let pendingRemoteOperation,
+           pendingRemoteOperation.providerID != providerController.selectedProviderID {
+            invalidatePendingRemoteOperation(reason: "The selected AI provider changed.")
+        }
     }
 
     func repositoryDidChange(_ changedRepositoryURL: URL) {
         guard changedRepositoryURL.standardizedFileURL == repositoryURL.standardizedFileURL else { return }
         invalidatePendingMutation(reason: "Repository state changed. Ask Repository AI to prepare a new proposal.")
+        invalidatePendingRemoteOperation(reason: "Repository state changed. Ask Repository AI to prepare a new proposal.")
     }
 
     func repositoryLocalStateDidRefresh(_ refreshedRepositoryURL: URL) async {
-        guard refreshedRepositoryURL.standardizedFileURL == repositoryURL.standardizedFileURL,
-              let pending = pendingMutation,
-              let mutationContextProvider else { return }
-        do {
-            let context = try await mutationContextProvider.context(in: repositoryURL)
-            guard pendingMutation?.id == pending.id else { return }
-            if !RepositoryAIMutationPolicy.isCurrent(
-                pending.precondition,
-                proposal: pending.proposal,
-                context: context
-            ) {
+        guard refreshedRepositoryURL.standardizedFileURL == repositoryURL.standardizedFileURL else { return }
+        if let pending = pendingMutation, let mutationContextProvider {
+            do {
+                let context = try await mutationContextProvider.context(in: repositoryURL)
+                guard pendingMutation?.id == pending.id else { return }
+                if !RepositoryAIMutationPolicy.isCurrent(
+                    pending.precondition,
+                    proposal: pending.proposal,
+                    context: context
+                ) {
+                    invalidatePendingMutation(
+                        reason: "Repository state changed. Ask Repository AI to prepare a new proposal."
+                    )
+                }
+            } catch {
+                guard pendingMutation?.id == pending.id else { return }
                 invalidatePendingMutation(
-                    reason: "Repository state changed. Ask Repository AI to prepare a new proposal."
+                    reason: "The current repository state could not be revalidated."
                 )
             }
-        } catch {
-            guard pendingMutation?.id == pending.id else { return }
-            invalidatePendingMutation(
-                reason: "The current repository state could not be revalidated."
-            )
         }
+        await revalidatePendingRemoteOperation()
     }
 
     func invalidatePendingMutation(reason: String, appendTranscript: Bool = true) {
@@ -379,6 +459,21 @@ final class RepositoryAIChatController: ObservableObject {
         pendingMutation = nil
         pendingMutationExpirationTask?.cancel()
         pendingMutationExpirationTask = nil
+        if appendTranscript {
+            messages.append(RepositoryAIMessage(role: .assistant, text: "Stale — \(reason)"))
+        }
+    }
+
+    func repositoryRemoteRefsDidRefresh(_ refreshedRepositoryURL: URL) async {
+        guard refreshedRepositoryURL.standardizedFileURL == repositoryURL.standardizedFileURL else { return }
+        await revalidatePendingRemoteOperation()
+    }
+
+    func invalidatePendingRemoteOperation(reason: String, appendTranscript: Bool = true) {
+        guard pendingRemoteOperation != nil else { return }
+        pendingRemoteOperation = nil
+        pendingRemoteOperationExpirationTask?.cancel()
+        pendingRemoteOperationExpirationTask = nil
         if appendTranscript {
             messages.append(RepositoryAIMessage(role: .assistant, text: "Stale — \(reason)"))
         }
@@ -430,7 +525,9 @@ final class RepositoryAIChatController: ObservableObject {
         guard !normalized.isEmpty,
               !isRunning,
               !isExecutingMutation,
-              pendingMutation == nil else { return }
+              !isExecutingRemoteOperation,
+              pendingMutation == nil,
+              pendingRemoteOperation == nil else { return }
 
         if messages.isEmpty {
             conversationTitle = makeConversationTitle(from: preferredTitle ?? normalized)
@@ -470,6 +567,8 @@ final class RepositoryAIChatController: ObservableObject {
                         mutation,
                         transcript: "Approval required — review the exact impact before confirming \(mutation.preview.title.lowercased())."
                     )
+                } else if let remoteOperation = result.remoteOperation {
+                    presentPendingRemoteOperation(remoteOperation)
                 } else {
                     for toolResult in result.toolResults {
                         messages.append(RepositoryAIMessage(
@@ -562,6 +661,12 @@ final class RepositoryAIChatController: ObservableObject {
             removeStreamingAssistant(streamingMessageID)
             messages.append(RepositoryAIMessage(role: .assistant, text: "The AI request was cancelled."))
         } catch let error as RepositoryAIMutationError {
+            removeStreamingAssistant(streamingMessageID)
+            messages.append(RepositoryAIMessage(
+                role: .assistant,
+                text: "Rejected — \(error.localizedDescription)"
+            ))
+        } catch let error as RepositoryAIRemoteOperationError {
             removeStreamingAssistant(streamingMessageID)
             messages.append(RepositoryAIMessage(
                 role: .assistant,
@@ -690,6 +795,22 @@ final class RepositoryAIChatController: ObservableObject {
         scheduleExpiration(for: pending)
     }
 
+    private func presentPendingRemoteOperation(_ operation: RepositoryAIValidatedRemoteOperation) {
+        let originatingMessageID = messages.last(where: { $0.role == .user })?.id ?? UUID()
+        let pending = PendingRepositoryAIRemoteOperation(
+            validatedOperation: operation,
+            conversationID: conversationSessionID,
+            originatingMessageID: originatingMessageID,
+            providerID: providerController.selectedProviderID
+        )
+        pendingRemoteOperation = pending
+        messages.append(RepositoryAIMessage(
+            role: .assistant,
+            text: "Approval required — review the exact remote target and preflight before confirming \(operation.preview.title.lowercased())."
+        ))
+        scheduleExpiration(for: pending)
+    }
+
     private func removeStreamingAssistant(_ id: UUID?) {
         guard let id else { return }
         messages.removeAll { $0.id == id }
@@ -769,6 +890,44 @@ final class RepositoryAIChatController: ObservableObject {
             guard let self, self.pendingMutation?.id == pending.id else { return }
             self.invalidatePendingMutation(
                 reason: "The approval expired. Ask Repository AI to prepare a new proposal."
+            )
+        }
+    }
+
+    private func scheduleExpiration(for pending: PendingRepositoryAIRemoteOperation) {
+        pendingRemoteOperationExpirationTask?.cancel()
+        let delay = max(0, pending.expiresAt.timeIntervalSinceNow)
+        pendingRemoteOperationExpirationTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard let self, self.pendingRemoteOperation?.id == pending.id else { return }
+            self.invalidatePendingRemoteOperation(
+                reason: "The approval expired. Ask Repository AI to prepare a new proposal."
+            )
+        }
+    }
+
+    private func revalidatePendingRemoteOperation() async {
+        guard let pending = pendingRemoteOperation,
+              let remoteOperationContextProvider else { return }
+        do {
+            let context = try await remoteOperationContextProvider.context(in: repositoryURL)
+            guard pendingRemoteOperation?.id == pending.id else { return }
+            if !RepositoryAIRemoteOperationPolicy.isCurrent(
+                pending.validatedOperation,
+                context: context
+            ) {
+                invalidatePendingRemoteOperation(
+                    reason: "Remote or repository state changed. Ask Repository AI to prepare a new proposal."
+                )
+            }
+        } catch {
+            guard pendingRemoteOperation?.id == pending.id else { return }
+            invalidatePendingRemoteOperation(
+                reason: "The current remote state could not be revalidated."
             )
         }
     }

@@ -120,6 +120,7 @@ nonisolated struct RepositoryAIAgentRequest: Sendable {
     let previousToolResults: [RepositoryAIAgentToolResult]
     let isFirstTurn: Bool
     let mutationContext: RepositoryAIMutationPlanningContext?
+    let remoteOperationContext: RepositoryAIRemoteOperationPlanningContext?
 
     init(
         repositoryName: String,
@@ -128,7 +129,8 @@ nonisolated struct RepositoryAIAgentRequest: Sendable {
         conversation: [RepositoryAIMessage],
         previousToolResults: [RepositoryAIAgentToolResult],
         isFirstTurn: Bool,
-        mutationContext: RepositoryAIMutationPlanningContext? = nil
+        mutationContext: RepositoryAIMutationPlanningContext? = nil,
+        remoteOperationContext: RepositoryAIRemoteOperationPlanningContext? = nil
     ) {
         self.repositoryName = repositoryName
         self.branchName = branchName
@@ -137,6 +139,7 @@ nonisolated struct RepositoryAIAgentRequest: Sendable {
         self.previousToolResults = previousToolResults
         self.isFirstTurn = isFirstTurn
         self.mutationContext = mutationContext
+        self.remoteOperationContext = remoteOperationContext
     }
 }
 
@@ -146,19 +149,22 @@ nonisolated struct RepositoryAIAgentRunResult: Equatable, Sendable {
     let quickAction: RepositoryAIQuickAction?
     let mutation: RepositoryAIValidatedMutation?
     let mutationWorkflow: RepositoryAIMutationWorkflow?
+    let remoteOperation: RepositoryAIValidatedRemoteOperation?
 
     init(
         answer: String,
         toolResults: [RepositoryAIAgentToolResult],
         quickAction: RepositoryAIQuickAction? = nil,
         mutation: RepositoryAIValidatedMutation? = nil,
-        mutationWorkflow: RepositoryAIMutationWorkflow? = nil
+        mutationWorkflow: RepositoryAIMutationWorkflow? = nil,
+        remoteOperation: RepositoryAIValidatedRemoteOperation? = nil
     ) {
         self.answer = answer
         self.toolResults = toolResults
         self.quickAction = quickAction
         self.mutation = mutation
         self.mutationWorkflow = mutationWorkflow
+        self.remoteOperation = remoteOperation
     }
 }
 
@@ -170,6 +176,7 @@ nonisolated enum RepositoryAIAgentError: LocalizedError, Equatable {
     case unsupportedProvider(String)
     case invalidQuickActionSelection
     case invalidMutationSelection
+    case invalidRemoteOperationSelection
     case commandTimedOut
     case requestTimedOut
     case repositoryChanged
@@ -190,6 +197,8 @@ nonisolated enum RepositoryAIAgentError: LocalizedError, Equatable {
             "Repository AI returned an invalid quick action selection."
         case .invalidMutationSelection:
             "Repository AI can propose only one Git mutation at a time, before running any Git query."
+        case .invalidRemoteOperationSelection:
+            "Repository AI can propose only one remote Git operation at a time, before running any Git query."
         case .commandTimedOut:
             "A Git query took too long and was stopped. Ask a narrower question."
         case .requestTimedOut:

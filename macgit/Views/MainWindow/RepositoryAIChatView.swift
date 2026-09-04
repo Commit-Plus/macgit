@@ -24,6 +24,7 @@ struct RepositoryAIChatView: View {
     let accessDecision: FeatureAccessDecision
     let isSignedIn: Bool
     let onRequestAccess: () -> Void
+    let onExecuteRemoteOperation: (RepositoryAIValidatedRemoteOperation) async throws -> RepositoryAIRemoteOperationExecutionResult
     @State private var followsStreaming = true
     @State private var isShowingQuickActions = false
 
@@ -84,6 +85,17 @@ struct RepositoryAIChatView: View {
                 onConfirm: { confirmPendingMutation(pending.id) }
             )
         }
+        .sheet(
+            item: $controller.pendingRemoteOperation,
+            onDismiss: controller.cancelPendingRemoteOperation
+        ) { pending in
+            RepositoryAIRemoteOperationConfirmationSheet(
+                pending: pending,
+                isExecuting: controller.isExecutingRemoteOperation,
+                onCancel: controller.cancelPendingRemoteOperation,
+                onConfirm: { confirmPendingRemoteOperation(pending.id) }
+            )
+        }
         .onChange(of: providerController.selectedProviderID) {
             controller.providerDidChange()
         }
@@ -94,6 +106,10 @@ struct RepositoryAIChatView: View {
         .onReceive(NotificationCenter.default.publisher(for: .repositoryLocalStateDidRefresh)) { notification in
             guard let repositoryURL = notification.userInfo?["repositoryURL"] as? URL else { return }
             Task { await controller.repositoryLocalStateDidRefresh(repositoryURL) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryRemoteRefsDidRefresh)) { notification in
+            guard let repositoryURL = notification.userInfo?["repositoryURL"] as? URL else { return }
+            Task { await controller.repositoryRemoteRefsDidRefresh(repositoryURL) }
         }
     }
 
@@ -447,5 +463,14 @@ struct RepositoryAIChatView: View {
 
     private func confirmPendingMutation(_ id: UUID) {
         Task { await controller.confirmPendingMutation(id: id) }
+    }
+
+    private func confirmPendingRemoteOperation(_ id: UUID) {
+        Task {
+            await controller.confirmPendingRemoteOperation(
+                id: id,
+                execute: onExecuteRemoteOperation
+            )
+        }
     }
 }

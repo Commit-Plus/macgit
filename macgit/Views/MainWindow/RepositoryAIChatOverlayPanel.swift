@@ -28,6 +28,7 @@ struct RepositoryAIChatOverlayPanel: View {
     let repositoryChatAccess: FeatureAccessDecision
     let isSignedIn: Bool
     let onRequestRepositoryChatAccess: () -> Void
+    let onExecuteRemoteOperation: (RepositoryAIValidatedRemoteOperation) async throws -> RepositoryAIRemoteOperationExecutionResult
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -37,7 +38,8 @@ struct RepositoryAIChatOverlayPanel: View {
                 aiProviderController: aiProviderController,
                 repositoryChatAccess: repositoryChatAccess,
                 isSignedIn: isSignedIn,
-                onRequestRepositoryChatAccess: onRequestRepositoryChatAccess
+                onRequestRepositoryChatAccess: onRequestRepositoryChatAccess,
+                onExecuteRemoteOperation: onExecuteRemoteOperation
             )
 
             RepositoryAIChatResizeHandle(

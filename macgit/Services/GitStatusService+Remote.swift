@@ -23,6 +23,25 @@
 import Foundation
 
 extension GitStatusService {
+    func fetch(
+        remote: String,
+        in repositoryURL: URL,
+        credentialResolver: GitProviderCredentialResolver? = nil,
+        credentialInjector: GitCredentialInjecting = TemporaryGitCredentialInjector(),
+        sshCredentialInjector: GitSSHCredentialInjecting = TemporaryGitSSHCredentialInjector()
+    ) async throws {
+        let injection = try await credentialInjection(
+            for: remote,
+            in: repositoryURL,
+            credentialResolver: credentialResolver,
+            credentialInjector: credentialInjector,
+            sshCredentialInjector: sshCredentialInjector
+        )
+        defer { injection?.cleanup() }
+        _ = try await runRemoteGit(arguments: ["fetch", remote], in: repositoryURL, injection: injection)
+        await branchListCache.invalidateRemote(repositoryURL: repositoryURL, remote: remote)
+    }
+
     func push(
         options: PushOptions,
         in repositoryURL: URL,

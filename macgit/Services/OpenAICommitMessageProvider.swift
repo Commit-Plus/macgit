@@ -203,7 +203,8 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
         let tools = RepositoryAIAgentToolSchema
             .declarations(
                 includingQuickActions: request.isFirstTurn,
-                mutationContext: request.mutationContext
+                mutationContext: request.mutationContext,
+                remoteOperationContext: request.remoteOperationContext
             )
             .map { declaration -> [String: Any] in
                 var tool = declaration

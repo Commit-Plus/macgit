@@ -207,6 +207,7 @@ struct MainWindowView: View {
         let syncState = SyncState()
         let undoManager = GitUndoManager()
         let mutationContextProvider = RepositoryAIMutationContextProvider()
+        let remoteOperationContextProvider = RepositoryAIRemoteOperationContextProvider()
         let mutationExecutor = RepositoryAIMutationExecutor(
             contextProvider: mutationContextProvider,
             undoManager: undoManager,
@@ -221,6 +222,7 @@ struct MainWindowView: View {
             providerController: aiProviderController,
             mutationExecutor: mutationExecutor,
             mutationContextProvider: mutationContextProvider,
+            remoteOperationContextProvider: remoteOperationContextProvider,
             commitAllPreparer: RepositoryAICommitAllCoordinator(
                 providerController: aiProviderController,
                 contextProvider: mutationContextProvider,
@@ -558,7 +560,8 @@ struct MainWindowView: View {
                         entitlement: accountController.entitlement
                     ),
                     isSignedIn: accountController.account != nil,
-                    onRequestRepositoryChatAccess: requestRepositoryChatAccess
+                    onRequestRepositoryChatAccess: requestRepositoryChatAccess,
+                    onExecuteRemoteOperation: executeRepositoryAIRemoteOperation
                 )
             }
 

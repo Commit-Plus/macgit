@@ -140,15 +140,19 @@ private enum AppleRepositoryAgentAction {
     case checkoutBranch
     case applyConflictResolution
     case unsupportedMutation
+    case fetchRemote
+    case pullFastForward
+    case pushCurrentBranch
+    case unsupportedRemoteOperation
     case answer
 }
 
 @Generable
 private struct AppleRepositoryAgentResponse {
-    @Guide(description: "On the first response choose the matching guided action, one supported semantic mutation, unsupportedMutation, or executeGit. After Git evidence exists, choose executeGit until sufficient, then answer.")
+    @Guide(description: "On the first response choose the matching guided action, one supported semantic local mutation, one supported semantic remote operation, the matching unsupported action, or executeGit. After Git evidence exists, choose executeGit until sufficient, then answer.")
     var action: AppleRepositoryAgentAction
 
-    @Guide(description: "For executeGit, the Git arguments without the git executable. For a mutation, the exact opaque IDs and typed strings described in the trusted manifest. For unsupportedMutation, one concise reason.")
+    @Guide(description: "For executeGit, the Git arguments without the git executable. For a mutation or remote operation, the exact opaque IDs and typed strings described in the trusted manifests. For an unsupported action, one concise reason.")
     var arguments: [String]
 
     @Guide(description: "The user-facing answer. Required only for answer and otherwise empty.")
@@ -335,6 +339,17 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
             case .unsupportedMutation:
                 return Self.semanticMutationTurn(
                     name: RepositoryAIMutationProposalDecoder.unsupportedToolName,
+                    arguments: response.arguments
+                )
+            case .fetchRemote:
+                return Self.semanticMutationTurn(name: "fetch_remote", arguments: response.arguments)
+            case .pullFastForward:
+                return Self.semanticMutationTurn(name: "pull_fast_forward", arguments: response.arguments)
+            case .pushCurrentBranch:
+                return Self.semanticMutationTurn(name: "push_current_branch", arguments: response.arguments)
+            case .unsupportedRemoteOperation:
+                return Self.semanticMutationTurn(
+                    name: RepositoryAIRemoteOperationProposalDecoder.unsupportedToolName,
                     arguments: response.arguments
                 )
             case .answer:

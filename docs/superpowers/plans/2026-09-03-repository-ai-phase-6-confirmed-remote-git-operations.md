@@ -1,6 +1,6 @@
 # Repository AI Phase 6: Confirmed Remote Git Operations
 
-**Status:** [pending]
+**Status:** [completed]
 
 **Branch:** `codex/repository-ai-confirmed-remote-git-operations`
 
@@ -46,13 +46,13 @@ The provider never sends raw `git push`, credentials, a URL, refspec, `--force`,
 
 ## Tasks
 
-- [ ] Add typed `RepositoryAIRemoteOperation`, app-resolved remote/branch manifests, expected-state snapshots, and a pending-confirmation lifecycle bound to one repository window.
-- [ ] Add a pure policy that accepts only opaque remote/branch IDs from the current trusted manifest and produces exact preflight requirements.
-- [ ] Reuse existing SyncState/GitStatusService fetch, pull, and push paths rather than issuing model-generated Git arrays; preserve existing credential prompts and error reporting.
-- [ ] Present an app-owned confirmation sheet whose title, target remote/branch, commits count, warnings, and button are derived from the preview, never provider prose.
-- [ ] Integrate optional Phase 2 semantic proposal transport while suspending the run at approval; cancellation/denial/staleness must be returned as deterministic app-generated outcomes.
-- [ ] Add real temporary-repository tests for fetch, fast-forward pull, ordinary push, missing/diverged upstream, protected branches, stale refs, denied/cancelled proposals, and no operation before confirmation.
-- [ ] Run `git diff --check`, focused remote/Repository AI tests, the full suite subject to the known Firebase bootstrap limitation, and the macOS build without launching the app.
+- [x] Add typed `RepositoryAIRemoteOperation`, app-resolved remote/branch manifests, expected-state snapshots, and a pending-confirmation lifecycle bound to one repository window.
+- [x] Add a pure policy that accepts only opaque remote/branch IDs from the current trusted manifest and produces exact preflight requirements.
+- [x] Reuse existing SyncState/GitStatusService fetch, pull, and push paths rather than issuing model-generated Git arrays; preserve existing credential prompts and error reporting.
+- [x] Present an app-owned confirmation sheet whose title, target remote/branch, commits count, warnings, and button are derived from the preview, never provider prose.
+- [x] Integrate optional Phase 2 semantic proposal transport while suspending the run at approval; cancellation/denial/staleness must be returned as deterministic app-generated outcomes.
+- [x] Add real temporary-repository tests for fetch, fast-forward pull, ordinary push, missing/diverged upstream, protected branches, stale refs, denied/cancelled proposals, and no operation before confirmation.
+- [x] Run `git diff --check`, focused remote/Repository AI tests, the full suite subject to the known Firebase bootstrap limitation, and the macOS build without launching the app.
 
 ## Acceptance criteria
 

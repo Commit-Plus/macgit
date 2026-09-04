@@ -63,7 +63,8 @@ nonisolated enum RepositoryAIAgentToolSchema {
     static func declarations(
         includingQuickActions: Bool,
         forGemini: Bool = false,
-        mutationContext: RepositoryAIMutationPlanningContext? = nil
+        mutationContext: RepositoryAIMutationPlanningContext? = nil,
+        remoteOperationContext: RepositoryAIRemoteOperationPlanningContext? = nil
     ) -> [[String: Any]] {
         let executeGit: [String: Any] = [
             "name": executeGitName,
@@ -81,7 +82,10 @@ nonisolated enum RepositoryAIAgentToolSchema {
         let mutations = mutationContext.map {
             mutationDeclarations(context: $0, forGemini: forGemini)
         } ?? []
-        return [executeGit] + quickActions + mutations
+        let remoteOperations = remoteOperationContext.map {
+            remoteOperationDeclarations(context: $0, forGemini: forGemini)
+        } ?? []
+        return [executeGit] + quickActions + mutations + remoteOperations
     }
 
     static func arguments(
@@ -178,6 +182,54 @@ nonisolated enum RepositoryAIAgentToolSchema {
         declarations.append(mutationDeclaration(
             name: RepositoryAIMutationProposalDecoder.unsupportedToolName,
             description: "Use when the requested Git mutation is unsupported, unsafe, needs unavailable context, or requires more than one mutation. The sole argument is a concise explanation.",
+            argumentDescription: "Exactly one user-facing reason.",
+            minimumCount: 1,
+            maximumCount: 1,
+            forGemini: forGemini
+        ))
+        return declarations
+    }
+
+    private static func remoteOperationDeclarations(
+        context: RepositoryAIRemoteOperationPlanningContext,
+        forGemini: Bool
+    ) -> [[String: Any]] {
+        var declarations: [[String: Any]] = []
+        if !context.remotes.isEmpty, context.inProgressOperation == nil {
+            declarations.append(mutationDeclaration(
+                name: "fetch_remote",
+                description: "Propose fetching exactly one configured remote by its supplied opaque ID. Commit+ owns the URL, authentication, options, confirmation, and execution.",
+                argumentDescription: "Exactly one supplied remote ID.",
+                allowedValues: context.remotes.map(\.id),
+                minimumCount: 1,
+                maximumCount: 1,
+                forGemini: forGemini
+            ))
+        }
+        if let branch = context.currentBranch,
+           context.inProgressOperation == nil,
+           let upstreamRemote = context.remote(id: branch.remoteID) {
+            declarations.append(mutationDeclaration(
+                name: "pull_fast_forward",
+                description: "Propose a fast-forward-only pull for the current branch and its configured upstream. Arguments are exactly [suppliedRemoteID, suppliedBranchID].",
+                argumentDescription: "The current upstream remote ID and branch ID.",
+                minimumCount: 2,
+                maximumCount: 2,
+                forGemini: forGemini
+            ))
+            declarations.append(mutationDeclaration(
+                name: "push_current_branch",
+                description: "Propose an ordinary non-force push of the current branch to its configured upstream. Never supply a URL, refspec, branch name, or force option.",
+                argumentDescription: "Exactly this supplied upstream remote ID: \(upstreamRemote.id).",
+                allowedValues: [upstreamRemote.id],
+                minimumCount: 1,
+                maximumCount: 1,
+                forGemini: forGemini
+            ))
+        }
+        declarations.append(mutationDeclaration(
+            name: RepositoryAIRemoteOperationProposalDecoder.unsupportedToolName,
+            description: "Use when a requested network or remote Git mutation is outside Commit+'s confirmed fetch, fast-forward pull, and ordinary current-branch push scope. The sole argument is a concise explanation.",
             argumentDescription: "Exactly one user-facing reason.",
             minimumCount: 1,
             maximumCount: 1,

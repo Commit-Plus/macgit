@@ -208,7 +208,8 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
         let tools = RepositoryAIAgentToolSchema
             .declarations(
                 includingQuickActions: request.isFirstTurn,
-                mutationContext: request.mutationContext
+                mutationContext: request.mutationContext,
+                remoteOperationContext: request.remoteOperationContext
             )
             .map { declaration in
                 ["type": "function", "function": declaration] as [String: Any]
