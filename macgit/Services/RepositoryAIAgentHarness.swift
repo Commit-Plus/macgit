@@ -35,7 +35,7 @@ actor RepositoryAIAgentHarness {
     init(
         commandExecutor: any RepositoryAIGitCommandExecuting,
         stateProvider: any RepositoryAIRepositoryStateProviding,
-        maximumToolCalls: Int = 6,
+        maximumToolCalls: Int = 10,
         commandTimeout: Duration = .seconds(20),
         requestTimeout: Duration = .seconds(90)
     ) {
@@ -113,12 +113,26 @@ actor RepositoryAIAgentHarness {
                 return RepositoryAIAgentRunResult(answer: answer, toolResults: results)
             }
 
+            let quickActions = turn.toolCalls.compactMap { RepositoryAIQuickAction(rawValue: $0.name) }
+            if !quickActions.isEmpty {
+                guard results.isEmpty,
+                      turn.toolCalls.count == 1,
+                      let quickAction = quickActions.first else {
+                    throw RepositoryAIAgentError.invalidQuickActionSelection
+                }
+                return RepositoryAIAgentRunResult(
+                    answer: "",
+                    toolResults: [],
+                    quickAction: quickAction
+                )
+            }
+
             guard results.count + turn.toolCalls.count <= maximumToolCalls else {
                 throw RepositoryAIAgentError.tooManyToolCalls
             }
 
             for toolCall in turn.toolCalls {
-                guard toolCall.name == "execute_git" else {
+                guard toolCall.name == RepositoryAIAgentToolSchema.executeGitName else {
                     throw RepositoryAIAgentError.unsupportedTool(toolCall.name)
                 }
                 let result = try await executeWithTimeout(

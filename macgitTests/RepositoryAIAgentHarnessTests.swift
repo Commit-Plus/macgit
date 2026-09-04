@@ -82,6 +82,77 @@ final class RepositoryAIAgentHarnessTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
+
+    func testHarnessAllowsTenGitQueriesByDefault() async throws {
+        let executor = StubRepositoryAIGitCommandExecutor()
+        let harness = RepositoryAIAgentHarness(
+            commandExecutor: executor,
+            stateProvider: StaticRepositoryAIStateProvider()
+        )
+
+        let result = try await harness.answer(
+            question: "Review the repository",
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            branchName: "main",
+            provider: TenQueryRepositoryAIAgentProvider()
+        )
+
+        XCTAssertEqual(result.answer, "Reviewed after ten Git queries.")
+        XCTAssertEqual(result.toolResults.count, 10)
+        let arguments = await executor.recordedArguments()
+        XCTAssertEqual(arguments.count, 10)
+    }
+
+    func testHarnessReturnsQuickActionWithoutExecutingGit() async throws {
+        let executor = StubRepositoryAIGitCommandExecutor()
+        let harness = RepositoryAIAgentHarness(
+            commandExecutor: executor,
+            stateProvider: StaticRepositoryAIStateProvider()
+        )
+
+        let result = try await harness.answer(
+            question: "review file",
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            branchName: "main",
+            provider: QuickActionRepositoryAIAgentProvider(action: .reviewFile)
+        )
+
+        XCTAssertEqual(result.quickAction, .reviewFile)
+        XCTAssertTrue(result.answer.isEmpty)
+        XCTAssertTrue(result.toolResults.isEmpty)
+        let arguments = await executor.recordedArguments()
+        XCTAssertTrue(arguments.isEmpty)
+    }
+
+    @MainActor
+    func testSubmitDraftRoutesAgentReviewFileActionToFilePicker() async {
+        let suiteName = "RepositoryAIAgentHarnessTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.removePersistentDomain(forName: suiteName)
+        let harness = RepositoryAIAgentHarness(
+            commandExecutor: StubRepositoryAIGitCommandExecutor(),
+            stateProvider: StaticRepositoryAIStateProvider()
+        )
+        let providerController = AIProviderController(
+            registry: AIProviderRegistry(providers: [
+                QuickActionRepositoryAIAgentProvider(action: .reviewFile),
+            ]),
+            snapshotLoader: StubRepositoryAICommitChangeSnapshotLoader(),
+            repositoryAgentHarness: harness,
+            defaults: defaults
+        )
+        let controller = RepositoryAIChatController(
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            providerController: providerController
+        )
+        controller.draft = "review file"
+
+        await controller.submitDraft()
+
+        XCTAssertTrue(controller.isChoosingFile)
+        XCTAssertEqual(controller.messages.count, 1)
+        XCTAssertEqual(controller.messages.first?.text, "review file")
+    }
 }
 
 private struct StagedReviewAgentProvider: CommitMessageAIProvider {
@@ -122,6 +193,54 @@ private struct UngroundedRepositoryAIAgentProvider: CommitMessageAIProvider {
     }
 }
 
+private struct TenQueryRepositoryAIAgentProvider: CommitMessageAIProvider {
+    let descriptor = RepositoryAIAgentHarnessTestSupport.descriptor
+
+    func availability() async -> AIProviderAvailability { .available }
+
+    func generateCommitMessage(request: CommitMessageGenerationRequest) async throws -> GeneratedCommitMessage {
+        GeneratedCommitMessage(subject: "test: message", body: nil)
+    }
+
+    func generateRepositoryAgentTurn(request: RepositoryAIAgentRequest) async throws -> RepositoryAIAgentTurn {
+        let queryIndex = request.previousToolResults.count
+        guard queryIndex < 10 else {
+            return RepositoryAIAgentTurn(text: "Reviewed after ten Git queries.", toolCalls: [])
+        }
+        return RepositoryAIAgentTurn(
+            text: "",
+            toolCalls: [RepositoryAIAgentToolCall(
+                id: "query-\(queryIndex)",
+                name: "execute_git",
+                arguments: ["status", "--short"]
+            )]
+        )
+    }
+}
+
+private struct QuickActionRepositoryAIAgentProvider: CommitMessageAIProvider {
+    let action: RepositoryAIQuickAction
+    let descriptor = RepositoryAIAgentHarnessTestSupport.descriptor
+    var supportsRepositoryAgent: Bool { true }
+
+    func availability() async -> AIProviderAvailability { .available }
+
+    func generateCommitMessage(request: CommitMessageGenerationRequest) async throws -> GeneratedCommitMessage {
+        GeneratedCommitMessage(subject: "test: message", body: nil)
+    }
+
+    func generateRepositoryAgentTurn(request: RepositoryAIAgentRequest) async throws -> RepositoryAIAgentTurn {
+        RepositoryAIAgentTurn(
+            text: "",
+            toolCalls: [RepositoryAIAgentToolCall(
+                id: "quick-action",
+                name: action.rawValue,
+                arguments: []
+            )]
+        )
+    }
+}
+
 private enum RepositoryAIAgentHarnessTestSupport {
     static let descriptor = AIProviderDescriptor(
         id: .appleIntelligence,
@@ -156,6 +275,23 @@ private actor StubRepositoryAIGitCommandExecutor: RepositoryAIGitCommandExecutin
 
     func recordedArguments() -> [[String]] {
         calls
+    }
+}
+
+private actor StubRepositoryAICommitChangeSnapshotLoader: CommitChangeSnapshotLoading {
+    func commitChangeSnapshot(
+        in repositoryURL: URL,
+        source: CommitChangeSource,
+        characterBudget: Int
+    ) async throws -> CommitChangeSnapshot {
+        CommitChangeSnapshot(fingerprint: "tree-1", context: "", isTruncated: false)
+    }
+
+    func changesFingerprint(
+        in repositoryURL: URL,
+        source: CommitChangeSource
+    ) async throws -> String {
+        "tree-1"
     }
 }
 

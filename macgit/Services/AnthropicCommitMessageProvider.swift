@@ -163,19 +163,24 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
                 ]],
             ])
         }
+        let tools = RepositoryAIAgentToolSchema
+            .declarations(includingQuickActions: request.isFirstTurn)
+            .map { declaration in
+                [
+                    "name": declaration["name"] as? String ?? "",
+                    "description": declaration["description"] as? String ?? "",
+                    "input_schema": declaration["parameters"] as? [String: Any] ?? [:],
+                ] as [String: Any]
+            }
         var body: [String: Any] = [
             "model": model,
             "max_tokens": 1_200,
             "system": RepositoryAIPrompt.agentInstructions,
             "messages": messages,
-            "tools": [[
-                "name": "execute_git",
-                "description": "Run one bounded, read-only Git query in the current repository.",
-                "input_schema": RepositoryAIGitToolSchema.parameters,
-            ]],
+            "tools": tools,
         ]
         if request.isFirstTurn {
-            body["tool_choice"] = ["type": "tool", "name": "execute_git"]
+            body["tool_choice"] = ["type": "any"]
         }
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -188,7 +193,10 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
             guard content.type == "tool_use" else { return nil }
             guard let id = content.id,
                   let name = content.name,
-                  let arguments = content.input?.arguments else {
+                  let arguments = RepositoryAIAgentToolSchema.arguments(
+                    forToolNamed: name,
+                    suppliedArguments: content.input?.arguments
+                  ) else {
                 throw RepositoryAIError.invalidResponse("Claude returned an invalid Git tool call.")
             }
             return RepositoryAIAgentToolCall(id: id, name: name, arguments: arguments)
@@ -253,6 +261,6 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
     }
 
     private struct ToolInput: Decodable {
-        let arguments: [String]
+        let arguments: [String]?
     }
 }

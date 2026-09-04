@@ -241,17 +241,15 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
         urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let messages = agentMessages(for: request)
+        let tools = RepositoryAIAgentToolSchema
+            .declarations(includingQuickActions: request.isFirstTurn)
+            .map { declaration in
+                ["type": "function", "function": declaration] as [String: Any]
+            }
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": model,
             "messages": messages,
-            "tools": [[
-                "type": "function",
-                "function": [
-                    "name": "execute_git",
-                    "description": "Run one bounded, read-only Git query in the current repository.",
-                    "parameters": RepositoryAIGitToolSchema.parameters,
-                ],
-            ]],
+            "tools": tools,
             "tool_choice": request.isFirstTurn ? "required" : "auto",
             "max_completion_tokens": 1_200,
             "provider": ["require_parameters": true],
@@ -272,13 +270,17 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
         }
         let toolCalls = try (message.toolCalls ?? []).map { toolCall in
             guard let data = toolCall.function.arguments.data(using: .utf8),
-                  let decoded = try? JSONDecoder().decode(ToolArguments.self, from: data) else {
+                  let decoded = try? JSONDecoder().decode(ToolArguments.self, from: data),
+                  let arguments = RepositoryAIAgentToolSchema.arguments(
+                    forToolNamed: toolCall.function.name,
+                    suppliedArguments: decoded.arguments
+                  ) else {
                 throw RepositoryAIError.invalidResponse("OpenRouter returned an invalid Git tool call.")
             }
             return RepositoryAIAgentToolCall(
                 id: toolCall.id,
                 name: toolCall.function.name,
-                arguments: decoded.arguments
+                arguments: arguments
             )
         }
         return RepositoryAIAgentTurn(
@@ -444,7 +446,7 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
     }
 
     private struct ToolArguments: Decodable {
-        let arguments: [String]
+        let arguments: [String]?
     }
 
     private struct ProviderError: Decodable {

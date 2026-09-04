@@ -284,6 +284,42 @@ final class CloudAIProviderTests: XCTestCase {
         XCTAssertEqual(turn.toolCalls.first?.arguments, ["diff", "--cached"])
     }
 
+    func testOpenAIAgentFirstTurnOffersQuickActionsAndParsesSelection() async throws {
+        let store = InMemoryAIProviderCredentialStore(keys: [.openAI: "openai-secret"])
+        let client = StubAIProviderHTTPClient(responseBody: """
+            {"output":[{"type":"function_call","call_id":"call_review_file","name":"review_file","arguments":"{}"}]}
+            """)
+        let provider = OpenAICommitMessageProvider(
+            credentialStore: store,
+            httpClient: client
+        )
+        let request = RepositoryAIAgentRequest(
+            repositoryName: "Example",
+            branchName: "main",
+            question: "review file",
+            conversation: [],
+            previousToolResults: [],
+            isFirstTurn: true
+        )
+
+        let turn = try await provider.generateRepositoryAgentTurn(request: request)
+        let receivedRequest = await client.receivedRequest()
+        let body = try requestJSONObject(try XCTUnwrap(receivedRequest))
+        let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+        let names = Set(tools.compactMap { $0["name"] as? String })
+
+        XCTAssertEqual(names, Set([
+            "execute_git",
+            "review_changes",
+            "explain_commit",
+            "review_file",
+            "compare_refs",
+            "analyze_pull_request",
+        ]))
+        XCTAssertEqual(turn.toolCalls.first?.name, "review_file")
+        XCTAssertEqual(turn.toolCalls.first?.arguments, [])
+    }
+
     func testAnthropicRequestUsesRequiredHeadersAndParsesResponse() async throws {
         let store = InMemoryAIProviderCredentialStore(keys: [.anthropic: "anthropic-secret"])
         let modelStore = InMemoryAIProviderModelStore(models: [.anthropic: "claude-custom"])

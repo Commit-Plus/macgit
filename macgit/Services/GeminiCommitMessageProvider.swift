@@ -228,21 +228,18 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
                 "parts": [["functionResponse": functionResponse]],
             ])
         }
-        var functionCallingConfig: [String: Any] = [
+        let functionCallingConfig: [String: Any] = [
             "mode": request.isFirstTurn ? "ANY" : "AUTO",
         ]
-        if request.isFirstTurn {
-            functionCallingConfig["allowedFunctionNames"] = ["execute_git"]
-        }
+        let functionDeclarations = RepositoryAIAgentToolSchema.declarations(
+            includingQuickActions: request.isFirstTurn,
+            forGemini: true
+        )
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
             "systemInstruction": ["parts": [["text": RepositoryAIPrompt.agentInstructions]]],
             "contents": contents,
             "tools": [[
-                "functionDeclarations": [[
-                    "name": "execute_git",
-                    "description": "Run one bounded, read-only Git query in the current repository.",
-                    "parameters": RepositoryAIGitToolSchema.geminiFunctionParameters,
-                ]],
+                "functionDeclarations": functionDeclarations,
             ]],
             "toolConfig": [
                 "functionCallingConfig": functionCallingConfig,
@@ -262,7 +259,10 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         let parts = (payload.candidates ?? []).compactMap(\.content).flatMap(\.parts)
         let toolCalls: [RepositoryAIAgentToolCall] = try parts.compactMap { part -> RepositoryAIAgentToolCall? in
             guard let functionCall = part.functionCall else { return nil }
-            guard let arguments = functionCall.args?.arguments else {
+            guard let arguments = RepositoryAIAgentToolSchema.arguments(
+                forToolNamed: functionCall.name,
+                suppliedArguments: functionCall.args?.arguments
+            ) else {
                 throw RepositoryAIError.invalidResponse("Gemini returned an invalid Git tool call.")
             }
             return RepositoryAIAgentToolCall(
@@ -366,7 +366,7 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
     }
 
     private struct ToolArguments: Decodable {
-        let arguments: [String]
+        let arguments: [String]?
     }
 
     private struct PromptFeedback: Decodable {

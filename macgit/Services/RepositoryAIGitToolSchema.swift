@@ -18,8 +18,10 @@
 
 import Foundation
 
-nonisolated enum RepositoryAIGitToolSchema {
-    static let parameters: [String: Any] = [
+nonisolated enum RepositoryAIAgentToolSchema {
+    static let executeGitName = "execute_git"
+
+    private static let gitParameters: [String: Any] = [
         "type": "object",
         "properties": [
             "arguments": [
@@ -34,7 +36,7 @@ nonisolated enum RepositoryAIGitToolSchema {
 
     /// Gemini FunctionDeclaration accepts a narrower OpenAPI subset than the
     /// JSON Schema dialect used by the OpenAI-compatible tool adapters.
-    static let geminiFunctionParameters: [String: Any] = [
+    private static let geminiGitParameters: [String: Any] = [
         "type": "object",
         "properties": [
             "arguments": [
@@ -45,4 +47,48 @@ nonisolated enum RepositoryAIGitToolSchema {
         ],
         "required": ["arguments"],
     ]
+
+    private static let emptyParameters: [String: Any] = [
+        "type": "object",
+        "properties": [:],
+        "required": [],
+        "additionalProperties": false,
+    ]
+
+    private static let geminiEmptyParameters: [String: Any] = [
+        "type": "object",
+        "properties": [:],
+    ]
+
+    static func declarations(
+        includingQuickActions: Bool,
+        forGemini: Bool = false
+    ) -> [[String: Any]] {
+        let executeGit: [String: Any] = [
+            "name": executeGitName,
+            "description": "Run one bounded, read-only Git query in the current repository.",
+            "parameters": forGemini ? geminiGitParameters : gitParameters,
+        ]
+        guard includingQuickActions else { return [executeGit] }
+        return [executeGit] + RepositoryAIQuickAction.allCases.map { action in
+            [
+                "name": action.rawValue,
+                "description": action.toolDescription,
+                "parameters": forGemini ? geminiEmptyParameters : emptyParameters,
+            ]
+        }
+    }
+
+    static func arguments(
+        forToolNamed name: String,
+        suppliedArguments: [String]?
+    ) -> [String]? {
+        if name == executeGitName {
+            suppliedArguments
+        } else if RepositoryAIQuickAction(rawValue: name) != nil {
+            []
+        } else {
+            suppliedArguments ?? []
+        }
+    }
 }

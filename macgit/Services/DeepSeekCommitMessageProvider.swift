@@ -205,17 +205,15 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
         urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let messages = agentMessages(for: request)
+        let tools = RepositoryAIAgentToolSchema
+            .declarations(includingQuickActions: request.isFirstTurn)
+            .map { declaration in
+                ["type": "function", "function": declaration] as [String: Any]
+            }
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": model,
             "messages": messages,
-            "tools": [[
-                "type": "function",
-                "function": [
-                    "name": "execute_git",
-                    "description": "Run one bounded, read-only Git query in the current repository.",
-                    "parameters": RepositoryAIGitToolSchema.parameters,
-                ],
-            ]],
+            "tools": tools,
             "tool_choice": request.isFirstTurn ? "required" : "auto",
             "max_tokens": 1_200,
             "thinking": ["type": "disabled"],
@@ -228,7 +226,11 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
             throw RepositoryAIError.invalidResponse("DeepSeek did not return a usable Git tool response.")
         }
         let toolCalls = try (message.toolCalls ?? []).map { toolCall in
-            guard let arguments = Self.decodedToolArguments(from: toolCall.function.arguments) else {
+            let suppliedArguments = Self.decodedToolArguments(from: toolCall.function.arguments)
+            guard let arguments = RepositoryAIAgentToolSchema.arguments(
+                forToolNamed: toolCall.function.name,
+                suppliedArguments: suppliedArguments
+            ) else {
                 throw RepositoryAIError.invalidResponse("DeepSeek returned an invalid Git tool call.")
             }
             return RepositoryAIAgentToolCall(

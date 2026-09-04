@@ -18,6 +18,29 @@
 
 import Foundation
 
+nonisolated enum RepositoryAIQuickAction: String, CaseIterable, Equatable, Sendable {
+    case reviewChanges = "review_changes"
+    case explainCommit = "explain_commit"
+    case reviewFile = "review_file"
+    case compareRefs = "compare_refs"
+    case analyzePullRequest = "analyze_pull_request"
+
+    var toolDescription: String {
+        switch self {
+        case .reviewChanges:
+            "Open the guided review for the repository's current staged and working-tree changes."
+        case .explainCommit:
+            "Open commit selection so the user can choose a commit to explain."
+        case .reviewFile:
+            "Open changed-file selection so the user can choose one file diff to review."
+        case .compareRefs:
+            "Open ref selection so the user can choose two branches, tags, or refs to compare."
+        case .analyzePullRequest:
+            "Open pull-request selection for the current repository."
+        }
+    }
+}
+
 nonisolated struct RepositoryAIGeminiFunctionCallState: Equatable, Sendable {
     /// The model-owned values that must be replayed unchanged in Gemini's
     /// stateless generateContent function-calling history.
@@ -66,6 +89,17 @@ nonisolated struct RepositoryAIAgentRequest: Sendable {
 nonisolated struct RepositoryAIAgentRunResult: Equatable, Sendable {
     let answer: String
     let toolResults: [RepositoryAIAgentToolResult]
+    let quickAction: RepositoryAIQuickAction?
+
+    init(
+        answer: String,
+        toolResults: [RepositoryAIAgentToolResult],
+        quickAction: RepositoryAIQuickAction? = nil
+    ) {
+        self.answer = answer
+        self.toolResults = toolResults
+        self.quickAction = quickAction
+    }
 }
 
 nonisolated enum RepositoryAIAgentError: LocalizedError, Equatable {
@@ -74,6 +108,7 @@ nonisolated enum RepositoryAIAgentError: LocalizedError, Equatable {
     case tooManyToolCalls
     case emptyResponse
     case unsupportedProvider(String)
+    case invalidQuickActionSelection
     case commandTimedOut
     case requestTimedOut
     case repositoryChanged
@@ -90,6 +125,8 @@ nonisolated enum RepositoryAIAgentError: LocalizedError, Equatable {
             "The AI provider returned an empty Repository AI response."
         case .unsupportedProvider(let provider):
             "\(provider) does not yet support Repository AI Git tools. Choose a tool-capable provider and try again."
+        case .invalidQuickActionSelection:
+            "Repository AI returned an invalid quick action selection."
         case .commandTimedOut:
             "A Git query took too long and was stopped. Ask a narrower question."
         case .requestTimedOut:

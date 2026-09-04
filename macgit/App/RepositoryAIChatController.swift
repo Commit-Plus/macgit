@@ -46,6 +46,7 @@ final class RepositoryAIChatController: ObservableObject {
     private let pullRequestFingerprintLoader: ((Int, URL) async throws -> String)?
     private var conversationSessionID = UUID().uuidString
     private var activeRequestTask: Task<Void, Never>?
+    private var pendingQuickAction: (action: RepositoryAIQuickAction, question: String)?
 
     init(
         repositoryURL: URL,
@@ -103,6 +104,7 @@ final class RepositoryAIChatController: ObservableObject {
 
     func cancelCommitSelection() {
         guard !isRunning, !isLoadingCommits else { return }
+        pendingQuickAction = nil
         isChoosingCommit = false
         commitReferenceDraft = ""
     }
@@ -118,19 +120,24 @@ final class RepositoryAIChatController: ObservableObject {
 
     func reviewFile(_ reference: RepositoryAIFileReference, includeDiff: Bool = true) async {
         guard !isRunning else { return }
+        let pendingQuestion = pendingQuickAction?.action == .reviewFile
+            ? pendingQuickAction?.question
+            : nil
         dismissSelection()
         await startRequest(
-            includeDiff
+            pendingQuestion ?? (includeDiff
                 ? "Review this file diff. Focus on concrete bugs, regressions, security issues, and missing tests."
-                : "Explain this selected file context, including behavior and risks.",
+                : "Explain this selected file context, including behavior and risks."),
             mode: .file(reference, includeDiff: includeDiff),
             contextTitle: reference.displayLabel,
-            conversationTitle: "Review \(reference.path)"
+            conversationTitle: "Review \(reference.path)",
+            shouldAppendUserMessage: pendingQuestion == nil
         )
     }
 
     func cancelFileSelection() {
         guard !isRunning, !isLoadingFiles else { return }
+        pendingQuickAction = nil
         isChoosingFile = false
         changedFiles.removeAll()
     }
@@ -149,17 +156,23 @@ final class RepositoryAIChatController: ObservableObject {
             messages.append(RepositoryAIMessage(role: .assistant, text: RepositoryAIError.invalidRefReference.localizedDescription))
             return
         }
+        let pendingQuestion = pendingQuickAction?.action == .compareRefs
+            ? pendingQuickAction?.question
+            : nil
         dismissSelection()
         await startRequest(
-            "Compare these refs as a review. Explain meaningful behavior changes, risks, and missing tests.",
+            pendingQuestion
+                ?? "Compare these refs as a review. Explain meaningful behavior changes, risks, and missing tests.",
             mode: .comparison(base, head),
             contextTitle: "Compare \(base.name) → \(head.name)",
-            conversationTitle: "Compare \(base.name) → \(head.name)"
+            conversationTitle: "Compare \(base.name) → \(head.name)",
+            shouldAppendUserMessage: pendingQuestion == nil
         )
     }
 
     func cancelRefComparison() {
         guard !isRunning else { return }
+        pendingQuickAction = nil
         isChoosingComparison = false
     }
 
@@ -176,18 +189,24 @@ final class RepositoryAIChatController: ObservableObject {
             messages.append(RepositoryAIMessage(role: .assistant, text: "Enter a positive pull request number."))
             return
         }
+        let pendingQuestion = pendingQuickAction?.action == .analyzePullRequest
+            ? pendingQuickAction?.question
+            : nil
         dismissSelection()
         let label = number.map { "Pull request #\($0)" } ?? "Selected pull request"
         await startRequest(
-            "Analyze this pull request. Focus on concrete behavior changes, review risks, and missing tests.",
+            pendingQuestion
+                ?? "Analyze this pull request. Focus on concrete behavior changes, review risks, and missing tests.",
             mode: .pullRequest(number),
             contextTitle: label,
-            conversationTitle: label
+            conversationTitle: label,
+            shouldAppendUserMessage: pendingQuestion == nil
         )
     }
 
     func cancelPullRequestAnalysis() {
         guard !isRunning else { return }
+        pendingQuickAction = nil
         isChoosingPullRequest = false
     }
 
@@ -195,12 +214,17 @@ final class RepositoryAIChatController: ObservableObject {
         let normalizedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedReference.isEmpty else { return }
 
+        let pendingQuestion = pendingQuickAction?.action == .explainCommit
+            ? pendingQuickAction?.question
+            : nil
         dismissSelection()
         await startRequest(
-            "Explain what this commit changes, why it likely exists, and any behavior or risks a reviewer should understand.",
+            pendingQuestion
+                ?? "Explain what this commit changes, why it likely exists, and any behavior or risks a reviewer should understand.",
             mode: .fixedTool(.commitChanges(reference: normalizedReference)),
             contextTitle: "Commit \(normalizedReference)",
-            conversationTitle: subject.map { "Explain \($0)" } ?? "Explain \(normalizedReference)"
+            conversationTitle: subject.map { "Explain \($0)" } ?? "Explain \(normalizedReference)",
+            shouldAppendUserMessage: pendingQuestion == nil
         )
     }
 
@@ -208,12 +232,9 @@ final class RepositoryAIChatController: ObservableObject {
         let question = draft
         draft = ""
         dismissSelection()
-        let mode: RepositoryAIRequestMode = isWorkingTreeReviewRequest(question)
-            ? .fixedTool(.workingTreeChanges)
-            : .agent
         await startRequest(
             question,
-            mode: mode,
+            mode: .agent,
             contextTitle: "Repository analysis"
         )
     }
@@ -232,6 +253,7 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     private func dismissSelection() {
+        pendingQuickAction = nil
         commitReferenceDraft = ""
         recentCommits.removeAll()
         isChoosingCommit = false
@@ -247,7 +269,8 @@ final class RepositoryAIChatController: ObservableObject {
         _ question: String,
         mode: RepositoryAIRequestMode,
         contextTitle: String,
-        conversationTitle preferredTitle: String? = nil
+        conversationTitle preferredTitle: String? = nil,
+        shouldAppendUserMessage: Bool = true
     ) async {
         let task = Task { [weak self] in
             guard let self else { return }
@@ -255,7 +278,8 @@ final class RepositoryAIChatController: ObservableObject {
                 question,
                 mode: mode,
                 contextTitle: contextTitle,
-                conversationTitle: preferredTitle
+                conversationTitle: preferredTitle,
+                shouldAppendUserMessage: shouldAppendUserMessage
             )
         }
         activeRequestTask = task
@@ -267,7 +291,8 @@ final class RepositoryAIChatController: ObservableObject {
         _ question: String,
         mode: RepositoryAIRequestMode,
         contextTitle: String,
-        conversationTitle preferredTitle: String? = nil
+        conversationTitle preferredTitle: String? = nil,
+        shouldAppendUserMessage: Bool
     ) async {
         let normalized = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty, !isRunning else { return }
@@ -275,11 +300,13 @@ final class RepositoryAIChatController: ObservableObject {
         if messages.isEmpty {
             conversationTitle = makeConversationTitle(from: preferredTitle ?? normalized)
         }
-        messages.append(RepositoryAIMessage(
-            role: .user,
-            text: normalized,
-            contextTitle: contextTitle
-        ))
+        if shouldAppendUserMessage {
+            messages.append(RepositoryAIMessage(
+                role: .user,
+                text: normalized,
+                contextTitle: contextTitle
+            ))
+        }
         isRunning = true
         defer { isRunning = false }
 
@@ -294,14 +321,23 @@ final class RepositoryAIChatController: ObservableObject {
                     question: normalized,
                     conversation: messages
                 )
-                for toolResult in result.toolResults {
-                    messages.append(RepositoryAIMessage(
-                        role: .toolActivity,
-                        text: toolResult.commandResult.displayCommand,
-                        toolResult: toolResult
-                    ))
+                if let quickAction = result.quickAction {
+                    try await handleQuickAction(
+                        quickAction,
+                        question: normalized,
+                        branch: branch,
+                        streamingMessageID: &streamingMessageID
+                    )
+                } else {
+                    for toolResult in result.toolResults {
+                        messages.append(RepositoryAIMessage(
+                            role: .toolActivity,
+                            text: toolResult.commandResult.displayCommand,
+                            toolResult: toolResult
+                        ))
+                    }
+                    messages.append(RepositoryAIMessage(role: .assistant, text: result.answer))
                 }
-                messages.append(RepositoryAIMessage(role: .assistant, text: result.answer))
             case .fixedTool(let tool):
                 let messageID = beginStreamingAssistant()
                 streamingMessageID = messageID
@@ -437,17 +473,51 @@ final class RepositoryAIChatController: ObservableObject {
         messages.removeAll { $0.id == id }
     }
 
-    private func isWorkingTreeReviewRequest(_ question: String) -> Bool {
-        let normalized = question
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-        return [
-            "review changes",
-            "review the changes",
-            "review current changes",
-            "review the current changes",
-            "review uncommitted changes",
-        ].contains(normalized)
+    private func handleQuickAction(
+        _ action: RepositoryAIQuickAction,
+        question: String,
+        branch: String?,
+        streamingMessageID: inout UUID?
+    ) async throws {
+        switch action {
+        case .reviewChanges:
+            let messageID = beginStreamingAssistant()
+            streamingMessageID = messageID
+            let response = try await providerController.answerRepositoryQuestion(
+                repositoryURL: repositoryURL,
+                branchName: branch,
+                question: question,
+                tool: .workingTreeChanges,
+                sessionID: conversationSessionID,
+                onTextDelta: { [weak self] delta in
+                    await self?.appendStreamingDelta(delta, to: messageID)
+                }
+            )
+            completeStreamingAssistant(messageID, with: response)
+            streamingMessageID = nil
+        case .explainCommit:
+            pendingQuickAction = (action, question)
+            isChoosingCommit = true
+            isLoadingCommits = true
+            let commits = await gitService.recentCommits(limit: 10, in: repositoryURL)
+            recentCommits = commits.map {
+                RepositoryAICommitChoice(hash: $0.hash, subject: $0.message)
+            }
+            isLoadingCommits = false
+        case .reviewFile:
+            pendingQuickAction = (action, question)
+            isChoosingFile = true
+            isLoadingFiles = true
+            changedFiles = (try? await gitService.listChangedFiles(in: repositoryURL)) ?? []
+            isLoadingFiles = false
+        case .compareRefs:
+            pendingQuickAction = (action, question)
+            if comparisonHeadDraft.isEmpty { comparisonHeadDraft = "HEAD" }
+            isChoosingComparison = true
+        case .analyzePullRequest:
+            pendingQuickAction = (action, question)
+            isChoosingPullRequest = true
+        }
     }
 
     private enum RepositoryAIRequestMode {

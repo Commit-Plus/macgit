@@ -127,12 +127,17 @@ private struct AppleConflictResolutionResponse {
 @Generable
 private enum AppleRepositoryAgentAction {
     case executeGit
+    case reviewChanges
+    case explainCommit
+    case reviewFile
+    case compareRefs
+    case analyzePullRequest
     case answer
 }
 
 @Generable
 private struct AppleRepositoryAgentResponse {
-    @Guide(description: "Choose executeGit until Git evidence is sufficient; the first response must choose executeGit")
+    @Guide(description: "On the first response choose the matching guided action or executeGit. After Git evidence exists, choose executeGit until sufficient, then answer.")
     var action: AppleRepositoryAgentAction
 
     @Guide(description: "The Git subcommand and arguments without the git executable. Example: [\"diff\", \"--cached\"], never [\"git\", \"diff\", \"--cached\"]. Required only for executeGit.")
@@ -275,7 +280,7 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
         }
         let session = LanguageModelSession(instructions: """
             \(RepositoryAIPrompt.agentInstructions)
-            Return executeGit with one Git argument array whenever more repository evidence is needed. On the first turn, you must return executeGit. Return answer only after the supplied Git evidence is sufficient.
+            Return the matching guided action when the user asks to start one. Otherwise return executeGit with one Git argument array whenever more repository evidence is needed. Return answer only after the supplied Git evidence is sufficient.
             Arguments start with the Git subcommand. Use ["diff", "--cached"], never include "git" as the first argument.
             """)
         do {
@@ -295,6 +300,16 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
                         arguments: arguments
                     )]
                 )
+            case .reviewChanges:
+                return Self.quickActionTurn(.reviewChanges)
+            case .explainCommit:
+                return Self.quickActionTurn(.explainCommit)
+            case .reviewFile:
+                return Self.quickActionTurn(.reviewFile)
+            case .compareRefs:
+                return Self.quickActionTurn(.compareRefs)
+            case .analyzePullRequest:
+                return Self.quickActionTurn(.analyzePullRequest)
             case .answer:
                 return RepositoryAIAgentTurn(text: response.answer, toolCalls: [])
             }
@@ -304,6 +319,17 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
             }
             throw error
         }
+    }
+
+    private static func quickActionTurn(_ action: RepositoryAIQuickAction) -> RepositoryAIAgentTurn {
+        RepositoryAIAgentTurn(
+            text: "",
+            toolCalls: [RepositoryAIAgentToolCall(
+                id: UUID().uuidString,
+                name: action.rawValue,
+                arguments: []
+            )]
+        )
     }
 
     func generateConflictResolution(

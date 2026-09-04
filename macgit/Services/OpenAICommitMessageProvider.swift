@@ -200,6 +200,14 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let tools = RepositoryAIAgentToolSchema
+            .declarations(includingQuickActions: request.isFirstTurn)
+            .map { declaration -> [String: Any] in
+                var tool = declaration
+                tool["type"] = "function"
+                tool["strict"] = true
+                return tool
+            }
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": model,
             "instructions": RepositoryAIPrompt.agentInstructions,
@@ -207,24 +215,7 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
             "max_output_tokens": 1_200,
             "store": false,
             "tool_choice": request.isFirstTurn ? "required" : "auto",
-            "tools": [[
-                "type": "function",
-                "name": "execute_git",
-                "description": "Run one bounded, read-only Git query in the current repository.",
-                "strict": true,
-                "parameters": [
-                    "type": "object",
-                    "properties": [
-                        "arguments": [
-                            "type": "array",
-                            "items": ["type": "string"],
-                            "description": "Git subcommand and arguments, without the git executable.",
-                        ],
-                    ],
-                    "required": ["arguments"],
-                    "additionalProperties": false,
-                ],
-            ]],
+            "tools": tools,
         ])
 
         let (data, response) = try await httpClient.data(for: urlRequest)
@@ -240,7 +231,10 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
                       let rawArguments = output.arguments,
                       let data = rawArguments.data(using: .utf8),
                       let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let arguments = object["arguments"] as? [String] else {
+                      let arguments = RepositoryAIAgentToolSchema.arguments(
+                        forToolNamed: name,
+                        suppliedArguments: object["arguments"] as? [String]
+                      ) else {
                     throw RepositoryAIError.invalidResponse("OpenAI returned an invalid Git tool call.")
                 }
                 return RepositoryAIAgentToolCall(id: id, name: name, arguments: arguments)
