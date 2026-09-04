@@ -153,6 +153,12 @@ actor RepositoryAIAgentHarness {
                     toolCall: toolCall,
                     context: mutationContext
                 ) {
+                case .workflow(let workflow):
+                    return RepositoryAIAgentRunResult(
+                        answer: "",
+                        toolResults: [],
+                        mutationWorkflow: workflow
+                    )
                 case .unsupported(let reason):
                     return RepositoryAIAgentRunResult(
                         answer: "Rejected — \(reason)",

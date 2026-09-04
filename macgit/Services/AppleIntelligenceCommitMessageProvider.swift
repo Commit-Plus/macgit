@@ -135,6 +135,7 @@ private enum AppleRepositoryAgentAction {
     case stageFiles
     case unstageFiles
     case createCommit
+    case commitAllChanges
     case createBranch
     case checkoutBranch
     case applyConflictResolution
@@ -323,6 +324,8 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
                 return Self.semanticMutationTurn(name: "unstage_files", arguments: response.arguments)
             case .createCommit:
                 return Self.semanticMutationTurn(name: "create_commit", arguments: response.arguments)
+            case .commitAllChanges:
+                return Self.semanticMutationTurn(name: "commit_all_changes", arguments: response.arguments)
             case .createBranch:
                 return Self.semanticMutationTurn(name: "create_branch", arguments: response.arguments)
             case .checkoutBranch:

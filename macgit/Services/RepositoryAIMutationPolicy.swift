@@ -24,6 +24,7 @@ nonisolated enum RepositoryAIMutationProposalDecoder {
         "stage_files",
         "unstage_files",
         "create_commit",
+        "commit_all_changes",
         "create_branch",
         "checkout_branch",
         "apply_conflict_resolution",
@@ -54,6 +55,13 @@ nonisolated enum RepositoryAIMutationProposalDecoder {
                 throw RepositoryAIMutationError.invalidProviderResponse("create_commit requires exactly one commit message.")
             }
             return .proposal(.createCommit(message: toolCall.arguments[0]))
+        case "commit_all_changes":
+            guard toolCall.arguments.isEmpty else {
+                throw RepositoryAIMutationError.invalidProviderResponse(
+                    "commit_all_changes does not accept model-supplied Git arguments or a commit message."
+                )
+            }
+            return .workflow(.commitAllChanges)
         case "create_branch":
             guard toolCall.arguments.count == 2,
                   let startPoint = context.startPoint(id: toolCall.arguments[1]) else {
@@ -121,6 +129,39 @@ nonisolated enum RepositoryAIMutationProposalDecoder {
 }
 
 nonisolated enum RepositoryAIMutationPolicy {
+    static func validateCommitAllPreparation(
+        context: RepositoryAIMutationPlanningContext
+    ) throws -> RepositoryAIValidatedMutation {
+        guard context.inProgressOperation == nil else {
+            throw RepositoryAIMutationError.rejected("Finish the current Git operation before committing all changes.")
+        }
+        guard context.repositoryState.branch != nil, context.repositoryState.head != "<unborn>" else {
+            throw RepositoryAIMutationError.rejected(
+                "Repository AI does not commit all changes on a detached or unborn HEAD."
+            )
+        }
+        guard context.author != nil else {
+            throw RepositoryAIMutationError.rejected(
+                "Configure Git user.name and user.email before committing all changes."
+            )
+        }
+        guard !context.status.staged.contains(where: { $0.status == .conflict }),
+              !context.status.unstaged.contains(where: { $0.status == .conflict }) else {
+            throw RepositoryAIMutationError.rejected("Resolve all conflicts before committing all changes.")
+        }
+
+        let eligiblePathCount = context.status.unstaged.count + context.status.untracked.count
+        guard !context.stageablePaths.isEmpty else {
+            throw RepositoryAIMutationError.rejected("There are no unstaged or untracked changes to stage.")
+        }
+        guard context.stageablePaths.count == eligiblePathCount else {
+            throw RepositoryAIMutationError.rejected(
+                "The complete changed-file manifest is too large to stage automatically. Stage a smaller selection first."
+            )
+        }
+        return try validate(.stageFiles(paths: context.stageablePaths), context: context)
+    }
+
     static func validate(
         _ proposal: RepositoryAIMutationProposal,
         context: RepositoryAIMutationPlanningContext

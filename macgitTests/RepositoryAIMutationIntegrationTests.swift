@@ -214,6 +214,64 @@ final class RepositoryAIMutationIntegrationTests: XCTestCase {
     }
 
     @MainActor
+    func testCommitAllCoordinatorStagesEverythingBeforeReturningCommitConfirmation() async throws {
+        let repositoryURL = try makeRepository()
+        try "changed\n".write(
+            to: repositoryURL.appending(path: "tracked.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "new\n".write(
+            to: repositoryURL.appending(path: "new.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let environment = makeEnvironment()
+        let suiteName = "RepositoryAICommitAllIntegrationTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.removePersistentDomain(forName: suiteName)
+        let providerController = AIProviderController(
+            registry: AIProviderRegistry(providers: [CommitAllMessageProvider()]),
+            snapshotLoader: GitStatusService.shared,
+            defaults: defaults
+        )
+        let coordinator = RepositoryAICommitAllCoordinator(
+            providerController: providerController,
+            contextProvider: environment.contextProvider,
+            mutationExecutor: environment.executor
+        )
+        let oldHead = try runGit(["rev-parse", "HEAD"], in: repositoryURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let preparation = try await coordinator.prepare(in: repositoryURL)
+
+        var status = try await GitStatusService.shared.status(for: repositoryURL)
+        XCTAssertEqual(Set(status.staged.map(\.path)), ["new.txt", "tracked.txt"])
+        XCTAssertTrue(status.unstaged.isEmpty)
+        XCTAssertTrue(status.untracked.isEmpty)
+        XCTAssertEqual(environment.undoManager.undoStack.last?.label, "Stage 2 files")
+        XCTAssertEqual(
+            try runGit(["rev-parse", "HEAD"], in: repositoryURL)
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            oldHead
+        )
+        guard case .createCommit(let message) = preparation.commitMutation.proposal else {
+            return XCTFail("Expected a final commit proposal")
+        }
+        XCTAssertEqual(message, "test: commit all changes")
+        XCTAssertTrue(preparation.commitMutation.preview.warning?.contains("Cancelling leaves the changes staged") == true)
+
+        _ = try await environment.executor.execute(preparation.commitMutation, in: repositoryURL)
+
+        let newHead = try runGit(["rev-parse", "HEAD"], in: repositoryURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertNotEqual(newHead, oldHead)
+        status = try await GitStatusService.shared.status(for: repositoryURL)
+        XCTAssertTrue(status.isEmpty)
+        XCTAssertEqual(environment.undoManager.undoStack.last?.label, "Commit")
+    }
+
+    @MainActor
     private func makeEnvironment() -> MutationTestEnvironment {
         let contextProvider = RepositoryAIMutationContextProvider()
         let undoManager = GitUndoManager()
@@ -280,4 +338,27 @@ private struct MutationTestEnvironment {
     let contextProvider: RepositoryAIMutationContextProvider
     let undoManager: GitUndoManager
     let executor: RepositoryAIMutationExecutor
+}
+
+private struct CommitAllMessageProvider: CommitMessageAIProvider {
+    let descriptor = AIProviderDescriptor(
+        id: .appleIntelligence,
+        displayName: "Commit All Test AI",
+        systemImage: "sparkles",
+        detail: "Test",
+        dataProcessing: .onDevice,
+        billing: .none,
+        requiresProToConfigureAPIKey: false,
+        defaultModel: nil,
+        inputCharacterBudget: 20_000,
+        isImplemented: true
+    )
+
+    func availability() async -> AIProviderAvailability { .available }
+
+    func generateCommitMessage(
+        request: CommitMessageGenerationRequest
+    ) async throws -> GeneratedCommitMessage {
+        GeneratedCommitMessage(subject: "test: commit all changes", body: nil)
+    }
 }

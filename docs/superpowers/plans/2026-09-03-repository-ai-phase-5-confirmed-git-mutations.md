@@ -29,6 +29,15 @@ User request
 
 The provider never supplies raw Git arguments for a mutation. App-owned high-level operations translate validated semantic inputs into existing `GitStatusService` and Git Undo flows.
 
+## Approved commit-all workflow follow-up
+
+- `commit_all_changes` is a dedicated semantic workflow, not a generic multi-command plan.
+- Use it only when the user explicitly asks to commit all/every current change and the complete eligible changed-file manifest is available.
+- Commit+ may stage that exact manifest immediately without a separate confirmation, register the normal stage Git Undo entry, generate a commit message from the resulting staged diff, and then show the existing app-owned commit confirmation.
+- Cancelling, expiration, provider failure, or window closure after staging leaves the changes staged and recoverable through Git Undo. The transcript and confirmation warning must say so.
+- Conflicts, an incomplete bounded path manifest, detached or unborn HEAD, missing commit identity, and in-progress Git operations reject the workflow before staging.
+- No other mutation sequence may bypass per-action confirmation.
+
 ## Initial action set
 
 - `stage_files(paths:)`
@@ -115,7 +124,7 @@ Every action is separately typed, validated, previewed, confirmed, and tested. U
 ## Non-goals
 
 - `reset`, `clean`, discard/remove, stash, merge, rebase, cherry-pick, revert, tag deletion, branch deletion, worktree/submodule/subtree mutation, fetch, pull, push, force push, or pull-request mutation.
-- Automatically executing a sequence of mutations from one confirmation.
+- Automatically executing any mutation sequence other than the explicitly requested `commit_all_changes` stage-then-confirm-commit workflow.
 - Persisting or remotely syncing pending approvals.
 - Letting the model edit files, author patches, run hooks/scripts, invoke a shell, or bypass existing Personal Changes/Git Flow/worktree safeguards.
 

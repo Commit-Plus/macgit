@@ -207,19 +207,25 @@ struct MainWindowView: View {
         let syncState = SyncState()
         let undoManager = GitUndoManager()
         let mutationContextProvider = RepositoryAIMutationContextProvider()
+        let mutationExecutor = RepositoryAIMutationExecutor(
+            contextProvider: mutationContextProvider,
+            undoManager: undoManager,
+            syncState: syncState,
+            operationProgress: operationProgress
+        )
         _syncState = StateObject(wrappedValue: syncState)
         _undoManager = StateObject(wrappedValue: undoManager)
         _pullRequestController = StateObject(wrappedValue: pullRequestController)
         _repositoryAIChatController = StateObject(wrappedValue: RepositoryAIChatController(
             repositoryURL: repositoryURL,
             providerController: aiProviderController,
-            mutationExecutor: RepositoryAIMutationExecutor(
-                contextProvider: mutationContextProvider,
-                undoManager: undoManager,
-                syncState: syncState,
-                operationProgress: operationProgress
-            ),
+            mutationExecutor: mutationExecutor,
             mutationContextProvider: mutationContextProvider,
+            commitAllPreparer: RepositoryAICommitAllCoordinator(
+                providerController: aiProviderController,
+                contextProvider: mutationContextProvider,
+                mutationExecutor: mutationExecutor
+            ),
             pullRequestContextLoader: { number, repositoryURL in
                 try await pullRequestController.repositoryAIContext(number: number, repositoryURL: repositoryURL)
             },

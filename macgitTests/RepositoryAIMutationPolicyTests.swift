@@ -95,6 +95,44 @@ final class RepositoryAIMutationPolicyTests: XCTestCase {
         ))
     }
 
+    func testCommitAllWorkflowRequiresNoArgumentsAndACompleteSafeManifest() throws {
+        let context = makeContext()
+        let response = try RepositoryAIMutationProposalDecoder.decode(
+            toolCall: RepositoryAIAgentToolCall(
+                id: "commit-all",
+                name: "commit_all_changes",
+                arguments: []
+            ),
+            context: context
+        )
+        XCTAssertEqual(response, .workflow(.commitAllChanges))
+
+        XCTAssertThrowsError(try RepositoryAIMutationProposalDecoder.decode(
+            toolCall: RepositoryAIAgentToolCall(
+                id: "commit-all-with-arguments",
+                name: "commit_all_changes",
+                arguments: ["--all"]
+            ),
+            context: context
+        ))
+
+        let stageMutation = try RepositoryAIMutationPolicy.validateCommitAllPreparation(
+            context: context
+        )
+        guard case .stageFiles(let paths) = stageMutation.proposal else {
+            return XCTFail("Expected exact stage-files preparation")
+        }
+        XCTAssertEqual(Set(paths.map(\.file.path)), ["App.swift", "New.swift"])
+
+        let conflict = StatusFile(path: "Conflict.swift", status: .conflict, originalPath: nil)
+        XCTAssertThrowsError(try RepositoryAIMutationPolicy.validateCommitAllPreparation(
+            context: makeContext(status: GitStatus(staged: [], unstaged: [conflict], untracked: []))
+        ))
+        XCTAssertThrowsError(try RepositoryAIMutationPolicy.validateCommitAllPreparation(
+            context: makeContext(branch: nil)
+        ))
+    }
+
     func testStagePreservesDuplicatePathSourcesAndRenamePair() throws {
         let context = makeContext()
         let staged = try RepositoryAIMutationPolicy.validate(

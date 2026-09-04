@@ -46,6 +46,7 @@ final class RepositoryAIChatController: ObservableObject {
     private let gitService: GitStatusService
     private let mutationExecutor: (any RepositoryAIMutationExecuting)?
     private let mutationContextProvider: (any RepositoryAIMutationContextProviding)?
+    private let commitAllPreparer: (any RepositoryAICommitAllPreparing)?
     private let pullRequestContextLoader: ((Int?, URL) async throws -> RepositoryAIPullRequestContext)?
     private let pullRequestFingerprintLoader: ((Int, URL) async throws -> String)?
     private var conversationSessionID = UUID().uuidString
@@ -59,6 +60,7 @@ final class RepositoryAIChatController: ObservableObject {
         gitService: GitStatusService = .shared,
         mutationExecutor: (any RepositoryAIMutationExecuting)? = nil,
         mutationContextProvider: (any RepositoryAIMutationContextProviding)? = nil,
+        commitAllPreparer: (any RepositoryAICommitAllPreparing)? = nil,
         pullRequestContextLoader: ((Int?, URL) async throws -> RepositoryAIPullRequestContext)? = nil,
         pullRequestFingerprintLoader: ((Int, URL) async throws -> String)? = nil
     ) {
@@ -67,6 +69,7 @@ final class RepositoryAIChatController: ObservableObject {
         self.gitService = gitService
         self.mutationExecutor = mutationExecutor
         self.mutationContextProvider = mutationContextProvider
+        self.commitAllPreparer = commitAllPreparer
         self.pullRequestContextLoader = pullRequestContextLoader
         self.pullRequestFingerprintLoader = pullRequestFingerprintLoader
     }
@@ -460,20 +463,13 @@ final class RepositoryAIChatController: ObservableObject {
                         branch: branch,
                         streamingMessageID: &streamingMessageID
                     )
+                } else if let workflow = result.mutationWorkflow {
+                    await prepareMutationWorkflow(workflow)
                 } else if let mutation = result.mutation {
-                    let originatingMessageID = messages.last(where: { $0.role == .user })?.id ?? UUID()
-                    let pending = PendingRepositoryAIMutation(
-                        validatedMutation: mutation,
-                        conversationID: conversationSessionID,
-                        originatingMessageID: originatingMessageID,
-                        providerID: providerController.selectedProviderID
+                    presentPendingMutation(
+                        mutation,
+                        transcript: "Approval required — review the exact impact before confirming \(mutation.preview.title.lowercased())."
                     )
-                    pendingMutation = pending
-                    messages.append(RepositoryAIMessage(
-                        role: .assistant,
-                        text: "Approval required — review the exact impact before confirming \(mutation.preview.title.lowercased())."
-                    ))
-                    scheduleExpiration(for: pending)
                 } else {
                     for toolResult in result.toolResults {
                         messages.append(RepositoryAIMessage(
@@ -618,6 +614,80 @@ final class RepositoryAIChatController: ObservableObject {
             evidenceManifest: message.evidenceManifest
         )
         streamingRevision &+= 1
+    }
+
+    private func prepareMutationWorkflow(_ workflow: RepositoryAIMutationWorkflow) async {
+        switch workflow {
+        case .commitAllChanges:
+            guard let commitAllPreparer else {
+                messages.append(RepositoryAIMessage(
+                    role: .assistant,
+                    text: "Rejected — the Commit All Changes workflow is unavailable in this repository window."
+                ))
+                return
+            }
+
+            messages.append(RepositoryAIMessage(
+                role: .assistant,
+                text: "Planned — stage all current changes automatically, generate a commit message, then ask before creating the commit."
+            ))
+            isExecutingMutation = true
+            defer { isExecutingMutation = false }
+
+            do {
+                let preparation = try await commitAllPreparer.prepare(in: repositoryURL)
+                messages.append(RepositoryAIMessage(role: .assistant, text: preparation.stageSummary))
+                presentPendingMutation(
+                    preparation.commitMutation,
+                    transcript: "Approval required — all current changes are staged. Review the generated message before creating the commit."
+                )
+            } catch let error as RepositoryAICommitAllPreparationError {
+                let prefix = error == .cancelledAfterStaging ? "Cancelled" : "Failed"
+                messages.append(RepositoryAIMessage(
+                    role: .assistant,
+                    text: "\(prefix) — \(error.localizedDescription)"
+                ))
+            } catch let error as RepositoryAIMutationError {
+                let prefix: String
+                if case .stale = error {
+                    prefix = "Stale"
+                } else if case .rejected = error {
+                    prefix = "Rejected"
+                } else {
+                    prefix = "Failed"
+                }
+                messages.append(RepositoryAIMessage(
+                    role: .assistant,
+                    text: "\(prefix) — \(error.localizedDescription)"
+                ))
+            } catch is CancellationError {
+                messages.append(RepositoryAIMessage(
+                    role: .assistant,
+                    text: "Cancelled — the Commit All Changes workflow stopped. Any completed staging remains available through Git Undo."
+                ))
+            } catch {
+                messages.append(RepositoryAIMessage(
+                    role: .assistant,
+                    text: "Failed — \(error.localizedDescription)"
+                ))
+            }
+        }
+    }
+
+    private func presentPendingMutation(
+        _ mutation: RepositoryAIValidatedMutation,
+        transcript: String
+    ) {
+        let originatingMessageID = messages.last(where: { $0.role == .user })?.id ?? UUID()
+        let pending = PendingRepositoryAIMutation(
+            validatedMutation: mutation,
+            conversationID: conversationSessionID,
+            originatingMessageID: originatingMessageID,
+            providerID: providerController.selectedProviderID
+        )
+        pendingMutation = pending
+        messages.append(RepositoryAIMessage(role: .assistant, text: transcript))
+        scheduleExpiration(for: pending)
     }
 
     private func removeStreamingAssistant(_ id: UUID?) {

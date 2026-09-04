@@ -148,6 +148,28 @@ final class RepositoryAIAgentHarnessTests: XCTestCase {
         XCTAssertTrue(recordedArguments.isEmpty)
     }
 
+    func testHarnessReturnsCommitAllWorkflowWithoutExecutingGit() async throws {
+        let executor = StubRepositoryAIGitCommandExecutor()
+        let harness = RepositoryAIAgentHarness(
+            commandExecutor: executor,
+            stateProvider: StaticRepositoryAIStateProvider(),
+            mutationContextProvider: StaticRepositoryAIMutationContextProvider()
+        )
+
+        let result = try await harness.answer(
+            question: "commit all changes",
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            branchName: "main",
+            provider: CommitAllRepositoryAIAgentProvider()
+        )
+
+        XCTAssertEqual(result.mutationWorkflow, .commitAllChanges)
+        XCTAssertNil(result.mutation)
+        XCTAssertTrue(result.toolResults.isEmpty)
+        let recordedArguments = await executor.recordedArguments()
+        XCTAssertTrue(recordedArguments.isEmpty)
+    }
+
     @MainActor
     func testSubmitDraftRoutesAgentReviewFileActionToFilePicker() async {
         let suiteName = "RepositoryAIAgentHarnessTests.\(UUID().uuidString)"
@@ -285,6 +307,49 @@ final class RepositoryAIAgentHarnessTests: XCTestCase {
         XCTAssertNil(controller.pendingMutation)
         XCTAssertTrue(controller.messages.last?.text.hasPrefix("Stale") == true)
     }
+
+    @MainActor
+    func testCommitAllWorkflowPreparesThenWaitsForFinalCommitConfirmation() async throws {
+        let suiteName = "RepositoryAICommitAllControllerTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.removePersistentDomain(forName: suiteName)
+        let harness = RepositoryAIAgentHarness(
+            commandExecutor: StubRepositoryAIGitCommandExecutor(),
+            stateProvider: StaticRepositoryAIStateProvider(),
+            mutationContextProvider: StaticRepositoryAIMutationContextProvider()
+        )
+        let providerController = AIProviderController(
+            registry: AIProviderRegistry(providers: [CommitAllRepositoryAIAgentProvider()]),
+            snapshotLoader: StubRepositoryAICommitChangeSnapshotLoader(),
+            repositoryAgentHarness: harness,
+            defaults: defaults
+        )
+        let commitAllPreparer = RecordingRepositoryAICommitAllPreparer()
+        let mutationExecutor = RecordingRepositoryAIMutationExecutor()
+        let controller = RepositoryAIChatController(
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            providerController: providerController,
+            mutationExecutor: mutationExecutor,
+            commitAllPreparer: commitAllPreparer
+        )
+        controller.draft = "commit all changes"
+
+        await controller.submitDraft()
+
+        XCTAssertEqual(commitAllPreparer.preparationCount, 1)
+        XCTAssertEqual(mutationExecutor.executionCount, 0)
+        let pending = try XCTUnwrap(controller.pendingMutation)
+        guard case .createCommit(let message) = pending.proposal else {
+            return XCTFail("Expected a final commit proposal")
+        }
+        XCTAssertEqual(message, "test: commit all changes")
+        XCTAssertTrue(controller.messages.contains { $0.text.hasPrefix("Succeeded — staged") })
+
+        await controller.confirmPendingMutation(id: pending.id)
+
+        XCTAssertEqual(mutationExecutor.executionCount, 1)
+        XCTAssertNil(controller.pendingMutation)
+    }
 }
 
 private struct StagedReviewAgentProvider: CommitMessageAIProvider {
@@ -395,6 +460,28 @@ private struct MutationRepositoryAIAgentProvider: CommitMessageAIProvider {
     }
 }
 
+private struct CommitAllRepositoryAIAgentProvider: CommitMessageAIProvider {
+    let descriptor = RepositoryAIAgentHarnessTestSupport.descriptor
+    var supportsRepositoryAgent: Bool { true }
+
+    func availability() async -> AIProviderAvailability { .available }
+
+    func generateCommitMessage(request: CommitMessageGenerationRequest) async throws -> GeneratedCommitMessage {
+        GeneratedCommitMessage(subject: "test: commit all changes", body: nil)
+    }
+
+    func generateRepositoryAgentTurn(request: RepositoryAIAgentRequest) async throws -> RepositoryAIAgentTurn {
+        RepositoryAIAgentTurn(
+            text: "",
+            toolCalls: [RepositoryAIAgentToolCall(
+                id: "commit-all",
+                name: "commit_all_changes",
+                arguments: []
+            )]
+        )
+    }
+}
+
 private enum RepositoryAIAgentHarnessTestSupport {
     static let descriptor = AIProviderDescriptor(
         id: .appleIntelligence,
@@ -496,6 +583,48 @@ private final class RecordingRepositoryAIMutationExecutor: RepositoryAIMutationE
     ) async throws -> RepositoryAIMutationExecutionResult {
         executionCount += 1
         return RepositoryAIMutationExecutionResult(summary: "Succeeded — test mutation executed.")
+    }
+}
+
+@MainActor
+private final class RecordingRepositoryAICommitAllPreparer: RepositoryAICommitAllPreparing {
+    private(set) var preparationCount = 0
+
+    func prepare(in repositoryURL: URL) async throws -> RepositoryAICommitAllPreparationResult {
+        preparationCount += 1
+        let file = StatusFile(path: "App.swift", status: .modified, originalPath: nil)
+        let state = RepositoryAIRepositoryState(
+            branch: "main",
+            head: "head-1",
+            stagedFingerprint: "index-2",
+            workingTreeFingerprint: "worktree-2"
+        )
+        let context = RepositoryAIMutationPlanningContext(
+            repositoryIdentity: repositoryURL.standardizedFileURL.path,
+            repositoryState: state,
+            status: GitStatus(staged: [file], unstaged: [], untracked: []),
+            paths: [RepositoryAIMutationPath(id: "staged-1", file: file, source: .staged)],
+            localBranches: [RepositoryAIMutationRef(id: "branch-1", name: "main", commit: state.head)],
+            startPoints: [RepositoryAIMutationRef(id: "start-head", name: "HEAD", commit: state.head)],
+            conflictResolutions: [],
+            stagedStatistics: RepositoryAIMutationStatistics(
+                fileCount: 1,
+                additions: 1,
+                deletions: 0,
+                binaryFileCount: 0
+            ),
+            author: "Test User <test@example.com>",
+            signingEnabled: false,
+            inProgressOperation: nil,
+            branchesCheckedOutInOtherWorktrees: []
+        )
+        return RepositoryAICommitAllPreparationResult(
+            stageSummary: "Succeeded — staged App.swift.",
+            commitMutation: try RepositoryAIMutationPolicy.validate(
+                .createCommit(message: "test: commit all changes"),
+                context: context
+            )
+        )
     }
 }
 

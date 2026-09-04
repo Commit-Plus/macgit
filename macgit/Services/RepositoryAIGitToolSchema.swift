@@ -132,6 +132,16 @@ nonisolated enum RepositoryAIAgentToolSchema {
                 forGemini: forGemini
             ))
         }
+        if (try? RepositoryAIMutationPolicy.validateCommitAllPreparation(context: context)) != nil {
+            declarations.append(mutationDeclaration(
+                name: "commit_all_changes",
+                description: "Use only when the user explicitly asks to commit all/every current change. Commit+ will automatically stage the complete eligible changed-file manifest, generate a message from the staged diff, and ask the user to confirm only the final commit. Pass no arguments.",
+                argumentDescription: "An empty argument array. Commit+ owns the exact stage-all scope and commit-message generation.",
+                minimumCount: 0,
+                maximumCount: 0,
+                forGemini: forGemini
+            ))
+        }
         if !context.startPoints.isEmpty {
             declarations.append(mutationDeclaration(
                 name: "create_branch",

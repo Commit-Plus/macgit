@@ -88,7 +88,12 @@ nonisolated enum RepositoryAIMutationProposal: Equatable, Sendable {
 
 nonisolated enum RepositoryAIMutationProviderResponse: Equatable, Sendable {
     case proposal(RepositoryAIMutationProposal)
+    case workflow(RepositoryAIMutationWorkflow)
     case unsupported(reason: String)
+}
+
+nonisolated enum RepositoryAIMutationWorkflow: Equatable, Sendable {
+    case commitAllChanges
 }
 
 nonisolated enum RepositoryAIMutationActionState: Equatable, Sendable {
@@ -162,6 +167,11 @@ nonisolated struct PendingRepositoryAIMutation: Identifiable, Equatable, Sendabl
 
 nonisolated struct RepositoryAIMutationExecutionResult: Equatable, Sendable {
     let summary: String
+}
+
+nonisolated struct RepositoryAICommitAllPreparationResult: Equatable, Sendable {
+    let stageSummary: String
+    let commitMutation: RepositoryAIValidatedMutation
 }
 
 nonisolated enum RepositoryAIMutationError: LocalizedError, Equatable, Sendable {

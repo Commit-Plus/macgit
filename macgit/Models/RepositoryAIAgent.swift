@@ -145,17 +145,20 @@ nonisolated struct RepositoryAIAgentRunResult: Equatable, Sendable {
     let toolResults: [RepositoryAIAgentToolResult]
     let quickAction: RepositoryAIQuickAction?
     let mutation: RepositoryAIValidatedMutation?
+    let mutationWorkflow: RepositoryAIMutationWorkflow?
 
     init(
         answer: String,
         toolResults: [RepositoryAIAgentToolResult],
         quickAction: RepositoryAIQuickAction? = nil,
-        mutation: RepositoryAIValidatedMutation? = nil
+        mutation: RepositoryAIValidatedMutation? = nil,
+        mutationWorkflow: RepositoryAIMutationWorkflow? = nil
     ) {
         self.answer = answer
         self.toolResults = toolResults
         self.quickAction = quickAction
         self.mutation = mutation
+        self.mutationWorkflow = mutationWorkflow
     }
 }
 

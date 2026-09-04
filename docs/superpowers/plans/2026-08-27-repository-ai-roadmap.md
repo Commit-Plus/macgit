@@ -34,6 +34,7 @@ Build a repository-scoped AI assistant in the toolbar side panel. The assistant 
   - Plan: [Repository AI Phase 4: Broader Repository Analysis](2026-09-03-repository-ai-phase-4-broader-repository-analysis.md)
 - [in progress] **Phase 5 — Confirmed local Git mutations**
   - Add semantic stage, unstage, commit, create/check out branches, and apply an existing Conflict AI resolution one operation at a time.
+  - For an explicit `commit all changes` request, allow the app-owned workflow to stage the complete safe manifest automatically, generate a staged-diff message, and ask only at the final commit step; staging remains separately undoable.
   - Require explicit user confirmation, expected-state validation, Git Undo integration where supported, and normal repository refresh notifications.
   - Plan: [Repository AI Phase 5: Confirmed Git Mutations](2026-09-03-repository-ai-phase-5-confirmed-git-mutations.md)
 - [pending] **Phase 6 — Confirmed remote Git operations**
