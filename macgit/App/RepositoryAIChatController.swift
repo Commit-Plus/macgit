@@ -72,6 +72,7 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     func reviewChanges() async {
+        dismissSelection()
         await startRequest(
             "Review the current repository changes. Focus on concrete bugs, regressions, security issues, and missing tests.",
             mode: .fixedTool(.workingTreeChanges),
@@ -82,6 +83,7 @@ final class RepositoryAIChatController: ObservableObject {
 
     func prepareCommitExplanation() async {
         guard !isRunning, !isLoadingCommits else { return }
+        dismissSelection()
         isChoosingCommit = true
         isLoadingCommits = true
         let commits = await gitService.recentCommits(limit: 10, in: repositoryURL)
@@ -107,6 +109,7 @@ final class RepositoryAIChatController: ObservableObject {
 
     func prepareFileReview() async {
         guard !isRunning, !isLoadingFiles else { return }
+        dismissSelection()
         isChoosingFile = true
         isLoadingFiles = true
         changedFiles = (try? await gitService.listChangedFiles(in: repositoryURL)) ?? []
@@ -115,7 +118,7 @@ final class RepositoryAIChatController: ObservableObject {
 
     func reviewFile(_ reference: RepositoryAIFileReference, includeDiff: Bool = true) async {
         guard !isRunning else { return }
-        isChoosingFile = false
+        dismissSelection()
         await startRequest(
             includeDiff
                 ? "Review this file diff. Focus on concrete bugs, regressions, security issues, and missing tests."
@@ -134,6 +137,7 @@ final class RepositoryAIChatController: ObservableObject {
 
     func prepareRefComparison() {
         guard !isRunning else { return }
+        dismissSelection()
         if comparisonHeadDraft.isEmpty { comparisonHeadDraft = "HEAD" }
         isChoosingComparison = true
     }
@@ -145,7 +149,7 @@ final class RepositoryAIChatController: ObservableObject {
             messages.append(RepositoryAIMessage(role: .assistant, text: RepositoryAIError.invalidRefReference.localizedDescription))
             return
         }
-        isChoosingComparison = false
+        dismissSelection()
         await startRequest(
             "Compare these refs as a review. Explain meaningful behavior changes, risks, and missing tests.",
             mode: .comparison(base, head),
@@ -161,6 +165,7 @@ final class RepositoryAIChatController: ObservableObject {
 
     func preparePullRequestAnalysis() {
         guard !isRunning else { return }
+        dismissSelection()
         isChoosingPullRequest = true
     }
 
@@ -171,7 +176,7 @@ final class RepositoryAIChatController: ObservableObject {
             messages.append(RepositoryAIMessage(role: .assistant, text: "Enter a positive pull request number."))
             return
         }
-        isChoosingPullRequest = false
+        dismissSelection()
         let label = number.map { "Pull request #\($0)" } ?? "Selected pull request"
         await startRequest(
             "Analyze this pull request. Focus on concrete behavior changes, review risks, and missing tests.",
@@ -190,8 +195,7 @@ final class RepositoryAIChatController: ObservableObject {
         let normalizedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedReference.isEmpty else { return }
 
-        isChoosingCommit = false
-        commitReferenceDraft = ""
+        dismissSelection()
         await startRequest(
             "Explain what this commit changes, why it likely exists, and any behavior or risks a reviewer should understand.",
             mode: .fixedTool(.commitChanges(reference: normalizedReference)),
@@ -203,6 +207,7 @@ final class RepositoryAIChatController: ObservableObject {
     func submitDraft() async {
         let question = draft
         draft = ""
+        dismissSelection()
         let mode: RepositoryAIRequestMode = isWorkingTreeReviewRequest(question)
             ? .fixedTool(.workingTreeChanges)
             : .agent
@@ -216,8 +221,18 @@ final class RepositoryAIChatController: ObservableObject {
     func startNewConversation() {
         guard !isRunning else { return }
         draft = ""
-        commitReferenceDraft = ""
         messages.removeAll()
+        dismissSelection()
+        conversationTitle = "New conversation"
+        conversationSessionID = UUID().uuidString
+    }
+
+    func cancelActiveRequest() {
+        activeRequestTask?.cancel()
+    }
+
+    private func dismissSelection() {
+        commitReferenceDraft = ""
         recentCommits.removeAll()
         isChoosingCommit = false
         isChoosingFile = false
@@ -226,12 +241,6 @@ final class RepositoryAIChatController: ObservableObject {
         isLoadingCommits = false
         isLoadingFiles = false
         changedFiles.removeAll()
-        conversationTitle = "New conversation"
-        conversationSessionID = UUID().uuidString
-    }
-
-    func cancelActiveRequest() {
-        activeRequestTask?.cancel()
     }
 
     private func startRequest(

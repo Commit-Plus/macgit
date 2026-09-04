@@ -25,6 +25,7 @@ struct RepositoryAIChatView: View {
     let isSignedIn: Bool
     let onRequestAccess: () -> Void
     @State private var followsStreaming = true
+    @State private var isShowingQuickActions = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -69,9 +70,7 @@ struct RepositoryAIChatView: View {
                 transcript
             }
 
-            if !controller.isChoosingCommit && !controller.isChoosingFile && !controller.isChoosingComparison && !controller.isChoosingPullRequest {
-                composer
-            }
+            composer
         }
         .padding(16)
         .task {
@@ -201,35 +200,133 @@ struct RepositoryAIChatView: View {
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             TextField("Ask about this context", text: $controller.draft, axis: .vertical)
                 .lineLimit(1...4)
                 .textFieldStyle(.plain)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(.primary.opacity(0.075))
-                        .stroke(.primary.opacity(0.12), lineWidth: 1)
-                }
+                .frame(minHeight: 28, alignment: .topLeading)
                 .disabled(controller.isRunning)
                 .onSubmit(submitDraft)
 
-            if controller.isRunning {
-                Button("Stop generating", systemImage: "stop.fill", action: controller.cancelActiveRequest)
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .help("Stop generating")
-            } else {
-                Button("Send question", systemImage: "arrow.up", action: submitDraft)
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .disabled(!controller.canSubmit)
-                    .help("Send")
+            HStack(spacing: 8) {
+                Button("Quick actions", systemImage: "plus") {
+                    isShowingQuickActions = true
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .controlSize(.small)
+                .disabled(controller.isRunning)
+                .help("Quick actions")
+                .popover(isPresented: $isShowingQuickActions, arrowEdge: .bottom) {
+                    quickActionsPopover
+                }
+
+                Spacer(minLength: 0)
+
+                AIProviderMenu(
+                    controller: providerController,
+                    restrictedProviderAccess: accessDecision,
+                    showsConfigureAction: true,
+                    labelMode: .model
+                )
+
+                if controller.isRunning {
+                    Button("Stop generating", systemImage: "stop.fill", action: controller.cancelActiveRequest)
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.circle)
+                        .controlSize(.small)
+                        .help("Stop generating")
+                } else {
+                    Button("Send question", systemImage: "arrow.up", action: submitDraft)
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.circle)
+                        .controlSize(.small)
+                        .disabled(!controller.canSubmit)
+                        .help("Send")
+                }
             }
         }
+        .padding(10)
+        .background {
+            RoundedRectangle(cornerRadius: 18)
+                .fill(.primary.opacity(0.075))
+                .stroke(.primary.opacity(0.12), lineWidth: 1)
+        }
+    }
+
+    private var quickActionsPopover: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Quick actions")
+                .font(.headline)
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+
+            quickActionButton(
+                title: "Review changes",
+                detail: "Find bugs, regressions, and missing tests",
+                systemImage: "checkmark.bubble",
+                action: runReviewChanges
+            )
+            quickActionButton(
+                title: "Explain commit",
+                detail: "Summarize intent, behavior, and risks",
+                systemImage: "text.magnifyingglass",
+                action: runExplainCommit
+            )
+            quickActionButton(
+                title: "Review file",
+                detail: "Inspect a staged or working-tree file diff",
+                systemImage: "doc.text.magnifyingglass",
+                action: runReviewFile
+            )
+            quickActionButton(
+                title: "Compare branches or refs",
+                detail: "Review a bounded three-dot diff",
+                systemImage: "arrow.left.arrow.right",
+                action: runCompareRefs
+            )
+            quickActionButton(
+                title: "Analyze pull request",
+                detail: "Use current-repository GitHub or GitLab context",
+                systemImage: "arrow.triangle.branch",
+                action: runAnalyzePullRequest
+            )
+        }
+        .padding(.bottom, 8)
+        .frame(width: 320)
+    }
+
+    private func quickActionButton(
+        title: String,
+        detail: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            isShowingQuickActions = false
+            action()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
     }
 
     private var accessButtonTitle: String {
