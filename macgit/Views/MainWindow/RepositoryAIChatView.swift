@@ -271,14 +271,14 @@ struct RepositoryAIChatView: View {
                         .labelStyle(.iconOnly)
                         .buttonStyle(.borderedProminent)
                         .buttonBorderShape(.circle)
-                        .controlSize(.small)
+                        .controlSize(.large)
                         .help("Stop generating")
                 } else {
                     Button("Send question", systemImage: "arrow.up", action: submitDraft)
                         .labelStyle(.iconOnly)
                         .buttonStyle(.borderedProminent)
                         .buttonBorderShape(.circle)
-                        .controlSize(.small)
+                        .controlSize(.large)
                         .disabled(!controller.canSubmit)
                         .help("Send")
                 }

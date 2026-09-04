@@ -90,6 +90,7 @@ struct SidebarBranchesSection: View {
                         .onTapGesture {
                             actions.select(.head(headHash))
                         }
+                        .sidebarPointingHandCursor()
                     }
 
                     ForEach(rows) { row in
@@ -113,6 +114,7 @@ struct SidebarBranchesSection: View {
                             actions: actions
                         )
                         .padding(.leading, 6)
+                        .sidebarPointingHandCursor()
                     }
                 }
             }
@@ -172,5 +174,6 @@ struct SidebarBranchesSection: View {
                 return actions.drop.handleProviders(providers, .branchesHeader, false)
             }
         }
+        .sidebarPointingHandCursor()
     }
 }

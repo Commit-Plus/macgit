@@ -62,6 +62,7 @@ struct SidebarGitFlowSection: View {
             .accessibilityLabel("Git Flow section")
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
             .accessibilityHint("Shows Git Flow start, finish, and recovery actions.")
+            .sidebarPointingHandCursor()
 
             if isExpanded {
                 if checkpoint != nil || recoveryIssue != nil {
@@ -86,12 +87,14 @@ struct SidebarGitFlowSection: View {
                         .disabled(!commandState.canStart(kind))
                         .accessibilityHint("Starts a new \(kind.displayName) flow.")
                         .padding(.leading, 6)
+                        .sidebarPointingHandCursor()
                     }
                 } else {
                     Button("Set Up Git Flow…", systemImage: "gearshape", action: actions.editWorkflow)
                     .buttonStyle(.plain)
                     .disabled(isOperationDisabled)
                     .padding(.leading, 6)
+                    .sidebarPointingHandCursor()
                 }
             }
         }

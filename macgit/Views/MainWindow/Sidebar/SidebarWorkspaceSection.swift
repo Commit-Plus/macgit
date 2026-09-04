@@ -54,6 +54,7 @@ struct SidebarWorkspaceSection: View {
                         .onTapGesture {
                             onRequestSearch()
                         }
+                        .sidebarPointingHandCursor()
                 } else {
                     Label(item.rawValue, systemImage: item.icon)
                         .padding(.leading, 6)
@@ -63,6 +64,7 @@ struct SidebarWorkspaceSection: View {
                                 Button("Create Pull Request...", systemImage: "arrow.triangle.pull", action: onRequestCreatePullRequest)
                             }
                         }
+                        .sidebarPointingHandCursor()
                 }
             }
 
@@ -80,6 +82,7 @@ struct SidebarWorkspaceSection: View {
                     .help("Open Git Flow actions")
                     .accessibilityLabel("Git Flow")
                     .accessibilityHint("Shows Git Flow actions and workflow status.")
+                    .sidebarPointingHandCursor()
             }
         }
     }

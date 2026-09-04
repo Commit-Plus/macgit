@@ -52,6 +52,7 @@ struct SidebarTagsSection: View {
                             actions: actions
                         )
                         .padding(.leading, 6)
+                        .sidebarPointingHandCursor()
                     }
                 }
             }
@@ -98,5 +99,6 @@ struct SidebarTagsSection: View {
                 return actions.drop.handleProviders(providers, .tagsHeader, false)
             }
         }
+        .sidebarPointingHandCursor()
     }
 }

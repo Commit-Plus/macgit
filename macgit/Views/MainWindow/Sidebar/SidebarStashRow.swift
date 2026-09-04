@@ -27,9 +27,11 @@ struct SidebarStashRow: View {
             .onTapGesture {
                 actions.select(.stash(stash.ref))
             }
-            .onTapGesture(count: 2) {
-                actions.apply(stash.ref)
-            }
+            .simultaneousGesture(
+                TapGesture(count: 2).onEnded {
+                    actions.apply(stash.ref)
+                }
+            )
             .onDrag {
                 actions.makeItemProvider(stash.ref)
             } preview: {

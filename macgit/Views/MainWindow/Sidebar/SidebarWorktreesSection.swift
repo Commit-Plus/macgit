@@ -43,6 +43,7 @@ struct SidebarWorktreesSection: View {
                     ForEach(entries) { entry in
                         row(for: entry)
                             .padding(.leading, 6)
+                            .sidebarPointingHandCursor()
                     }
                 }
             }
@@ -75,6 +76,7 @@ struct SidebarWorktreesSection: View {
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        .sidebarPointingHandCursor()
     }
 
     private func row(for entry: WorktreeEntry) -> some View {

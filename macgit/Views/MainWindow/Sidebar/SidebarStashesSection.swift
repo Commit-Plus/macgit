@@ -47,6 +47,7 @@ struct SidebarStashesSection: View {
                             actions: actions
                         )
                         .padding(.leading, 6)
+                        .sidebarPointingHandCursor()
                     }
                 }
             }
@@ -93,5 +94,6 @@ struct SidebarStashesSection: View {
                 return actions.drop.handleProviders(providers, .stashesHeader, false)
             }
         }
+        .sidebarPointingHandCursor()
     }
 }

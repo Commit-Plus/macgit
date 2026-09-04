@@ -51,6 +51,7 @@ struct SidebarRemotesSection: View {
                             actions: actions
                         )
                         .padding(.leading, 6)
+                        .sidebarPointingHandCursor()
                     }
                 }
             }
@@ -97,5 +98,6 @@ struct SidebarRemotesSection: View {
                 return actions.drop.handleProviders(providers, .remotesHeader, false)
             }
         }
+        .sidebarPointingHandCursor()
     }
 }
