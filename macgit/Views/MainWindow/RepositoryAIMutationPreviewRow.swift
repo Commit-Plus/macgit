@@ -1,9 +1,4 @@
 //
-//  GitInProgressOperation.swift
-//  macgit
-//
-
-//
 //  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
 //  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
 //
@@ -20,31 +15,23 @@
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-import Foundation
 
-nonisolated enum GitInProgressOperation: Equatable, Sendable {
-    case cherryPick(head: String)
-    case revert(head: String)
+import SwiftUI
 
-    var displayName: String {
-        switch self {
-        case .cherryPick: return "Cherry-pick"
-        case .revert: return "Revert"
+struct RepositoryAIMutationPreviewRow: View {
+    let item: RepositoryAIMutationPreviewItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(item.title)
+                .font(.body.monospaced())
+                .textSelection(.enabled)
+            Text(item.detail)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
-    }
-
-    var shortHead: String {
-        switch self {
-        case .cherryPick(let head), .revert(let head):
-            return String(head.prefix(7))
-        }
-    }
-
-    var message: String {
-        "\(displayName) in progress (\(shortHead)). Resolve conflicts, then continue or abort."
-    }
-
-    var emptyMessage: String {
-        "\(displayName) (\(shortHead)) produced an empty commit. Skip the commit or abort."
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(.quaternary, in: .rect(cornerRadius: 8))
     }
 }

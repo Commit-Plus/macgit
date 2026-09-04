@@ -233,7 +233,8 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         ]
         let functionDeclarations = RepositoryAIAgentToolSchema.declarations(
             includingQuickActions: request.isFirstTurn,
-            forGemini: true
+            forGemini: true,
+            mutationContext: request.mutationContext
         )
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
             "systemInstruction": ["parts": [["text": RepositoryAIPrompt.agentInstructions]]],
@@ -362,11 +363,7 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
     private struct FunctionCall: Decodable {
         let id: String?
         let name: String
-        let args: ToolArguments?
-    }
-
-    private struct ToolArguments: Decodable {
-        let arguments: [String]?
+        let args: RepositoryAIAgentToolArgumentsPayload?
     }
 
     private struct PromptFeedback: Decodable {

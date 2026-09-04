@@ -206,7 +206,10 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let messages = agentMessages(for: request)
         let tools = RepositoryAIAgentToolSchema
-            .declarations(includingQuickActions: request.isFirstTurn)
+            .declarations(
+                includingQuickActions: request.isFirstTurn,
+                mutationContext: request.mutationContext
+            )
             .map { declaration in
                 ["type": "function", "function": declaration] as [String: Any]
             }
@@ -274,7 +277,7 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
     /// read-only Git command policy in the harness.
     static func decodedToolArguments(from rawArguments: String) -> [String]? {
         guard let data = rawArguments.data(using: .utf8) else { return nil }
-        if let decoded = try? JSONDecoder().decode(ToolArguments.self, from: data) {
+        if let decoded = try? JSONDecoder().decode(RepositoryAIAgentToolArgumentsPayload.self, from: data) {
             return decoded.arguments
         }
         if let decoded = try? JSONDecoder().decode([String].self, from: data) {
@@ -370,7 +373,4 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
         let arguments: String
     }
 
-    private struct ToolArguments: Decodable {
-        let arguments: [String]
-    }
 }

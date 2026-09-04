@@ -132,15 +132,22 @@ private enum AppleRepositoryAgentAction {
     case reviewFile
     case compareRefs
     case analyzePullRequest
+    case stageFiles
+    case unstageFiles
+    case createCommit
+    case createBranch
+    case checkoutBranch
+    case applyConflictResolution
+    case unsupportedMutation
     case answer
 }
 
 @Generable
 private struct AppleRepositoryAgentResponse {
-    @Guide(description: "On the first response choose the matching guided action or executeGit. After Git evidence exists, choose executeGit until sufficient, then answer.")
+    @Guide(description: "On the first response choose the matching guided action, one supported semantic mutation, unsupportedMutation, or executeGit. After Git evidence exists, choose executeGit until sufficient, then answer.")
     var action: AppleRepositoryAgentAction
 
-    @Guide(description: "The Git subcommand and arguments without the git executable. Example: [\"diff\", \"--cached\"], never [\"git\", \"diff\", \"--cached\"]. Required only for executeGit.")
+    @Guide(description: "For executeGit, the Git arguments without the git executable. For a mutation, the exact opaque IDs and typed strings described in the trusted manifest. For unsupportedMutation, one concise reason.")
     var arguments: [String]
 
     @Guide(description: "The user-facing answer. Required only for answer and otherwise empty.")
@@ -310,6 +317,23 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
                 return Self.quickActionTurn(.compareRefs)
             case .analyzePullRequest:
                 return Self.quickActionTurn(.analyzePullRequest)
+            case .stageFiles:
+                return Self.semanticMutationTurn(name: "stage_files", arguments: response.arguments)
+            case .unstageFiles:
+                return Self.semanticMutationTurn(name: "unstage_files", arguments: response.arguments)
+            case .createCommit:
+                return Self.semanticMutationTurn(name: "create_commit", arguments: response.arguments)
+            case .createBranch:
+                return Self.semanticMutationTurn(name: "create_branch", arguments: response.arguments)
+            case .checkoutBranch:
+                return Self.semanticMutationTurn(name: "checkout_branch", arguments: response.arguments)
+            case .applyConflictResolution:
+                return Self.semanticMutationTurn(name: "apply_conflict_resolution", arguments: response.arguments)
+            case .unsupportedMutation:
+                return Self.semanticMutationTurn(
+                    name: RepositoryAIMutationProposalDecoder.unsupportedToolName,
+                    arguments: response.arguments
+                )
             case .answer:
                 return RepositoryAIAgentTurn(text: response.answer, toolCalls: [])
             }
@@ -328,6 +352,20 @@ struct AppleIntelligenceCommitMessageProvider: CommitMessageAIProvider {
                 id: UUID().uuidString,
                 name: action.rawValue,
                 arguments: []
+            )]
+        )
+    }
+
+    private static func semanticMutationTurn(
+        name: String,
+        arguments: [String]
+    ) -> RepositoryAIAgentTurn {
+        RepositoryAIAgentTurn(
+            text: "",
+            toolCalls: [RepositoryAIAgentToolCall(
+                id: UUID().uuidString,
+                name: name,
+                arguments: arguments
             )]
         )
     }

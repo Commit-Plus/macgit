@@ -201,7 +201,10 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
         urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let tools = RepositoryAIAgentToolSchema
-            .declarations(includingQuickActions: request.isFirstTurn)
+            .declarations(
+                includingQuickActions: request.isFirstTurn,
+                mutationContext: request.mutationContext
+            )
             .map { declaration -> [String: Any] in
                 var tool = declaration
                 tool["type"] = "function"
@@ -231,6 +234,7 @@ struct OpenAICommitMessageProvider: CommitMessageAIProvider {
                       let rawArguments = output.arguments,
                       let data = rawArguments.data(using: .utf8),
                       let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      Set(object.keys).isSubset(of: ["arguments"]),
                       let arguments = RepositoryAIAgentToolSchema.arguments(
                         forToolNamed: name,
                         suppliedArguments: object["arguments"] as? [String]

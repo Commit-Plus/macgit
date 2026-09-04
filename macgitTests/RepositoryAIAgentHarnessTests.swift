@@ -124,6 +124,30 @@ final class RepositoryAIAgentHarnessTests: XCTestCase {
         XCTAssertTrue(arguments.isEmpty)
     }
 
+    func testHarnessReturnsValidatedMutationWithoutExecutingGit() async throws {
+        let executor = StubRepositoryAIGitCommandExecutor()
+        let harness = RepositoryAIAgentHarness(
+            commandExecutor: executor,
+            stateProvider: StaticRepositoryAIStateProvider(),
+            mutationContextProvider: StaticRepositoryAIMutationContextProvider()
+        )
+
+        let result = try await harness.answer(
+            question: "stage App.swift",
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            branchName: "main",
+            provider: MutationRepositoryAIAgentProvider()
+        )
+
+        guard case .stageFiles(let paths) = result.mutation?.proposal else {
+            return XCTFail("Expected a validated stage proposal")
+        }
+        XCTAssertEqual(paths.map(\.file.path), ["App.swift"])
+        XCTAssertTrue(result.toolResults.isEmpty)
+        let recordedArguments = await executor.recordedArguments()
+        XCTAssertTrue(recordedArguments.isEmpty)
+    }
+
     @MainActor
     func testSubmitDraftRoutesAgentReviewFileActionToFilePicker() async {
         let suiteName = "RepositoryAIAgentHarnessTests.\(UUID().uuidString)"
@@ -152,6 +176,114 @@ final class RepositoryAIAgentHarnessTests: XCTestCase {
         XCTAssertTrue(controller.isChoosingFile)
         XCTAssertEqual(controller.messages.count, 1)
         XCTAssertEqual(controller.messages.first?.text, "review file")
+    }
+
+    @MainActor
+    func testControllerDoesNotExecuteBeforeConfirmationOrAfterCancellation() async {
+        let suiteName = "RepositoryAIMutationControllerTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.removePersistentDomain(forName: suiteName)
+        let harness = RepositoryAIAgentHarness(
+            commandExecutor: StubRepositoryAIGitCommandExecutor(),
+            stateProvider: StaticRepositoryAIStateProvider(),
+            mutationContextProvider: StaticRepositoryAIMutationContextProvider()
+        )
+        let providerController = AIProviderController(
+            registry: AIProviderRegistry(providers: [MutationRepositoryAIAgentProvider()]),
+            snapshotLoader: StubRepositoryAICommitChangeSnapshotLoader(),
+            repositoryAgentHarness: harness,
+            defaults: defaults
+        )
+        let mutationExecutor = RecordingRepositoryAIMutationExecutor()
+        let controller = RepositoryAIChatController(
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            providerController: providerController,
+            mutationExecutor: mutationExecutor
+        )
+        controller.draft = "stage App.swift"
+
+        await controller.submitDraft()
+
+        XCTAssertNotNil(controller.pendingMutation)
+        XCTAssertEqual(mutationExecutor.executionCount, 0)
+        controller.cancelPendingMutation()
+        XCTAssertNil(controller.pendingMutation)
+        XCTAssertEqual(mutationExecutor.executionCount, 0)
+        XCTAssertTrue(controller.messages.last?.text.hasPrefix("Cancelled") == true)
+    }
+
+    @MainActor
+    func testControllerExecutesOnlyAfterExplicitConfirmation() async throws {
+        let suiteName = "RepositoryAIMutationConfirmationTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.removePersistentDomain(forName: suiteName)
+        let harness = RepositoryAIAgentHarness(
+            commandExecutor: StubRepositoryAIGitCommandExecutor(),
+            stateProvider: StaticRepositoryAIStateProvider(),
+            mutationContextProvider: StaticRepositoryAIMutationContextProvider()
+        )
+        let providerController = AIProviderController(
+            registry: AIProviderRegistry(providers: [MutationRepositoryAIAgentProvider()]),
+            snapshotLoader: StubRepositoryAICommitChangeSnapshotLoader(),
+            repositoryAgentHarness: harness,
+            defaults: defaults
+        )
+        let mutationExecutor = RecordingRepositoryAIMutationExecutor()
+        let controller = RepositoryAIChatController(
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            providerController: providerController,
+            mutationExecutor: mutationExecutor
+        )
+        controller.draft = "stage App.swift"
+        await controller.submitDraft()
+        let pending = try XCTUnwrap(controller.pendingMutation)
+
+        await controller.confirmPendingMutation(id: pending.id)
+
+        XCTAssertEqual(mutationExecutor.executionCount, 1)
+        XCTAssertNil(controller.pendingMutation)
+        XCTAssertTrue(controller.messages.last?.text.hasPrefix("Succeeded") == true)
+    }
+
+    @MainActor
+    func testExpiredApprovalDoesNotExecute() async throws {
+        let suiteName = "RepositoryAIMutationExpirationTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.removePersistentDomain(forName: suiteName)
+        let providerController = AIProviderController(
+            registry: AIProviderRegistry(providers: [MutationRepositoryAIAgentProvider()]),
+            snapshotLoader: StubRepositoryAICommitChangeSnapshotLoader(),
+            defaults: defaults
+        )
+        let mutationExecutor = RecordingRepositoryAIMutationExecutor()
+        let controller = RepositoryAIChatController(
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            providerController: providerController,
+            mutationExecutor: mutationExecutor
+        )
+        let context = try await StaticRepositoryAIMutationContextProvider().context(
+            in: URL(fileURLWithPath: "/tmp/example")
+        )
+        let path = try XCTUnwrap(context.stageablePaths.first)
+        let validated = try RepositoryAIMutationPolicy.validate(
+            .stageFiles(paths: [path]),
+            context: context
+        )
+        let pending = PendingRepositoryAIMutation(
+            validatedMutation: validated,
+            conversationID: "expired",
+            originatingMessageID: UUID(),
+            providerID: providerController.selectedProviderID,
+            createdAt: .now.addingTimeInterval(-10),
+            lifetime: 1
+        )
+        controller.pendingMutation = pending
+
+        await controller.confirmPendingMutation(id: pending.id)
+
+        XCTAssertEqual(mutationExecutor.executionCount, 0)
+        XCTAssertNil(controller.pendingMutation)
+        XCTAssertTrue(controller.messages.last?.text.hasPrefix("Stale") == true)
     }
 }
 
@@ -241,6 +373,28 @@ private struct QuickActionRepositoryAIAgentProvider: CommitMessageAIProvider {
     }
 }
 
+private struct MutationRepositoryAIAgentProvider: CommitMessageAIProvider {
+    let descriptor = RepositoryAIAgentHarnessTestSupport.descriptor
+    var supportsRepositoryAgent: Bool { true }
+
+    func availability() async -> AIProviderAvailability { .available }
+
+    func generateCommitMessage(request: CommitMessageGenerationRequest) async throws -> GeneratedCommitMessage {
+        GeneratedCommitMessage(subject: "test: message", body: nil)
+    }
+
+    func generateRepositoryAgentTurn(request: RepositoryAIAgentRequest) async throws -> RepositoryAIAgentTurn {
+        RepositoryAIAgentTurn(
+            text: "",
+            toolCalls: [RepositoryAIAgentToolCall(
+                id: "mutation",
+                name: "stage_files",
+                arguments: ["unstaged-1"]
+            )]
+        )
+    }
+}
+
 private enum RepositoryAIAgentHarnessTestSupport {
     static let descriptor = AIProviderDescriptor(
         id: .appleIntelligence,
@@ -303,6 +457,45 @@ private struct StaticRepositoryAIStateProvider: RepositoryAIRepositoryStateProvi
             stagedFingerprint: "index-1",
             workingTreeFingerprint: "worktree-1"
         )
+    }
+}
+
+private struct StaticRepositoryAIMutationContextProvider: RepositoryAIMutationContextProviding {
+    func context(in repositoryURL: URL) async throws -> RepositoryAIMutationPlanningContext {
+        let file = StatusFile(path: "App.swift", status: .modified, originalPath: nil)
+        let state = try await StaticRepositoryAIStateProvider().state(in: repositoryURL)
+        return RepositoryAIMutationPlanningContext(
+            repositoryIdentity: repositoryURL.standardizedFileURL.path,
+            repositoryState: state,
+            status: GitStatus(staged: [], unstaged: [file], untracked: []),
+            paths: [RepositoryAIMutationPath(id: "unstaged-1", file: file, source: .unstaged)],
+            localBranches: [RepositoryAIMutationRef(id: "branch-1", name: "main", commit: state.head)],
+            startPoints: [RepositoryAIMutationRef(id: "start-head", name: "HEAD", commit: state.head)],
+            conflictResolutions: [],
+            stagedStatistics: RepositoryAIMutationStatistics(
+                fileCount: 0,
+                additions: 0,
+                deletions: 0,
+                binaryFileCount: 0
+            ),
+            author: "Test User <test@example.com>",
+            signingEnabled: false,
+            inProgressOperation: nil,
+            branchesCheckedOutInOtherWorktrees: []
+        )
+    }
+}
+
+@MainActor
+private final class RecordingRepositoryAIMutationExecutor: RepositoryAIMutationExecuting {
+    private(set) var executionCount = 0
+
+    func execute(
+        _ mutation: RepositoryAIValidatedMutation,
+        in repositoryURL: URL
+    ) async throws -> RepositoryAIMutationExecutionResult {
+        executionCount += 1
+        return RepositoryAIMutationExecutionResult(summary: "Succeeded — test mutation executed.")
     }
 }
 

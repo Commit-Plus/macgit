@@ -22,7 +22,7 @@
 //
 import Foundation
 
-enum FileStatus: String, CaseIterable, Sendable {
+nonisolated enum FileStatus: String, CaseIterable, Sendable {
     case modified
     case staged
     case untracked
@@ -47,7 +47,7 @@ enum FileStatus: String, CaseIterable, Sendable {
     }
 }
 
-struct StatusFile: Identifiable, Equatable, Hashable, Sendable {
+nonisolated struct StatusFile: Identifiable, Equatable, Hashable, Sendable {
     let path: String
     let status: FileStatus
     let originalPath: String?
@@ -113,7 +113,7 @@ struct StatusFile: Identifiable, Equatable, Hashable, Sendable {
     }
 }
 
-struct GitStatus {
+nonisolated struct GitStatus: Equatable, Sendable {
     let staged: [StatusFile]
     let unstaged: [StatusFile]
     let untracked: [StatusFile]

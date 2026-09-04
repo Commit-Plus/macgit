@@ -164,7 +164,10 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
             ])
         }
         let tools = RepositoryAIAgentToolSchema
-            .declarations(includingQuickActions: request.isFirstTurn)
+            .declarations(
+                includingQuickActions: request.isFirstTurn,
+                mutationContext: request.mutationContext
+            )
             .map { declaration in
                 [
                     "name": declaration["name"] as? String ?? "",
@@ -257,10 +260,6 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
         let text: String?
         let id: String?
         let name: String?
-        let input: ToolInput?
-    }
-
-    private struct ToolInput: Decodable {
-        let arguments: [String]?
+        let input: RepositoryAIAgentToolArgumentsPayload?
     }
 }

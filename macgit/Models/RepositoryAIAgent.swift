@@ -67,6 +67,41 @@ nonisolated struct RepositoryAIAgentToolCall: Equatable, Sendable {
     }
 }
 
+nonisolated struct RepositoryAIAgentToolArgumentsPayload: Decodable, Equatable, Sendable {
+    let arguments: [String]?
+
+    private struct DynamicCodingKey: CodingKey {
+        let stringValue: String
+        let intValue: Int?
+
+        init?(stringValue: String) {
+            self.stringValue = stringValue
+            intValue = nil
+        }
+
+        init?(intValue: Int) {
+            stringValue = String(intValue)
+            self.intValue = intValue
+        }
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: DynamicCodingKey.self)
+        let unexpectedKeys = container.allKeys.filter { $0.stringValue != "arguments" }
+        guard unexpectedKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: decoder.codingPath,
+                debugDescription: "Repository AI tool arguments contain unsupported fields."
+            ))
+        }
+        guard let key = DynamicCodingKey(stringValue: "arguments") else {
+            arguments = nil
+            return
+        }
+        arguments = try container.decodeIfPresent([String].self, forKey: key)
+    }
+}
+
 nonisolated struct RepositoryAIAgentTurn: Equatable, Sendable {
     let text: String
     let toolCalls: [RepositoryAIAgentToolCall]
@@ -84,21 +119,43 @@ nonisolated struct RepositoryAIAgentRequest: Sendable {
     let conversation: [RepositoryAIMessage]
     let previousToolResults: [RepositoryAIAgentToolResult]
     let isFirstTurn: Bool
+    let mutationContext: RepositoryAIMutationPlanningContext?
+
+    init(
+        repositoryName: String,
+        branchName: String?,
+        question: String,
+        conversation: [RepositoryAIMessage],
+        previousToolResults: [RepositoryAIAgentToolResult],
+        isFirstTurn: Bool,
+        mutationContext: RepositoryAIMutationPlanningContext? = nil
+    ) {
+        self.repositoryName = repositoryName
+        self.branchName = branchName
+        self.question = question
+        self.conversation = conversation
+        self.previousToolResults = previousToolResults
+        self.isFirstTurn = isFirstTurn
+        self.mutationContext = mutationContext
+    }
 }
 
 nonisolated struct RepositoryAIAgentRunResult: Equatable, Sendable {
     let answer: String
     let toolResults: [RepositoryAIAgentToolResult]
     let quickAction: RepositoryAIQuickAction?
+    let mutation: RepositoryAIValidatedMutation?
 
     init(
         answer: String,
         toolResults: [RepositoryAIAgentToolResult],
-        quickAction: RepositoryAIQuickAction? = nil
+        quickAction: RepositoryAIQuickAction? = nil,
+        mutation: RepositoryAIValidatedMutation? = nil
     ) {
         self.answer = answer
         self.toolResults = toolResults
         self.quickAction = quickAction
+        self.mutation = mutation
     }
 }
 
@@ -109,6 +166,7 @@ nonisolated enum RepositoryAIAgentError: LocalizedError, Equatable {
     case emptyResponse
     case unsupportedProvider(String)
     case invalidQuickActionSelection
+    case invalidMutationSelection
     case commandTimedOut
     case requestTimedOut
     case repositoryChanged
@@ -127,6 +185,8 @@ nonisolated enum RepositoryAIAgentError: LocalizedError, Equatable {
             "\(provider) does not yet support Repository AI Git tools. Choose a tool-capable provider and try again."
         case .invalidQuickActionSelection:
             "Repository AI returned an invalid quick action selection."
+        case .invalidMutationSelection:
+            "Repository AI can propose only one Git mutation at a time, before running any Git query."
         case .commandTimedOut:
             "A Git query took too long and was stopped. Ask a narrower question."
         case .requestTimedOut:

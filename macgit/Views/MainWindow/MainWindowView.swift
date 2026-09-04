@@ -204,10 +204,22 @@ struct MainWindowView: View {
             services: [.github: GitHubPullRequestService(), .gitlab: GitLabPullRequestService()],
             openURL: NSWorkspace.shared.open
         )
+        let syncState = SyncState()
+        let undoManager = GitUndoManager()
+        let mutationContextProvider = RepositoryAIMutationContextProvider()
+        _syncState = StateObject(wrappedValue: syncState)
+        _undoManager = StateObject(wrappedValue: undoManager)
         _pullRequestController = StateObject(wrappedValue: pullRequestController)
         _repositoryAIChatController = StateObject(wrappedValue: RepositoryAIChatController(
             repositoryURL: repositoryURL,
             providerController: aiProviderController,
+            mutationExecutor: RepositoryAIMutationExecutor(
+                contextProvider: mutationContextProvider,
+                undoManager: undoManager,
+                syncState: syncState,
+                operationProgress: operationProgress
+            ),
+            mutationContextProvider: mutationContextProvider,
             pullRequestContextLoader: { number, repositoryURL in
                 try await pullRequestController.repositoryAIContext(number: number, repositoryURL: repositoryURL)
             },
@@ -648,6 +660,10 @@ struct MainWindowView: View {
             OpenRepositoryRegistry.shared.register(repositoryURL)
         }
         .onDisappear {
+            repositoryAIChatController.invalidatePendingMutation(
+                reason: "Repository window closed.",
+                appendTranscript: false
+            )
             OpenRepositoryRegistry.shared.unregister(repositoryURL)
             syncState.stopBackgroundSync()
         }

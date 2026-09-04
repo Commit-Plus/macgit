@@ -242,7 +242,10 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let messages = agentMessages(for: request)
         let tools = RepositoryAIAgentToolSchema
-            .declarations(includingQuickActions: request.isFirstTurn)
+            .declarations(
+                includingQuickActions: request.isFirstTurn,
+                mutationContext: request.mutationContext
+            )
             .map { declaration in
                 ["type": "function", "function": declaration] as [String: Any]
             }
@@ -270,7 +273,7 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
         }
         let toolCalls = try (message.toolCalls ?? []).map { toolCall in
             guard let data = toolCall.function.arguments.data(using: .utf8),
-                  let decoded = try? JSONDecoder().decode(ToolArguments.self, from: data),
+                  let decoded = try? JSONDecoder().decode(RepositoryAIAgentToolArgumentsPayload.self, from: data),
                   let arguments = RepositoryAIAgentToolSchema.arguments(
                     forToolNamed: toolCall.function.name,
                     suppliedArguments: decoded.arguments
@@ -443,10 +446,6 @@ struct OpenRouterCommitMessageProvider: CommitMessageAIProvider {
     private struct ToolFunction: Decodable {
         let name: String
         let arguments: String
-    }
-
-    private struct ToolArguments: Decodable {
-        let arguments: [String]?
     }
 
     private struct ProviderError: Decodable {

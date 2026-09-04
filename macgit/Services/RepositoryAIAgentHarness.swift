@@ -21,6 +21,7 @@ import Foundation
 actor RepositoryAIAgentHarness {
     private let commandExecutor: any RepositoryAIGitCommandExecuting
     private let stateProvider: any RepositoryAIRepositoryStateProviding
+    private let mutationContextProvider: (any RepositoryAIMutationContextProviding)?
     private let maximumToolCalls: Int
     private let commandTimeout: Duration
     private let requestTimeout: Duration
@@ -28,19 +29,22 @@ actor RepositoryAIAgentHarness {
     init() {
         self.init(
             commandExecutor: RepositoryAIGitCommandExecutor(),
-            stateProvider: RepositoryAIRepositoryStateProvider()
+            stateProvider: RepositoryAIRepositoryStateProvider(),
+            mutationContextProvider: RepositoryAIMutationContextProvider()
         )
     }
 
     init(
         commandExecutor: any RepositoryAIGitCommandExecuting,
         stateProvider: any RepositoryAIRepositoryStateProviding,
+        mutationContextProvider: (any RepositoryAIMutationContextProviding)? = nil,
         maximumToolCalls: Int = 10,
         commandTimeout: Duration = .seconds(20),
         requestTimeout: Duration = .seconds(90)
     ) {
         self.commandExecutor = commandExecutor
         self.stateProvider = stateProvider
+        self.mutationContextProvider = mutationContextProvider
         self.maximumToolCalls = maximumToolCalls
         self.commandTimeout = commandTimeout
         self.requestTimeout = requestTimeout
@@ -83,6 +87,9 @@ actor RepositoryAIAgentHarness {
         provider: any CommitMessageAIProvider
     ) async throws -> RepositoryAIAgentRunResult {
         let initialState = try await stateProvider.state(in: repositoryURL)
+        // Mutation planning is additive. If its richer bounded snapshot cannot
+        // be built, existing read-only Repository AI queries must still work.
+        let mutationContext = try? await mutationContextProvider?.context(in: repositoryURL)
         var results = [RepositoryAIAgentToolResult]()
         var isFirstTurn = true
 
@@ -95,10 +102,15 @@ actor RepositoryAIAgentHarness {
                     question: question,
                     conversation: conversation,
                     previousToolResults: results,
-                    isFirstTurn: isFirstTurn
+                    isFirstTurn: isFirstTurn,
+                    mutationContext: mutationContext
                 )
             )
             isFirstTurn = false
+
+            guard results.count + turn.toolCalls.count <= maximumToolCalls else {
+                throw RepositoryAIAgentError.tooManyToolCalls
+            }
 
             if turn.toolCalls.isEmpty {
                 let answer = turn.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -127,8 +139,35 @@ actor RepositoryAIAgentHarness {
                 )
             }
 
-            guard results.count + turn.toolCalls.count <= maximumToolCalls else {
-                throw RepositoryAIAgentError.tooManyToolCalls
+            let mutationCalls = turn.toolCalls.filter {
+                RepositoryAIMutationProposalDecoder.mutationToolNames.contains($0.name)
+            }
+            if !mutationCalls.isEmpty {
+                guard results.isEmpty,
+                      turn.toolCalls.count == 1,
+                      let toolCall = mutationCalls.first,
+                      let mutationContext else {
+                    throw RepositoryAIAgentError.invalidMutationSelection
+                }
+                switch try RepositoryAIMutationProposalDecoder.decode(
+                    toolCall: toolCall,
+                    context: mutationContext
+                ) {
+                case .unsupported(let reason):
+                    return RepositoryAIAgentRunResult(
+                        answer: "Rejected — \(reason)",
+                        toolResults: []
+                    )
+                case .proposal(let proposal):
+                    return RepositoryAIAgentRunResult(
+                        answer: "",
+                        toolResults: [],
+                        mutation: try RepositoryAIMutationPolicy.validate(
+                            proposal,
+                            context: mutationContext
+                        )
+                    )
+                }
             }
 
             for toolCall in turn.toolCalls {

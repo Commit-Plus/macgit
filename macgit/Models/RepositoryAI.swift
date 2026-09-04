@@ -77,7 +77,7 @@ nonisolated struct RepositoryAIRequest: Sendable {
     }
 }
 
-nonisolated enum RepositoryAIMessageRole: Sendable {
+nonisolated enum RepositoryAIMessageRole: Equatable, Sendable {
     case user
     case assistant
     case toolActivity

@@ -62,7 +62,8 @@ nonisolated enum RepositoryAIAgentToolSchema {
 
     static func declarations(
         includingQuickActions: Bool,
-        forGemini: Bool = false
+        forGemini: Bool = false,
+        mutationContext: RepositoryAIMutationPlanningContext? = nil
     ) -> [[String: Any]] {
         let executeGit: [String: Any] = [
             "name": executeGitName,
@@ -70,13 +71,17 @@ nonisolated enum RepositoryAIAgentToolSchema {
             "parameters": forGemini ? geminiGitParameters : gitParameters,
         ]
         guard includingQuickActions else { return [executeGit] }
-        return [executeGit] + RepositoryAIQuickAction.allCases.map { action in
+        let quickActions = RepositoryAIQuickAction.allCases.map { action in
             [
                 "name": action.rawValue,
                 "description": action.toolDescription,
                 "parameters": forGemini ? geminiEmptyParameters : emptyParameters,
             ]
         }
+        let mutations = mutationContext.map {
+            mutationDeclarations(context: $0, forGemini: forGemini)
+        } ?? []
+        return [executeGit] + quickActions + mutations
     }
 
     static func arguments(
@@ -90,5 +95,118 @@ nonisolated enum RepositoryAIAgentToolSchema {
         } else {
             suppliedArguments ?? []
         }
+    }
+
+    private static func mutationDeclarations(
+        context: RepositoryAIMutationPlanningContext,
+        forGemini: Bool
+    ) -> [[String: Any]] {
+        var declarations: [[String: Any]] = []
+        if !context.stageablePaths.isEmpty {
+            declarations.append(mutationDeclaration(
+                name: "stage_files",
+                description: "Propose staging exactly one or more eligible path IDs. Never use a path string or wildcard.",
+                argumentDescription: "Eligible path IDs to stage.",
+                allowedValues: context.stageablePaths.map(\.id),
+                minimumCount: 1,
+                maximumCount: context.stageablePaths.count,
+                forGemini: forGemini
+            ))
+        }
+        if !context.unstageablePaths.isEmpty {
+            declarations.append(mutationDeclaration(
+                name: "unstage_files",
+                description: "Propose unstaging exactly one or more eligible staged path IDs while preserving working-tree bytes.",
+                argumentDescription: "Eligible staged path IDs to unstage.",
+                allowedValues: context.unstageablePaths.map(\.id),
+                minimumCount: 1,
+                maximumCount: context.unstageablePaths.count,
+                forGemini: forGemini
+            ))
+            declarations.append(mutationDeclaration(
+                name: "create_commit",
+                description: "Propose one commit from the current index. The sole argument is the exact non-empty commit message. Do not add amend, force, signing, hook, or staging options.",
+                argumentDescription: "Exactly one commit-message string.",
+                minimumCount: 1,
+                maximumCount: 1,
+                forGemini: forGemini
+            ))
+        }
+        if !context.startPoints.isEmpty {
+            declarations.append(mutationDeclaration(
+                name: "create_branch",
+                description: "Propose creating one local branch without checkout. Arguments are exactly [newBranchName, suppliedStartPointID].",
+                argumentDescription: "A valid new local branch name followed by one supplied start-point ID: \(context.startPoints.map(\.id).joined(separator: ", ")).",
+                minimumCount: 2,
+                maximumCount: 2,
+                forGemini: forGemini
+            ))
+        }
+        if context.repositoryState.branch != nil, context.isClean,
+           !context.localBranches.isEmpty, context.inProgressOperation == nil {
+            declarations.append(mutationDeclaration(
+                name: "checkout_branch",
+                description: "Propose checking out exactly one supplied existing local-branch ID. Never pass a ref or branch name directly.",
+                argumentDescription: "Exactly one local-branch ID.",
+                allowedValues: context.localBranches.map(\.id),
+                minimumCount: 1,
+                maximumCount: 1,
+                forGemini: forGemini
+            ))
+        }
+        if !context.conflictResolutions.isEmpty {
+            declarations.append(mutationDeclaration(
+                name: "apply_conflict_resolution",
+                description: "Propose applying one current in-memory Commit+ Conflict AI resolution.",
+                argumentDescription: "Exactly one supplied resolution ID.",
+                allowedValues: context.conflictResolutions.map(\.id),
+                minimumCount: 1,
+                maximumCount: 1,
+                forGemini: forGemini
+            ))
+        }
+        declarations.append(mutationDeclaration(
+            name: RepositoryAIMutationProposalDecoder.unsupportedToolName,
+            description: "Use when the requested Git mutation is unsupported, unsafe, needs unavailable context, or requires more than one mutation. The sole argument is a concise explanation.",
+            argumentDescription: "Exactly one user-facing reason.",
+            minimumCount: 1,
+            maximumCount: 1,
+            forGemini: forGemini
+        ))
+        return declarations
+    }
+
+    private static func mutationDeclaration(
+        name: String,
+        description: String,
+        argumentDescription: String,
+        allowedValues: [String]? = nil,
+        minimumCount: Int,
+        maximumCount: Int,
+        forGemini: Bool
+    ) -> [String: Any] {
+        var items: [String: Any] = ["type": "string"]
+        if let allowedValues, !allowedValues.isEmpty {
+            items["enum"] = allowedValues
+        }
+        var arguments: [String: Any] = [
+            "type": "array",
+            "items": items,
+            "description": argumentDescription,
+        ]
+        if !forGemini {
+            arguments["minItems"] = minimumCount
+            arguments["maxItems"] = maximumCount
+            arguments["uniqueItems"] = true
+        }
+        var parameters: [String: Any] = [
+            "type": "object",
+            "properties": ["arguments": arguments],
+            "required": ["arguments"],
+        ]
+        if !forGemini {
+            parameters["additionalProperties"] = false
+        }
+        return ["name": name, "description": description, "parameters": parameters]
     }
 }

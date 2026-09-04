@@ -32,7 +32,7 @@ Build a repository-scoped AI assistant in the toolbar side panel. The assistant 
 - [pending] **Phase 4 — Broader repository analysis**
   - Add branch comparison, history search, and pull-request context tools.
   - Plan: [Repository AI Phase 4: Broader Repository Analysis](2026-09-03-repository-ai-phase-4-broader-repository-analysis.md)
-- [pending] **Phase 5 — Confirmed local Git mutations**
+- [in progress] **Phase 5 — Confirmed local Git mutations**
   - Add semantic stage, unstage, commit, create/check out branches, and apply an existing Conflict AI resolution one operation at a time.
   - Require explicit user confirmation, expected-state validation, Git Undo integration where supported, and normal repository refresh notifications.
   - Plan: [Repository AI Phase 5: Confirmed Git Mutations](2026-09-03-repository-ai-phase-5-confirmed-git-mutations.md)

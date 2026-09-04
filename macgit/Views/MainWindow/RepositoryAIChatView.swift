@@ -48,7 +48,7 @@ struct RepositoryAIChatView: View {
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .disabled(controller.isRunning)
+                    .disabled(controller.isInteractionDisabled)
                     .help("New Conversation")
             }
 
@@ -76,6 +76,25 @@ struct RepositoryAIChatView: View {
         .task {
             await providerController.refreshAvailability()
         }
+        .sheet(item: $controller.pendingMutation, onDismiss: controller.cancelPendingMutation) { pending in
+            RepositoryAIMutationConfirmationSheet(
+                pending: pending,
+                isExecuting: controller.isExecutingMutation,
+                onCancel: controller.cancelPendingMutation,
+                onConfirm: { confirmPendingMutation(pending.id) }
+            )
+        }
+        .onChange(of: providerController.selectedProviderID) {
+            controller.providerDidChange()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { notification in
+            guard let repositoryURL = notification.userInfo?["repositoryURL"] as? URL else { return }
+            controller.repositoryDidChange(repositoryURL)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryLocalStateDidRefresh)) { notification in
+            guard let repositoryURL = notification.userInfo?["repositoryURL"] as? URL else { return }
+            Task { await controller.repositoryLocalStateDidRefresh(repositoryURL) }
+        }
     }
 
     private var welcomeContent: some View {
@@ -96,7 +115,7 @@ struct RepositoryAIChatView: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(controller.isRunning)
+            .disabled(controller.isInteractionDisabled)
 
             Button(action: runExplainCommit) {
                 quickActionLabel(
@@ -106,7 +125,7 @@ struct RepositoryAIChatView: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(controller.isRunning)
+            .disabled(controller.isInteractionDisabled)
 
             Button(action: runReviewFile) {
                 quickActionLabel(
@@ -116,7 +135,7 @@ struct RepositoryAIChatView: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(controller.isRunning)
+            .disabled(controller.isInteractionDisabled)
 
             Button(action: runCompareRefs) {
                 quickActionLabel(
@@ -126,7 +145,7 @@ struct RepositoryAIChatView: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(controller.isRunning)
+            .disabled(controller.isInteractionDisabled)
 
             Button(action: runAnalyzePullRequest) {
                 quickActionLabel(
@@ -136,7 +155,7 @@ struct RepositoryAIChatView: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(controller.isRunning)
+            .disabled(controller.isInteractionDisabled)
 
             if !accessDecision.isAllowed {
                 Button(accessButtonTitle, systemImage: "lock.open", action: onRequestAccess)
@@ -205,7 +224,7 @@ struct RepositoryAIChatView: View {
                 .lineLimit(1...4)
                 .textFieldStyle(.plain)
                 .frame(minHeight: 28, alignment: .topLeading)
-                .disabled(controller.isRunning)
+                .disabled(controller.isInteractionDisabled)
                 .onSubmit(submitDraft)
 
             HStack(spacing: 8) {
@@ -216,7 +235,7 @@ struct RepositoryAIChatView: View {
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.circle)
                 .controlSize(.small)
-                .disabled(controller.isRunning)
+                .disabled(controller.isInteractionDisabled)
                 .help("Quick actions")
                 .popover(isPresented: $isShowingQuickActions, arrowEdge: .bottom) {
                     quickActionsPopover
@@ -424,5 +443,9 @@ struct RepositoryAIChatView: View {
             return
         }
         Task { await controller.submitDraft() }
+    }
+
+    private func confirmPendingMutation(_ id: UUID) {
+        Task { await controller.confirmPendingMutation(id: id) }
     }
 }
