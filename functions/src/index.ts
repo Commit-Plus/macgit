@@ -1,9 +1,13 @@
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
+import { defineSecret, defineString } from "firebase-functions/params";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 initializeApp();
+
+const polarAccessToken = defineSecret("POLAR_ACCESS_TOKEN");
+const polarServer = defineString("POLAR_SERVER", { default: "sandbox" });
 
 export interface WebSignInTokenDependencies {
   createCustomToken(uid: string): Promise<string>;
@@ -32,6 +36,7 @@ export const createWebSignInToken = onCall({ invoker: "public" }, async (request
 });
 
 export interface AccountDeletionDependencies {
+  deletePolarCustomer(uid: string, verifiedEmail?: string): Promise<void>;
   deleteDocument(path: string): Promise<void>;
   deleteCollection(path: string): Promise<void>;
   deleteUser(uid: string): Promise<void>;
@@ -39,6 +44,61 @@ export interface AccountDeletionDependencies {
 
 function productionDependencies(): AccountDeletionDependencies {
   return {
+    deletePolarCustomer: async (uid, verifiedEmail) => {
+      const apiURL = polarServer.value() === "production"
+        ? "https://api.polar.sh"
+        : "https://sandbox-api.polar.sh";
+      const headers = {
+        Authorization: `Bearer ${polarAccessToken.value()}`,
+        Accept: "application/json",
+      };
+      let response = await fetch(
+        `${apiURL}/v1/customers/external/${encodeURIComponent(uid)}?anonymize=true`,
+        {
+          method: "DELETE",
+          headers,
+        },
+      );
+
+      if (response.ok) return;
+      if (response.status !== 404) {
+        throw new Error(`Polar customer deletion failed with status ${response.status}.`);
+      }
+      if (!verifiedEmail) return;
+
+      const customersURL = new URL(`${apiURL}/v1/customers/`);
+      customersURL.searchParams.set("email", verifiedEmail);
+      customersURL.searchParams.set("limit", "10");
+      response = await fetch(customersURL, { headers });
+      if (!response.ok) {
+        throw new Error(`Polar customer lookup failed with status ${response.status}.`);
+      }
+
+      const payload = await response.json() as {
+        items?: Array<{ id: string; email: string; external_id?: string | null }>;
+      };
+      const normalizedEmail = verifiedEmail.trim().toLowerCase();
+      const matches = (payload.items ?? []).filter(
+        (customer) => customer.email.trim().toLowerCase() === normalizedEmail,
+      );
+      if (matches.length > 1) {
+        throw new Error("Multiple Polar customers match this Firebase account email.");
+      }
+
+      const customer = matches[0];
+      if (!customer) return;
+      if (customer.external_id && customer.external_id !== uid) {
+        throw new Error("The Polar customer belongs to a different Firebase account.");
+      }
+
+      response = await fetch(
+        `${apiURL}/v1/customers/${encodeURIComponent(customer.id)}?anonymize=true`,
+        { method: "DELETE", headers },
+      );
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`Polar customer deletion failed with status ${response.status}.`);
+      }
+    },
     deleteDocument: async (path) => {
       await getFirestore().doc(path).delete();
     },
@@ -59,9 +119,15 @@ function productionDependencies(): AccountDeletionDependencies {
 export async function deleteAccountData(
   uid: string,
   dependencies: AccountDeletionDependencies = productionDependencies(),
+  verifiedEmail?: string,
 ): Promise<void> {
+  await dependencies.deletePolarCustomer(uid, verifiedEmail);
+
   await Promise.all([
     dependencies.deleteCollection(`users/${uid}/devices`),
+    dependencies.deleteCollection(`users/${uid}/gitProviderAccounts`),
+    dependencies.deleteCollection(`users/${uid}/repositoryBookmarks`),
+    dependencies.deleteCollection(`users/${uid}/gitFlowConfigurations`),
     dependencies.deleteDocument(`users/${uid}/deviceAccess/summary`),
   ]);
 
@@ -78,17 +144,22 @@ export async function deleteAccountData(
   }
 }
 
-export const deleteAccount = onCall(async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid) {
+export const deleteAccount = onCall({ secrets: [polarAccessToken] }, async (request) => {
+  const authenticatedUser = request.auth;
+  if (!authenticatedUser) {
     throw new HttpsError("unauthenticated", "Sign in again before deleting the account.");
   }
+  const uid = authenticatedUser.uid;
 
-  const authTime = Number(request.auth?.token.auth_time ?? 0);
+  const authTime = Number(authenticatedUser.token.auth_time ?? 0);
   if (Math.floor(Date.now() / 1000) - authTime > 300) {
     throw new HttpsError("failed-precondition", "Recent authentication is required.");
   }
 
-  await deleteAccountData(uid);
+  const verifiedEmail = authenticatedUser.token.email_verified === true &&
+      typeof authenticatedUser.token.email === "string"
+    ? authenticatedUser.token.email
+    : undefined;
+  await deleteAccountData(uid, productionDependencies(), verifiedEmail);
   return { deleted: true };
 });
