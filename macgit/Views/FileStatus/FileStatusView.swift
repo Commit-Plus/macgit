@@ -59,6 +59,7 @@ struct FileStatusView: View {
 
     @State private var isCommitBarExpanded = false
     @State private var commitMessage = ""
+    @State private var commitMessageSelection: TextSelection?
     @FocusState private var isCommitMessageFocused: Bool
     @State private var showingCommitConfirmation = false
     @State private var emptyCommitAction: EmptyCommitAction?
@@ -958,7 +959,12 @@ struct FileStatusView: View {
 
             // Message editor
             ZStack(alignment: .topTrailing) {
-                TextField("", text: $commitMessage, axis: .vertical)
+                TextField(
+                    "",
+                    text: $commitMessage,
+                    selection: $commitMessageSelection,
+                    axis: .vertical
+                )
                     .focused($isCommitMessageFocused)
                     .font(.system(size: 13))
                     .lineSpacing(2)
@@ -969,6 +975,15 @@ struct FileStatusView: View {
                     .padding(.trailing, 30)
                     .disabled(aiProviderController.isGenerating)
                     .accessibilityLabel("Commit message")
+                    .onKeyPress(.return, phases: .down) { keyPress in
+                        if keyPress.modifiers == .shift {
+                            insertNewlineInCommitMessage()
+                            return .handled
+                        }
+                        guard keyPress.modifiers.isEmpty else { return .ignored }
+                        requestCommit()
+                        return .handled
+                    }
 
                 Button {
                     isAIGenerationRequested = true
@@ -1021,18 +1036,8 @@ struct FileStatusView: View {
                 }
                 .buttonStyle(GlassButtonStyle(tint: .secondary, fontSize: 12))
 
-                Button("Commit") {
-                    Task {
-                        if needsCommitConfirmation {
-                            emptyCommitAction = nil
-                            allowEmptyMessage = false
-                            showingCommitConfirmation = true
-                        } else {
-                            await performCommit(allowEmpty: false)
-                        }
-                    }
-                }
-                .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 12))
+                Button("Commit", action: requestCommit)
+                    .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 12))
             }
         }
         .padding(.horizontal, 16)
@@ -1164,6 +1169,38 @@ struct FileStatusView: View {
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
+        }
+    }
+
+    private func insertNewlineInCommitMessage() {
+        guard let commitMessageSelection,
+              case let .selection(range) = commitMessageSelection.indices else {
+            commitMessage.append("\n")
+            self.commitMessageSelection = TextSelection(insertionPoint: commitMessage.endIndex)
+            return
+        }
+
+        let insertionOffset = commitMessage.distance(
+            from: commitMessage.startIndex,
+            to: range.lowerBound
+        )
+        commitMessage.replaceSubrange(range, with: "\n")
+        let insertionPoint = commitMessage.index(
+            commitMessage.startIndex,
+            offsetBy: insertionOffset + 1
+        )
+        self.commitMessageSelection = TextSelection(insertionPoint: insertionPoint)
+    }
+
+    private func requestCommit() {
+        Task {
+            if needsCommitConfirmation {
+                emptyCommitAction = nil
+                allowEmptyMessage = false
+                showingCommitConfirmation = true
+            } else {
+                await performCommit(allowEmpty: false)
+            }
         }
     }
 
