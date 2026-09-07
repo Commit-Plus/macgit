@@ -27,6 +27,7 @@ struct CommitSheetView: View {
     @AppStorage("commit.allChanges") private var commitAllChanges = false
     @ObservedObject var aiProviderController: AIProviderController
     @State private var message: String = ""
+    @State private var messageSelection: TextSelection?
     @State private var errorMessage: String?
     @State private var showingError = false
     @State private var isAIGenerationRequested = false
@@ -47,11 +48,21 @@ struct CommitSheetView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 ZStack(alignment: .topTrailing) {
-                    TextField("Enter a commit message…", text: $message, axis: .vertical)
+                    TextField(
+                        "Enter a commit message…",
+                        text: $message,
+                        selection: $messageSelection,
+                        axis: .vertical
+                    )
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 400)
                         .lineLimit(3...6)
                         .disabled(aiProviderController.isGenerating)
+                        .onKeyPress(.return, phases: .down) { keyPress in
+                            guard keyPress.modifiers == .shift else { return .ignored }
+                            insertNewlineInMessage()
+                            return .handled
+                        }
 
                     generateCommitMessageButton
                         .padding(8)
@@ -145,6 +156,20 @@ struct CommitSheetView: View {
         return hasStagedChanges
             ? "Generate an editable message from staged changes."
             : "Generate an editable message from changed files."
+    }
+
+    private func insertNewlineInMessage() {
+        guard let messageSelection,
+              case let .selection(range) = messageSelection.indices else {
+            message.append("\n")
+            self.messageSelection = TextSelection(insertionPoint: message.endIndex)
+            return
+        }
+
+        let insertionOffset = message.distance(from: message.startIndex, to: range.lowerBound)
+        message.replaceSubrange(range, with: "\n")
+        let insertionPoint = message.index(message.startIndex, offsetBy: insertionOffset + 1)
+        self.messageSelection = TextSelection(insertionPoint: insertionPoint)
     }
 
     private func generateCommitMessage() async {
