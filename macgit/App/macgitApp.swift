@@ -156,6 +156,11 @@ struct macgitApp: App {
         )
     }
 
+    private func openWebPage(_ urlProvider: () throws -> URL) {
+        guard let url = try? urlProvider() else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     private func performTextUndoIfAvailable(
         _ action: GitUndoMenuAction,
         in window: NSWindow?
@@ -355,6 +360,28 @@ struct macgitApp: App {
             }
 
             HeaderButtonsCommands(appState: appState)
+
+            CommandGroup(replacing: .help) {
+                Button("Commit+ Documentation") {
+                    openWebPage {
+                        try CommitPlusWebConfiguration.documentationURL()
+                    }
+                }
+
+                Divider()
+
+                Button("Contact Support") {
+                    openWebPage {
+                        try CommitPlusWebConfiguration.contactURL()
+                    }
+                }
+
+                Button("Report an Issue…") {
+                    openWebPage {
+                        try CommitPlusWebConfiguration.reportIssueURL()
+                    }
+                }
+            }
 
             CommandGroup(before: .toolbar) {
                 Toggle(isOn: $appState.showToolbarButtonText) {

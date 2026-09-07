@@ -43,7 +43,29 @@ enum WebAccountSessionError: LocalizedError {
 
 enum CommitPlusWebConfiguration {
     nonisolated static func baseURL(bundle: Bundle = .main) throws -> URL {
-        guard let rawValue = bundle.object(forInfoDictionaryKey: "CommitPlusWebBaseURL") as? String,
+        try configuredURL(forInfoDictionaryKey: "CommitPlusWebBaseURL", bundle: bundle)
+    }
+
+    nonisolated static func documentationURL(bundle: Bundle = .main) throws -> URL {
+        try configuredURL(forInfoDictionaryKey: "CommitPlusDocsBaseURL", bundle: bundle)
+    }
+
+    nonisolated static func contactURL(bundle: Bundle = .main) throws -> URL {
+        try baseURL(bundle: bundle).appending(path: "contact")
+    }
+
+    nonisolated static func reportIssueURL() throws -> URL {
+        guard let url = URL(string: "https://github.com/Commit-Plus/macgit/issues/new") else {
+            throw WebAccountSessionError.invalidBaseURL
+        }
+        return url
+    }
+
+    nonisolated private static func configuredURL(
+        forInfoDictionaryKey key: String,
+        bundle: Bundle
+    ) throws -> URL {
+        guard let rawValue = bundle.object(forInfoDictionaryKey: key) as? String,
               let url = URL(string: rawValue),
               let scheme = url.scheme,
               ["http", "https"].contains(scheme),
