@@ -1158,6 +1158,17 @@ struct MainWindowView: View {
                     onRequestCheckout: checkoutRequest,
                     onRequestExplainCommit: explainCommitWithRepositoryAI
                 )
+            case .item(.reflog):
+                ReflogView(
+                    repositoryURL: repositoryURL,
+                    onShowCommit: { hash in
+                        appState.historyBranchFilter = .branch(hash)
+                        selectedItem = .branch(hash)
+                    },
+                    onCreateBranch: { entry in
+                        presentBranchSheet(startPoint: .commit(hash: entry.hash, message: entry.message))
+                    }
+                )
             case .item(.pullRequests):
                 switch pullRequestAccessDecision {
                 case .allowed:

@@ -78,7 +78,7 @@ enum SidebarSection: String, CaseIterable {
     var items: [SidebarItem] {
         switch self {
         case .workspace:
-            return [.fileStatus, .history, .pullRequests, .search]
+            return [.fileStatus, .history, .reflog, .pullRequests, .search]
         default:
             return []
         }

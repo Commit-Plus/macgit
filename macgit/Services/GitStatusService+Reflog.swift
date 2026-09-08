@@ -16,24 +16,16 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-enum SidebarItem: String, CaseIterable, Identifiable {
-    case fileStatus = "File status"
-    case history = "History"
-    case reflog = "Reflog"
-    case pullRequests = "Pull Requests"
-    case search = "Search"
-    case gitFlow = "Git Flow"
+import Foundation
 
-    var id: String { rawValue }
-
-    var icon: String {
-        switch self {
-        case .fileStatus: return "doc.text.magnifyingglass"
-        case .history: return "clock.arrow.circlepath"
-        case .reflog: return "list.bullet.rectangle"
-        case .pullRequests: return "arrow.triangle.pull"
-        case .search: return "magnifyingglass"
-        case .gitFlow: return "point.3.connected.trianglepath.dotted"
-        }
+extension GitStatusService {
+    func reflog(in repositoryURL: URL, allReferences: Bool, limit: Int, skip: Int = 0) async throws -> [ReflogEntry] {
+        // An unborn repository has no HEAD to walk. Do not hide other Git failures.
+        let head = try await runGit(arguments: ["rev-parse", "--revs-only", "HEAD"], in: repositoryURL)
+        if head.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !allReferences { return [] }
+        var arguments = ["reflog", "show", "--date=iso-strict", "--format=%H%x00%gD%x00%gn%x00%ge%x00%gs", "--max-count=\(limit)", "--skip=\(skip)"]
+        arguments.append(allReferences ? "--all" : "HEAD")
+        arguments.append("--")
+        return ReflogEntry.parse(try await runGit(arguments: arguments, in: repositoryURL))
     }
 }
