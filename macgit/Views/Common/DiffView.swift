@@ -650,6 +650,7 @@ struct DiffLineView: View {
     let line: DiffLine
     let fileExtension: String
     let isSelected: Bool
+    var cachedHighlightedText: AttributedString? = nil
 
     var backgroundColor: Color {
         if isSelected {
@@ -731,7 +732,7 @@ struct DiffLineView: View {
     }
 
     private var highlightedText: AttributedString {
-        var attributed = SyntaxHighlighter(fileExtension: fileExtension)
+        var attributed = cachedHighlightedText ?? SyntaxHighlighter(fileExtension: fileExtension)
             .attributedString(for: line.text, fontSize: 12)
 
         // Keep diff metadata readable while allowing syntax colors in the code.

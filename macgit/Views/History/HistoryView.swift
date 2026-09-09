@@ -51,6 +51,8 @@ struct HistoryView: View {
     @State private var dragCompletionMonitorTask: Task<Void, Never>?
     @State private var selectedCommit: Commit? = nil
     @State private var showingCommitInfo = false
+    @State private var fullFilePreview: CommitFilePreviewRequest?
+    @State private var previewAvailableSize = CGSize(width: 1000, height: 700)
     @State private var fullCommitMessage: String?
     @State private var isLoadingFullCommitMessage = false
     @State private var fullCommitMessageLoadID = UUID()
@@ -230,6 +232,14 @@ struct HistoryView: View {
         }, message: {
             Text(errorMessage ?? "An unknown error occurred")
         })
+        .onGeometryChange(for: CGSize.self) { geometry in
+            geometry.size
+        } action: { size in
+            previewAvailableSize = size
+        }
+        .sheet(item: $fullFilePreview) { request in
+            CommitFilePreviewSheet(request: request, availableSize: previewAvailableSize)
+        }
         .sheet(isPresented: $showingResetConfirmation) {
             resetSheet
         }
@@ -739,6 +749,24 @@ struct HistoryView: View {
             }
             
             Spacer()
+
+            Button("Preview full file", systemImage: "eye") {
+                guard let selectedFile else { return }
+                fullFilePreview = CommitFilePreviewRequest(
+                    repositoryURL: repositoryURL,
+                    commitHash: commit.hash,
+                    file: selectedFile
+                )
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .frame(width: 28, height: 28)
+            .contentShape(Rectangle())
+            .disabled(selectedFile == nil)
+            .help("Preview the full selected file with changes")
+            .onContinuousHover { phase in
+                if selectedFile != nil { updateCommitInfoCursor(phase) }
+            }
 
             Button("Show commit details", systemImage: "info.circle") {
                 showCommitInfo(for: commit)
