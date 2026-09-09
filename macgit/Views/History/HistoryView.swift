@@ -60,10 +60,6 @@ struct HistoryView: View {
     @State private var commitFilesLoadID = UUID()
     @State private var diffLoadID = UUID()
     @AppStorage("history.tableColumns") private var tableColumnCustomization = TableColumnCustomization<Commit>()
-    @AppStorage("history.tableColumn.messageRatio") private var messageColumnRatio: Double = 0.45
-    @AppStorage("history.tableColumn.authorRatio") private var authorColumnRatio: Double = 0.25
-    @AppStorage("history.tableColumn.dateRatio") private var dateColumnRatio: Double = 0.18
-    @AppStorage("history.tableColumn.commitRatio") private var commitColumnRatio: Double = 0.12
     @State private var tableSelection: Set<String> = []
     @State private var tableScrollCoordinator = HistoryTableScrollCoordinator()
     @AppStorage("advanced.historyLoadSize") private var historyLoadSizeRaw = 120
@@ -531,13 +527,7 @@ struct HistoryView: View {
                 )
                 GeometryReader { proxy in
                 let tableWidths = Self.tableColumnWidths(
-                    for: proxy.size.width,
-                    ratios: (
-                        message: messageColumnRatio,
-                        author: authorColumnRatio,
-                        date: dateColumnRatio,
-                        commit: commitColumnRatio
-                    )
+                    for: proxy.size.width
                 )
 
                     ZStack(alignment: .bottom) {
@@ -553,8 +543,6 @@ struct HistoryView: View {
                                 rowIndex: rowIndexByHash[commit.hash] ?? 0,
                                 isDragActive: activeDragCommitHashes.contains(commit.hash),
                                 scrollCoordinator: tableScrollCoordinator,
-                                desiredColumnRatios: tableColumnRatios,
-                                onColumnResize: tableColumnResizeHandler,
                                 onAppear: {
                                     handleHistoryCommitCellAppearance(commit)
                                 }
@@ -666,56 +654,20 @@ struct HistoryView: View {
         .id(historyLoadKey)
     }
 
+    // Initial layout preferences only. The native table coordinator restores
+    // saved widths after SwiftUI has configured the columns.
     private static func tableColumnWidths(
-        for availableWidth: CGFloat,
-        ratios: (message: Double, author: Double, date: Double, commit: Double)
+        for availableWidth: CGFloat
     ) -> (message: CGFloat, author: CGFloat, date: CGFloat, commit: CGFloat) {
         let width = max(1, availableWidth - 1)
-        let totalRatio = max(
-            0.01,
-            ratios.message + ratios.author + ratios.date + ratios.commit
-        )
         return (
-            message: width * ratios.message / totalRatio,
-            author: width * ratios.author / totalRatio,
-            date: width * ratios.date / totalRatio,
-            commit: width * ratios.commit / totalRatio
+            message: width * 0.45,
+            author: width * 0.25,
+            date: width * 0.18,
+            commit: width * 0.12
         )
     }
 
-    private var tableColumnResizeHandler: ([String: CGFloat], CGFloat) -> Void {
-        let messageRatio = $messageColumnRatio
-        let authorRatio = $authorColumnRatio
-        let dateRatio = $dateColumnRatio
-        let commitRatio = $commitColumnRatio
-
-        return { widths, totalWidth in
-            guard totalWidth > 0 else { return }
-
-            func update(_ binding: Binding<Double>, key: String) {
-                guard let width = widths[key] else { return }
-                let ratio = Double(width / totalWidth)
-                if abs(binding.wrappedValue - ratio) > 0.001 {
-                    binding.wrappedValue = ratio
-                }
-            }
-
-            update(messageRatio, key: "message")
-            update(authorRatio, key: "author")
-            update(dateRatio, key: "date")
-            update(commitRatio, key: "commit")
-        }
-    }
-
-    private var tableColumnRatios: [String: Double] {
-        [
-            "message": messageColumnRatio,
-            "author": authorColumnRatio,
-            "date": dateColumnRatio,
-            "commit": commitColumnRatio,
-        ]
-    }
-    
     // MARK: - Bottom Panel
     
     private var commitDetailPanel: some View {

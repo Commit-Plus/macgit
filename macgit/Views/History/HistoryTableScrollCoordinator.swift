@@ -22,16 +22,18 @@ import SwiftUI
 @MainActor
 final class HistoryTableScrollCoordinator {
     private weak var tableView: NSTableView?
-    private weak var observedTableView: NSTableView?
+    private let defaults: UserDefaults
+    private let widthsKey = "history.tableColumnWidths"
     private var columnResizeObserver: NSObjectProtocol?
-    private var applyColumnRatiosTask: Task<Void, Never>?
-    private var isApplyingColumnRatios = false
+    private var restoreWidthsTask: Task<Void, Never>?
+    private var isRestoringWidths = false
 
-    var onColumnResize: (([String: CGFloat], CGFloat) -> Void)?
-    var desiredColumnRatios: [String: Double] = [:]
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     deinit {
-        applyColumnRatiosTask?.cancel()
+        restoreWidthsTask?.cancel()
         if let columnResizeObserver {
             NotificationCenter.default.removeObserver(columnResizeObserver)
         }
@@ -42,11 +44,10 @@ final class HistoryTableScrollCoordinator {
         var candidate = view.superview
         while let current = candidate {
             if let tableView = current as? NSTableView {
-                let isNewTableView = self.tableView !== tableView
-                self.tableView = tableView
-                observeColumnResizing(of: tableView)
-                if isNewTableView {
-                    scheduleApplyingColumnRatios()
+                if self.tableView !== tableView {
+                    self.tableView = tableView
+                    observeColumnResizing(of: tableView)
+                    restoreSavedWidths()
                 }
                 return true
             }
@@ -55,102 +56,87 @@ final class HistoryTableScrollCoordinator {
         return false
     }
 
-    private func scheduleApplyingColumnRatios() {
-        applyColumnRatiosTask?.cancel()
-        applyColumnRatiosTask = Task { @MainActor [weak self] in
-            for _ in 0..<30 {
-                guard !Task.isCancelled else { return }
-                if self?.applyColumnRatios() == true {
-                    return
-                }
-                try? await Task.sleep(nanoseconds: 10_000_000)
-            }
-        }
-    }
-
-    @discardableResult
-    private func applyColumnRatios() -> Bool {
-        guard let tableView,
-              !desiredColumnRatios.isEmpty,
-              let scrollView = tableView.enclosingScrollView else {
-            return false
-        }
-
-        tableView.layoutSubtreeIfNeeded()
-        let availableWidth = scrollView.contentView.bounds.width
-        guard availableWidth > 0 else { return false }
-
-        let visibleColumns = tableView.tableColumns.enumerated().compactMap { index, column -> (NSTableColumn, Double)? in
-            guard let key = Self.columnKey(for: column, fallbackIndex: index),
-                  let ratio = desiredColumnRatios[key],
-                  ratio > 0 else {
-                return nil
-            }
-            return (column, ratio)
-        }
-        let totalRatio = visibleColumns.reduce(0) { $0 + $1.1 }
-        guard totalRatio > 0 else { return false }
-
-        isApplyingColumnRatios = true
-        defer { isApplyingColumnRatios = false }
-        for (column, ratio) in visibleColumns {
-            let targetWidth = availableWidth * CGFloat(ratio / totalRatio)
-            column.width = min(column.maxWidth, max(column.minWidth, targetWidth))
-        }
-        return true
-    }
-
     private func observeColumnResizing(of tableView: NSTableView) {
-        guard observedTableView !== tableView else { return }
-
         if let columnResizeObserver {
             NotificationCenter.default.removeObserver(columnResizeObserver)
         }
-        observedTableView = tableView
         columnResizeObserver = NotificationCenter.default.addObserver(
-            forName: NSTableView.columnDidResizeNotification,
+            forName: tableView is NSOutlineView
+                ? NSOutlineView.columnDidResizeNotification
+                : NSTableView.columnDidResizeNotification,
             object: tableView,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.captureColumnWidths()
+            MainActor.assumeIsolated {
+                guard let self,
+                      !self.isRestoringWidths,
+                      let tableView = self.tableView,
+                      let headerView = tableView.headerView,
+                      headerView.resizedColumn >= 0 else { return }
+
+                // resizedColumn is valid during AppKit's tracking loop. Reading
+                // currentEvent later can miss the drag or see a different event.
+                self.restoreWidthsTask?.cancel()
+                var widths = self.defaults.dictionary(forKey: self.widthsKey) ?? [:]
+                for column in tableView.tableColumns where !column.isHidden {
+                    guard let key = Self.columnKey(column),
+                          column.width.isFinite, column.width > 0 else { continue }
+                    widths[key] = Double(column.width)
+                }
+                self.defaults.set(widths, forKey: self.widthsKey)
             }
         }
     }
 
-    private func captureColumnWidths() {
-        guard !isApplyingColumnRatios,
-              let tableView else { return }
-        let columns = tableView.tableColumns
-        let totalWidth = columns.reduce(CGFloat.zero) { $0 + $1.width }
-        guard totalWidth > 0 else { return }
+    private func restoreSavedWidths() {
+        restoreWidthsTask?.cancel()
+        let widths = defaults.dictionary(forKey: widthsKey) as? [String: Double] ?? [:]
+        guard !widths.isEmpty else { return }
 
-        var widths: [String: CGFloat] = [:]
-        for (index, column) in columns.enumerated() {
-            guard let key = Self.columnKey(for: column, fallbackIndex: index) else { continue }
-            widths[key] = column.width
+        restoreWidthsTask = Task { @MainActor [weak self] in
+            // Cells can attach before SwiftUI finishes configuring the native
+            // columns. Verify the widths across subsequent layout passes.
+            var stablePasses = 0
+            for _ in 0..<30 {
+                try? await Task.sleep(for: .milliseconds(10))
+                guard !Task.isCancelled, let self, let tableView = self.tableView else { return }
+                guard tableView.window != nil,
+                      let scrollView = tableView.enclosingScrollView,
+                      scrollView.contentView.bounds.width > 0 else { continue }
+
+                self.isRestoringWidths = true
+                tableView.layoutSubtreeIfNeeded()
+                let columns = tableView.tableColumns.compactMap { column -> (NSTableColumn, CGFloat)? in
+                    guard !column.isHidden,
+                          let key = Self.columnKey(column),
+                          let width = widths[key], width.isFinite, width > 0 else { return nil }
+                    return (column, min(column.maxWidth, max(column.minWidth, CGFloat(width))))
+                }
+                let matches = !columns.isEmpty && columns.allSatisfy { abs($0.0.width - $0.1) < 0.5 }
+                if matches {
+                    stablePasses += 1
+                } else {
+                    stablePasses = 0
+                    // Otherwise each assignment can resize the other columns,
+                    // so the final widths no longer match the saved snapshot.
+                    let autoresizingStyle = tableView.columnAutoresizingStyle
+                    tableView.columnAutoresizingStyle = .noColumnAutoresizing
+                    for (column, width) in columns {
+                        column.width = width
+                    }
+                    tableView.columnAutoresizingStyle = autoresizingStyle
+                }
+                self.isRestoringWidths = false
+                if stablePasses >= 2 { return }
+            }
         }
-        onColumnResize?(widths, totalWidth)
     }
 
-    private static func columnKey(
-        for column: NSTableColumn,
-        fallbackIndex: Int? = nil
-    ) -> String? {
-        let knownKeys = Set(["message", "author", "date", "commit"])
-        let identifier = column.identifier.rawValue.lowercased()
-        if knownKeys.contains(identifier) {
-            return identifier
-        }
-
-        let titles = [column.title.lowercased(), column.headerCell.stringValue.lowercased()]
-        if let title = titles.first(where: knownKeys.contains) {
-            return title
-        }
-
-        guard let fallbackIndex,
-              knownKeys.count > fallbackIndex else { return nil }
-        return ["message", "author", "date", "commit"][fallbackIndex]
+    private static func columnKey(_ column: NSTableColumn) -> String? {
+        // SwiftUI's native identifiers are fresh UUIDs on every mount. Header
+        // titles remain stable even when the user reorders or hides columns.
+        let key = column.title.lowercased()
+        return ["message", "author", "date", "commit"].contains(key) ? key : nil
     }
 
     func scrollToRowWhenReady(_ row: Int) async {
@@ -160,10 +146,6 @@ final class HistoryTableScrollCoordinator {
             }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
-    }
-
-    func persistCurrentColumnWidths() {
-        captureColumnWidths()
     }
 
     @discardableResult
@@ -197,18 +179,12 @@ final class HistoryTableScrollCoordinator {
 
 struct HistoryTableIntrospectionView: NSViewRepresentable {
     let coordinator: HistoryTableScrollCoordinator
-    let desiredColumnRatios: [String: Double]
-    let onColumnResize: (([String: CGFloat], CGFloat) -> Void)?
 
     func makeNSView(context: Context) -> HistoryTableIntrospectionNSView {
-        coordinator.desiredColumnRatios = desiredColumnRatios
-        coordinator.onColumnResize = onColumnResize
-        return HistoryTableIntrospectionNSView(coordinator: coordinator)
+        HistoryTableIntrospectionNSView(coordinator: coordinator)
     }
 
     func updateNSView(_ nsView: HistoryTableIntrospectionNSView, context: Context) {
-        coordinator.desiredColumnRatios = desiredColumnRatios
-        coordinator.onColumnResize = onColumnResize
         nsView.coordinator = coordinator
         nsView.attachIfPossible()
     }
@@ -248,12 +224,5 @@ final class HistoryTableIntrospectionNSView: NSView {
                 self?.attachIfPossible()
             }
         }
-    }
-
-    override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow == nil {
-            coordinator?.persistCurrentColumnWidths()
-        }
-        super.viewWillMove(toWindow: newWindow)
     }
 }
