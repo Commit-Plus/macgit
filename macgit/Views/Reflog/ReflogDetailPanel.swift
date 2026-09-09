@@ -41,7 +41,8 @@ struct ReflogDetailPanel: View {
                 VStack(alignment: .leading, spacing: 20) {
                     Text(entry.message)
                         .font(.title3.bold())
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 14) {
                         GridRow {
                             Text("Action").foregroundStyle(.secondary)
@@ -66,9 +67,10 @@ struct ReflogDetailPanel: View {
                         }
                     }
                     Divider()
-                    Text("This event records a local reference update. The commit is the destination of that update. Create a branch from it to keep a recovered commit.")
+                    Text(entry.displayCommitMessage)
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)

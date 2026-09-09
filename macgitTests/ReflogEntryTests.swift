@@ -27,6 +27,15 @@ final class ReflogEntryTests: XCTestCase {
         XCTAssertEqual(entry.actor, "Operator")
         XCTAssertEqual(entry.action, "reset")
         XCTAssertEqual(entry.date, ISO8601DateFormatter().date(from: "2026-09-08T03:20:30Z"))
+        XCTAssertEqual(entry.displayCommitMessage, "reset: moving to HEAD~1")
+    }
+
+    func testFullCommitMessagePreservesLineBreaks() throws {
+        let output = "abc\0HEAD@{2026-09-08T10:20:30+07:00}\0Operator\0operator@example.com\0commit: feat: subject\0feat: subject\n\nBody line one\nBody line two\n\u{1e}"
+        let entry = try XCTUnwrap(ReflogEntry.parse(output).first)
+        XCTAssertEqual(entry.message, "commit: feat: subject")
+        XCTAssertEqual(entry.commitMessage, "feat: subject\n\nBody line one\nBody line two")
+        XCTAssertEqual(entry.displayCommitMessage, "feat: subject\n\nBody line one\nBody line two")
     }
 
     func testRepeatedEventsRemainDistinctAndStableWhenNewEventsArrive() {

@@ -23,7 +23,7 @@ extension GitStatusService {
         // An unborn repository has no HEAD to walk. Do not hide other Git failures.
         let head = try await runGit(arguments: ["rev-parse", "--revs-only", "HEAD"], in: repositoryURL)
         if head.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !allReferences { return [] }
-        var arguments = ["reflog", "show", "--date=iso-strict", "--format=%H%x00%gD%x00%gn%x00%ge%x00%gs", "--max-count=\(limit)", "--skip=\(skip)"]
+        var arguments = ["reflog", "show", "--date=iso-strict", "--format=%H%x00%gD%x00%gn%x00%ge%x00%gs%x00%B%x1e", "--max-count=\(limit)", "--skip=\(skip)"]
         arguments.append(allReferences ? "--all" : "HEAD")
         arguments.append("--")
         return ReflogEntry.parse(try await runGit(arguments: arguments, in: repositoryURL))

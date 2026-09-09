@@ -26,8 +26,10 @@ nonisolated struct ReflogEntry: Identifiable, Equatable, Sendable {
     let actor: String
     let email: String
     let message: String
+    let commitMessage: String
 
     var action: String { String(message.split(separator: ":", maxSplits: 1).first ?? "update") }
+    var displayCommitMessage: String { commitMessage.isEmpty ? message : commitMessage }
 
     // A page can begin with an identical event from the previous page (same second,
     // hash and message). Continue occurrence IDs instead of dropping real events.
@@ -43,7 +45,8 @@ nonisolated struct ReflogEntry: Identifiable, Equatable, Sendable {
             occurrences[key] = occurrence + 1
             return ReflogEntry(id: key + "#\(occurrence)", hash: entry.hash,
                                reference: entry.reference, date: entry.date,
-                               actor: entry.actor, email: entry.email, message: entry.message)
+                               actor: entry.actor, email: entry.email, message: entry.message,
+                               commitMessage: entry.commitMessage)
         }
         return previous + appended
     }
@@ -51,9 +54,16 @@ nonisolated struct ReflogEntry: Identifiable, Equatable, Sendable {
     static func parse(_ output: String) -> [ReflogEntry] {
         let dateFormatter = ISO8601DateFormatter()
         var occurrences: [String: Int] = [:]
-        return output.split(separator: "\n").compactMap { line in
-            let fields = line.split(separator: "\0", omittingEmptySubsequences: false).map(String.init)
-            guard fields.count == 5, let marker = fields[1].range(of: "@{", options: .backwards),
+        let records: [String.SubSequence] = output.contains("\u{1e}")
+            ? output.split(separator: "\u{1e}", omittingEmptySubsequences: true)
+            : output.split(separator: "\n", omittingEmptySubsequences: true)
+        return records.compactMap { record in
+            let fields = record
+                .trimmingCharacters(in: .newlines)
+                .split(separator: "\0", omittingEmptySubsequences: false)
+                .map(String.init)
+            guard fields.count == 5 || fields.count == 6,
+                  let marker = fields[1].range(of: "@{", options: .backwards),
                   fields[1].hasSuffix("}") else { return nil }
             let selector = fields[1]
             let dateText = String(selector[marker.upperBound..<selector.index(before: selector.endIndex)])
@@ -64,7 +74,8 @@ nonisolated struct ReflogEntry: Identifiable, Equatable, Sendable {
                 id: key + "#\(occurrence)", hash: fields[0],
                 reference: String(selector[..<marker.lowerBound]),
                 date: dateFormatter.date(from: dateText),
-                actor: fields[2], email: fields[3], message: fields[4]
+                actor: fields[2], email: fields[3], message: fields[4],
+                commitMessage: fields.count == 6 ? fields[5].trimmingCharacters(in: .newlines) : ""
             )
         }
     }
