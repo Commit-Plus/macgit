@@ -46,6 +46,8 @@ struct SidebarView: View {
     let onRequestPullRemoteBranch: (String, String) -> Void
     let onRequestPullTracked: (String) -> Void
     let onRequestPushToTracked: (String) -> Void
+    let onRequestForcePushToTracked: (String) -> Void
+    let onRequestForcePushBranchToRemote: (String, String) -> Void
     let onRequestUpdateCurrentBranch: (CurrentBranchIntegrationStatus) -> Void
     let onRequestRenameBranch: (String) -> Void
     let onRequestCreatePullRequest: (String) -> Void
@@ -201,6 +203,8 @@ struct SidebarView: View {
         onRequestPullRemoteBranch: @escaping (String, String) -> Void = { _, _ in },
         onRequestPullTracked: @escaping (String) -> Void = { _ in },
         onRequestPushToTracked: @escaping (String) -> Void = { _ in },
+        onRequestForcePushToTracked: @escaping (String) -> Void = { _ in },
+        onRequestForcePushBranchToRemote: @escaping (String, String) -> Void = { _, _ in },
         onRequestUpdateCurrentBranch: @escaping (CurrentBranchIntegrationStatus) -> Void = { _ in },
         onRequestRenameBranch: @escaping (String) -> Void = { _ in },
         onRequestCreatePullRequest: @escaping (String) -> Void = { _ in },
@@ -269,6 +273,8 @@ struct SidebarView: View {
         self.onRequestPullRemoteBranch = onRequestPullRemoteBranch
         self.onRequestPullTracked = onRequestPullTracked
         self.onRequestPushToTracked = onRequestPushToTracked
+        self.onRequestForcePushToTracked = onRequestForcePushToTracked
+        self.onRequestForcePushBranchToRemote = onRequestForcePushBranchToRemote
         self.onRequestUpdateCurrentBranch = onRequestUpdateCurrentBranch
         self.onRequestRenameBranch = onRequestRenameBranch
         self.onRequestCreatePullRequest = onRequestCreatePullRequest
@@ -373,7 +379,9 @@ struct SidebarView: View {
             setHeaderDropTargeted: updateBranchesHeaderDropTarget,
             setCurrentDropTargeted: updateCurrentBranchDropTarget,
             currentDropLabel: currentBranchDropLabel,
-            drop: dropActions
+            drop: dropActions,
+            forcePushTracked: onRequestForcePushToTracked,
+            forcePushToRemote: onRequestForcePushBranchToRemote
         )
     }
 

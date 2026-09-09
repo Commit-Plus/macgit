@@ -114,6 +114,8 @@ struct MainWindowView: View {
     @State private var showingCommitSheet = false
     @State var showingPullSheet = false
     @State var showingPushSheet = false
+    @State var pendingBranchForcePush: BranchForcePushPlan?
+    @State var pendingSheetForcePush: (branch: String, remote: String, remoteBranch: String)?
     @State var showingFetchSheet = false
     @State var showingAddSubmoduleSheet = false
     @State var showingAddLinkSubtreeSheet = false
@@ -350,7 +352,12 @@ struct MainWindowView: View {
             }
             .sheet(isPresented: $showingCommitSheet) { commitSheet }
             .sheet(isPresented: $showingPullSheet) { pullSheet }
-            .sheet(isPresented: $showingPushSheet) { pushSheet }
+            .sheet(isPresented: $showingPushSheet, onDismiss: forcePushSheetDismissed) { pushSheet }
+            .sheet(item: $pendingBranchForcePush) { plan in
+                BranchForcePushConfirmationSheet(plan: plan) {
+                    confirmBranchForcePush(plan)
+                }
+            }
             .sheet(isPresented: $showingFetchSheet) { fetchSheet }
             .sheet(isPresented: $showingAddSubmoduleSheet) { addSubmoduleSheet }
             .sheet(isPresented: $showingAddLinkSubtreeSheet) { addLinkSubtreeSheet }
@@ -808,6 +815,10 @@ struct MainWindowView: View {
                         )
                     }
                 }
+            },
+            onRequestForcePushToTracked: requestTrackedBranchForcePush,
+            onRequestForcePushBranchToRemote: { branch, remote in
+                requestBranchForcePush(branch: branch, remote: remote, remoteBranch: branch)
             },
             onRequestUpdateCurrentBranch: requestCurrentBranchIntegrationUpdate,
             onRequestRenameBranch: { branch in

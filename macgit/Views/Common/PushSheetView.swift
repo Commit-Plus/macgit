@@ -36,7 +36,8 @@ enum BranchPushInfoBuilder {
         upstreams: [String: String],
         currentBranch: String,
         remoteBranches: Set<String> = [],
-        defaultBranch: String? = nil
+        defaultBranch: String? = nil,
+        selectedRemote: String? = nil
     ) -> [BranchPushInfo] {
         let prioritizedBranches = localBranches.sorted { lhs, rhs in
             func rank(_ branch: String) -> Int {
@@ -50,7 +51,10 @@ enum BranchPushInfoBuilder {
             return lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
         }
         return prioritizedBranches.map { branch in
-            let upstream = upstreams[branch]
+            let upstream = upstreams[branch].flatMap { value in
+                guard let selectedRemote else { return value }
+                return value.hasPrefix("\(selectedRemote)/") ? value : nil
+            }
             let isTracked = upstream != nil
             let upstreamRemoteName = upstream?.components(separatedBy: "/").dropFirst().joined(separator: "/")
             let resolvedRemote: String
@@ -74,6 +78,7 @@ enum BranchPushInfoBuilder {
 struct PushSheetView: View {
     @Environment(\.dismiss) private var dismiss
     let repositoryURL: URL
+    var onForcePush: ((String, String, String) -> Void)? = nil
     let onPush: (GitStatusService.PushOptions) -> Void
 
     @State private var remotes: [String] = []
@@ -92,7 +97,7 @@ struct PushSheetView: View {
     }
 
     private var canPush: Bool {
-        !selectedBranches.isEmpty && !selectedRemote.isEmpty && !isSubmitting
+        !selectedBranches.isEmpty && !selectedRemote.isEmpty && !isSubmitting && !isLoading
     }
 
     var body: some View {
@@ -109,6 +114,9 @@ struct PushSheetView: View {
                     }
                     .pickerStyle(.menu)
                     .onChange(of: selectedRemote) { _, newValue in
+                        branches = []
+                        remoteURL = ""
+                        isLoading = true
                         Task {
                             await loadRemoteURL(remote: newValue)
                             await loadBranches(remote: newValue)
@@ -255,6 +263,15 @@ struct PushSheetView: View {
 
             // Buttons
             HStack(spacing: 12) {
+                if let onForcePush {
+                    Button("Force Push…", role: .destructive) {
+                        guard let branch = selectedBranches.first, selectedBranches.count == 1 else { return }
+                        onForcePush(branch.local, selectedRemote, branch.remote.isEmpty ? branch.local : branch.remote)
+                        dismiss()
+                    }
+                    .disabled(selectedBranches.count != 1 || selectedRemote.isEmpty || isSubmitting || isLoading)
+                    .help("Review and force-push the selected branch only. Tags are not included.")
+                }
                 Spacer()
                 Button("Cancel", role: .cancel) {
                     dismiss()
@@ -306,6 +323,8 @@ struct PushSheetView: View {
     }
 
     private func loadBranches(remote: String) async {
+        isLoading = true
+        defer { if selectedRemote == remote { isLoading = false } }
         async let branchesTask = GitStatusService.shared.cachedLocalBranches(in: repositoryURL)
         async let currentBranchTask = GitStatusService.shared.currentBranch(in: repositoryURL)
         async let upstreamsTask = GitStatusService.shared.localBranchUpstreams(in: repositoryURL)
@@ -325,10 +344,12 @@ struct PushSheetView: View {
             upstreams: upstreams,
             currentBranch: currentBranch,
             remoteBranches: Set(remoteBranchNames),
-            defaultBranch: defaultBranch
+            defaultBranch: defaultBranch,
+            selectedRemote: remote
         )
 
         await MainActor.run {
+            guard selectedRemote == remote else { return }
             branches = branchInfos
         }
     }
@@ -336,6 +357,7 @@ struct PushSheetView: View {
     private func loadRemoteURL(remote: String) async {
         let url = await GitStatusService.shared.remoteURL(remote: remote, in: repositoryURL)
         await MainActor.run {
+            guard selectedRemote == remote else { return }
             remoteURL = url
         }
     }

@@ -1,9 +1,4 @@
 //
-//  BranchUpstreamActionPolicy.swift
-//  macgit
-//
-
-//
 //  macgit (Commit+) - a macOS Git client built with Swift and SwiftUI.
 //  Copyright (C) 2026  Thanh Tran <trantienthanh2412@gmail.com>
 //
@@ -22,25 +17,16 @@
 //
 import Foundation
 
-enum BranchUpstreamActionPolicy {
-    static func pushRemotes(branch: String, upstream: String?, remotes: [String]) -> [String] {
-        remotes.filter { "\($0)/\(branch)" != upstream }.sorted()
-    }
+struct BranchForcePushPlan: Identifiable, Equatable {
+    let id: UUID
+    let remote: String
+    let remoteURL: String
+    let localBranch: String
+    let remoteBranch: String
+    let localHash: String
+    let remoteHash: String
+    let removedCommitCount: Int
+    let isDefaultBranch: Bool
 
-    static func shouldEnablePullFromUpstream(for upstream: String?) -> Bool {
-        hasUpstream(upstream)
-    }
-
-    static func shouldEnablePushToUpstream(for upstream: String?) -> Bool {
-        hasUpstream(upstream)
-    }
-
-    static func shouldEnableCreatePullRequest(for _: String?) -> Bool {
-        true
-    }
-
-    private static func hasUpstream(_ upstream: String?) -> Bool {
-        guard let upstream, !upstream.isEmpty else { return false }
-        return true
-    }
+    var destination: String { "\(remote)/\(remoteBranch)" }
 }

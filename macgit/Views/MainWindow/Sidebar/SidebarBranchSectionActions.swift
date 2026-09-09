@@ -40,4 +40,6 @@ struct SidebarBranchSectionActions {
     let setCurrentDropTargeted: (Bool) -> Void
     let currentDropLabel: () -> String
     let drop: SidebarDropActions
+    var forcePushTracked: (String) -> Void = { _ in }
+    var forcePushToRemote: (String, String) -> Void = { _, _ in }
 }

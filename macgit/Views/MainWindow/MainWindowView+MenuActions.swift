@@ -117,7 +117,25 @@ extension MainWindowView {
         }
 
         do {
-            try await undoExecutor.execute(operation, in: entry.repositoryURL)
+            if case .replaceRemoteBranch(let plan, let restoring) = operation {
+                guard let resolver = await credentialResolverForRemoteOperation(remotes: [plan.remote]) else {
+                    switch menuAction {
+                    case .undo: undoManager.restoreUndo(entry)
+                    case .redo: undoManager.restoreRedo(entry)
+                    }
+                    return
+                }
+                guard !syncState.isAnySyncing else {
+                    throw GitError.commandFailed("Wait for the current Git operation to finish before undoing.")
+                }
+                syncState.isPushing = true
+                defer { syncState.isPushing = false }
+                try await GitStatusService.shared.replaceRemoteBranch(
+                    plan, restoring: restoring, in: entry.repositoryURL, credentialResolver: resolver
+                )
+            } else {
+                try await undoExecutor.execute(operation, in: entry.repositoryURL)
+            }
             await syncState.refresh(repositoryURL: repositoryURL)
             NotificationCenter.default.post(
                 name: .repositoryDidChange,

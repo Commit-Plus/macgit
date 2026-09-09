@@ -19,6 +19,15 @@ import XCTest
 @testable import macgit
 
 final class PushSheetViewTests: XCTestCase {
+    func testMappingDoesNotReuseUpstreamFromAnotherRemote() {
+        let infos = BranchPushInfoBuilder.build(
+            localBranches: ["feature"], upstreams: ["feature": "origin/review/topic"],
+            currentBranch: "feature", remoteBranches: ["feature"], selectedRemote: "backup"
+        )
+        XCTAssertEqual(infos.first?.remote, "feature")
+        XCTAssertEqual(infos.first?.isTracked, false)
+    }
+
     func testBranchPushInfoBuilderUsesBulkUpstreamsAndSelectsTrackedCurrentBranch() {
         let infos = BranchPushInfoBuilder.build(
             localBranches: ["main", "feature/new", "local-only"],

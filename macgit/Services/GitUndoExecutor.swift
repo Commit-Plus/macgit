@@ -199,6 +199,8 @@ struct GitUndoExecutor {
         case .pushBranch(let remote, let localBranch, let remoteBranch):
             let refSpec = localBranch == remoteBranch ? localBranch : "\(localBranch):\(remoteBranch)"
             _ = try await runner.runGit(arguments: ["push", remote, refSpec], in: repositoryURL)
+        case .replaceRemoteBranch(let plan, let restoring):
+            try await GitStatusService.shared.replaceRemoteBranch(plan, restoring: restoring, in: repositoryURL)
         case .setUpstream(let branch, let upstream):
             _ = try await runner.runGit(
                 arguments: ["branch", "--set-upstream-to", upstream, branch],

@@ -27,6 +27,10 @@ struct SidebarBranchContextMenu: View {
     let branchesByRemote: [String: [String]]
     let actions: SidebarBranchSectionActions
 
+    private var pushRemotes: [String] {
+        BranchUpstreamActionPolicy.pushRemotes(branch: branch, upstream: upstream, remotes: remoteNames)
+    }
+
     var body: some View {
         Button("Checkout \(branch)") {
             actions.checkout(branch)
@@ -60,18 +64,29 @@ struct SidebarBranchContextMenu: View {
             actions.pushTracked(branch)
         }
         .disabled(!BranchUpstreamActionPolicy.shouldEnablePushToUpstream(for: upstream))
-        Menu("Push to") {
-            if remoteNames.isEmpty {
-                Text("No remotes configured")
-            } else {
-                ForEach(remoteNames, id: \.self) { remote in
+        if !pushRemotes.isEmpty {
+            Menu("Push to") {
+                ForEach(pushRemotes, id: \.self) { remote in
                     Button(remote) {
                         actions.pushToRemote(branch, remote)
                     }
                 }
             }
         }
-        .disabled(remoteNames.isEmpty)
+        if let upstream, !upstream.isEmpty {
+            Button("Force Push to \(upstream) (tracked)…", role: .destructive) {
+                actions.forcePushTracked(branch)
+            }
+        }
+        if !pushRemotes.isEmpty {
+            Menu("Force Push to") {
+                ForEach(pushRemotes, id: \.self) { remote in
+                    Button("\(remote)/\(branch)…", role: .destructive) {
+                        actions.forcePushToRemote(branch, remote)
+                    }
+                }
+            }
+        }
         Menu("Track Remote Branch") {
             if remoteNames.isEmpty {
                 Text("No remotes configured")

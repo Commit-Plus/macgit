@@ -336,6 +336,10 @@ class SyncState: ObservableObject {
     ) -> String {
         let message = error.localizedDescription
         let normalizedMessage = message.lowercased()
+        if !options.branches.isEmpty,
+           normalizedMessage.contains("non-fast-forward") || normalizedMessage.contains("fetch first") {
+            return "\(message)\n\nIf you intentionally reset or rewrote published commits, right-click the local branch and choose Force Push to. Review the remote commits before confirming."
+        }
         let isTagRejection = normalizedMessage.contains("already exists")
             || normalizedMessage.contains("would clobber existing tag")
         let includesTags = !options.tags.isEmpty || options.pushTags

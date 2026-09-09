@@ -53,7 +53,9 @@ extension MainWindowView {
 
     @ViewBuilder
     var pushSheet: some View {
-        PushSheetView(repositoryURL: repositoryURL) { options in
+        PushSheetView(repositoryURL: repositoryURL, onForcePush: { branch, remote, remoteBranch in
+            pendingSheetForcePush = (branch, remote, remoteBranch)
+        }) { options in
             runRemoteOperation("Pushing branches...", remotes: [options.remote]) { credentialResolver in
                 await syncState.performPush(
                     options: options,
