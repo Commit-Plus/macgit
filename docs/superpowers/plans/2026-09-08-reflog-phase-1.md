@@ -10,4 +10,4 @@ Completed: macOS build passed; temporary Git repository and standalone Swift par
 
 Detail layout: selecting an event opens a right-hand panel using the same PersistentHSplit as Pull Requests, with a dedicated autosave key. The close button clears selection; the table uses compact columns while details are open. Full event metadata and recovery actions remain available in the scrollable panel.
 
-Pagination: request 30 events per Git command with --skip, append the next page near the last five visible rows, and prevent overlapping load-more requests. Keep a manual fallback for search. Refresh the existing range in 30-event batches and preserve duplicate event identities across page boundaries.
+Pagination: request 100 events per Git command with --skip, append the next page near the last five visible rows, and prevent overlapping load-more requests. Keep a manual fallback for search. Refresh the existing range in 100-event batches and preserve duplicate event identities across page boundaries.

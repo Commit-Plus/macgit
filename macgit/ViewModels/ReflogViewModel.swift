@@ -28,7 +28,7 @@ final class ReflogViewModel {
     var isLoading = false
     var errorMessage: String?
     var hasMore = false
-    private let pageSize = 30
+    private let pageSize = 100
     private var generation = UUID()
 
     var filteredEntries: [ReflogEntry] {
