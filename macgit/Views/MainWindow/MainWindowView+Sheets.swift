@@ -125,11 +125,11 @@ extension MainWindowView {
     }
 
     @ViewBuilder
-    var branchSheet: some View {
+    func branchSheet(startPoint: GitBranchStartPoint?) -> some View {
         BranchSheetView(
             repositoryURL: repositoryURL,
             undoManager: undoManager,
-            initialStartPoint: branchSheetStartPoint,
+            initialStartPoint: startPoint,
             onRunRepositoryOperation: runRepositoryOperation,
             onCompleted: {
                 Task {

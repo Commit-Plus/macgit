@@ -119,8 +119,7 @@ struct MainWindowView: View {
     @State var showingFetchSheet = false
     @State var showingAddSubmoduleSheet = false
     @State var showingAddLinkSubtreeSheet = false
-    @State var showingBranchSheet = false
-    @State var branchSheetStartPoint: GitBranchStartPoint?
+    @State var branchSheetPresentation: BranchSheetPresentation?
     @State var showingTagSheet = false
     @State var showingNewTagSheet = false
     @State var tagNameInput = ""
@@ -361,7 +360,9 @@ struct MainWindowView: View {
             .sheet(isPresented: $showingFetchSheet) { fetchSheet }
             .sheet(isPresented: $showingAddSubmoduleSheet) { addSubmoduleSheet }
             .sheet(isPresented: $showingAddLinkSubtreeSheet) { addLinkSubtreeSheet }
-            .sheet(isPresented: $showingBranchSheet, onDismiss: { branchSheetStartPoint = nil }) { branchSheet }
+            .sheet(item: $branchSheetPresentation) { presentation in
+                branchSheet(startPoint: presentation.startPoint)
+            }
             .sheet(isPresented: $showingTagSheet, onDismiss: resetTagSheet) { tagSheet }
             .sheet(isPresented: $showingNewTagSheet) { newTagSheet }
             .sheet(isPresented: tagDetailsSheetPresented) {

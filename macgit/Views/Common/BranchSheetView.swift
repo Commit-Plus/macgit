@@ -381,6 +381,8 @@ struct BranchSheetView: View {
                         HStack(alignment: .top, spacing: 8) {
                             TextField("Commit ID", text: $startPointCommitIDInput)
                                 .textFieldStyle(.roundedBorder)
+                                .frame(minWidth: 220, maxWidth: .infinity)
+                                .layoutPriority(1)
                                 .focused($isStartPointCommitIDFocused)
                                 .onChange(of: startPointCommitIDInput) { _, _ in
                                     startPointCommitValidationTask?.cancel()
@@ -416,7 +418,7 @@ struct BranchSheetView: View {
                                 }
                             }
                             .pickerStyle(.menu)
-                            .frame(minWidth: 280, alignment: .leading)
+                            .frame(width: 112, alignment: .leading)
                             .onChange(of: selectedStartReference) { _, newValue in
                                 guard !newValue.isEmpty else {
                                     selectedStartPoint = nil

@@ -18,8 +18,7 @@ import SwiftUI
 
 extension MainWindowView {
     func presentBranchSheet(startPoint: GitBranchStartPoint?) {
-        branchSheetStartPoint = startPoint
-        showingBranchSheet = true
+        branchSheetPresentation = BranchSheetPresentation(startPoint: startPoint)
     }
 
     func handleDragDropRequest(_ request: GitDragDropRequest) {
