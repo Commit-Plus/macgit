@@ -16,6 +16,7 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 import SwiftUI
+import GoogleSignIn
 
 struct ContentView: View {
     @EnvironmentObject private var repositoryBookmarkController: RepositoryBookmarkController
@@ -23,7 +24,11 @@ struct ContentView: View {
     @ObservedObject var accountController: AccountSessionController
     @ObservedObject var providerAccountController: GitProviderAccountController
     @ObservedObject var aiProviderController: AIProviderController
+    let isShowingAppSettings: Bool
 
+    @State private var repositoryOpenError = ""
+    @State private var showingRepositoryOpenError = false
+    @State private var externalOpenTask: Task<Void, Never>?
     @State private var repositoryURL: URL?
     @State private var showingRepoPickerSheet = false
     @State private var showingCloneSheet = false
@@ -38,11 +43,13 @@ struct ContentView: View {
         request: RepositoryWindowRequest?,
         accountController: AccountSessionController,
         providerAccountController: GitProviderAccountController,
-        aiProviderController: AIProviderController
+        aiProviderController: AIProviderController,
+        isShowingAppSettings: Bool = false
     ) {
         self.accountController = accountController
         self.providerAccountController = providerAccountController
         self.aiProviderController = aiProviderController
+        self.isShowingAppSettings = isShowingAppSettings
         _repositoryURL = State(initialValue: request?.repositoryURL)
         _showingCloneSheet = State(
             initialValue: request?.initialPresentation == .cloneRepository
@@ -77,6 +84,11 @@ struct ContentView: View {
                     }
                 )
             }
+        }
+        .onOpenURL(perform: handleExternalURL)
+        .alert("Cannot Open Repository", isPresented: $showingRepositoryOpenError) {
+        } message: {
+            Text(repositoryOpenError)
         }
         .overlay {
             if repositoryURL == nil, let operation = webOpeningOperation {
@@ -167,7 +179,8 @@ struct ContentView: View {
         .background(
             RepositoryWindowReader(
                 repositoryWindowContext: windowContext,
-                title: repositoryURL?.lastPathComponent ?? "Commit+"
+                title: repositoryURL?.lastPathComponent ?? "Commit+",
+                repositoryURL: repositoryURL
             )
         )
         .focusedSceneValue(
@@ -180,14 +193,55 @@ struct ContentView: View {
         // Prefer the scene that opened browser sign-in. If it was closed (or the
         // app relaunched), allow another existing scene to receive the callback.
         .handlesExternalEvents(
-            preferring: accountController.webSignInWindowNumber != nil
-                && accountController.webSignInWindowNumber == windowContext.window?.windowNumber
-                ? ["macgit://session"] : [],
-            allowing: ["macgit://session"]
+            preferring: preferredExternalEvents,
+            allowing: ["macgit://session", "macgit://open-repository"]
         )
         .windowDismissBehavior(
             operationProgress.activeOperation == nil ? .automatic : .disabled
         )
+        .modifier(CommandLineSetupTipModifier(
+            isBlocked: isShowingAppSettings || showingCloneSheet || showingRepoPickerSheet
+                || showingKeepCurrentAlert || accountController.presentedSheet != nil
+                || operationProgress.activeOperation != nil
+        ))
+    }
+
+    private var preferredExternalEvents: Set<String> {
+        var events: Set<String> = repositoryURL == nil ? ["macgit://open-repository"] : []
+        if accountController.webSignInWindowNumber != nil,
+           accountController.webSignInWindowNumber == windowContext.window?.windowNumber {
+            events.insert("macgit://session")
+        }
+        return events
+    }
+
+    private func handleExternalURL(_ url: URL) {
+        guard RepositoryOpenRequest.recognizes(url) else {
+            Task { @MainActor in
+                if await accountController.handleWebSignInCallback(url) { return }
+                if await providerAccountController.handleProviderOAuthCallback(url) { return }
+                _ = GIDSignIn.sharedInstance.handle(url)
+            }
+            return
+        }
+        // Serialize requests delivered to this scene, including repeated commands during launch.
+        let previousTask = externalOpenTask
+        externalOpenTask = Task { @MainActor in
+            await previousTask?.value
+            do {
+                let directory = try RepositoryOpenRequest.repositoryURL(from: url)
+                let root = try await RepositoryPathResolver().root(at: directory)
+                if RepositoryWindowContext.focusRepository(at: root) { return }
+                if repositoryURL?.resolvingSymlinksInPath().standardizedFileURL == root { return }
+                guard RepositoryWindowContext.reserveOpening(root) else { return }
+                RecentRepositoriesStore.shared.add(root)
+                openRepository(root, inNewWindow: repositoryURL != nil)
+                NSApp.activate(ignoringOtherApps: true)
+            } catch {
+                repositoryOpenError = error.localizedDescription
+                showingRepositoryOpenError = true
+            }
+        }
     }
 
     private var webOpeningOperation: RepositoryOperationProgressItem? {

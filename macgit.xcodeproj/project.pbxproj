@@ -95,6 +95,7 @@
 				6A843CA12FC5342F0031F230 /* Sources */,
 				6A843CA22FC5342F0031F230 /* Frameworks */,
 				6A843CA32FC5342F0031F230 /* Resources */,
+				C01117012FE0000100A1B2C3 /* Build commit command */,
 			);
 			buildRules = (
 			);
@@ -192,6 +193,23 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+        C01117012FE0000100A1B2C3 /* Build commit command */ = {
+            isa = PBXShellScriptBuildPhase;
+            buildActionMask = 2147483647;
+            files = ();
+            inputFileListPaths = ("$(SRCROOT)/command-line/inputs.xcfilelist");
+            name = "Build commit command";
+            outputPaths = (
+                "$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/commit",
+                "$(DERIVED_FILE_DIR)/CommitCLI",
+            );
+            runOnlyForDeploymentPostprocessing = 0;
+            shellPath = /bin/bash;
+            shellScript = "bash \"$SRCROOT/scripts/build-command-line.sh\"";
+        };
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		6A843CA12FC5342F0031F230 /* Sources */ = {
@@ -377,6 +395,7 @@
 					AVFoundation,
 					"-ObjC",
 				);
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.thanhtran.macgit;
 				PRODUCT_MODULE_NAME = macgit;
 				PRODUCT_NAME = "Commit+";
@@ -436,6 +455,7 @@
 					AVFoundation,
 					"-ObjC",
 				);
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.thanhtran.macgit;
 				PRODUCT_MODULE_NAME = macgit;
 				PRODUCT_NAME = "Commit+";

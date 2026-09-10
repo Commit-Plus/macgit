@@ -169,3 +169,44 @@ This project is licensed under the [GNU Affero General Public License v3.0 (AGPL
 ---
 
 *Built for the macOS developer community.*
+
+### Open a repository from Terminal
+
+On launch, Commit+ shows a setup tip if the CLI and shell PATH are not configured.
+Click **Install CLI & Configure PATH** to complete both steps. **Close** reminds you
+on the next launch if setup is unfinished; **Don't remind** disables the startup tip.
+Once setup is complete, the tip is skipped. You can also install from
+**Settings → General → Command Line**.
+
+Installation creates `~/.local/bin/commit` pointing to the helper inside this app. Keep
+Commit+ in a stable location (for example `/Applications`) before installing.
+Existing files and commands are never overwritten.
+
+The install button also adds `export PATH="$HOME/.local/bin:$PATH"` to your shell
+configuration (zsh or bash; fish uses its equivalent). Existing files are backed up
+beside the originals before appending, and repeated installation does not duplicate
+the line. Open a new terminal afterward, or run the displayed PATH command in your
+current terminal. Run `command -v commit` to check for another command, alias, or
+function with that name.
+
+```sh
+commit                  # Open the current folder's repository
+commit .                # Same behavior
+commit "/path/to/repo"   # Open a specific repository
+commit --help
+```
+
+Subfolders resolve to the working-tree root; linked worktrees and repositories
+without commits are supported. Bare repositories are not supported. This command
+opens a repository; it does not create a Git commit. It uses the app's Git runtime
+preference, including downloaded Embedded Git. If no suitable Git runtime exists,
+the command reports an error and does not download or launch anything.
+
+Invalid folders produce stderr and a nonzero exit code without opening Commit+.
+Exit code 0 means macOS accepted the open request; errors after handoff are shown
+in the app. Existing repository windows are focused when available.
+
+To uninstall, remove the symlink `~/.local/bin/commit`. If you move the app, remove
+that symlink and install the command again from the app's new location.
+
+CLI checks run without launching the app: `bash scripts/test-command-line.sh`.

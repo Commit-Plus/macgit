@@ -71,6 +71,8 @@ struct GeneralSettingsView: View {
                 Label("Pull & Fetch", systemImage: "arrow.triangle.2.circlepath")
             }
 
+            CommandLineSettingsSection()
+
             Section {
                 Button("Restore General Defaults…", action: showResetConfirmation)
             }

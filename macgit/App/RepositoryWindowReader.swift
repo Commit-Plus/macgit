@@ -22,15 +22,18 @@ import SwiftUI
 struct RepositoryWindowReader: NSViewRepresentable {
     let repositoryWindowContext: RepositoryWindowContext
     let title: String
+    var repositoryURL: URL? = nil
 
     func makeNSView(context: Context) -> WindowReaderView {
-        WindowReaderView(
+        repositoryWindowContext.repositoryURL = repositoryURL
+        return WindowReaderView(
             repositoryWindowContext: repositoryWindowContext,
             title: title
         )
     }
 
     func updateNSView(_ nsView: WindowReaderView, context: Context) {
+        repositoryWindowContext.repositoryURL = repositoryURL
         nsView.repositoryWindowContext = repositoryWindowContext
         nsView.title = title
         nsView.configureWindow()

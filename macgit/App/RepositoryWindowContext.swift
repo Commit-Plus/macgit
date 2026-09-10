@@ -19,7 +19,36 @@
 import AppKit
 @MainActor
 final class RepositoryWindowContext {
+    private static let contexts = NSHashTable<RepositoryWindowContext>.weakObjects()
+    private static var pendingRepositories = Set<URL>()
     weak var window: NSWindow?
+    var repositoryURL: URL? {
+        didSet {
+            if let repositoryURL {
+                Self.pendingRepositories.remove(repositoryURL.resolvingSymlinksInPath().standardizedFileURL)
+            }
+        }
+    }
+
+    static func reserveOpening(_ url: URL) -> Bool {
+        pendingRepositories.insert(url).inserted
+    }
+
+    init() {
+        Self.contexts.add(self)
+    }
+
+    static func focusRepository(at url: URL) -> Bool {
+        guard let context = contexts.allObjects.first(where: {
+            $0.repositoryURL?.resolvingSymlinksInPath().standardizedFileURL == url
+                && ($0.window?.isVisible == true || $0.window?.isMiniaturized == true
+                    || $0.window?.tabGroup?.windows.contains(where: { $0.isVisible || $0.isMiniaturized }) == true)
+        }), let window = context.window else { return false }
+        window.deminiaturize(nil)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        return true
+    }
 
     func owns(_ notification: Notification) -> Bool {
         guard let targetWindow = notification.object as? NSWindow else { return false }
