@@ -188,7 +188,8 @@ struct macgitApp: App {
                 request: request.wrappedValue,
                 accountController: accountController,
                 providerAccountController: providerAccountController,
-                aiProviderController: aiProviderController
+                aiProviderController: aiProviderController,
+                isShowingAppSettings: showingAppSettings
             )
                 .environmentObject(appState)
                 .environmentObject(appUpdateController)
@@ -197,17 +198,6 @@ struct macgitApp: App {
                 .environmentObject(repositoryBookmarkController)
                 .environmentObject(gitFlowConfigurationSyncController)
                 .preferredColorScheme(appState.appearance.colorScheme)
-                .onOpenURL { url in
-                    Task { @MainActor in
-                        if await accountController.handleWebSignInCallback(url) {
-                            return
-                        }
-                        if await providerAccountController.handleProviderOAuthCallback(url) {
-                            return
-                        }
-                        _ = GIDSignIn.sharedInstance.handle(url)
-                    }
-                }
                 .task {
                     appUpdateController.start()
                 }

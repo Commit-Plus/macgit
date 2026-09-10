@@ -1,0 +1,10 @@
+$(SRCROOT)/scripts/build-command-line.sh
+$(SRCROOT)/command-line/CommitCommand.swift
+$(SRCROOT)/macgit/Services/RepositoryOpenRequest.swift
+$(SRCROOT)/macgit/Services/RepositoryOpenError.swift
+$(SRCROOT)/macgit/Services/RepositoryPathResolver.swift
+$(SRCROOT)/macgit/Services/GitRuntimeManager.swift
+$(SRCROOT)/macgit/Services/GitRuntimeManifest.swift
+$(SRCROOT)/macgit/Services/GitRuntimeError.swift
+$(SRCROOT)/macgit/Models/GitRuntimePreference.swift
+$(SRCROOT)/macgit/Models/GitRuntimeStatus.swift
