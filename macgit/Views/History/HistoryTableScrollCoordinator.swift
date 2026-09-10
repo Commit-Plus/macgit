@@ -22,20 +22,37 @@ import SwiftUI
 @MainActor
 final class HistoryTableScrollCoordinator {
     private weak var tableView: NSTableView?
+    private weak var observedClipView: NSClipView?
     private let defaults: UserDefaults
-    private let widthsKey = "history.tableColumnWidths"
+    private let ratiosKey = "history.tableColumnRatios"
+    private var columnRatios: [String: Double]
+    private var viewportObservers: [NSObjectProtocol] = []
+    private var lastViewportWidth: CGFloat = 0
+    private var lastVisibleColumns: [String] = []
+    private var appliedWidths: [String: CGFloat] = [:]
     private var columnResizeObserver: NSObjectProtocol?
     private var restoreWidthsTask: Task<Void, Never>?
     private var isRestoringWidths = false
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        let initial = ["message": 0.45, "author": 0.25, "date": 0.18, "commit": 0.12]
+        let saved = defaults.dictionary(forKey: ratiosKey) as? [String: Double]
+        let legacy = defaults.dictionary(forKey: "history.tableColumnWidths") as? [String: Double]
+        let valid = (saved ?? legacy ?? initial).filter {
+            initial[$0.key] != nil && $0.value.isFinite && $0.value > 0
+        }
+        let total = valid.values.reduce(0, +)
+        columnRatios = initial.merging(valid.mapValues { $0 / max(total, 1e-9) }) { _, saved in saved }
     }
 
     deinit {
         restoreWidthsTask?.cancel()
         if let columnResizeObserver {
             NotificationCenter.default.removeObserver(columnResizeObserver)
+        }
+        for observer in viewportObservers {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 
@@ -46,9 +63,15 @@ final class HistoryTableScrollCoordinator {
             if let tableView = current as? NSTableView {
                 if self.tableView !== tableView {
                     self.tableView = tableView
+                    lastViewportWidth = 0
+                    lastVisibleColumns = []
+                    appliedWidths = [:]
+                    tableView.columnAutoresizingStyle = .noColumnAutoresizing
                     observeColumnResizing(of: tableView)
                     restoreSavedWidths()
                 }
+                observeViewport(of: tableView)
+                resizeForViewportIfNeeded()
                 return true
             }
             candidate = current.superview
@@ -74,60 +97,134 @@ final class HistoryTableScrollCoordinator {
                       let headerView = tableView.headerView,
                       headerView.resizedColumn >= 0 else { return }
 
-                // resizedColumn is valid during AppKit's tracking loop. Reading
-                // currentEvent later can miss the drag or see a different event.
                 self.restoreWidthsTask?.cancel()
-                var widths = self.defaults.dictionary(forKey: self.widthsKey) ?? [:]
-                for column in tableView.tableColumns where !column.isHidden {
-                    guard let key = Self.columnKey(column),
-                          column.width.isFinite, column.width > 0 else { continue }
-                    widths[key] = Double(column.width)
-                }
-                self.defaults.set(widths, forKey: self.widthsKey)
+                self.captureColumnResize(in: tableView, index: headerView.resizedColumn)
             }
         }
     }
 
+    private func observeViewport(of tableView: NSTableView) {
+        let clipView = tableView.enclosingScrollView?.contentView
+        guard observedClipView !== clipView else { return }
+        observedClipView = clipView
+        for observer in viewportObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        viewportObservers = []
+        guard let clipView else { return }
+        clipView.postsFrameChangedNotifications = true
+        clipView.postsBoundsChangedNotifications = true
+        for name in [NSView.frameDidChangeNotification, NSView.boundsDidChangeNotification] {
+            viewportObservers.append(NotificationCenter.default.addObserver(
+                forName: name, object: clipView, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.resizeForViewportIfNeeded()
+                }
+            })
+        }
+    }
+
+    private var visibleColumns: [NSTableColumn] {
+        tableView?.tableColumns.filter { !$0.isHidden && Self.columnKey($0) != nil } ?? []
+    }
+
+    private func availableWidth(for columns: [NSTableColumn]) -> CGFloat {
+        guard let tableView, let clipView = tableView.enclosingScrollView?.contentView else { return 0 }
+        // AppKit includes an intercell gap in each column's horizontal extent.
+        return max(0, clipView.bounds.width - CGFloat(columns.count) * tableView.intercellSpacing.width)
+    }
+
+    private func resizeForViewportIfNeeded() {
+        guard !isRestoringWidths, let tableView,
+              let clipView = tableView.enclosingScrollView?.contentView,
+              clipView.bounds.width > 0 else { return }
+        let keys = visibleColumns.compactMap(Self.columnKey)
+        guard abs(lastViewportWidth - clipView.bounds.width) > 0.01 || keys != lastVisibleColumns else { return }
+        applyColumnRatios()
+    }
+
+    private func applyColumnRatios() {
+        let columns = visibleColumns
+        guard !columns.isEmpty, availableWidth(for: columns) > 0 else { return }
+        let weights = columns.map { CGFloat(columnRatios[Self.columnKey($0)!] ?? 1) }
+        var widths = Array(repeating: CGFloat.zero, count: columns.count)
+        var remaining = max(availableWidth(for: columns), columns.reduce(0) { $0 + $1.minWidth })
+        var pending = Array(columns.indices)
+        // Pin columns that reach their minimum, then redistribute the remaining
+        // space proportionally. Window resizing never overwrites user ratios.
+        while !pending.isEmpty {
+            let totalWeight = pending.reduce(CGFloat.zero) { $0 + weights[$1] }
+            let constrained = pending.filter { remaining * weights[$0] / totalWeight < columns[$0].minWidth }
+            if constrained.isEmpty {
+                for index in pending {
+                    widths[index] = remaining * weights[index] / totalWeight
+                }
+                break
+            }
+            for index in constrained {
+                widths[index] = columns[index].minWidth
+                remaining -= widths[index]
+            }
+            pending.removeAll { constrained.contains($0) }
+        }
+        setWidths(widths, for: columns)
+    }
+
+    private func captureColumnResize(in tableView: NSTableView, index: Int) {
+        guard tableView.tableColumns.indices.contains(index) else { return }
+        let columns = visibleColumns
+        guard let active = columns.firstIndex(where: { $0 === tableView.tableColumns[index] }) else { return }
+        var widths = columns.map { appliedWidths[Self.columnKey($0)!] ?? $0.width }
+        widths[active] = max(columns[active].minWidth, columns[active].width)
+        let target = max(availableWidth(for: columns), columns.reduce(0) { $0 + $1.minWidth })
+        var excess = widths.reduce(0, +) - target
+        // Prefer the next visible column, then the nearest remaining neighbors.
+        let neighbors = Array(columns.indices.dropFirst(active + 1)) + Array(columns.indices.prefix(active).reversed())
+        for neighbor in neighbors {
+            let adjustment = max(columns[neighbor].minWidth - widths[neighbor], -excess)
+            widths[neighbor] += adjustment
+            excess += adjustment
+            if abs(excess) < 0.01 { break }
+        }
+        widths[active] = max(columns[active].minWidth, widths[active] - excess)
+        setWidths(widths, for: columns)
+        let total = widths.reduce(0, +)
+        guard total > 0 else { return }
+        let visibleWeight = columns.reduce(0.0) { $0 + (columnRatios[Self.columnKey($1)!] ?? 0) }
+        for (column, width) in zip(columns, widths) {
+            columnRatios[Self.columnKey(column)!] = Double(width / total) * max(visibleWeight, 1e-9)
+        }
+        defaults.set(columnRatios, forKey: ratiosKey)
+    }
+
+    private func setWidths(_ widths: [CGFloat], for columns: [NSTableColumn]) {
+        guard let tableView else { return }
+        isRestoringWidths = true
+        defer { isRestoringWidths = false }
+        tableView.columnAutoresizingStyle = .noColumnAutoresizing
+        for (column, width) in zip(columns, widths) {
+            if abs(column.width - width) > 0.01 {
+                column.width = width
+            }
+            appliedWidths[Self.columnKey(column)!] = column.width
+        }
+        tableView.tile()
+        lastViewportWidth = tableView.enclosingScrollView?.contentView.bounds.width ?? 0
+        lastVisibleColumns = columns.compactMap(Self.columnKey)
+    }
+
     private func restoreSavedWidths() {
         restoreWidthsTask?.cancel()
-        let widths = defaults.dictionary(forKey: widthsKey) as? [String: Double] ?? [:]
-        guard !widths.isEmpty else { return }
-
         restoreWidthsTask = Task { @MainActor [weak self] in
-            // Cells can attach before SwiftUI finishes configuring the native
-            // columns. Verify the widths across subsequent layout passes.
-            var stablePasses = 0
+            // SwiftUI can configure columns after cells first attach.
             for _ in 0..<30 {
                 try? await Task.sleep(for: .milliseconds(10))
                 guard !Task.isCancelled, let self, let tableView = self.tableView else { return }
-                guard tableView.window != nil,
-                      let scrollView = tableView.enclosingScrollView,
-                      scrollView.contentView.bounds.width > 0 else { continue }
-
-                self.isRestoringWidths = true
+                guard tableView.window != nil else { continue }
                 tableView.layoutSubtreeIfNeeded()
-                let columns = tableView.tableColumns.compactMap { column -> (NSTableColumn, CGFloat)? in
-                    guard !column.isHidden,
-                          let key = Self.columnKey(column),
-                          let width = widths[key], width.isFinite, width > 0 else { return nil }
-                    return (column, min(column.maxWidth, max(column.minWidth, CGFloat(width))))
-                }
-                let matches = !columns.isEmpty && columns.allSatisfy { abs($0.0.width - $0.1) < 0.5 }
-                if matches {
-                    stablePasses += 1
-                } else {
-                    stablePasses = 0
-                    // Otherwise each assignment can resize the other columns,
-                    // so the final widths no longer match the saved snapshot.
-                    let autoresizingStyle = tableView.columnAutoresizingStyle
-                    tableView.columnAutoresizingStyle = .noColumnAutoresizing
-                    for (column, width) in columns {
-                        column.width = width
-                    }
-                    tableView.columnAutoresizingStyle = autoresizingStyle
-                }
-                self.isRestoringWidths = false
-                if stablePasses >= 2 { return }
+                self.observeViewport(of: tableView)
+                self.applyColumnRatios()
             }
         }
     }

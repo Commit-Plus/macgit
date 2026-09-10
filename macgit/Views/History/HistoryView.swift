@@ -665,7 +665,7 @@ struct HistoryView: View {
     }
 
     // Initial layout preferences only. The native table coordinator restores
-    // saved widths after SwiftUI has configured the columns.
+    // saved proportions after SwiftUI configures the columns and on viewport resize.
     private static func tableColumnWidths(
         for availableWidth: CGFloat
     ) -> (message: CGFloat, author: CGFloat, date: CGFloat, commit: CGFloat) {
