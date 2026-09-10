@@ -102,11 +102,6 @@ struct ManageAccountSheet: View {
                 .disabled(controller.isOpeningAccountOnWeb)
                 .padding(.horizontal, 20)
 
-                if controller.isOpeningAccountOnWeb {
-                    ProgressView("Opening Commit+ on the web...")
-                        .controlSize(.small)
-                }
-
                 if let errorMessage = controller.errorMessage {
                     Text(errorMessage)
                         .foregroundStyle(.red)

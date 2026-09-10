@@ -30,6 +30,7 @@ struct ContentView: View {
     @State private var showingKeepCurrentAlert = false
     @State private var pendingAction: FileMenuAction?
     @State private var shouldFitScreenWhenRepositoryOpens = false
+    @State private var webOpeningProgressID: UUID?
     @State private var windowContext = RepositoryWindowContext()
     @StateObject private var operationProgress = RepositoryOperationProgress()
 
@@ -77,6 +78,22 @@ struct ContentView: View {
                 )
             }
         }
+        .overlay {
+            if repositoryURL == nil, let operation = webOpeningOperation {
+                RepositoryOperationOverlayView(operation: operation, onCancel: {})
+            }
+        }
+        .onChange(of: accountController.isOpeningAccountOnWeb, initial: true) { _, isOpening in
+            if isOpening, webOpeningProgressID == nil {
+                webOpeningProgressID = operationProgress.begin(
+                    message: "Opening Commit+ on the web...",
+                    canCancel: false
+                )
+            } else if !isOpening, let id = webOpeningProgressID {
+                operationProgress.end(id)
+                webOpeningProgressID = nil
+            }
+        }
         .sheet(isPresented: $showingRepoPickerSheet) {
             RepoPickerView(
                 showCloneSheetInitially: false,
@@ -93,23 +110,32 @@ struct ContentView: View {
             })
         }
         .sheet(item: $accountController.presentedSheet) { sheet in
-            switch sheet {
-            case .authentication(let mode):
-                AuthenticationSheet(controller: accountController, mode: mode)
-            case .manageAccount:
-                ManageAccountSheet(
-                    controller: accountController
-                )
-            case .connections:
-                ConnectionsSheet(
-                    accountController: accountController,
-                    providerAccountController: providerAccountController
-                )
-            case .settingsConflict:
-                SettingsSyncConflictSheet(controller: accountController)
-            case .deviceLimit:
-                DeviceLimitSheet(controller: accountController)
+            Group {
+                switch sheet {
+                case .authentication(let mode):
+                    AuthenticationSheet(controller: accountController, mode: mode)
+                case .manageAccount:
+                    ManageAccountSheet(
+                        controller: accountController
+                    )
+                case .connections:
+                    ConnectionsSheet(
+                        accountController: accountController,
+                        providerAccountController: providerAccountController
+                    )
+                case .settingsConflict:
+                    SettingsSyncConflictSheet(controller: accountController)
+                case .deviceLimit:
+                    DeviceLimitSheet(controller: accountController)
+                }
             }
+            .disabled(accountController.isOpeningAccountOnWeb)
+            .overlay {
+                if let operation = webOpeningOperation {
+                    RepositoryOperationOverlayView(operation: operation, onCancel: {})
+                }
+            }
+            .interactiveDismissDisabled(accountController.isOpeningAccountOnWeb)
         }
         .alert("Current Repository is Open", isPresented: $showingKeepCurrentAlert) {
             Button("Cancel", role: .cancel) {}
@@ -162,6 +188,12 @@ struct ContentView: View {
         .windowDismissBehavior(
             operationProgress.activeOperation == nil ? .automatic : .disabled
         )
+    }
+
+    private var webOpeningOperation: RepositoryOperationProgressItem? {
+        guard let operation = operationProgress.activeOperation,
+              operation.id == webOpeningProgressID else { return nil }
+        return operation
     }
 
     private func handleFileMenuAction(_ action: FileMenuAction) {

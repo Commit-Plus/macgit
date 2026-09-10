@@ -349,7 +349,8 @@ final class AccountSessionController: ObservableObject {
     }
 
     private func openAuthenticatedWebPage(_ destination: WebAccountDestination) async {
-        guard account != nil || pendingTemporaryAccount != nil,
+        guard !isOpeningAccountOnWeb,
+              account != nil || pendingTemporaryAccount != nil,
               let webAccountSessionProvider else { return }
         openingWebDestination = destination
         isOpeningAccountOnWeb = true
