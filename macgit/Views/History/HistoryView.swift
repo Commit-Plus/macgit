@@ -690,7 +690,13 @@ struct HistoryView: View {
                     PersistentHSplit(
                         autosaveName: "HistoryDetailSplit",
                         left: {
-                            CommitFileListView(changes: fileChanges, selectedFile: $selectedFile)
+                            CommitFileListView(changes: fileChanges, selectedFile: $selectedFile) { file in
+                                fullFilePreview = CommitFilePreviewRequest(
+                                    repositoryURL: repositoryURL,
+                                    commitHash: commit.hash,
+                                    file: file
+                                )
+                            }
                                 .frame(minWidth: 220)
                         },
                         right: {
@@ -749,24 +755,6 @@ struct HistoryView: View {
             }
             
             Spacer()
-
-            Button("Preview full file", systemImage: "eye") {
-                guard let selectedFile else { return }
-                fullFilePreview = CommitFilePreviewRequest(
-                    repositoryURL: repositoryURL,
-                    commitHash: commit.hash,
-                    file: selectedFile
-                )
-            }
-            .labelStyle(.iconOnly)
-            .buttonStyle(.borderless)
-            .frame(width: 28, height: 28)
-            .contentShape(Rectangle())
-            .disabled(selectedFile == nil)
-            .help("Preview the full selected file with changes")
-            .onContinuousHover { phase in
-                if selectedFile != nil { updateCommitInfoCursor(phase) }
-            }
 
             Button("Show commit details", systemImage: "info.circle") {
                 showCommitInfo(for: commit)

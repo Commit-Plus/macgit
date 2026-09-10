@@ -25,15 +25,18 @@ import SwiftUI
 struct CommitFileListView: View {
     let changes: [CommitFileChange]
     @Binding var selectedFile: CommitFileChange?
+    var onPreview: ((CommitFileChange) -> Void)? = nil
     
     var body: some View {
         List(selection: $selectedFile) {
             ForEach(changes) { change in
                 HStack(spacing: 8) {
-                    Text(statusSymbol(for: change.status))
-                        .font(.system(size: 12, weight: .bold))
+                    Image(systemName: statusSymbol(for: change.status))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(statusColor(for: change.status))
-                        .frame(width: 16, alignment: .center)
+                        .frame(width: 18, alignment: .center)
+                        .help(change.status.displayText)
+                        .accessibilityLabel(change.status.displayText)
                     
                     VStack(alignment: .leading, spacing: 1) {
                         Text(fileName(from: change.path))
@@ -47,13 +50,29 @@ struct CommitFileListView: View {
                     
                     Spacer()
                     
-                    Text(change.status.displayText)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(statusColor(for: change.status).opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    if let onPreview {
+                        Button("Preview full file", systemImage: "eye") {
+                            onPreview(change)
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .help("Preview the full file with changes")
+                        .accessibilityLabel("Preview \(fileName(from: change.path))")
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active: NSCursor.pointingHand.set()
+                            case .ended: NSCursor.arrow.set()
+                            }
+                        }
+                    } else {
+                        Text(change.status.displayText)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(statusColor(for: change.status).opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    }
                 }
                 .padding(.vertical, 2)
                 .tag(change)
@@ -73,11 +92,11 @@ struct CommitFileListView: View {
     
     private func statusSymbol(for status: CommitFileStatus) -> String {
         switch status {
-        case .added: return "+"
-        case .modified: return "•"
-        case .deleted: return "−"
-        case .renamed: return "→"
-        case .copied: return "C"
+        case .added: return "plus.circle.fill"
+        case .modified: return "pencil.circle.fill"
+        case .deleted: return "minus.circle.fill"
+        case .renamed: return "arrow.right.circle.fill"
+        case .copied: return "doc.on.doc.fill"
         }
     }
     
