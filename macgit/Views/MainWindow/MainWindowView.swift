@@ -1135,7 +1135,8 @@ struct MainWindowView: View {
                     onRequestApplyStash: { ref in
                         requestStashAction(ref: ref, action: .apply)
                     },
-                    onRequestPushAfterCommit: pushAfterCommit
+                    onRequestPushAfterCommit: pushAfterCommit,
+                    onRunRepositoryOperation: runRepositoryOperation
                 )
             case .item(.history):
                 if let referenceDiffBase, let referenceDiffTarget, let referenceDiffTitle {

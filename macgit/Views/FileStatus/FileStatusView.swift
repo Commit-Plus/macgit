@@ -41,6 +41,7 @@ struct FileStatusView: View {
     var onRequestUpdateCurrentBranch: (CurrentBranchIntegrationStatus) -> Void = { _ in }
     var onRequestApplyStash: (String) -> Void = { _ in }
     var onRequestPushAfterCommit: (String, String) async throws -> Void
+    var onRunRepositoryOperation: RepositoryOperationRunner
 
     @ObservedObject private var integrationSettings = IntegrationSettingsStore.shared
     @State private var gitStatus: GitStatus = GitStatus(staged: [], unstaged: [], untracked: [])
@@ -58,6 +59,7 @@ struct FileStatusView: View {
     @State private var isAIGenerationRequested = false
 
     @State private var isCommitBarExpanded = false
+    @State private var isCommitting = false
     @State private var commitMessage = ""
     @State private var commitMessageSelection: TextSelection?
     @FocusState private var isCommitMessageFocused: Bool
@@ -1036,10 +1038,20 @@ struct FileStatusView: View {
                 }
                 .buttonStyle(GlassButtonStyle(tint: .secondary, fontSize: 12))
 
-                Button("Commit", action: requestCommit)
+                Button(action: requestCommit) {
+                    HStack(spacing: 6) {
+                        if isCommitting {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityHidden(true)
+                        }
+                        Text(isCommitting ? "Committing..." : "Commit")
+                    }
+                }
                     .buttonStyle(GlassProminentButtonStyle(tint: .accentColor, fontSize: 12))
             }
         }
+        .disabled(isCommitting)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .task {
@@ -1097,13 +1109,11 @@ struct FileStatusView: View {
                     let shouldAllowEmptyMessage = allowEmptyMessage
                     self.emptyCommitAction = nil
                     allowEmptyMessage = false
-                    Task {
-                        await performCommit(
-                            allowEmpty: shouldAllowEmptyCommit,
-                            commitChangedFiles: shouldCommitChangedFiles,
-                            allowEmptyMessage: shouldAllowEmptyMessage
-                        )
-                    }
+                    startCommit(
+                        allowEmpty: shouldAllowEmptyCommit,
+                        commitChangedFiles: shouldCommitChangedFiles,
+                        allowEmptyMessage: shouldAllowEmptyMessage
+                    )
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canConfirmCommit)
@@ -1193,14 +1203,34 @@ struct FileStatusView: View {
     }
 
     private func requestCommit() {
-        Task {
-            if needsCommitConfirmation {
-                emptyCommitAction = nil
-                allowEmptyMessage = false
-                showingCommitConfirmation = true
-            } else {
-                await performCommit(allowEmpty: false)
+        guard !isCommitting, !showingCommitConfirmation else { return }
+        if needsCommitConfirmation {
+            emptyCommitAction = nil
+            allowEmptyMessage = false
+            showingCommitConfirmation = true
+        } else {
+            startCommit()
+        }
+    }
+
+    private func startCommit(
+        allowEmpty: Bool = false,
+        commitChangedFiles: Bool = false,
+        allowEmptyMessage: Bool = false
+    ) {
+        guard !isCommitting else { return }
+        isCommitting = true
+        syncState?.isCommitting = true
+        onRunRepositoryOperation("Committing changes...") {
+            defer {
+                isCommitting = false
+                syncState?.isCommitting = false
             }
+            await performCommit(
+                allowEmpty: allowEmpty,
+                commitChangedFiles: commitChangedFiles,
+                allowEmptyMessage: allowEmptyMessage
+            )
         }
     }
 
