@@ -16,6 +16,7 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+import AppKit
 import Combine
 import Foundation
 
@@ -28,6 +29,7 @@ final class AccountSessionController: ObservableObject {
     @Published private(set) var pendingLinkEmail: String?
     @Published private(set) var isDeletingAccount = false
     @Published private(set) var requiresRecentAuthentication = false
+    @Published private(set) var webSignInWindowNumber: Int?
     @Published private(set) var isOpeningAccountOnWeb = false
     @Published private(set) var openingWebDestination: WebAccountDestination?
     @Published private(set) var isRefreshingProfile = false
@@ -189,6 +191,63 @@ final class AccountSessionController: ObservableObject {
         await authenticate { [auth] in
             try await auth.createAccount(email: email, password: password)
         }
+    }
+
+    func signInOnWeb() {
+        guard cloudFeaturesAvailable, !isLoading, account == nil, pendingLinkEmail == nil else { return }
+        errorMessage = nil
+        do {
+            let state = UUID().uuidString + UUID().uuidString
+            guard var components = URLComponents(
+                url: try CommitPlusWebConfiguration.baseURL().appending(path: "auth"),
+                resolvingAgainstBaseURL: false
+            ) else { throw WebAccountSessionError.invalidBaseURL }
+            components.queryItems = [
+                URLQueryItem(name: "app", value: "macgit"),
+                URLQueryItem(name: "state", value: state)
+            ]
+            guard let url = components.url else { throw WebAccountSessionError.invalidBaseURL }
+            UserDefaults.standard.set(state, forKey: "webSignInState")
+            UserDefaults.standard.set(Date().addingTimeInterval(15 * 60), forKey: "webSignInExpiresAt")
+            // A sign-in sheet can be the key window; route back to its owning scene.
+            var originatingWindow = NSApp.keyWindow ?? NSApp.mainWindow
+            while let parent = originatingWindow?.sheetParent {
+                originatingWindow = parent
+            }
+            webSignInWindowNumber = originatingWindow?.windowNumber
+            guard openWebURL(url) else { throw WebAccountSessionError.unableToOpenBrowser }
+        } catch {
+            cancelWebSignIn()
+            errorMessage = Self.message(for: error)
+        }
+    }
+
+    func handleWebSignInCallback(_ url: URL) async -> Bool {
+        guard url.scheme?.lowercased() == "macgit", url.host?.lowercased() == "session" else { return false }
+        guard !isLoading, account == nil else { return true }
+        presentedSheet = .authentication(.signIn)
+        guard url.path.isEmpty, url.user == nil, url.password == nil, url.port == nil,
+              let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+              items.filter({ $0.name == "state" }).count == 1,
+              items.filter({ $0.name == "token" }).count == 1,
+              let expected = UserDefaults.standard.string(forKey: "webSignInState"),
+              items.first(where: { $0.name == "state" })?.value == expected,
+              let expiry = UserDefaults.standard.object(forKey: "webSignInExpiresAt") as? Date, expiry > Date(),
+              let token = items.first(where: { $0.name == "token" })?.value, !token.isEmpty else {
+            errorMessage = "This web sign-in link is invalid or expired. Choose Sign in on web again."
+            return true
+        }
+        cancelWebSignIn()
+        await authenticate { [auth] in
+            try await auth.signIn(customToken: token)
+        }
+        return true
+    }
+
+    func cancelWebSignIn() {
+        webSignInWindowNumber = nil
+        UserDefaults.standard.removeObject(forKey: "webSignInState")
+        UserDefaults.standard.removeObject(forKey: "webSignInExpiresAt")
     }
 
     func signInWithGoogle() async {
@@ -353,6 +412,7 @@ final class AccountSessionController: ObservableObject {
             return
         }
 
+        cancelWebSignIn()
         let previousState = state
         state = .loading
         errorMessage = nil

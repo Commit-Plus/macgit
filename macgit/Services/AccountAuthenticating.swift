@@ -59,6 +59,7 @@ protocol AccountAuthenticating {
     func refreshCurrentAccount() async throws -> AccountSnapshot
     func signIn(email: String, password: String) async throws -> AccountSnapshot
     func createAccount(email: String, password: String) async throws -> AccountSnapshot
+    func signIn(customToken: String) async throws -> AccountSnapshot
     func signInWithGoogle() async throws -> AccountSnapshot
     func completePendingLink(email: String, password: String) async throws -> AccountSnapshot
     func sendPasswordReset(email: String) async throws
@@ -67,6 +68,10 @@ protocol AccountAuthenticating {
 }
 
 extension AccountAuthenticating {
+    func signIn(customToken: String) async throws -> AccountSnapshot {
+        throw AccountAuthError.cloudNotConfigured
+    }
+
     func refreshCurrentAccount() async throws -> AccountSnapshot {
         guard let currentAccount else {
             throw AccountAuthError.message("Sign in before refreshing your profile.")

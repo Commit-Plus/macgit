@@ -151,6 +151,14 @@ struct ContentView: View {
                 hasActiveOperation: operationProgress.activeOperation != nil
             )
         )
+        // Prefer the scene that opened browser sign-in. If it was closed (or the
+        // app relaunched), allow another existing scene to receive the callback.
+        .handlesExternalEvents(
+            preferring: accountController.webSignInWindowNumber != nil
+                && accountController.webSignInWindowNumber == windowContext.window?.windowNumber
+                ? ["macgit://session"] : [],
+            allowing: ["macgit://session"]
+        )
         .windowDismissBehavior(
             operationProgress.activeOperation == nil ? .automatic : .disabled
         )

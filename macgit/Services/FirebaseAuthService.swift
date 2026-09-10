@@ -66,6 +66,16 @@ final class FirebaseAuthService: AccountAuthenticating {
         }
     }
 
+    func signIn(customToken: String) async throws -> AccountSnapshot {
+        do {
+            let result = try await Auth.auth().signIn(withCustomToken: customToken)
+            pendingGoogleCredential = nil
+            return Self.snapshot(result.user)
+        } catch {
+            throw map(error)
+        }
+    }
+
     func signInWithGoogle() async throws -> AccountSnapshot {
         guard let clientID = FirebaseApp.app()?.options.clientID,
               let window = NSApp.keyWindow ?? NSApp.windows.first else {

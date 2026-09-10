@@ -91,26 +91,18 @@ struct AuthenticationSheet: View {
                     .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || controller.isLoading)
             }
 
-            VStack(spacing: 10) {
+            HStack(spacing: 10) {
                 Button(action: signInWithGoogle) {
                     Label("Continue with Google", systemImage: "person.crop.circle.badge.plus")
-                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
-                .controlSize(.large)
-                .disabled(controller.isLoading || controller.pendingLinkEmail != nil)
-
-                // Button(action: {}) {
-                //     Label("Sign in with Apple · Coming later", systemImage: "apple.logo")
-                //         .frame(maxWidth: .infinity)
-                // }
-                // .buttonStyle(.glass)
-                // .buttonBorderShape(.roundedRectangle(radius: 12))
-                // .controlSize(.large)
-                // .disabled(true)
+                Button(action: controller.signInOnWeb) {
+                    Label("Sign in on web", systemImage: "globe")
+                }
             }
-            .frame(maxWidth: 320)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.roundedRectangle(radius: 12))
+            .controlSize(.large)
+            .disabled(controller.isLoading || controller.pendingLinkEmail != nil || !controller.cloudFeaturesAvailable)
 
             Text("You can keep using Commit+ and all local Git features without an account.")
                 .foregroundStyle(.secondary)
@@ -210,6 +202,7 @@ struct AuthenticationSheet: View {
     }
 
     private func cancel() {
+        controller.cancelWebSignIn()
         controller.presentedSheet = nil
         dismiss()
     }

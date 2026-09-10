@@ -199,6 +199,9 @@ struct macgitApp: App {
                 .preferredColorScheme(appState.appearance.colorScheme)
                 .onOpenURL { url in
                     Task { @MainActor in
+                        if await accountController.handleWebSignInCallback(url) {
+                            return
+                        }
                         if await providerAccountController.handleProviderOAuthCallback(url) {
                             return
                         }
