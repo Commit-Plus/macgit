@@ -577,6 +577,7 @@ final class PullRequestControllerTests: XCTestCase {
             remoteNameProvider: { _ in "origin" },
             remoteURLProvider: { _, _ in "https://github.com/octocat/Hello-World.git" },
             currentBranchProvider: { _ in "feature/pr-actions" },
+            defaultBranchProvider: { _ in "develop" },
             localBranchesProvider: { _ in ["main", "feature/pr-actions"] }
         )
 
@@ -584,7 +585,7 @@ final class PullRequestControllerTests: XCTestCase {
         await controller.presentCreatePullRequest()
 
         XCTAssertEqual(controller.createDraftSeed?.sourceBranch, "feature/pr-actions")
-        XCTAssertNil(controller.createDraftSeed?.targetBranch)
+        XCTAssertEqual(controller.createDraftSeed?.targetBranch, "develop")
         XCTAssertEqual(controller.createDraftSeed?.suggestedTitle, "Pr Actions")
     }
 

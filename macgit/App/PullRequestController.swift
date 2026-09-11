@@ -583,7 +583,7 @@ final class PullRequestController: ObservableObject {
             repository: repository,
             remoteName: activeRemoteName,
             sourceBranch: sourceBranch,
-            targetBranch: nil,
+            targetBranch: defaultBranch,
             suggestedTitle: suggestedTitle(for: sourceBranch)
         )
         async let participantsLoad: Void = loadCreateDraftParticipants()

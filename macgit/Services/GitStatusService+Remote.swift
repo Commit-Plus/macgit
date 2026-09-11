@@ -373,6 +373,8 @@ extension GitStatusService {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             // Remove leading "* " if present
             let clean = trimmed.hasPrefix("* ") ? String(trimmed.dropFirst(2)) : trimmed
+            // Symbolic refs such as origin/HEAD -> origin/main are aliases, not branches.
+            guard !clean.contains(" -> ") else { return nil }
             // Return just the branch name without remote prefix
             let prefix = "\(remote)/"
             if clean.hasPrefix(prefix) {

@@ -99,6 +99,9 @@ struct CreatePullRequestView: View {
                 }
             )
         }
+        .onAppear {
+            reloadChanges()
+        }
         .onChange(of: sourceBranch) { _, _ in
             reloadChanges()
         }

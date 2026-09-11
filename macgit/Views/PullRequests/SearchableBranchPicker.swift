@@ -82,6 +82,7 @@ struct SearchableBranchPicker: View {
                     if allowsNone {
                         Button {
                             selection = nil
+                            NSCursor.arrow.set()
                             isPresented = false
                         } label: {
                             HStack {
@@ -92,13 +93,27 @@ struct SearchableBranchPicker: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active:
+                                NSCursor.pointingHand.set()
+                            case .ended:
+                                NSCursor.arrow.set()
+                            }
+                        }
                     }
 
                     ForEach(branches, id: \.self) { branch in
                         Button {
                             selection = branch
+                            NSCursor.arrow.set()
                             isPresented = false
                         } label: {
                             HStack {
@@ -109,8 +124,21 @@ struct SearchableBranchPicker: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active:
+                                NSCursor.pointingHand.set()
+                            case .ended:
+                                NSCursor.arrow.set()
+                            }
+                        }
                     }
                 }
                 .listStyle(.plain)
