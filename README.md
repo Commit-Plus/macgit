@@ -28,14 +28,14 @@
   </picture>
 </p>
 
-Commit+ is a native macOS Git client built with Swift and SwiftUI. Git is driven by the system Git executable via `Process()` subprocesses, with optional account features for sync, updates, and AI.
+Commit+ is a native macOS Git client built with Swift and SwiftUI — designed to be fast, lightweight, and deeply integrated with the platform. Optional account features add sync, updates, and AI-powered commit messages.
 
 ## Why Commit+
 
 macOS Git clients today fall into three groups:
 
 - **Command line**: Powerful but requires memorizing dozens of commands and flags.
-- **Electron-based**: Source Tree, GitKraken, Fork. Cross-platform but not native—slow to start, heavy on memory, inconsistent with macOS conventions.
+- **Electron-based**: SourceTree, GitKraken, Fork. Cross-platform but not native — slow to start, heavy on memory, inconsistent with macOS conventions.
 - **Proprietary**: Tower. Polished and native, but paid and closed source.
 
 Commit+ is the missing fourth: native, lightweight, and open source.
@@ -90,6 +90,21 @@ Generate editable Conventional Commit messages from your staged diff, or from ch
 - **Context-aware output**: Uses file lists, line stats, patch context, branch name, and recent commit subjects
 - **Safe handoff**: Generated messages stay editable before committing, and Commit+ asks you to regenerate if the underlying changes move during generation
 
+### Terminal Integration
+
+Open any repository directly from the terminal with the `commit` CLI command:
+
+```sh
+commit                  # Open the current folder's repository
+commit .                # Same behavior
+commit "/path/to/repo"   # Open a specific repository
+commit --help
+```
+
+On first launch, Commit+ offers to **Install CLI & Configure PATH** — this creates a `commit` symlink at `~/.local/bin/commit` and adds it to your shell configuration (zsh, bash, or fish). You can also install later from **Settings → General → Command Line**.
+
+The command opens the repository in Commit+ (it does not create a Git commit). Subfolders resolve to the working-tree root, and linked worktrees are supported. To uninstall, remove `~/.local/bin/commit`.
+
 ### Quick Search
 
 Spotlight-style search modal (`Cmd+Shift+F`) to instantly find commits, files, branches, and tags.
@@ -99,55 +114,6 @@ Spotlight-style search modal (`Cmd+Shift+F`) to instantly find commits, files, b
 - **macOS**: 26.2+
 - **Xcode**: 26.2+ (to build from source)
 - **Git**: Installed on the system (Homebrew or Xcode Command Line Tools)
-
-## Build & Run
-
-```bash
-# Build
-xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' build
-
-# Run
-open $(ls -dt ~/Library/Developer/Xcode/DerivedData/macgit-*/Build/Products/Debug/Commit+.app | head -n 1)
-
-# Release build
-xcodebuild -project macgit.xcodeproj -scheme macgit -configuration Release -destination 'platform=macOS' build
-```
-
-Or open in Xcode and press `Cmd+R`:
-
-```bash
-open macgit.xcodeproj
-```
-
-## Testing
-
-```bash
-xcodebuild -project macgit.xcodeproj -scheme macgit -destination 'platform=macOS' test
-```
-
-## Tech Stack
-
-| Technology | Detail |
-|-----------|--------|
-| **Language** | Swift 5.0 |
-| **UI Framework** | SwiftUI |
-| **Platform** | macOS 26.2+ |
-| **Concurrency** | Swift async/await, actor |
-| **Git Engine** | System Git via `Process()` subprocess |
-| **Account & Cloud** | Firebase Auth, Firestore, Firebase Functions |
-| **Updates & UI Packages** | Sparkle, Google Sign-In, MarkdownUI |
-
-## Project Structure
-
-```
-macgit/
-├── App/                 # App entry point & global state
-├── Views/               # SwiftUI views
-├── Services/            # Git operations & business logic
-├── Models/              # Data models
-├── ViewModels/          # View models
-└── Resources/           # Assets
-```
 
 ## Keyboard Shortcuts
 
@@ -162,51 +128,12 @@ macgit/
 | `Cmd+Shift+S` | Stash |
 | `Cmd+Shift+F` | Search |
 
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding conventions, and pull request guidelines.
+
+For security issues, please refer to [SECURITY.md](SECURITY.md).
+
 ## License
 
 This project is licensed under the [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE).
-
----
-
-*Built for the macOS developer community.*
-
-### Open a repository from Terminal
-
-On launch, Commit+ shows a setup tip if the CLI and shell PATH are not configured.
-Click **Install CLI & Configure PATH** to complete both steps. **Close** reminds you
-on the next launch if setup is unfinished; **Don't remind** disables the startup tip.
-Once setup is complete, the tip is skipped. You can also install from
-**Settings → General → Command Line**.
-
-Installation creates `~/.local/bin/commit` pointing to the helper inside this app. Keep
-Commit+ in a stable location (for example `/Applications`) before installing.
-Existing files and commands are never overwritten.
-
-The install button also adds `export PATH="$HOME/.local/bin:$PATH"` to your shell
-configuration (zsh or bash; fish uses its equivalent). Existing files are backed up
-beside the originals before appending, and repeated installation does not duplicate
-the line. Open a new terminal afterward, or run the displayed PATH command in your
-current terminal. Run `command -v commit` to check for another command, alias, or
-function with that name.
-
-```sh
-commit                  # Open the current folder's repository
-commit .                # Same behavior
-commit "/path/to/repo"   # Open a specific repository
-commit --help
-```
-
-Subfolders resolve to the working-tree root; linked worktrees and repositories
-without commits are supported. Bare repositories are not supported. This command
-opens a repository; it does not create a Git commit. It uses the app's Git runtime
-preference, including downloaded Embedded Git. If no suitable Git runtime exists,
-the command reports an error and does not download or launch anything.
-
-Invalid folders produce stderr and a nonzero exit code without opening Commit+.
-Exit code 0 means macOS accepted the open request; errors after handoff are shown
-in the app. Existing repository windows are focused when available.
-
-To uninstall, remove the symlink `~/.local/bin/commit`. If you move the app, remove
-that symlink and install the command again from the app's new location.
-
-CLI checks run without launching the app: `bash scripts/test-command-line.sh`.
