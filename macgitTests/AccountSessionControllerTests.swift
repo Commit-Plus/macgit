@@ -144,7 +144,7 @@ final class AccountSessionControllerTests: XCTestCase {
             providerIDs: ["password"]
         )
         let profileURL = try XCTUnwrap(
-            URL(string: "http://localhost:3000/session?next=/profile#token=test-token")
+            URL(string: "http://localhost:3000/session?next=/account/profile#token=test-token")
         )
         let provider = FakeWebAccountSessionProvider(
             urls: [.profile: profileURL]
@@ -250,7 +250,7 @@ final class AccountSessionControllerTests: XCTestCase {
     func testDeviceLimitCanOpenAuthenticatedWebManagement() async throws {
         let account = Self.account
         let profileURL = try XCTUnwrap(
-            URL(string: "https://commit-plus.com/session?next=/profile?section%3Ddevices#token=test")
+            URL(string: "https://commit-plus.com/session?next=/account/profile?section%3Ddevices#token=test")
         )
         let webProvider = FakeWebAccountSessionProvider(urls: [.devices: profileURL])
         var openedURLs: [URL] = []

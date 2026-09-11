@@ -26,9 +26,9 @@ enum WebAccountDestination: Hashable {
     var path: String {
         switch self {
         case .profile:
-            "/profile"
+            "/account/profile"
         case .devices:
-            "/profile?section=devices"
+            "/account/profile?section=devices"
         case .pricing:
             "/pricing"
         }

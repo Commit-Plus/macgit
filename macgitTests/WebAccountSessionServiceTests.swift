@@ -29,7 +29,7 @@ final class WebAccountSessionServiceTests: XCTestCase {
 
         XCTAssertEqual(
             url.absoluteString,
-            "http://localhost:3000/session?next=/profile#token=header.payload.signature"
+            "http://localhost:3000/session?next=/account/profile#token=header.payload.signature"
         )
     }
 
@@ -55,7 +55,7 @@ final class WebAccountSessionServiceTests: XCTestCase {
 
         XCTAssertEqual(
             url.absoluteString,
-            "https://commit-plus.com/session?next=/profile?section%3Ddevices#token=test-token"
+            "https://commit-plus.com/session?next=/account/profile?section%3Ddevices#token=test-token"
         )
     }
 }
