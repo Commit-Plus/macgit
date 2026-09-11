@@ -21,7 +21,7 @@ Xcode places DerivedData under `~/Library/Developer/Xcode/DerivedData/macgit-<ha
 
 ## License Header
 
-Every `.swift` file must start with the AGPL v3 header. The pre-commit hook blocks commits missing these markers: `Copyright (C)`, `GNU Affero General Public License`, `trantienthanh2412@gmail.com`.
+Every `.swift` file must contain the AGPL v3 license header. The pre-commit hook blocks commits missing these markers: `GNU Affero General Public License`, `trantienthanh2412@gmail.com`. A `Copyright (C)` line is recommended but not enforced, so contributors can add their own.
 
 ```swift
 //
