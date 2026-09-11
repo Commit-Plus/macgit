@@ -1,0 +1,86 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: "When I do X, Y happens instead of Z."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the issue.
+      placeholder: |
+        1. Open a repository
+        2. Click on Branches
+        3. Try to delete a branch
+        4. ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of Commit+ is affected?
+      options:
+        - Repository view
+        - Commits / History
+        - Branches
+        - Staging / Diff
+        - Conflict resolution
+        - Worktree
+        - Git Flow
+        - AI commit generation
+        - Terminal CLI
+        - Settings / Preferences
+        - Other
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Commit+ version
+      placeholder: "1.0.0"
+    validations:
+      required: false
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version & chip
+      placeholder: "macOS 26.2 / Apple Silicon"
+    validations:
+      required: false
+
+  - type: input
+    id: git
+    attributes:
+      label: Git version
+      placeholder: "2.47.0"
+      description: Output of `git --version`
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Screenshots / Logs
+      description: If applicable, add screenshots, screen recordings, or crash logs.
+    validations:
+      required: false
