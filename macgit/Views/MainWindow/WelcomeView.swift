@@ -18,6 +18,9 @@
 import SwiftUI
 
 struct WelcomeView: View {
+    @Environment(\.openWindow) private var openWindow
+    @EnvironmentObject private var bookmarkController: RepositoryBookmarkController
+    @State private var locationError: String?
     @ObservedObject private var store = RecentRepositoriesStore.shared
     @State private var model = WelcomeDashboardModel()
     @State private var showingUnavailableRepository = false
@@ -34,7 +37,7 @@ struct WelcomeView: View {
                 Divider()
                 WelcomeDashboardContent(
                     model: model, accountDisplayName: accountDisplayName, repositoryCount: store.repositories.count,
-                    onRefresh: refreshImmediately, onRepositoryOpened: openRepository
+                    onRefresh: refreshImmediately, onReviewAttention: reviewAttention, onRepositoryOpened: openRepository
                 )
             }
         }
@@ -42,16 +45,65 @@ struct WelcomeView: View {
         .alert("Repository Unavailable", isPresented: $showingUnavailableRepository) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Use the repository list to locate its folder or remove it from recents.")
+            Text(locationError ?? "Use the repository list to locate its folder or remove it from recents.")
         }
         .task(id: refreshID) {
             let force = forceRefresh
             forceRefresh = false
             await model.refresh(repositories: store.repositories, force: force)
         }
+        .task(id: refreshID) { await model.refreshAttention(repositories: store.repositories) }
         .onChange(of: store.repositories.map { "\($0.url.path)|\($0.lastOpened.timeIntervalSince1970)" }) { _, _ in refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh() }
         .onReceive(NotificationCenter.default.publisher(for: .repositoryDidChange)) { _ in refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryLocalStateDidRefresh)) { _ in refresh() }
+    }
+
+    private func reviewAttention(_ repository: WelcomeRepositoryAttention) {
+        if repository.unavailable {
+            locateRepository(repository)
+            return
+        }
+        guard FileManager.default.fileExists(atPath: repository.url.appendingPathComponent(".git").path) else {
+            locateRepository(repository)
+            return
+        }
+        store.add(repository.url)
+        openWindow(id: "main", value: RepositoryWindowRequest.repository(
+            repository.url, shouldFitVisibleScreen: true, showsHistory: repository.showsHistory
+        ))
+    }
+
+    private func locateRepository(_ repository: WelcomeRepositoryAttention) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Select the new location for \(repository.name)"
+        panel.prompt = "Use Folder"
+        guard let window = NSApp.keyWindow else { return }
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task {
+                do {
+                    guard FileManager.default.fileExists(atPath: url.appendingPathComponent(".git").path) else {
+                        throw CocoaError(.fileReadInvalidFileName)
+                    }
+                    if let id = bookmarkController.bookmarkID(linkedTo: repository.url),
+                       let bookmark = bookmarkController.bookmark(forID: id) {
+                        try await bookmarkController.validateAndLink(bookmark, to: url)
+                    }
+                    if let old = store.repositories.first(where: { $0.url == repository.url }) {
+                        store.remove(old)
+                    }
+                    store.add(url)
+                    onRepositoryOpened(url)
+                } catch {
+                    locationError = "Could not use this repository folder. \(error.localizedDescription)"
+                    showingUnavailableRepository = true
+                }
+            }
+        }
     }
 
     private func refreshImmediately() {

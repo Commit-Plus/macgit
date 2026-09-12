@@ -28,6 +28,7 @@ struct RepositoryWindowRequest: Codable, Hashable {
     let repositoryURL: URL?
     let initialPresentation: InitialPresentation
     let shouldFitVisibleScreen: Bool
+    var showsHistory: Bool? = nil
 
     static func repositoryPicker(id: UUID = UUID()) -> Self {
         Self(
@@ -50,13 +51,15 @@ struct RepositoryWindowRequest: Codable, Hashable {
     static func repository(
         _ repositoryURL: URL,
         shouldFitVisibleScreen: Bool,
+        showsHistory: Bool? = nil,
         id: UUID = UUID()
     ) -> Self {
         Self(
             id: id,
             repositoryURL: repositoryURL,
             initialPresentation: .repositoryPicker,
-            shouldFitVisibleScreen: shouldFitVisibleScreen
+            shouldFitVisibleScreen: shouldFitVisibleScreen,
+            showsHistory: showsHistory
         )
     }
 }

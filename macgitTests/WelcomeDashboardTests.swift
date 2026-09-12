@@ -72,18 +72,15 @@ final class WelcomeDashboardTests: XCTestCase {
         XCTAssertEqual(calendar.component(.day, from: days[0]), 9)
     }
 
-    func testLocalScanReportsConflictsBehindAndOnlyCurrentAuthor() async throws {
+    func testActivityScanCountsOnlyCurrentAuthor() async throws {
         let runner = WelcomeDashboardTestRunner()
         let service = GitStatusService(runner: runner)
         let days = WelcomeDashboardSnapshot.days(endingAt: .now, calendar: calendar)
         let result = try await service.welcomeActivity(
             for: RecentRepository(url: URL(fileURLWithPath: "/example")), days: days, calendar: calendar
         )
-        XCTAssertEqual(result.conflictCount, 2)
-        XCTAssertEqual(result.behindCount, 3)
         XCTAssertEqual(result.commitCount, 1)
         XCTAssertNil(result.activityNote)
-        XCTAssertTrue(result.needsAttention)
     }
 
     func testMissingIdentityDoesNotCountOtherAuthors() async throws {
@@ -94,7 +91,6 @@ final class WelcomeDashboardTests: XCTestCase {
         )
         XCTAssertEqual(result.commitCount, 0)
         XCTAssertNotNil(result.activityNote)
-        XCTAssertEqual(result.behindCount, 3)
     }
 
     func testCreateRefusesAnExistingFolderWithoutInitializingIt() async throws {

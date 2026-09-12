@@ -39,30 +39,6 @@ extension GitStatusService {
             return activity
         }
         try Task.checkCancellation()
-        do {
-            let conflicts = try await runGit(
-                arguments: ["diff", "--name-only", "--diff-filter=U", "-z"], in: repository.url, environment: environment
-            )
-            activity.conflictCount = conflicts.split(separator: "\0").count
-        } catch {
-            activity.statusNote = "Conflict status could not be read."
-        }
-        // No upstream is a normal state for a local repository or detached HEAD.
-        let upstream = try? await runGit(
-            arguments: ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
-            in: repository.url, environment: environment
-        )
-        if let upstream, !upstream.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            do {
-                let count = try await runGit(
-                    arguments: ["rev-list", "--count", "HEAD..@{upstream}"], in: repository.url, environment: environment
-                )
-                activity.behindCount = Int(count.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-            } catch {
-                activity.statusNote = "Cached upstream status could not be read."
-            }
-        }
-        try Task.checkCancellation()
         let email = (try? await runGit(arguments: ["config", "user.email"], in: repository.url, environment: environment))?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !email.isEmpty else {

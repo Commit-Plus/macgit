@@ -24,7 +24,36 @@ final class WelcomeDashboardModel {
     private(set) var snapshot = WelcomeDashboardSnapshot(days: WelcomeDashboardSnapshot.days(endingAt: .now))
     private(set) var isLoading = true
     private(set) var updatedAt: Date?
+    private(set) var attention: [WelcomeRepositoryAttention] = []
+    private(set) var isCheckingAttention = true
+    private(set) var attentionUpdatedAt: Date?
+    private var attentionGeneration = UUID()
     private var generation = UUID()
+
+    func refreshAttention(repositories: [RecentRepository]) async {
+        let request = UUID()
+        attentionGeneration = request
+        isCheckingAttention = true
+        var result: [WelcomeRepositoryAttention] = []
+        var seen = Set<URL>()
+        for repository in repositories.sorted(by: { $0.lastOpened > $1.lastOpened })
+            where seen.insert(repository.url.standardizedFileURL).inserted {
+            guard !Task.isCancelled, request == attentionGeneration else { return }
+            do {
+                let status = try await GitStatusService.shared.welcomeAttention(for: repository)
+                if status.needsAttention { result.append(status) }
+            } catch {
+                guard !Task.isCancelled, request == attentionGeneration else { return }
+            }
+        }
+        guard !Task.isCancelled, request == attentionGeneration else { return }
+        attention = result.sorted {
+            if $0.priority != $1.priority { return $0.priority < $1.priority }
+            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+        attentionUpdatedAt = .now
+        isCheckingAttention = false
+    }
 
     func refresh(repositories: [RecentRepository], force: Bool = false) async {
         let request = UUID()

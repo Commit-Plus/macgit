@@ -18,59 +18,54 @@
 import SwiftUI
 
 struct WelcomeAttentionView: View {
-    let snapshot: WelcomeDashboardSnapshot
+    let repositories: [WelcomeRepositoryAttention]
     let isLoading: Bool
-    let onRepositoryOpened: (URL) -> Void
+    let hasRepositories: Bool
+    let updatedAt: Date?
+    let onReview: (WelcomeRepositoryAttention) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Needs your attention").font(.title3.bold())
-            Text("Current branch · Remote status reflects the last fetch, which may be out of date.")
-                .font(.caption).foregroundStyle(.secondary)
-            if isLoading {
-                Label("Checking local repositories…", systemImage: "clock")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            } else if snapshot.attentionCount == 0 {
-                Label(snapshot.repositories.isEmpty ? "Repository notices will appear here" : "No issues found in the scanned repositories", systemImage: "checkmark.circle")
-                    .font(.subheadline).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Needs your attention").font(.title3.bold())
+                Spacer()
+                if isLoading { ProgressView().controlSize(.small) }
             }
-            ForEach(snapshot.repositories.filter(\.needsAttention)) { repository in
-                Button { onRepositoryOpened(repository.url) } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: repository.conflictCount > 0 ? "exclamationmark.triangle.fill" : "info.circle")
-                            .foregroundStyle(repository.conflictCount > 0 ? Color.orange : Color.accentColor)
+            if repositories.isEmpty {
+                Label(isLoading ? "Checking local repositories…" : hasRepositories ? "All caught up" : "Open a repository to see tasks here",
+                      systemImage: isLoading ? "clock" : "checkmark.circle")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Current branches · Ahead / behind reflects the last fetch. No automatic fetch.")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(repositories) { repository in
+                    HStack(alignment: .center, spacing: 12) {
+                        Image(systemName: repository.priority == 0 ? "exclamationmark.triangle.fill" : "arrow.triangle.branch")
+                            .foregroundStyle(repository.priority == 0 ? Color.orange : Color.accentColor)
                             .frame(width: 22)
                         VStack(alignment: .leading, spacing: 5) {
                             Text(repository.name).font(.subheadline.bold())
-                            if repository.conflictCount > 0 {
-                                Text("\(repository.conflictCount) file(s) with unresolved conflicts")
+                            if !repository.unavailable {
+                                Text(repository.branch).font(.caption).foregroundStyle(.secondary)
                             }
-                            if repository.behindCount > 0 {
-                                Text("\(repository.behindCount) commit(s) behind cached upstream · Review before pulling")
+                            Text(repository.summary).font(.caption).foregroundStyle(.secondary)
+                            if let error = repository.error, repository.priority < 5 {
+                                Text(error).font(.caption).foregroundStyle(.secondary)
                             }
-                            if let note = repository.activityNote { Text(note) }
-                            if let note = repository.statusNote { Text(note) }
                         }
-                        .font(.caption).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                        Button(repository.unavailable ? "Locate Folder" : repository.showsHistory ? "View History" : "Review") {
+                            onReview(repository)
+                        }
+                        .buttonStyle(.bordered)
                     }
                     .padding(12)
                     .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .help("Open \(repository.name) to review")
             }
-            Divider()
-            Label {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("More notifications, later").font(.caption.weight(.medium))
-                    Text("A home for repository reminders and background task results.")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-            } icon: {
-                Image(systemName: "bell.badge").foregroundStyle(.tertiary)
+            if let updatedAt, !repositories.isEmpty {
+                Text("Checked \(updatedAt.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
         }
         .padding(20)

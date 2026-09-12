@@ -22,6 +22,7 @@ struct WelcomeDashboardContent: View {
     let accountDisplayName: String?
     let repositoryCount: Int
     let onRefresh: () -> Void
+    let onReviewAttention: (WelcomeRepositoryAttention) -> Void
     let onRepositoryOpened: (URL) -> Void
 
     var body: some View {
@@ -45,10 +46,10 @@ struct WelcomeDashboardContent: View {
                         WelcomeOverviewCard(title: "Repositories", value: "\(repositoryCount)", detail: "In your recent list", icon: "folder", tint: .blue)
                         WelcomeOverviewCard(title: "Your commits", value: model.isLoading ? "…" : "\(model.snapshot.commitCount)", detail: "Past 30 days · local", icon: "point.topleft.down.to.point.bottomright.curvepath", tint: .green)
                         WelcomeOverviewCard(title: "Active days", value: model.isLoading ? "…" : "\(model.snapshot.activeDays) / 30", detail: "Days with your commits", icon: "calendar", tint: .purple)
-                        WelcomeOverviewCard(title: "Attention", value: model.isLoading ? "…" : "\(model.snapshot.attentionCount)", detail: "Repositories to review", icon: "bell", tint: .orange)
+                        WelcomeOverviewCard(title: "Attention", value: model.isCheckingAttention ? "…" : "\(model.attention.count)", detail: "Repositories to review", icon: "bell", tint: .orange)
                     }
                     WelcomeActivityView(snapshot: model.snapshot, isLoading: model.isLoading, onRepositoryOpened: onRepositoryOpened)
-                    WelcomeAttentionView(snapshot: model.snapshot, isLoading: model.isLoading, onRepositoryOpened: onRepositoryOpened)
+                    WelcomeAttentionView(repositories: model.attention, isLoading: model.isCheckingAttention, hasRepositories: repositoryCount > 0, updatedAt: model.attentionUpdatedAt, onReview: onReviewAttention)
                     if let date = model.updatedAt {
                         Text("Updated \(date.formatted(date: .omitted, time: .shortened)) · Dashboard reads local Git only")
                             .font(.caption2).foregroundStyle(.secondary)
