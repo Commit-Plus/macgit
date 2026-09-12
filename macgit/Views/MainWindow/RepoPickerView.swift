@@ -88,16 +88,19 @@ struct RepoPickerView: View {
 
     let title: String
     let showsApplicationIcon: Bool
+    let isDashboardSidebar: Bool
     var showCloneSheetInitially: Bool
     var onRepositoryOpened: (URL) -> Void
 
     init(
         title: String = "Choose a Repository",
         showsApplicationIcon: Bool = false,
+        isDashboardSidebar: Bool = false,
         showCloneSheetInitially: Bool = false,
         onRepositoryOpened: @escaping (URL) -> Void
     ) {
         self.title = title
+        self.isDashboardSidebar = isDashboardSidebar
         self.showsApplicationIcon = showsApplicationIcon
         self.showCloneSheetInitially = showCloneSheetInitially
         self.onRepositoryOpened = onRepositoryOpened
@@ -169,14 +172,18 @@ struct RepoPickerView: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            headerSection
+            if isDashboardSidebar {
+                dashboardActions
+            } else {
+                headerSection
+            }
             controlBar
             recentRepositoriesSection
-            Spacer(minLength: 0)
+            if !isDashboardSidebar { Spacer(minLength: 0) }
         }
-        .frame(minWidth: 500, maxWidth: 700, minHeight: 520, alignment: .top)
+        .frame(minWidth: isDashboardSidebar ? 300 : 500, maxWidth: isDashboardSidebar ? .infinity : 700, minHeight: isDashboardSidebar ? 0 : 520, alignment: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        .padding(24)
+        .padding(isDashboardSidebar ? 18 : 24)
         .task(id: showCloneSheetInitially) {
             if showCloneSheetInitially {
                 showingCloneSheet = true
@@ -271,6 +278,57 @@ struct RepoPickerView: View {
         case .name:
             return filtered.sorted {
                 $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+        }
+    }
+
+    private var dashboardActions: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Commit+", systemImage: "square.stack.3d.up.fill")
+                .font(.title2.bold())
+                .padding(.bottom, 8)
+            HStack(spacing: 12) {
+                Button(action: openExistingRepository) {
+                    Label("Open", systemImage: "folder")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .help("Open Repository")
+                Button { showingCloneSheet = true } label: {
+                    Label("Clone", systemImage: "arrow.down.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .help("Clone Repository")
+            }
+            Button(action: createRepository) {
+                Label("Create Repository", systemImage: "plus.rectangle.on.folder")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+        }
+        .controlSize(.large)
+    }
+
+    private func createRepository() {
+        let panel = NSSavePanel()
+        panel.title = "Create Repository"
+        panel.message = "Choose a name and location for a new Git repository."
+        panel.nameFieldStringValue = "Untitled Repository"
+        panel.prompt = "Create"
+        panel.canCreateDirectories = true
+        guard let window = NSApp.keyWindow else { return }
+        panel.beginSheetModal(for: window) { result in
+            guard result == .OK, let url = panel.url else { return }
+            Task {
+                do {
+                    try await GitStatusService.shared.createEmptyRepository(at: url)
+                    store.add(url)
+                    onRepositoryOpened(url)
+                } catch {
+                    errorMessage = error.localizedDescription
+                    showingError = true
+                }
             }
         }
     }
@@ -420,7 +478,7 @@ struct RepoPickerView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 320)
+                .frame(maxHeight: isDashboardSidebar ? .infinity : 320)
             }
         }
         .padding(18)
@@ -510,7 +568,7 @@ struct RepoPickerView: View {
             }
             .buttonStyle(.borderedProminent)
 
-            Button("Link Folder") {
+            Button(isDashboardSidebar ? "Link" : "Link Folder") {
                 chooseFolderToLink(bookmark)
             }
             .buttonStyle(.bordered)
@@ -569,6 +627,7 @@ struct RepoPickerView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(repo.name)
                     .font(.body.weight(.medium))
+                    .lineLimit(1)
                 Text(repo.url.path)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -578,7 +637,7 @@ struct RepoPickerView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 6) {
-                rowStatusView(for: repo)
+                if !isDashboardSidebar { rowStatusView(for: repo) }
                 Text(timeAgoString(from: repo.lastOpened))
                     .font(.caption2)
                     .foregroundStyle(.secondary)

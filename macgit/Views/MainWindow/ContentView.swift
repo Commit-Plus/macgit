@@ -65,7 +65,7 @@ struct ContentView: View {
     var body: some View {
         Group {
             if isWelcomeWindow {
-                WelcomeView(onRepositoryOpened: { url in
+                WelcomeView(accountDisplayName: accountController.account?.displayLabel, onRepositoryOpened: { url in
                     openRepository(url, inNewWindow: true)
                 })
             } else if let url = repositoryURL {
