@@ -25,8 +25,10 @@ struct RepositoryAIChatHistorySheet: View {
     @State private var conversations: [RepositoryAIConversationSummary] = []
     @State private var isLoading = true
     @State private var isOpening = false
+    @State private var isDeleting = false
     @State private var errorMessage: String?
     @State private var isReady = false
+    @State private var conversationPendingDeletion: RepositoryAIConversationSummary?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -44,43 +46,71 @@ struct RepositoryAIChatHistorySheet: View {
             if let errorMessage {
                 Text(errorMessage).foregroundStyle(.red).textSelection(.enabled)
             }
-            if isLoading {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if conversations.isEmpty {
-                ContentUnavailableView(
-                    search.isEmpty ? "No saved conversations" : "No matching conversations",
-                    systemImage: "bubble.left.and.bubble.right",
-                    description: Text(search.isEmpty ? "Your chats are saved automatically on this Mac." : "Try another title or phrase.")
-                )
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(conversations) { conversation in
-                            Button { open(conversation) } label: {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack {
-                                        Text(conversation.title).font(.headline).lineLimit(1)
-                                        Spacer()
-                                        Text(conversation.updatedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
-                                            .font(.caption).foregroundStyle(.secondary)
+            Group {
+                if isLoading {
+                    ProgressView()
+                } else if conversations.isEmpty {
+                    ContentUnavailableView(
+                        search.isEmpty ? "No saved conversations" : "No matching conversations",
+                        systemImage: "bubble.left.and.bubble.right",
+                        description: Text(search.isEmpty ? "Your chats are saved automatically on this Mac." : "Try another title or phrase.")
+                    )
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(conversations) { conversation in
+                                HStack(spacing: 8) {
+                                    Button { open(conversation) } label: {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            HStack {
+                                                Text(conversation.title).font(.headline).lineLimit(1)
+                                                Spacer()
+                                                Text(conversation.updatedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
+                                                    .font(.caption).foregroundStyle(.secondary)
+                                            }
+                                            Text(conversation.preview).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                                        }
+                                        .padding(12)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+                                        .contentShape(.rect)
                                     }
-                                    Text(conversation.preview).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                                    .buttonStyle(.plain)
+                                    .disabled(isOpening || isDeleting || controller.isInteractionDisabled)
+
+                                    Button("Delete conversation", systemImage: "trash") {
+                                        conversationPendingDeletion = conversation
+                                    }
+                                    .labelStyle(.iconOnly)
+                                    .buttonStyle(.borderless)
+                                    .foregroundStyle(.red)
+                                    .help("Delete conversation")
+                                    .disabled(isOpening || isDeleting || controller.isInteractionDisabled)
+                                    .confirmationDialog(
+                                        "Delete \(conversation.title)?",
+                                        isPresented: Binding(
+                                            get: { conversationPendingDeletion?.id == conversation.id },
+                                            set: { if !$0 { conversationPendingDeletion = nil } }
+                                        ),
+                                        titleVisibility: .visible
+                                    ) {
+                                        Button("Delete", role: .destructive) {
+                                            delete(conversation)
+                                        }
+                                    } message: {
+                                        Text("This conversation will be permanently deleted.")
+                                    }
                                 }
-                                .padding(12)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
-                                .contentShape(.rect)
                             }
-                            .buttonStyle(.plain)
-                            .disabled(isOpening || controller.isInteractionDisabled)
                         }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             if isOpening { ProgressView("Opening conversation…") }
         }
         .padding(24)
-        .frame(width: 620, height: 480)
+        .frame(width: 620, height: 480, alignment: .topLeading)
         .task {
             await controller.prepareConversationHistory()
             isReady = true
@@ -112,6 +142,20 @@ struct RepositoryAIChatHistorySheet: View {
             do {
                 try await controller.restoreConversation(id: conversation.id)
                 dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func delete(_ conversation: RepositoryAIConversationSummary) {
+        isDeleting = true
+        Task {
+            defer { isDeleting = false }
+            do {
+                try await controller.deleteConversation(id: conversation.id)
+                conversations.removeAll { $0.id == conversation.id }
+                conversationPendingDeletion = nil
             } catch {
                 errorMessage = error.localizedDescription
             }

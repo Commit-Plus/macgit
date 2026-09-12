@@ -128,6 +128,11 @@ final class RepositoryAIChatController: ObservableObject {
         return try await historyStore.search(repositoryPath: historyRepositoryPath, query: query)
     }
 
+    func deleteConversation(id: String) async throws {
+        await historyWriteTask?.value
+        try await historyStore.delete(id: id, repositoryPath: historyRepositoryPath)
+    }
+
     func prepareConversationHistory() async {
         persistConversation()
         await historyWriteTask?.value

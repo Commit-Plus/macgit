@@ -75,6 +75,16 @@ actor RepositoryAIChatHistoryStore {
         }
     }
 
+    func delete(id: String, repositoryPath: String) throws {
+        try withDatabase { db in
+            try query(
+                db,
+                sql: "DELETE FROM conversations WHERE id = ? AND repository = ?",
+                values: [id, repositoryPath]
+            ) { _ in }
+        }
+    }
+
     private func withDatabase<T>(_ operation: (OpaquePointer) throws -> T) throws -> T {
         try FileManager.default.createDirectory(at: databaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         var connection: OpaquePointer?
