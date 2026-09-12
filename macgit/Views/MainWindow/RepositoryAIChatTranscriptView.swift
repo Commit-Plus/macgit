@@ -25,6 +25,8 @@ struct RepositoryAIChatTranscriptView: View {
     @ObservedObject var controller: RepositoryAIChatController
     @State private var firstMessageIndex: Int
     @State private var followsStreaming = true
+    @State private var showsScrollIndicator = false
+    @State private var scrollHideTask: Task<Void, Never>?
 
     init(controller: RepositoryAIChatController) {
         self.controller = controller
@@ -38,7 +40,9 @@ struct RepositoryAIChatTranscriptView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
+                // Measure the loaded messages exactly: lazy height estimates are unreliable
+                // for long Markdown responses and can misplace the scrollbar thumb.
+                VStack(alignment: .leading, spacing: 12) {
                     if firstMessageIndex > 0 {
                         Button("Load older messages (\(firstMessageIndex) remaining)") {
                             followsStreaming = false
@@ -66,6 +70,14 @@ struct RepositoryAIChatTranscriptView: View {
                         .frame(height: 1)
                         .id(Self.bottomID)
                 }
+                .padding(.trailing, 8)
+                .background {
+                    ScrollViewIndicatorController(
+                        showsIndicators: showsScrollIndicator,
+                        controlSize: .small,
+                        onScroll: { }
+                    )
+                }
             }
             // Recreated for each history selection, including selecting the same chat again.
             .defaultScrollAnchor(.bottom, for: .initialOffset)
@@ -85,8 +97,11 @@ struct RepositoryAIChatTranscriptView: View {
             .onScrollPhaseChange { _, newPhase, context in
                 switch newPhase {
                 case .tracking, .interacting:
+                    scrollHideTask?.cancel()
+                    showsScrollIndicator = true
                     followsStreaming = false
                 case .idle:
+                    hideScrollIndicatorAfterDelay()
                     followsStreaming = context.geometry.visibleRect.maxY
                         >= context.geometry.contentSize.height - 24
                 case .decelerating, .animating:
@@ -95,6 +110,19 @@ struct RepositoryAIChatTranscriptView: View {
                     break
                 }
             }
+            .onDisappear {
+                scrollHideTask?.cancel()
+                scrollHideTask = nil
+                showsScrollIndicator = false
+            }
+        }
+    }
+
+    private func hideScrollIndicatorAfterDelay() {
+        scrollHideTask?.cancel()
+        scrollHideTask = Task { @MainActor in
+            do { try await Task.sleep(for: .milliseconds(900)) } catch { return }
+            showsScrollIndicator = false
         }
     }
 }

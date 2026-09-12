@@ -27,17 +27,14 @@ final class RepositoryAIChatController: ObservableObject {
     @Published var comparisonHeadDraft = ""
     @Published var pullRequestNumberDraft = ""
     @Published private(set) var conversationTitle = "New conversation"
-    @Published private(set) var messages: [RepositoryAIMessage] = [] {
-        didSet { scheduleHistorySave() }
-    }
+    @Published private(set) var messages: [RepositoryAIMessage] = []
     @Published private(set) var historyError: String?
     private let historyStore: RepositoryAIChatHistoryStore
-    private var historyDebounceTask: Task<Void, Never>?
     private var historyWriteTask: Task<Void, Never>?
     private var isRestoringHistory = false
     @Published private(set) var recentCommits: [RepositoryAICommitChoice] = []
     @Published private(set) var isRunning = false {
-        didSet { persistConversation() }
+        didSet { if !isRunning { persistConversation() } }
     }
     @Published private(set) var isChoosingCommit = false
     @Published private(set) var isChoosingFile = false
@@ -100,19 +97,10 @@ final class RepositoryAIChatController: ObservableObject {
         repositoryURL.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
-    private func scheduleHistorySave() {
-        guard !isRestoringHistory else { return }
-        historyDebounceTask?.cancel()
-        historyDebounceTask = Task { [weak self] in
-            do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
-            self?.persistConversation()
-        }
-    }
-
     private func persistConversation() {
-        historyDebounceTask?.cancel()
-        historyDebounceTask = nil
-        guard !isRestoringHistory, !messages.isEmpty else { return }
+        // Streaming only updates memory. Persist at explicit lifecycle boundaries.
+        guard !isRestoringHistory, !isRunning, !isExecutingMutation,
+              !isExecutingRemoteOperation, !messages.isEmpty else { return }
         let snapshot = RepositoryAIConversation(
             id: conversationSessionID, repositoryPath: historyRepositoryPath,
             title: conversationTitle, updatedAt: .now, messages: messages
@@ -147,7 +135,6 @@ final class RepositoryAIChatController: ObservableObject {
             throw RepositoryAIError.noRepositoryData("saved conversation")
         }
         guard !isInteractionDisabled else { throw RepositoryAIError.contextChanged }
-        historyDebounceTask?.cancel()
         isRestoringHistory = true
         defer { isRestoringHistory = false }
         dismissSelection()
@@ -264,6 +251,7 @@ final class RepositoryAIChatController: ObservableObject {
         guard let base = RepositoryAIRef(comparisonBaseDraft),
               let head = RepositoryAIRef(comparisonHeadDraft) else {
             messages.append(RepositoryAIMessage(role: .assistant, text: RepositoryAIError.invalidRefReference.localizedDescription))
+            persistConversation()
             return
         }
         let pendingQuestion = pendingQuickAction?.action == .compareRefs
@@ -297,6 +285,7 @@ final class RepositoryAIChatController: ObservableObject {
         let number = Int(pullRequestNumberDraft.trimmingCharacters(in: .whitespacesAndNewlines))
         guard number == nil || number! > 0 else {
             messages.append(RepositoryAIMessage(role: .assistant, text: "Enter a positive pull request number."))
+            persistConversation()
             return
         }
         let pendingQuestion = pendingQuickAction?.action == .analyzePullRequest
@@ -431,6 +420,7 @@ final class RepositoryAIChatController: ObservableObject {
             role: .assistant,
             text: "Cancelled — \(pendingMutation.preview.title) was not run."
         ))
+        persistConversation()
     }
 
     func confirmPendingRemoteOperation(
@@ -491,6 +481,7 @@ final class RepositoryAIChatController: ObservableObject {
             role: .assistant,
             text: "Cancelled — \(pendingRemoteOperation.preview.title) was not run."
         ))
+        persistConversation()
     }
 
     func providerDidChange() {
@@ -542,6 +533,7 @@ final class RepositoryAIChatController: ObservableObject {
         pendingMutationExpirationTask = nil
         if appendTranscript {
             messages.append(RepositoryAIMessage(role: .assistant, text: "Stale — \(reason)"))
+            persistConversation()
         }
     }
 
@@ -557,6 +549,7 @@ final class RepositoryAIChatController: ObservableObject {
         pendingRemoteOperationExpirationTask = nil
         if appendTranscript {
             messages.append(RepositoryAIMessage(role: .assistant, text: "Stale — \(reason)"))
+            persistConversation()
         }
     }
 
@@ -620,6 +613,7 @@ final class RepositoryAIChatController: ObservableObject {
                 contextTitle: contextTitle
             ))
         }
+        persistConversation()
         isRunning = true
         defer { isRunning = false }
 
@@ -739,22 +733,22 @@ final class RepositoryAIChatController: ObservableObject {
                 streamingMessageID = nil
             }
         } catch is CancellationError {
-            removeStreamingAssistant(streamingMessageID)
+            finishInterruptedAssistant(streamingMessageID)
             messages.append(RepositoryAIMessage(role: .assistant, text: "The AI request was cancelled."))
         } catch let error as RepositoryAIMutationError {
-            removeStreamingAssistant(streamingMessageID)
+            finishInterruptedAssistant(streamingMessageID)
             messages.append(RepositoryAIMessage(
                 role: .assistant,
                 text: "Rejected — \(error.localizedDescription)"
             ))
         } catch let error as RepositoryAIRemoteOperationError {
-            removeStreamingAssistant(streamingMessageID)
+            finishInterruptedAssistant(streamingMessageID)
             messages.append(RepositoryAIMessage(
                 role: .assistant,
                 text: "Rejected — \(error.localizedDescription)"
             ))
         } catch {
-            removeStreamingAssistant(streamingMessageID)
+            finishInterruptedAssistant(streamingMessageID)
             messages.append(RepositoryAIMessage(
                 role: .assistant,
                 text: error.localizedDescription
@@ -892,9 +886,23 @@ final class RepositoryAIChatController: ObservableObject {
         scheduleExpiration(for: pending)
     }
 
-    private func removeStreamingAssistant(_ id: UUID?) {
-        guard let id else { return }
-        messages.removeAll { $0.id == id }
+    private func finishInterruptedAssistant(_ id: UUID?) {
+        guard let id, let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        let message = messages[index]
+        guard !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              message.text != "Generating analysis…" else {
+            messages.remove(at: index)
+            return
+        }
+        messages[index] = RepositoryAIMessage(
+            id: message.id,
+            role: message.role,
+            text: message.text + "\n\n> Response interrupted before completion.",
+            contextTitle: message.contextTitle,
+            toolResult: message.toolResult,
+            citations: message.citations,
+            evidenceManifest: message.evidenceManifest
+        )
     }
 
     private func handleQuickAction(
