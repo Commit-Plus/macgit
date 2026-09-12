@@ -26,13 +26,11 @@ struct CurrentBranchIntegrationWarningDetails: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(
-                status.predictsBaseConflict ? "Potential conflicts detected" : "Update available",
-                systemImage: status.predictsBaseConflict
-                    ? "exclamationmark.triangle.fill"
-                    : "arrow.triangle.merge"
+                "Potential conflicts detected",
+                systemImage: "exclamationmark.triangle.fill"
             )
             .bold()
-            .foregroundStyle(status.predictsBaseConflict ? Color.red : .primary)
+            .foregroundStyle(Color.red)
 
             if let upstreamRef = status.upstreamRef, status.upstreamBehindCount > 0 {
                 Text(upstreamRef).bold()
@@ -44,10 +42,8 @@ struct CurrentBranchIntegrationWarningDetails: View {
                     + Text(status.branch).bold()
                     + Text(".")
             }
-            if status.predictsBaseConflict {
-                Text("Git predicts textual conflicts while merging the base branch.")
-                    .foregroundStyle(.secondary)
-            }
+            Text("Git predicts textual conflicts while merging the base branch.")
+                .foregroundStyle(.secondary)
 
             Button("Update Current Branch", systemImage: "arrow.triangle.2.circlepath", action: onUpdate)
                 .buttonStyle(.borderedProminent)

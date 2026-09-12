@@ -26,9 +26,9 @@ struct CurrentBranchIntegrationWarning: View {
     @State private var showingDetails = false
 
     var body: some View {
-        Button("Show Current Branch Update", systemImage: warningSymbol, action: showDetails)
+        Button("Show Potential Merge Conflict", systemImage: "exclamationmark.triangle.fill", action: showDetails)
             .labelStyle(.iconOnly)
-            .foregroundStyle(status.predictsBaseConflict ? Color.red : Color.orange)
+            .foregroundStyle(Color.red)
             .buttonStyle(.plain)
             .frame(width: 22, height: 22)
             .contentShape(Rectangle())
@@ -44,18 +44,8 @@ struct CurrentBranchIntegrationWarning: View {
             }
     }
 
-    private var warningSymbol: String {
-        status.predictsBaseConflict
-            ? "exclamationmark.triangle.fill"
-            : "exclamationmark.triangle"
-    }
-
     private var helpText: String {
-        if status.predictsBaseConflict {
-            "The current branch needs an update and may conflict with \(status.baseRef ?? "its base branch")."
-        } else {
-            "The current branch has remote or base-branch updates available."
-        }
+        "The current branch needs an update and may conflict with \(status.baseRef ?? "its base branch")."
     }
 
     private func showDetails() {

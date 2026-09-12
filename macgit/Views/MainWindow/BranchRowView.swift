@@ -82,7 +82,7 @@ struct BranchRowContent: View, Equatable {
                     BranchDropLabel(text: dropLabel)
                 } else {
                     BranchSyncBadge(isSyncing: isBranchSyncing, status: syncStatus)
-                    if let integrationStatus {
+                    if let integrationStatus, integrationStatus.predictsBaseConflict {
                         CurrentBranchIntegrationWarning(
                             status: integrationStatus,
                             canUpdate: canUpdateCurrentBranch,
