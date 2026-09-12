@@ -1216,6 +1216,13 @@ struct MainWindowView: View {
                                 await submitCreatePullRequest(draft)
                             }
                         },
+                        onGenerateCreatePullRequestText: { field, sourceBranch, targetBranch in
+                            try await generatePullRequestText(
+                                field: field,
+                                sourceBranch: sourceBranch,
+                                targetBranch: targetBranch
+                            )
+                        },
                         authorizeAction: { await authorizePullRequestAccess() }
                     )
                 case .denied(let denial):

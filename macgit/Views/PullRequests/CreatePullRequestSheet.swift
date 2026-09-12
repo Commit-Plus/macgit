@@ -18,6 +18,17 @@
 
 import SwiftUI
 
+enum PullRequestAIDraftField: Equatable, Sendable {
+    case title
+    case description
+}
+
+typealias PullRequestAIGenerationAction = @MainActor (
+    PullRequestAIDraftField,
+    String,
+    String
+) async throws -> String
+
 struct CreatePullRequestView: View {
     let seed: PullRequestDraftSeed
     let repositoryURL: URL
@@ -30,6 +41,7 @@ struct CreatePullRequestView: View {
     let participantsErrorMessage: String?
     let loadSourceBranches: (String) async -> [String]
     let loadTargetBranches: (String) async -> [String]
+    let onGenerateText: PullRequestAIGenerationAction
     var onCancel: () -> Void
     var onBranchesChanged: (String, String?) -> Void
     var onCreate: (PullRequestDraft) -> Void
@@ -42,6 +54,8 @@ struct CreatePullRequestView: View {
     @State private var selectedAssigneeIDs: Set<String> = []
     @State private var validationMessage: String?
     @State private var showingDiscardConfirmation = false
+    @State private var generatingField: PullRequestAIDraftField?
+    @State private var generationErrorMessage: String?
 
     init(
         seed: PullRequestDraftSeed,
@@ -55,6 +69,7 @@ struct CreatePullRequestView: View {
         participantsErrorMessage: String?,
         loadSourceBranches: @escaping (String) async -> [String],
         loadTargetBranches: @escaping (String) async -> [String],
+        onGenerateText: @escaping PullRequestAIGenerationAction,
         onCancel: @escaping () -> Void,
         onBranchesChanged: @escaping (String, String?) -> Void,
         onCreate: @escaping (PullRequestDraft) -> Void
@@ -70,6 +85,7 @@ struct CreatePullRequestView: View {
         self.participantsErrorMessage = participantsErrorMessage
         self.loadSourceBranches = loadSourceBranches
         self.loadTargetBranches = loadTargetBranches
+        self.onGenerateText = onGenerateText
         self.onCancel = onCancel
         self.onBranchesChanged = onBranchesChanged
         self.onCreate = onCreate
@@ -140,6 +156,12 @@ struct CreatePullRequestView: View {
     }
 
     private var formPanel: some View {
+        GeometryReader { geometry in
+            formContents(descriptionHeight: max(200, geometry.size.height * 0.55))
+        }
+    }
+
+    private func formContents(descriptionHeight: CGFloat) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 SearchableBranchPicker(
@@ -169,21 +191,38 @@ struct CreatePullRequestView: View {
                     Text("Title")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField("Pull request title", text: $title)
-                        .textFieldStyle(.roundedBorder)
+                    ZStack(alignment: .trailing) {
+                        TextField("Pull request title", text: $title)
+                            .textFieldStyle(.roundedBorder)
+                            .padding(.trailing, 38)
+                        generateButton(for: .title)
+                            .padding(.trailing, 6)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Description")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextEditor(text: $bodyText)
-                        .font(.body)
-                        .frame(minHeight: 220)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
-                        }
+                    ZStack(alignment: .topTrailing) {
+                        PullRequestDescriptionEditor(text: $bodyText)
+                            .frame(height: descriptionHeight)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+                            }
+                        generateButton(for: .description)
+                            .padding(.top, 8)
+                            .padding(.trailing, 18)
+                            .zIndex(1)
+                    }
+                }
+
+                if let generationErrorMessage {
+                    Label(generationErrorMessage, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
 
                 PullRequestParticipantPicker(
@@ -222,6 +261,84 @@ struct CreatePullRequestView: View {
             && sourceBranch != targetBranch
             && changedFileCount.map { $0 > 0 } == true
             && !isLoadingChanges
+    }
+
+    private var canGenerateText: Bool {
+        targetBranch != nil
+            && sourceBranch != targetBranch
+            && changedFileCount.map { $0 > 0 } == true
+            && !isLoadingChanges
+            && !isSubmitting
+            && generatingField == nil
+    }
+
+    private func generateButton(for field: PullRequestAIDraftField) -> some View {
+        Button {
+            Task { @MainActor in
+                await generateText(for: field)
+            }
+        } label: {
+            ZStack {
+                Label(generateLabel(for: field), systemImage: "sparkles")
+                    .labelStyle(.iconOnly)
+                    .opacity(generatingField == field ? 0 : 1)
+                if generatingField == field {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .frame(width: 14, height: 14)
+        }
+        .buttonStyle(GlassButtonStyle(tint: .accentColor, fontSize: 11))
+        .disabled(!canGenerateText)
+        .help(generateHelp(for: field))
+        .accessibilityLabel(generatingField == field
+            ? "Generating \(generateLabel(for: field).lowercased())"
+            : generateLabel(for: field))
+        .onContinuousHover { phase in
+            switch phase {
+            case .active: NSCursor.pointingHand.set()
+            case .ended: NSCursor.arrow.set()
+            }
+        }
+    }
+
+    private func generateLabel(for field: PullRequestAIDraftField) -> String {
+        switch field {
+        case .title: "Generate pull request title"
+        case .description: "Generate pull request description"
+        }
+    }
+
+    private func generateHelp(for field: PullRequestAIDraftField) -> String {
+        guard targetBranch != nil, sourceBranch != targetBranch else {
+            return "Select different source and target branches first."
+        }
+        guard changedFileCount.map({ $0 > 0 }) == true else {
+            return "Pull request changes must be available before generating text."
+        }
+        return "Generate editable text from the pull request changes."
+    }
+
+    @MainActor
+    private func generateText(for field: PullRequestAIDraftField) async {
+        guard let targetBranch, canGenerateText else { return }
+        generationErrorMessage = nil
+        generatingField = field
+        defer { generatingField = nil }
+        do {
+            let generated = try await onGenerateText(field, sourceBranch, targetBranch)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !generated.isEmpty else { throw RepositoryAIError.emptyResponse }
+            switch field {
+            case .title:
+                title = generated.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? generated
+            case .description:
+                bodyText = generated
+            }
+        } catch {
+            generationErrorMessage = error.localizedDescription
+        }
     }
 
     @ViewBuilder

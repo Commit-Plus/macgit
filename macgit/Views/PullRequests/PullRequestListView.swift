@@ -26,6 +26,7 @@ struct PullRequestListView: View {
     var onReconnectAccount: () -> Void = {}
     var onRequestCreatePullRequest: () -> Void = {}
     var onSubmitCreatePullRequest: (PullRequestDraft) -> Void = { _ in }
+    var onGenerateCreatePullRequestText: PullRequestAIGenerationAction = { _, _, _ in "" }
     var authorizeAction: () async -> Bool = { true }
     @State private var pendingCommentPullRequest: PullRequestSummary?
     @State private var selectedPullRequestID: Int?
@@ -49,6 +50,7 @@ struct PullRequestListView: View {
                     loadTargetBranches: { query in
                         await controller.loadCreateDraftTargetBranches(query: query)
                     },
+                    onGenerateText: onGenerateCreatePullRequestText,
                     onCancel: { controller.dismissCreatePullRequest() },
                     onBranchesChanged: { sourceBranch, targetBranch in
                         Task {
