@@ -233,6 +233,7 @@ struct GeminiCommitMessageProvider: CommitMessageAIProvider {
         ]
         let functionDeclarations = RepositoryAIAgentToolSchema.declarations(
             includingQuickActions: request.isFirstTurn,
+            allowsBuiltInWorkflows: request.allowsBuiltInWorkflows,
             forGemini: true,
             mutationContext: request.mutationContext,
             remoteOperationContext: request.remoteOperationContext

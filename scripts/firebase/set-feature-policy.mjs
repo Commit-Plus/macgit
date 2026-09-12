@@ -21,9 +21,14 @@ const proOnly = {
   },
 };
 
+const freeAndPro = {
+  enabled: true,
+  plans: { free: { enabled: true }, pro: { enabled: true } },
+};
+
 await getFirestore().doc("featurePolicies/release").set({
   schemaVersion: 1,
-  revision: 4,
+  revision: 5,
   features: {
     privateRepositories: {
       enabled: true,
@@ -46,8 +51,9 @@ await getFirestore().doc("featurePolicies/release").set({
         pro: { enabled: true, repositoryScope: "all" },
       },
     },
-    aiCommitMessage: proOnly,
-    repositoryChat: proOnly,
+    aiCommitMessage: freeAndPro,
+    repositoryChat: freeAndPro,
+    repositoryAIActions: proOnly,
     aiConflictResolution: proOnly,
     aiBringYourOwnKey: proOnly,
     multipleProviderAccounts: proOnly,
@@ -55,4 +61,4 @@ await getFirestore().doc("featurePolicies/release").set({
   updatedAt: FieldValue.serverTimestamp(),
 });
 
-console.log("Published release feature policy revision 4.");
+console.log("Published release feature policy revision 5.");

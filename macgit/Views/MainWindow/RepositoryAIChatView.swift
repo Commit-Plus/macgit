@@ -16,9 +16,21 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+import AppKit
 import SwiftUI
 
 struct RepositoryAIChatView: View {
+    @EnvironmentObject private var featureAccessController: FeatureAccessController
+    @EnvironmentObject private var accountController: AccountSessionController
+
+    private var workflowAccess: FeatureAccessDecision {
+        featureAccessController.decision(for: .repositoryAIActions, entitlement: accountController.entitlement)
+    }
+
+    private var providerAccess: FeatureAccessDecision {
+        featureAccessController.decision(for: .aiBringYourOwnKey, entitlement: accountController.entitlement)
+    }
+
     @ObservedObject var controller: RepositoryAIChatController
     @ObservedObject var providerController: AIProviderController
     let accessDecision: FeatureAccessDecision
@@ -226,18 +238,40 @@ struct RepositoryAIChatView: View {
 
                 AIProviderMenu(
                     controller: providerController,
-                    restrictedProviderAccess: accessDecision,
+                    restrictedProviderAccess: providerAccess,
                     showsConfigureAction: true,
                     labelMode: .model
                 )
 
-                if controller.isRunning {
-                    Button("Stop generating", systemImage: "stop.fill", action: controller.cancelActiveRequest)
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.circle)
-                        .controlSize(.large)
-                        .help("Stop generating")
+                if controller.isRunning || controller.isStopping {
+                    Button(action: controller.cancelActiveRequest) {
+                        Image(systemName: "stop.fill")
+                            .opacity(controller.isStopping ? 0 : 1)
+                            .overlay {
+                                if controller.isStopping {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                            }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.circle)
+                    .controlSize(.large)
+                    .disabled(controller.isStopping)
+                    .accessibilityLabel(controller.isStopping ? "Stopping generation" : "Stop generating")
+                    .help(controller.isStopping ? "Stopping generation…" : "Stop generating")
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active:
+                            (controller.isStopping ? NSCursor.arrow : NSCursor.pointingHand).set()
+                        case .ended:
+                            NSCursor.arrow.set()
+                        }
+                    }
+                    .onChange(of: controller.isStopping) { _, stopping in
+                        if stopping { NSCursor.arrow.set() }
+                    }
+                    .onDisappear { NSCursor.arrow.set() }
                 } else {
                     Button("Send question", systemImage: "arrow.up", action: submitDraft)
                         .labelStyle(.iconOnly)
@@ -321,6 +355,11 @@ struct RepositoryAIChatView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
+                if !workflowAccess.isAllowed {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Requires Pro")
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -346,7 +385,7 @@ struct RepositoryAIChatView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Image(systemName: "chevron.right")
+            Image(systemName: workflowAccess.isAllowed ? "chevron.right" : "lock.fill")
                 .foregroundStyle(.tertiary)
         }
         .padding(10)

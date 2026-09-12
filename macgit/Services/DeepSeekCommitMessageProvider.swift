@@ -155,42 +155,52 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
             "thinking": ["type": "disabled"],
         ])
 
+        try Task.checkCancellation()
         let (bytes, urlResponse) = try await streamingSession.bytes(for: urlRequest)
-        guard let response = urlResponse as? HTTPURLResponse else {
-            throw CommitMessageGenerationError.providerRequestFailed(
-                "DeepSeek returned an invalid HTTP response."
-            )
-        }
-        guard (200..<300).contains(response.statusCode) else {
-            var data = Data()
-            for try await byte in bytes {
-                data.append(byte)
+        defer { bytes.task.cancel() }
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            guard let response = urlResponse as? HTTPURLResponse else {
+                throw CommitMessageGenerationError.providerRequestFailed(
+                    "DeepSeek returned an invalid HTTP response."
+                )
             }
-            try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
-            throw RepositoryAIError.invalidResponse("DeepSeek returned an invalid streaming response.")
-        }
+            guard (200..<300).contains(response.statusCode) else {
+                var data = Data()
+                for try await byte in bytes {
+                    try Task.checkCancellation()
+                    data.append(byte)
+                }
+                try CloudAIProviderSupport.validate(response: response, data: data, providerName: descriptor.displayName)
+                throw RepositoryAIError.invalidResponse("DeepSeek returned an invalid streaming response.")
+            }
 
-        var content = ""
-        var reachedOutputLimit = false
-        for try await line in bytes.lines {
-            guard line.hasPrefix("data:") else { continue }
-            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-            if payload == "[DONE]" { break }
-            guard let data = payload.data(using: .utf8),
-                  let event = try? JSONDecoder().decode(StreamEvent.self, from: data),
-                  let choice = event.choices.first else { continue }
-            if let delta = choice.delta?.content, !delta.isEmpty {
-                content.append(delta)
-                await onTextDelta(delta)
+            var content = ""
+            var reachedOutputLimit = false
+            for try await line in bytes.lines {
+                try Task.checkCancellation()
+                guard line.hasPrefix("data:") else { continue }
+                let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+                if payload == "[DONE]" { break }
+                guard let data = payload.data(using: .utf8),
+                      let event = try? JSONDecoder().decode(StreamEvent.self, from: data),
+                      let choice = event.choices.first else { continue }
+                if let delta = choice.delta?.content, !delta.isEmpty {
+                    content.append(delta)
+                    await onTextDelta(delta)
+                }
+                if choice.finishReason?.lowercased() == "length" {
+                    reachedOutputLimit = true
+                }
             }
-            if choice.finishReason?.lowercased() == "length" {
-                reachedOutputLimit = true
+            try Task.checkCancellation()
+            guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw RepositoryAIError.emptyResponse
             }
+            return RepositoryAIAnswer(text: content, isTruncated: reachedOutputLimit)
+        } onCancel: {
+            bytes.task.cancel()
         }
-        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw RepositoryAIError.emptyResponse
-        }
-        return RepositoryAIAnswer(text: content, isTruncated: reachedOutputLimit)
     }
 
     func generateRepositoryAgentTurn(
@@ -208,6 +218,7 @@ struct DeepSeekCommitMessageProvider: CommitMessageAIProvider {
         let tools = RepositoryAIAgentToolSchema
             .declarations(
                 includingQuickActions: request.isFirstTurn,
+                allowsBuiltInWorkflows: request.allowsBuiltInWorkflows,
                 mutationContext: request.mutationContext,
                 remoteOperationContext: request.remoteOperationContext
             )

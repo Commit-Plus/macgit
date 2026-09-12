@@ -21,6 +21,10 @@ import Foundation
 
 @MainActor
 final class RepositoryAIChatController: ObservableObject {
+    // Evaluate live entitlement for every entry, including model-selected workflows.
+    var workflowAccessDecision: () -> FeatureAccessDecision = { .denied(.requiresPro) }
+    @Published var workflowAccessNotice: FeatureAccessNotice?
+
     @Published var draft = ""
     @Published var commitReferenceDraft = ""
     @Published var comparisonBaseDraft = ""
@@ -33,6 +37,7 @@ final class RepositoryAIChatController: ObservableObject {
     private var historyWriteTask: Task<Void, Never>?
     private var isRestoringHistory = false
     @Published private(set) var recentCommits: [RepositoryAICommitChoice] = []
+    @Published private(set) var isStopping = false
     @Published private(set) var isRunning = false {
         didSet { if !isRunning { persistConversation() } }
     }
@@ -148,6 +153,7 @@ final class RepositoryAIChatController: ObservableObject {
 
     var canSubmit: Bool {
         !isRunning
+            && !isStopping
             && !isExecutingMutation
             && !isExecutingRemoteOperation
             && pendingMutation == nil
@@ -157,6 +163,7 @@ final class RepositoryAIChatController: ObservableObject {
 
     var isInteractionDisabled: Bool {
         isRunning
+            || isStopping
             || isExecutingMutation
             || isExecutingRemoteOperation
             || pendingMutation != nil
@@ -170,6 +177,7 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     func reviewChanges() async {
+        guard authorizeWorkflow() else { return }
         dismissSelection()
         await startRequest(
             "Review the current repository changes. Focus on concrete bugs, regressions, security issues, and missing tests.",
@@ -180,6 +188,7 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     func prepareCommitExplanation() async {
+        guard authorizeWorkflow() else { return }
         guard !isRunning, !isLoadingCommits else { return }
         dismissSelection()
         isChoosingCommit = true
@@ -207,6 +216,7 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     func prepareFileReview() async {
+        guard authorizeWorkflow() else { return }
         guard !isRunning, !isLoadingFiles else { return }
         dismissSelection()
         isChoosingFile = true
@@ -216,6 +226,7 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     func reviewFile(_ reference: RepositoryAIFileReference, includeDiff: Bool = true) async {
+        guard authorizeWorkflow() else { return }
         guard !isRunning else { return }
         let pendingQuestion = pendingQuickAction?.action == .reviewFile
             ? pendingQuickAction?.question
@@ -240,6 +251,7 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     func prepareRefComparison() {
+        guard authorizeWorkflow() else { return }
         guard !isRunning else { return }
         dismissSelection()
         if comparisonHeadDraft.isEmpty { comparisonHeadDraft = "HEAD" }
@@ -247,6 +259,7 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     func compareRefs() async {
+        guard authorizeWorkflow() else { return }
         guard !isRunning else { return }
         guard let base = RepositoryAIRef(comparisonBaseDraft),
               let head = RepositoryAIRef(comparisonHeadDraft) else {
@@ -275,12 +288,14 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     func preparePullRequestAnalysis() {
+        guard authorizeWorkflow() else { return }
         guard !isRunning else { return }
         dismissSelection()
         isChoosingPullRequest = true
     }
 
     func analyzePullRequest() async {
+        guard authorizeWorkflow() else { return }
         guard !isRunning, pullRequestContextLoader != nil, pullRequestFingerprintLoader != nil else { return }
         let number = Int(pullRequestNumberDraft.trimmingCharacters(in: .whitespacesAndNewlines))
         guard number == nil || number! > 0 else {
@@ -310,6 +325,7 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     private func explainCommit(reference: String, subject: String?) async {
+        guard authorizeWorkflow() else { return }
         let normalizedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedReference.isEmpty else { return }
 
@@ -353,7 +369,9 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     func cancelActiveRequest() {
-        activeRequestTask?.cancel()
+        guard isRunning, !isStopping, let activeRequestTask else { return }
+        isStopping = true
+        activeRequestTask.cancel()
     }
 
     func confirmPendingMutation(id: UUID) async {
@@ -573,6 +591,7 @@ final class RepositoryAIChatController: ObservableObject {
         conversationTitle preferredTitle: String? = nil,
         shouldAppendUserMessage: Bool = true
     ) async {
+        guard activeRequestTask == nil else { return }
         let task = Task { [weak self] in
             guard let self else { return }
             await self.ask(
@@ -586,6 +605,7 @@ final class RepositoryAIChatController: ObservableObject {
         activeRequestTask = task
         await task.value
         activeRequestTask = nil
+        isStopping = false
     }
 
     private func ask(
@@ -595,6 +615,12 @@ final class RepositoryAIChatController: ObservableObject {
         conversationTitle preferredTitle: String? = nil,
         shouldAppendUserMessage: Bool
     ) async {
+        switch mode {
+        case .agent:
+            break // Free chat retains all existing Git tools.
+        case .fixedTool, .file, .comparison, .pullRequest:
+            guard authorizeWorkflow() else { return }
+        }
         let normalized = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty,
               !isRunning,
@@ -619,15 +645,19 @@ final class RepositoryAIChatController: ObservableObject {
 
         var streamingMessageID: UUID?
         do {
+            try Task.checkCancellation()
             let branch = await gitService.currentBranch(in: repositoryURL)
+            try Task.checkCancellation()
             switch mode {
             case .agent:
                 let result = try await providerController.answerRepositoryQuestionWithAgent(
                     repositoryURL: repositoryURL,
                     branchName: branch,
                     question: normalized,
-                    conversation: messages
+                    conversation: messages,
+                    allowsBuiltInWorkflows: workflowAccessDecision().isAllowed
                 )
+                try Task.checkCancellation()
                 if let quickAction = result.quickAction {
                     try await handleQuickAction(
                         quickAction,
@@ -749,9 +779,10 @@ final class RepositoryAIChatController: ObservableObject {
             ))
         } catch {
             finishInterruptedAssistant(streamingMessageID)
+            let wasCancelled = Task.isCancelled || (error as? URLError)?.code == .cancelled
             messages.append(RepositoryAIMessage(
                 role: .assistant,
-                text: error.localizedDescription
+                text: wasCancelled ? "The AI request was cancelled." : error.localizedDescription
             ))
         }
     }
@@ -763,6 +794,7 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     private func appendStreamingDelta(_ delta: String, to id: UUID) {
+        guard !isStopping, !Task.isCancelled else { return }
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
         let message = messages[index]
         let existingText = message.text == "Generating analysis…" ? "" : message.text
@@ -779,6 +811,7 @@ final class RepositoryAIChatController: ObservableObject {
     }
 
     private func completeStreamingAssistant(_ id: UUID, with answer: RepositoryAIAnswer) {
+        guard !isStopping, !Task.isCancelled else { return }
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
         let message = messages[index]
         let truncationNotice = answer.isTruncated
@@ -905,12 +938,30 @@ final class RepositoryAIChatController: ObservableObject {
         )
     }
 
+    @discardableResult
+    private func authorizeWorkflow() -> Bool {
+        switch workflowAccessDecision() {
+        case .allowed:
+            return true
+        case .denied(let denial):
+            workflowAccessNotice = FeatureAccessNotice(feature: .repositoryAIActions, denial: denial)
+            return false
+        }
+    }
+
     private func handleQuickAction(
         _ action: RepositoryAIQuickAction,
         question: String,
         branch: String?,
         streamingMessageID: inout UUID?
     ) async throws {
+        guard authorizeWorkflow() else {
+            messages.append(RepositoryAIMessage(
+                role: .assistant,
+                text: "This built-in Repository AI workflow requires Pro. You can continue chatting and using Git tools."
+            ))
+            return
+        }
         switch action {
         case .reviewChanges:
             let messageID = beginStreamingAssistant()

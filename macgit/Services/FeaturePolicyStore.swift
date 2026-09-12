@@ -98,7 +98,7 @@ private extension PlanFeature {
         switch self {
         case .privateRepositories, .pullRequests, .gitFlow:
             true
-        case .aiCommitMessage, .repositoryChat, .aiConflictResolution, .aiBringYourOwnKey,
+        case .aiCommitMessage, .repositoryChat, .repositoryAIActions, .aiConflictResolution, .aiBringYourOwnKey,
              .multipleProviderAccounts:
             false
         }

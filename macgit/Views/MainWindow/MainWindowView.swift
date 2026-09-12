@@ -673,7 +673,23 @@ struct MainWindowView: View {
                   let action = notification.userInfo?["action"] as? GitFlowMenuAction else { return }
             handleGitFlowMenuAction(action)
         }
+        .onChange(of: repositoryAIChatController.workflowAccessNotice) { _, notice in
+            guard let notice else { return }
+            if notice.denial == .requiresPro {
+                proUpgradeErrorMessage = nil
+                proUpgradePresentation = ProUpgradePresentation(feature: .repositoryAIActions)
+            } else {
+                featureAccessNotice = notice
+            }
+            repositoryAIChatController.workflowAccessNotice = nil
+        }
         .onAppear {
+            repositoryAIChatController.workflowAccessDecision = { [featureAccessController, accountController] in
+                featureAccessController.decision(
+                    for: .repositoryAIActions,
+                    entitlement: accountController.entitlement
+                )
+            }
             OpenRepositoryRegistry.shared.register(repositoryURL)
         }
         .onDisappear {
@@ -1304,7 +1320,7 @@ struct MainWindowView: View {
             Task {
                 _ = await authorizeGitFlowAccess(forceRefresh: true)
             }
-        case .privateRepositories, .aiCommitMessage, .repositoryChat,
+        case .privateRepositories, .aiCommitMessage, .repositoryChat, .repositoryAIActions,
              .aiConflictResolution, .aiBringYourOwnKey, .multipleProviderAccounts:
             break
         }

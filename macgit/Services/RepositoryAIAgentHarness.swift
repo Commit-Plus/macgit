@@ -59,6 +59,7 @@ actor RepositoryAIAgentHarness {
         repositoryURL: URL,
         branchName: String?,
         conversation: [RepositoryAIMessage] = [],
+        allowsBuiltInWorkflows: Bool = true,
         provider: any CommitMessageAIProvider
     ) async throws -> RepositoryAIAgentRunResult {
         try await withThrowingTaskGroup(of: RepositoryAIAgentRunResult.self) { group in
@@ -68,6 +69,7 @@ actor RepositoryAIAgentHarness {
                     repositoryURL: repositoryURL,
                     branchName: branchName,
                     conversation: conversation,
+                    allowsBuiltInWorkflows: allowsBuiltInWorkflows,
                     provider: provider
                 )
             }
@@ -88,6 +90,7 @@ actor RepositoryAIAgentHarness {
         repositoryURL: URL,
         branchName: String?,
         conversation: [RepositoryAIMessage],
+        allowsBuiltInWorkflows: Bool = true,
         provider: any CommitMessageAIProvider
     ) async throws -> RepositoryAIAgentRunResult {
         let initialState = try await stateProvider.state(in: repositoryURL)
@@ -108,10 +111,12 @@ actor RepositoryAIAgentHarness {
                     conversation: conversation,
                     previousToolResults: results,
                     isFirstTurn: isFirstTurn,
+                    allowsBuiltInWorkflows: allowsBuiltInWorkflows,
                     mutationContext: mutationContext,
                     remoteOperationContext: remoteOperationContext
                 )
             )
+            try Task.checkCancellation()
             isFirstTurn = false
 
             guard results.count + turn.toolCalls.count <= maximumToolCalls else {
@@ -133,6 +138,7 @@ actor RepositoryAIAgentHarness {
 
             let quickActions = turn.toolCalls.compactMap { RepositoryAIQuickAction(rawValue: $0.name) }
             if !quickActions.isEmpty {
+                guard allowsBuiltInWorkflows else { throw RepositoryAIAgentError.workflowAccessDenied }
                 guard results.isEmpty,
                       turn.toolCalls.count == 1,
                       let quickAction = quickActions.first else {

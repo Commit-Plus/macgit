@@ -57,7 +57,7 @@ final class FeatureAccessPolicyTests: XCTestCase {
         )
         XCTAssertEqual(
             resolver.decision(for: .aiCommitMessage, entitlement: .free),
-            .denied(.requiresPro)
+            .allowed
         )
         XCTAssertEqual(
             resolver.decision(for: .multipleProviderAccounts, entitlement: .free),
@@ -67,6 +67,34 @@ final class FeatureAccessPolicyTests: XCTestCase {
             resolver.decision(for: .multipleProviderAccounts, entitlement: activePro),
             .allowed
         )
+    }
+
+    func testFreeAIAllowsChatAndGenerationButRequiresProForWorkflowsAndConflicts() {
+        let resolver = FeatureAccessResolver(policy: .bundled)
+        for feature in [PlanFeature.aiCommitMessage, .repositoryChat] {
+            XCTAssertEqual(resolver.decision(for: feature, entitlement: .free), .allowed)
+        }
+        for feature in [PlanFeature.repositoryAIActions, .aiConflictResolution, .aiBringYourOwnKey] {
+            XCTAssertEqual(resolver.decision(for: feature, entitlement: .free), .denied(.requiresPro))
+            XCTAssertEqual(resolver.decision(for: feature, entitlement: activePro), .allowed)
+        }
+    }
+
+    func testLegacyPolicyUsesNewAIPlanSplit() {
+        let oldProRule = FeaturePolicyRule(
+            enabled: true,
+            free: PlanFeatureRule(enabled: false, repositoryScope: nil),
+            pro: PlanFeatureRule(enabled: true, repositoryScope: nil)
+        )
+        let policy = FeatureAccessPolicy(
+            schemaVersion: 1,
+            revision: 4,
+            features: [.aiCommitMessage: oldProRule, .repositoryChat: oldProRule]
+        )
+        let resolver = FeatureAccessResolver(policy: policy)
+        XCTAssertEqual(resolver.decision(for: .repositoryChat, entitlement: .free), .allowed)
+        XCTAssertEqual(resolver.decision(for: .aiCommitMessage, entitlement: .free), .allowed)
+        XCTAssertEqual(resolver.decision(for: .repositoryAIActions, entitlement: .free), .denied(.requiresPro))
     }
 
     func testOnlyActiveProEntitlementReceivesProRules() {
@@ -169,7 +197,7 @@ final class FeatureAccessPolicyTests: XCTestCase {
         )
         let policy = FeatureAccessPolicy(
             schemaVersion: 1,
-            revision: 2,
+            revision: 5,
             features: [.aiCommitMessage: disabled]
         )
 
@@ -236,6 +264,7 @@ final class FeatureAccessPolicyTests: XCTestCase {
             "gitFlow": scopedRule(freeEnabled: true, freeScope: "publicOrLocal"),
             "aiCommitMessage": proOnlyRule(),
             "repositoryChat": proOnlyRule(),
+            "repositoryAIActions": proOnlyRule(),
             "aiConflictResolution": proOnlyRule(),
             "aiBringYourOwnKey": proOnlyRule(),
             "multipleProviderAccounts": proOnlyRule()

@@ -24,6 +24,7 @@ enum PlanFeature: String, CaseIterable, Codable, Hashable {
     case gitFlow
     case aiCommitMessage
     case repositoryChat
+    case repositoryAIActions
     case aiConflictResolution
     case aiBringYourOwnKey
     case multipleProviderAccounts
@@ -62,12 +63,20 @@ struct FeatureAccessPolicy: Codable, Equatable {
     let features: [PlanFeature: FeaturePolicyRule]
 
     func rule(for feature: PlanFeature) -> FeaturePolicyRule {
-        features[feature] ?? Self.bundled.features[feature] ?? Self.deniedByDefaultRule
+        // Earlier policies bundled chat and guided workflows into one Pro gate.
+        // Old cached/remote entries cannot express the split introduced in revision 5.
+        if revision < 5,
+           [.aiCommitMessage, .repositoryChat, .repositoryAIActions].contains(feature) {
+            // Preserve an explicit global kill switch from the remote policy.
+            if let rule = features[feature], !rule.enabled { return rule }
+            return Self.bundled.features[feature] ?? Self.deniedByDefaultRule
+        }
+        return features[feature] ?? Self.bundled.features[feature] ?? Self.deniedByDefaultRule
     }
 
     static let bundled = FeatureAccessPolicy(
         schemaVersion: supportedSchemaVersion,
-        revision: 4,
+        revision: 5,
         features: [
             .privateRepositories: FeaturePolicyRule(
                 enabled: true,
@@ -84,12 +93,19 @@ struct FeatureAccessPolicy: Codable, Equatable {
                 free: PlanFeatureRule(enabled: true, repositoryScope: .publicOrLocal),
                 pro: PlanFeatureRule(enabled: true, repositoryScope: .all)
             ),
-            .aiCommitMessage: proOnlyRule,
-            .repositoryChat: proOnlyRule,
+            .aiCommitMessage: freeAndProRule,
+            .repositoryChat: freeAndProRule,
+            .repositoryAIActions: proOnlyRule,
             .aiConflictResolution: proOnlyRule,
             .aiBringYourOwnKey: proOnlyRule,
             .multipleProviderAccounts: proOnlyRule
         ]
+    )
+
+    private static let freeAndProRule = FeaturePolicyRule(
+        enabled: true,
+        free: PlanFeatureRule(enabled: true, repositoryScope: nil),
+        pro: PlanFeatureRule(enabled: true, repositoryScope: nil)
     )
 
     private static let proOnlyRule = FeaturePolicyRule(

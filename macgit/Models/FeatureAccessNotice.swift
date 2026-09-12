@@ -82,6 +82,8 @@ extension PlanFeature {
             "AI commit messages"
         case .repositoryChat:
             "Repository chat"
+        case .repositoryAIActions:
+            "Repository AI workflows"
         case .aiConflictResolution:
             "AI conflict resolution"
         case .aiBringYourOwnKey:

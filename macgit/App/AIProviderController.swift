@@ -254,6 +254,7 @@ final class AIProviderController: ObservableObject {
         sessionID: String? = nil,
         onTextDelta: (@Sendable (String) async -> Void)? = nil
     ) async throws -> RepositoryAIAnswer {
+        try Task.checkCancellation()
         let normalizedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedQuestion.isEmpty else {
             throw RepositoryAIError.emptyQuestion
@@ -279,6 +280,7 @@ final class AIProviderController: ObservableObject {
             in: repositoryURL,
             characterBudget: provider.descriptor.inputCharacterBudget
         )
+        try Task.checkCancellation()
         let request = RepositoryAIRequest(
             repositoryName: repositoryURL.lastPathComponent,
             branchName: branchName,
@@ -295,6 +297,7 @@ final class AIProviderController: ObservableObject {
         } else {
             response = try await provider.generateRepositoryResponse(request: request)
         }
+        try Task.checkCancellation()
         let currentFingerprint = try await repositoryToolExecutor.fingerprint(
             for: tool,
             in: repositoryURL
@@ -307,6 +310,7 @@ final class AIProviderController: ObservableObject {
         guard !response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw RepositoryAIError.emptyResponse
         }
+        try Task.checkCancellation()
         return response
     }
 
@@ -322,6 +326,7 @@ final class AIProviderController: ObservableObject {
         sessionID: String? = nil,
         onTextDelta: (@Sendable (String) async -> Void)? = nil
     ) async throws -> RepositoryAIAnswer {
+        try Task.checkCancellation()
         let normalizedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedQuestion.isEmpty else { throw RepositoryAIError.emptyQuestion }
         guard !isGenerating else {
@@ -339,6 +344,7 @@ final class AIProviderController: ObservableObject {
 
         isGenerating = true
         defer { isGenerating = false }
+        try Task.checkCancellation()
         let request = RepositoryAIRequest(
             repositoryName: repositoryURL.lastPathComponent,
             branchName: branchName,
@@ -362,6 +368,7 @@ final class AIProviderController: ObservableObject {
         guard !response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw RepositoryAIError.emptyResponse
         }
+        try Task.checkCancellation()
         return response
     }
 
@@ -373,6 +380,7 @@ final class AIProviderController: ObservableObject {
         includeDiff: Bool,
         sessionID: String? = nil
     ) async throws -> (answer: RepositoryAIAnswer, manifest: RepositoryAIEvidenceManifest) {
+        try Task.checkCancellation()
         let normalizedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedQuestion.isEmpty else { throw RepositoryAIError.emptyQuestion }
         guard !isGenerating else {
@@ -425,6 +433,7 @@ final class AIProviderController: ObservableObject {
                 isTruncated: context.isTruncated
             )
         }
+        try Task.checkCancellation()
         let response = try await provider.generateRepositoryResponse(request: RepositoryAIRequest(
             repositoryName: repositoryURL.lastPathComponent,
             branchName: branchName,
@@ -432,11 +441,13 @@ final class AIProviderController: ObservableObject {
             toolResult: result,
             sessionID: sessionID
         ))
+        try Task.checkCancellation()
         guard providerID == selectedProviderID else { throw RepositoryAIError.contextChanged }
         guard let evidence = manifest.evidence.first else { throw RepositoryAIError.invalidResponse("Repository AI did not receive file evidence.") }
         let currentFingerprint = try await repositoryFileContextService.currentFingerprint(for: evidence.reference, in: repositoryURL)
         guard currentFingerprint == evidence.fingerprint else { throw RepositoryAIError.contextChanged }
         let validated = manifest.validatedCitations(from: response.citations)
+        try Task.checkCancellation()
         return (RepositoryAIAnswer(text: response.text, citations: validated.accepted), manifest)
     }
 
@@ -444,8 +455,10 @@ final class AIProviderController: ObservableObject {
         repositoryURL: URL,
         branchName: String?,
         question: String,
-        conversation: [RepositoryAIMessage] = []
+        conversation: [RepositoryAIMessage] = [],
+        allowsBuiltInWorkflows: Bool = false
     ) async throws -> RepositoryAIAgentRunResult {
+        try Task.checkCancellation()
         let normalizedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedQuestion.isEmpty else {
             throw RepositoryAIError.emptyQuestion
@@ -475,8 +488,10 @@ final class AIProviderController: ObservableObject {
             repositoryURL: repositoryURL,
             branchName: branchName,
             conversation: conversation,
+            allowsBuiltInWorkflows: allowsBuiltInWorkflows,
             provider: provider
         )
+        try Task.checkCancellation()
         guard providerID == selectedProviderID else {
             throw RepositoryAIError.contextChanged
         }
