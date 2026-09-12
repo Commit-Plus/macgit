@@ -70,6 +70,7 @@ enum RepoPickerFilterType: String, CaseIterable, Identifiable {
 }
 
 struct RepoPickerView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var bookmarkController: RepositoryBookmarkController
     @ObservedObject private var store = RecentRepositoriesStore.shared
     @State private var showingCloneSheet = false
@@ -184,6 +185,7 @@ struct RepoPickerView: View {
         .frame(minWidth: isDashboardSidebar ? 300 : 500, maxWidth: isDashboardSidebar ? .infinity : 700, minHeight: isDashboardSidebar ? 0 : 520, alignment: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .padding(isDashboardSidebar ? 18 : 24)
+        .background(isDashboardSidebar && colorScheme == .light ? Color(red: 0.97, green: 0.98, blue: 0.99) : Color.clear)
         .task(id: showCloneSheetInitially) {
             if showCloneSheetInitially {
                 showingCloneSheet = true
@@ -284,9 +286,19 @@ struct RepoPickerView: View {
 
     private var dashboardActions: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Commit+", systemImage: "square.stack.3d.up.fill")
-                .font(.title2.bold())
-                .padding(.bottom, 8)
+            HStack(spacing: 10) {
+                if let icon = NSApp.applicationIconImage {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 32, height: 32)
+                        .accessibilityHidden(true)
+                }
+                Text("Commit+")
+                    .font(.title2.bold())
+                    .foregroundStyle(.blue)
+            }
+            .padding(.bottom, 8)
             HStack(spacing: 12) {
                 Button(action: openExistingRepository) {
                     Label("Open", systemImage: "folder")
@@ -484,6 +496,11 @@ struct RepoPickerView: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            if isDashboardSidebar && colorScheme == .light {
+                RoundedRectangle(cornerRadius: 20).strokeBorder(Color.primary.opacity(0.14))
+            }
+        }
     }
 
     private func repoRow(_ repo: RecentRepository) -> some View {

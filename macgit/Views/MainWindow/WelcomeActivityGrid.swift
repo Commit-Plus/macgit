@@ -63,8 +63,7 @@ struct WelcomeActivityGrid: View {
                     HStack(spacing: cellSpacing) {
                         ForEach(snapshot.days.indices, id: \.self) { index in
                             let count = repository.commitsByDay[index].count
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(cellColor(count: count))
+                            WelcomeActivityCell(count: count)
                                 .frame(width: cellSize, height: cellSize)
                                 .overlay {
                                     if repository.activityNote != nil && count == 0 {
@@ -89,13 +88,4 @@ struct WelcomeActivityGrid: View {
         "\(repository.name) · \(snapshot.days[index].formatted(date: .abbreviated, time: .omitted)): \(repository.commitsByDay[index].count) commits\(repository.activityNote.map { " · " + $0 } ?? "")"
     }
 
-    private func cellColor(count: Int) -> Color {
-        switch count {
-        case 0: Color.primary.opacity(0.06)
-        case 1: Color.green.opacity(0.25)
-        case 2...3: Color.green.opacity(0.45)
-        case 4...7: Color.green.opacity(0.7)
-        default: Color.green
-        }
-    }
 }

@@ -18,6 +18,7 @@
 import SwiftUI
 
 struct WelcomeAttentionView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let repositories: [WelcomeRepositoryAttention]
     let isLoading: Bool
     let hasRepositories: Bool
@@ -71,6 +72,6 @@ struct WelcomeAttentionView: View {
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.background, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.quaternary))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(colorScheme == .light ? 0.16 : 0.10)))
     }
 }

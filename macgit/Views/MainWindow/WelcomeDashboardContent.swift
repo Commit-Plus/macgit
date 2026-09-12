@@ -18,6 +18,7 @@
 import SwiftUI
 
 struct WelcomeDashboardContent: View {
+    @Environment(\.colorScheme) private var colorScheme
     let model: WelcomeDashboardModel
     let accountDisplayName: String?
     let repositoryCount: Int
@@ -59,7 +60,7 @@ struct WelcomeDashboardContent: View {
                 .frame(maxWidth: 1200)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color(nsColor: .windowBackgroundColor))
+            .background(colorScheme == .light ? Color(red: 0.94, green: 0.95, blue: 0.97) : Color(nsColor: .windowBackgroundColor))
         }
     }
 }

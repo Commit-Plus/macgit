@@ -18,6 +18,7 @@
 import SwiftUI
 
 struct WelcomeOverviewCard: View {
+    @Environment(\.colorScheme) private var colorScheme
     let title: String
     let value: String
     let detail: String
@@ -40,7 +41,7 @@ struct WelcomeOverviewCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .background(.background, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.quaternary))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(colorScheme == .light ? 0.16 : 0.10)))
         .accessibilityElement(children: .combine)
     }
 }

@@ -18,6 +18,7 @@
 import SwiftUI
 
 struct WelcomeActivityView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let snapshot: WelcomeDashboardSnapshot
     let isLoading: Bool
     let onRepositoryOpened: (URL) -> Void
@@ -54,7 +55,7 @@ struct WelcomeActivityView: View {
             HStack(spacing: 5) {
                 Text("Less")
                 ForEach(0..<5) { level in
-                    RoundedRectangle(cornerRadius: 2).fill(cellColor(count: level == 0 ? 0 : 1 << (level - 1)))
+                    WelcomeActivityCell(count: level == 0 ? 0 : 1 << (level - 1))
                         .frame(width: 12, height: 12)
                 }
                 Text("More")
@@ -65,16 +66,7 @@ struct WelcomeActivityView: View {
         }
         .padding(20)
         .background(.background, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.quaternary))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(colorScheme == .light ? 0.16 : 0.10)))
     }
 
-    private func cellColor(count: Int) -> Color {
-        switch count {
-        case 0: Color.primary.opacity(0.06)
-        case 1: Color.green.opacity(0.25)
-        case 2...3: Color.green.opacity(0.45)
-        case 4...7: Color.green.opacity(0.7)
-        default: Color.green
-        }
-    }
 }
