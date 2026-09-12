@@ -23,12 +23,14 @@ struct RepositoryWindowReader: NSViewRepresentable {
     let repositoryWindowContext: RepositoryWindowContext
     let title: String
     var repositoryURL: URL? = nil
+    var allowsTabbing = true
 
     func makeNSView(context: Context) -> WindowReaderView {
         repositoryWindowContext.repositoryURL = repositoryURL
         return WindowReaderView(
             repositoryWindowContext: repositoryWindowContext,
-            title: title
+            title: title,
+            allowsTabbing: allowsTabbing
         )
     }
 
@@ -36,6 +38,7 @@ struct RepositoryWindowReader: NSViewRepresentable {
         repositoryWindowContext.repositoryURL = repositoryURL
         nsView.repositoryWindowContext = repositoryWindowContext
         nsView.title = title
+        nsView.allowsTabbing = allowsTabbing
         nsView.configureWindow()
     }
 
@@ -48,10 +51,12 @@ struct RepositoryWindowReader: NSViewRepresentable {
     final class WindowReaderView: NSView {
         var repositoryWindowContext: RepositoryWindowContext
         var title: String
+        var allowsTabbing: Bool
 
-        init(repositoryWindowContext: RepositoryWindowContext, title: String) {
+        init(repositoryWindowContext: RepositoryWindowContext, title: String, allowsTabbing: Bool) {
             self.repositoryWindowContext = repositoryWindowContext
             self.title = title
+            self.allowsTabbing = allowsTabbing
             super.init(frame: .zero)
             isHidden = true
         }
@@ -69,8 +74,10 @@ struct RepositoryWindowReader: NSViewRepresentable {
         func configureWindow() {
             guard let window else { return }
             repositoryWindowContext.window = window
-            window.tabbingIdentifier = "com.commitplus.macgit.repository"
-            window.tabbingMode = .automatic
+            window.tabbingIdentifier = allowsTabbing
+                ? "com.commitplus.macgit.repository"
+                : "com.commitplus.macgit.welcome"
+            window.tabbingMode = allowsTabbing ? .automatic : .disallowed
             window.title = title
             window.titleVisibility = .hidden
         }

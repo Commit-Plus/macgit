@@ -15,22 +15,18 @@
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-
 import SwiftUI
 
-struct RepositoryWindowCommandState: Equatable {
-    let hasOpenRepository: Bool
-    let hasActiveOperation: Bool
-    var allowsTabs = true
-}
+/// The standalone welcome surface, kept separate from the repository tab picker
+/// so it can grow into a dashboard without changing the new-tab experience.
+struct WelcomeView: View {
+    let onRepositoryOpened: (URL) -> Void
 
-struct RepositoryWindowCommandStateKey: FocusedValueKey {
-    typealias Value = RepositoryWindowCommandState
-}
-
-extension FocusedValues {
-    var repositoryWindowCommandState: RepositoryWindowCommandState? {
-        get { self[RepositoryWindowCommandStateKey.self] }
-        set { self[RepositoryWindowCommandStateKey.self] = newValue }
+    var body: some View {
+        RepoPickerView(
+            title: "Welcome to Commit+",
+            showsApplicationIcon: true,
+            onRepositoryOpened: onRepositoryOpened
+        )
     }
 }

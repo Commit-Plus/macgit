@@ -31,9 +31,14 @@ struct RepositoryFileCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Tab", action: openNewTab)
                 .keyboardShortcut("t", modifiers: .command)
+                .disabled(commandState?.allowsTabs != true)
 
             Button("New Window", action: openNewWindow)
                 .keyboardShortcut("n", modifiers: .command)
+
+            Button("Show Welcome") {
+                openWindow(id: "welcome")
+            }
 
             Divider()
 
@@ -68,7 +73,7 @@ struct RepositoryFileCommands: Commands {
             }
             .disabled(commandState?.hasOpenRepository != true)
 
-            Button("Close Tab", action: closeTab)
+            Button(commandState?.allowsTabs == false ? "Close Welcome" : "Close Tab", action: closeTab)
                 .keyboardShortcut("w", modifiers: .command)
                 .disabled(commandState == nil || commandState?.hasActiveOperation == true)
 
@@ -79,6 +84,7 @@ struct RepositoryFileCommands: Commands {
     }
 
     private func openNewTab() {
+        guard commandState?.allowsTabs == true else { return }
         guard NSApp.keyWindow != nil else {
             openNewWindow()
             return

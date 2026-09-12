@@ -24,6 +24,7 @@ struct ContentView: View {
     @ObservedObject var accountController: AccountSessionController
     @ObservedObject var providerAccountController: GitProviderAccountController
     @ObservedObject var aiProviderController: AIProviderController
+    let isWelcomeWindow: Bool
     let isShowingAppSettings: Bool
 
     @State private var repositoryOpenError = ""
@@ -41,11 +42,13 @@ struct ContentView: View {
 
     init(
         request: RepositoryWindowRequest?,
+        isWelcomeWindow: Bool = false,
         accountController: AccountSessionController,
         providerAccountController: GitProviderAccountController,
         aiProviderController: AIProviderController,
         isShowingAppSettings: Bool = false
     ) {
+        self.isWelcomeWindow = isWelcomeWindow
         self.accountController = accountController
         self.providerAccountController = providerAccountController
         self.aiProviderController = aiProviderController
@@ -61,7 +64,11 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if let url = repositoryURL {
+            if isWelcomeWindow {
+                WelcomeView(onRepositoryOpened: { url in
+                    openRepository(url, inNewWindow: true)
+                })
+            } else if let url = repositoryURL {
                 MainWindowView(
                     repositoryURL: url,
                     providerAccountController: providerAccountController,
@@ -166,7 +173,7 @@ struct ContentView: View {
             handleFileMenuAction(action)
         }
         .onReceive(NotificationCenter.default.publisher(for: .newRepositoryTab)) { notification in
-            guard windowContext.owns(notification) else { return }
+            guard !isWelcomeWindow, windowContext.owns(notification) else { return }
             openWindow(
                 id: "main",
                 value: RepositoryWindowRequest.repositoryPicker()
@@ -179,15 +186,17 @@ struct ContentView: View {
         .background(
             RepositoryWindowReader(
                 repositoryWindowContext: windowContext,
-                title: repositoryURL?.lastPathComponent ?? "Commit+",
-                repositoryURL: repositoryURL
+                title: isWelcomeWindow ? "Welcome to Commit+" : (repositoryURL?.lastPathComponent ?? "Choose a Repository"),
+                repositoryURL: repositoryURL,
+                allowsTabbing: !isWelcomeWindow
             )
         )
         .focusedSceneValue(
             \.repositoryWindowCommandState,
             RepositoryWindowCommandState(
                 hasOpenRepository: repositoryURL != nil,
-                hasActiveOperation: operationProgress.activeOperation != nil
+                hasActiveOperation: operationProgress.activeOperation != nil,
+                allowsTabs: !isWelcomeWindow
             )
         )
         // Prefer the scene that opened browser sign-in. If it was closed (or the
@@ -318,7 +327,9 @@ struct ContentView: View {
     }
 
     private func openRepository(_ url: URL, inNewWindow: Bool) {
-        if inNewWindow {
+        showingRepoPickerSheet = false
+        showingCloneSheet = false
+        if isWelcomeWindow || inNewWindow {
             openWindow(
                 id: "main",
                 value: RepositoryWindowRequest.repository(
@@ -328,8 +339,6 @@ struct ContentView: View {
             )
         } else {
             shouldFitScreenWhenRepositoryOpens = true
-            showingRepoPickerSheet = false
-            showingCloneSheet = false
             repositoryURL = url
         }
     }

@@ -189,50 +189,65 @@ struct macgitApp: App {
         }
     }
 
+    private func windowContent(
+        request: RepositoryWindowRequest?,
+        isWelcomeWindow: Bool = false
+    ) -> some View {
+        ContentView(
+            request: request,
+            isWelcomeWindow: isWelcomeWindow,
+            accountController: accountController,
+            providerAccountController: providerAccountController,
+            aiProviderController: aiProviderController,
+            isShowingAppSettings: showingAppSettings
+        )
+            .environmentObject(appState)
+            .environmentObject(appUpdateController)
+            .environmentObject(featureAccessController)
+            .environmentObject(repositoryVisibilityController)
+            .environmentObject(repositoryBookmarkController)
+            .environmentObject(gitFlowConfigurationSyncController)
+            .preferredColorScheme(appState.appearance.colorScheme)
+            .task {
+                appUpdateController.start()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .showAppSettings)) { notification in
+                if let rawSection = notification.userInfo?["section"] as? String,
+                   let section = AppSettingsSection(rawValue: rawSection) {
+                    selectedAppSettingsSection = section
+                } else {
+                    selectedAppSettingsSection = .general
+                }
+                showingAppSettings = true
+            }
+            .sheet(isPresented: $showingAppSettings) {
+                AppSettingsView(
+                    appState: appState,
+                    accountController: accountController,
+                    featureAccessController: featureAccessController,
+                    providerAccountController: providerAccountController,
+                    aiProviderController: aiProviderController,
+                    appUpdateController: appUpdateController,
+                    isPresented: $showingAppSettings,
+                    selectedSection: $selectedAppSettingsSection
+                )
+                    .environmentObject(featureAccessController)
+                    .preferredColorScheme(appState.appearance.colorScheme)
+            }
+    }
+
     var body: some Scene {
-        WindowGroup(id: "main", for: RepositoryWindowRequest.self) { request in
-            ContentView(
-                request: request.wrappedValue,
-                accountController: accountController,
-                providerAccountController: providerAccountController,
-                aiProviderController: aiProviderController,
-                isShowingAppSettings: showingAppSettings
-            )
-                .environmentObject(appState)
-                .environmentObject(appUpdateController)
-                .environmentObject(featureAccessController)
-                .environmentObject(repositoryVisibilityController)
-                .environmentObject(repositoryBookmarkController)
-                .environmentObject(gitFlowConfigurationSyncController)
-                .preferredColorScheme(appState.appearance.colorScheme)
-                .task {
-                    appUpdateController.start()
-                }
-                .onReceive(NotificationCenter.default.publisher(for: .showAppSettings)) { notification in
-                    if let rawSection = notification.userInfo?["section"] as? String,
-                       let section = AppSettingsSection(rawValue: rawSection) {
-                        selectedAppSettingsSection = section
-                    } else {
-                        selectedAppSettingsSection = .general
-                    }
-                    showingAppSettings = true
-                }
-                .sheet(isPresented: $showingAppSettings) {
-                    AppSettingsView(
-                        appState: appState,
-                        accountController: accountController,
-                        featureAccessController: featureAccessController,
-                        providerAccountController: providerAccountController,
-                        aiProviderController: aiProviderController,
-                        appUpdateController: appUpdateController,
-                        isPresented: $showingAppSettings,
-                        selectedSection: $selectedAppSettingsSection
-                    )
-                        .environmentObject(featureAccessController)
-                        .preferredColorScheme(appState.appearance.colorScheme)
-                }
+        Window("Welcome to Commit+", id: "welcome") {
+            windowContent(request: nil, isWelcomeWindow: true)
         }
         .defaultSize(width: 860, height: 680)
+        .defaultLaunchBehavior(.presented)
+
+        WindowGroup(id: "main", for: RepositoryWindowRequest.self) { request in
+            windowContent(request: request.wrappedValue)
+        }
+        .defaultSize(width: 860, height: 680)
+        .defaultLaunchBehavior(.suppressed)
         .commands {
             RepositoryFileCommands()
 

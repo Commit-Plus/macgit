@@ -86,10 +86,19 @@ struct RepoPickerView: View {
     @State private var missingRepository: RecentRepository?
     @State private var showingMissingRepositoryAlert = false
 
+    let title: String
+    let showsApplicationIcon: Bool
     var showCloneSheetInitially: Bool
     var onRepositoryOpened: (URL) -> Void
 
-    init(showCloneSheetInitially: Bool = false, onRepositoryOpened: @escaping (URL) -> Void) {
+    init(
+        title: String = "Choose a Repository",
+        showsApplicationIcon: Bool = false,
+        showCloneSheetInitially: Bool = false,
+        onRepositoryOpened: @escaping (URL) -> Void
+    ) {
+        self.title = title
+        self.showsApplicationIcon = showsApplicationIcon
         self.showCloneSheetInitially = showCloneSheetInitially
         self.onRepositoryOpened = onRepositoryOpened
     }
@@ -200,6 +209,7 @@ struct RepoPickerView: View {
         })
         .sheet(isPresented: $showingCloneSheet) {
             CloneSheetView(onClone: { url in
+                showingCloneSheet = false
                 store.add(url)
                 onRepositoryOpened(url)
             })
@@ -209,6 +219,7 @@ struct RepoPickerView: View {
                 initialRemoteURL: bookmark.remoteURL.absoluteString,
                 initialRepositoryName: bookmark.name,
                 onClone: { url in
+                    bookmarkToClone = nil
                     bookmarkController.link(bookmark, to: url)
                     store.add(url)
                     onRepositoryOpened(url)
@@ -267,7 +278,7 @@ struct RepoPickerView: View {
     private var headerSection: some View {
         VStack(spacing: 18) {
             HStack(alignment: .top, spacing: 16) {
-                if let icon = NSApp.applicationIconImage {
+                if showsApplicationIcon, let icon = NSApp.applicationIconImage {
                     Image(nsImage: icon)
                         .resizable()
                         .scaledToFit()
@@ -277,7 +288,7 @@ struct RepoPickerView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Welcome to Commit+")
+                    Text(title)
                         .font(.largeTitle)
                         .fontWeight(.semibold)
                     Text("Open an existing repository or clone a new one")
