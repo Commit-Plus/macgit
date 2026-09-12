@@ -26,6 +26,7 @@ final class AIProviderController: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var selectedProviderID: AIProviderID
 
+    private let restrictedProviderAccess: () -> FeatureAccessDecision
     private let registry: AIProviderRegistry
     private let snapshotLoader: any CommitChangeSnapshotLoading
     private let repositoryToolExecutor: any RepositoryAIToolExecuting
@@ -36,7 +37,9 @@ final class AIProviderController: ObservableObject {
     private let modelStore: any AIProviderModelStore
     private let selectedProviderDefaultsKey = "ai.commitMessage.selectedProvider"
 
-    convenience init() {
+    convenience init(
+        restrictedProviderAccess: @escaping () -> FeatureAccessDecision = { .denied(.requiresPro) }
+    ) {
         let credentialStore = KeychainAIProviderCredentialStore()
         let modelStore = UserDefaultsAIProviderModelStore()
         self.init(
@@ -47,7 +50,8 @@ final class AIProviderController: ObservableObject {
             repositoryAgentHarness: RepositoryAIAgentHarness(),
             defaults: .standard,
             credentialStore: credentialStore,
-            modelStore: modelStore
+            modelStore: modelStore,
+            restrictedProviderAccess: restrictedProviderAccess
         )
     }
 
@@ -59,8 +63,10 @@ final class AIProviderController: ObservableObject {
         repositoryAgentHarness: RepositoryAIAgentHarness = RepositoryAIAgentHarness(),
         defaults: UserDefaults,
         credentialStore: any AIProviderCredentialStore = KeychainAIProviderCredentialStore(),
-        modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore()
+        modelStore: any AIProviderModelStore = UserDefaultsAIProviderModelStore(),
+        restrictedProviderAccess: @escaping () -> FeatureAccessDecision = { .denied(.requiresPro) }
     ) {
+        self.restrictedProviderAccess = restrictedProviderAccess
         self.registry = registry
         self.snapshotLoader = snapshotLoader
         self.repositoryToolExecutor = repositoryToolExecutor
@@ -195,6 +201,14 @@ final class AIProviderController: ObservableObject {
         }
     }
 
+    private func validateProviderAccess(_ descriptor: AIProviderDescriptor) throws {
+        guard descriptor.requiresProToConfigureAPIKey else { return }
+        // A saved key or persisted selection does not grant access after logout/downgrade.
+        guard restrictedProviderAccess().isAllowed else {
+            throw AIProviderConfigurationError.unavailableOnCurrentPlan(providerName: descriptor.displayName)
+        }
+    }
+
     func refreshAvailability() async {
         for provider in registry.providers {
             availabilityByProviderID[provider.descriptor.id] = await provider.availability()
@@ -213,6 +227,7 @@ final class AIProviderController: ObservableObject {
         guard let provider = registry.provider(for: selectedProviderID) else {
             throw CommitMessageGenerationError.providerNotImplemented
         }
+        try validateProviderAccess(provider.descriptor)
         let providerID = selectedProviderID
         let providerAvailability = await provider.availability()
         availabilityByProviderID[providerID] = providerAvailability
@@ -220,6 +235,7 @@ final class AIProviderController: ObservableObject {
             throw CommitMessageGenerationError.providerUnavailable(providerAvailability.detail)
         }
 
+        try validateProviderAccess(provider.descriptor)
         isGenerating = true
         defer { isGenerating = false }
 
@@ -235,6 +251,7 @@ final class AIProviderController: ObservableObject {
             changes: snapshot,
             recentCommitSubjects: Array(recentCommitSubjects.prefix(8))
         )
+        try validateProviderAccess(provider.descriptor)
         let generated = try await provider.generateCommitMessage(request: request)
         let currentFingerprint = try await snapshotLoader.changesFingerprint(
             in: repositoryURL,
@@ -265,6 +282,7 @@ final class AIProviderController: ObservableObject {
         guard let provider = registry.provider(for: selectedProviderID) else {
             throw CommitMessageGenerationError.providerNotImplemented
         }
+        try validateProviderAccess(provider.descriptor)
         let providerID = selectedProviderID
         let providerAvailability = await provider.availability()
         availabilityByProviderID[providerID] = providerAvailability
@@ -272,6 +290,7 @@ final class AIProviderController: ObservableObject {
             throw CommitMessageGenerationError.providerUnavailable(providerAvailability.detail)
         }
 
+        try validateProviderAccess(provider.descriptor)
         isGenerating = true
         defer { isGenerating = false }
 
@@ -288,6 +307,7 @@ final class AIProviderController: ObservableObject {
             toolResult: result,
             sessionID: sessionID
         )
+        try validateProviderAccess(provider.descriptor)
         let response: RepositoryAIAnswer
         if let onTextDelta {
             response = try await provider.streamRepositoryResponse(
@@ -335,6 +355,7 @@ final class AIProviderController: ObservableObject {
         guard let provider = registry.provider(for: selectedProviderID) else {
             throw CommitMessageGenerationError.providerNotImplemented
         }
+        try validateProviderAccess(provider.descriptor)
         let providerID = selectedProviderID
         let availability = await provider.availability()
         availabilityByProviderID[providerID] = availability
@@ -342,6 +363,7 @@ final class AIProviderController: ObservableObject {
             throw CommitMessageGenerationError.providerUnavailable(availability.detail)
         }
 
+        try validateProviderAccess(provider.descriptor)
         isGenerating = true
         defer { isGenerating = false }
         try Task.checkCancellation()
@@ -352,6 +374,7 @@ final class AIProviderController: ObservableObject {
             toolResult: result,
             sessionID: sessionID
         )
+        try validateProviderAccess(provider.descriptor)
         let response: RepositoryAIAnswer
         if let onTextDelta {
             response = try await provider.streamRepositoryResponse(
@@ -389,6 +412,7 @@ final class AIProviderController: ObservableObject {
         guard let provider = registry.provider(for: selectedProviderID) else {
             throw CommitMessageGenerationError.providerNotImplemented
         }
+        try validateProviderAccess(provider.descriptor)
         let providerID = selectedProviderID
         let availability = await provider.availability()
         availabilityByProviderID[providerID] = availability
@@ -396,6 +420,7 @@ final class AIProviderController: ObservableObject {
             throw CommitMessageGenerationError.providerUnavailable(availability.detail)
         }
 
+        try validateProviderAccess(provider.descriptor)
         isGenerating = true
         defer { isGenerating = false }
         let budget = provider.descriptor.inputCharacterBudget
@@ -434,6 +459,7 @@ final class AIProviderController: ObservableObject {
             )
         }
         try Task.checkCancellation()
+        try validateProviderAccess(provider.descriptor)
         let response = try await provider.generateRepositoryResponse(request: RepositoryAIRequest(
             repositoryName: repositoryURL.lastPathComponent,
             branchName: branchName,
@@ -469,6 +495,7 @@ final class AIProviderController: ObservableObject {
         guard let provider = registry.provider(for: selectedProviderID) else {
             throw CommitMessageGenerationError.providerNotImplemented
         }
+        try validateProviderAccess(provider.descriptor)
         guard provider.supportsRepositoryAgent else {
             throw RepositoryAIAgentError.unsupportedProvider(provider.descriptor.displayName)
         }
@@ -480,6 +507,7 @@ final class AIProviderController: ObservableObject {
             throw CommitMessageGenerationError.providerUnavailable(providerAvailability.detail)
         }
 
+        try validateProviderAccess(provider.descriptor)
         isGenerating = true
         defer { isGenerating = false }
 
@@ -507,6 +535,7 @@ final class AIProviderController: ObservableObject {
         guard let provider = registry.provider(for: selectedProviderID) else {
             throw CommitMessageGenerationError.providerNotImplemented
         }
+        try validateProviderAccess(provider.descriptor)
 
         let providerID = selectedProviderID
         let providerAvailability = await provider.availability()
@@ -515,6 +544,7 @@ final class AIProviderController: ObservableObject {
             throw CommitMessageGenerationError.providerUnavailable(providerAvailability.detail)
         }
 
+        try validateProviderAccess(provider.descriptor)
         isGenerating = true
         defer { isGenerating = false }
 

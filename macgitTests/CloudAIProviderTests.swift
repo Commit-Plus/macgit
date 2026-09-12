@@ -22,6 +22,81 @@ import XCTest
 
 final class CloudAIProviderTests: XCTestCase {
     @MainActor
+    func testPersistedProProviderIsBlockedAfterDowngradeWithoutRemovingKeyOrSelection() async throws {
+        let credentials = InMemoryAIProviderCredentialStore(keys: [.deepSeek: "saved-key"])
+        let client = StubAIProviderHTTPClient(responseBody: #"{"choices":[{"message":{"role":"assistant","content":"{\"type\":\"feat\",\"subject\":\"Add feature\",\"body\":\"\"}"}}]}"#)
+        var access = FeatureAccessDecision.allowed
+        let defaults = makeDefaults()
+        defaults.set(AIProviderID.deepSeek.rawValue, forKey: "ai.commitMessage.selectedProvider")
+        let controller = AIProviderController(
+            registry: .live(credentialStore: credentials, httpClient: client),
+            snapshotLoader: StubCloudCommitChangeSnapshotLoader(),
+            defaults: defaults,
+            credentialStore: credentials,
+            restrictedProviderAccess: { access }
+        )
+        _ = try await controller.generateCommitMessage(
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            branchName: "main", changeSource: .staged, recentCommitSubjects: []
+        )
+        access = .denied(.requiresPro)
+        do {
+            _ = try await controller.generateCommitMessage(
+                repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+                branchName: "main", changeSource: .staged, recentCommitSubjects: []
+            )
+            XCTFail("Expected generation to reject the previously selected Pro provider")
+        } catch let error as AIProviderConfigurationError {
+            XCTAssertEqual(error, .unavailableOnCurrentPlan(providerName: "DeepSeek"))
+        }
+        do {
+            _ = try await controller.answerRepositoryQuestionWithAgent(
+                repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+                branchName: "main", question: "Explain this repository"
+            )
+            XCTFail("Expected chat to reject the previously selected Pro provider")
+        } catch let error as AIProviderConfigurationError {
+            XCTAssertEqual(error, .unavailableOnCurrentPlan(providerName: "DeepSeek"))
+        }
+        let countAfterDenial = await client.requestCount()
+        XCTAssertEqual(countAfterDenial, 1)
+        XCTAssertEqual(controller.selectedProviderID, .deepSeek)
+        XCTAssertEqual(try credentials.apiKey(for: .deepSeek), "saved-key")
+        XCTAssertFalse(controller.isGenerating)
+        access = .allowed
+        _ = try await controller.generateCommitMessage(
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            branchName: "main", changeSource: .staged, recentCommitSubjects: []
+        )
+        let countAfterUpgrade = await client.requestCount()
+        XCTAssertEqual(countAfterUpgrade, 2)
+    }
+
+    @MainActor
+    func testFreeGenerationStillAllowsOpenAIAndGemini() async throws {
+        for id in [AIProviderID.openAI, .googleGemini] {
+            let credentials = InMemoryAIProviderCredentialStore(keys: [id: "saved-key"])
+            let response = id == .openAI
+                ? #"{"output":[{"type":"message","content":[{"type":"output_text","text":"{\"type\":\"feat\",\"subject\":\"Add feature\",\"body\":\"\"}"}]}]}"#
+                : #"{"candidates":[{"content":{"parts":[{"text":"{\"type\":\"feat\",\"subject\":\"Add feature\",\"body\":\"\"}"}]}}]}"#
+            let client = StubAIProviderHTTPClient(responseBody: response)
+            let controller = AIProviderController(
+                registry: .live(credentialStore: credentials, httpClient: client),
+                snapshotLoader: StubCloudCommitChangeSnapshotLoader(),
+                defaults: makeDefaults(), credentialStore: credentials,
+                restrictedProviderAccess: { .denied(.requiresPro) }
+            )
+            controller.selectProvider(id)
+            _ = try await controller.generateCommitMessage(
+                repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+                branchName: "main", changeSource: .staged, recentCommitSubjects: []
+            )
+            let count = await client.requestCount()
+            XCTAssertEqual(count, 1)
+        }
+    }
+
+    @MainActor
     func testControllerSavesAndRemovesCloudAPIKeyWithoutExposingIt() async throws {
         let credentialStore = InMemoryAIProviderCredentialStore()
         let defaults = makeDefaults()
