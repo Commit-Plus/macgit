@@ -18,27 +18,11 @@
 
 import Foundation
 
-nonisolated struct RepositoryAIGitCommandResult: Codable, Equatable, Sendable {
-    let displayCommand: String
-    let output: String
-    let succeeded: Bool
-    let isTruncated: Bool
+nonisolated struct RepositoryAIConversation: Codable, Identifiable, Sendable {
+    let id: String
+    let repositoryPath: String
+    let title: String
+    let updatedAt: Date
+    let messages: [RepositoryAIMessage]
 }
 
-nonisolated enum RepositoryAIGitCommandError: LocalizedError, Equatable {
-    case emptyCommand
-    case unsupportedCommand(String)
-    case unsupportedArguments(String)
-    case commandFailed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .emptyCommand:
-            "Repository AI must provide a Git subcommand."
-        case .unsupportedCommand(let command):
-            "Repository AI cannot run git \(command) in read-only mode."
-        case .unsupportedArguments(let message), .commandFailed(let message):
-            message
-        }
-    }
-}

@@ -25,8 +25,8 @@ struct RepositoryAIChatView: View {
     let isSignedIn: Bool
     let onRequestAccess: () -> Void
     let onExecuteRemoteOperation: (RepositoryAIValidatedRemoteOperation) async throws -> RepositoryAIRemoteOperationExecutionResult
-    @State private var followsStreaming = true
     @State private var isShowingQuickActions = false
+    @State private var isShowingHistory = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -38,12 +38,12 @@ struct RepositoryAIChatView: View {
 
                 Spacer()
 
-                Button("Conversation history", systemImage: "clock.arrow.circlepath") { }
+                Button("Conversation history", systemImage: "clock.arrow.circlepath") { isShowingHistory = true }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .disabled(true)
-                    .help("Conversation History — Coming Soon")
+                    .disabled(controller.isInteractionDisabled)
+                    .help("Conversation History")
 
                 Button("New conversation", systemImage: "plus", action: controller.startNewConversation)
                     .labelStyle(.iconOnly)
@@ -71,11 +71,20 @@ struct RepositoryAIChatView: View {
                 transcript
             }
 
+            if let error = controller.historyError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
             composer
         }
         .padding(16)
         .task {
             await providerController.refreshAvailability()
+        }
+        .sheet(isPresented: $isShowingHistory) {
+            RepositoryAIChatHistorySheet(controller: controller)
         }
         .sheet(item: $controller.pendingMutation, onDismiss: controller.cancelPendingMutation) { pending in
             RepositoryAIMutationConfirmationSheet(
@@ -185,53 +194,9 @@ struct RepositoryAIChatView: View {
     }
 
     private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(controller.messages) { message in
-                        RepositoryAIMessageView(message: message)
-                            .id(message.id)
-                    }
-
-                    if controller.isRunning {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Thinking…")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            .onChange(of: controller.messages.count) {
-                guard followsStreaming,
-                      let lastID = controller.messages.last?.id else { return }
-                withAnimation(.snappy) {
-                    proxy.scrollTo(lastID, anchor: .bottom)
-                }
-            }
-            .onChange(of: controller.streamingRevision) {
-                guard followsStreaming,
-                      controller.isRunning,
-                      let lastID = controller.messages.last?.id else { return }
-                proxy.scrollTo(lastID, anchor: .bottom)
-            }
-            .onScrollPhaseChange { _, newPhase, context in
-                switch newPhase {
-                case .tracking, .interacting:
-                    followsStreaming = false
-                case .idle:
-                    followsStreaming = context.geometry.visibleRect.maxY
-                        >= context.geometry.contentSize.height - 24
-                case .decelerating, .animating:
-                    break
-                @unknown default:
-                    break
-                }
-            }
-        }
-        .frame(maxHeight: .infinity)
+        RepositoryAIChatTranscriptView(controller: controller)
+            .id(controller.conversationPresentationID)
+            .frame(maxHeight: .infinity)
     }
 
     private var composer: some View {

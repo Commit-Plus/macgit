@@ -27,9 +27,18 @@ final class RepositoryAIChatController: ObservableObject {
     @Published var comparisonHeadDraft = ""
     @Published var pullRequestNumberDraft = ""
     @Published private(set) var conversationTitle = "New conversation"
-    @Published private(set) var messages: [RepositoryAIMessage] = []
+    @Published private(set) var messages: [RepositoryAIMessage] = [] {
+        didSet { scheduleHistorySave() }
+    }
+    @Published private(set) var historyError: String?
+    private let historyStore: RepositoryAIChatHistoryStore
+    private var historyDebounceTask: Task<Void, Never>?
+    private var historyWriteTask: Task<Void, Never>?
+    private var isRestoringHistory = false
     @Published private(set) var recentCommits: [RepositoryAICommitChoice] = []
-    @Published private(set) var isRunning = false
+    @Published private(set) var isRunning = false {
+        didSet { persistConversation() }
+    }
     @Published private(set) var isChoosingCommit = false
     @Published private(set) var isChoosingFile = false
     @Published private(set) var isChoosingComparison = false
@@ -38,10 +47,15 @@ final class RepositoryAIChatController: ObservableObject {
     @Published private(set) var isLoadingFiles = false
     @Published private(set) var changedFiles: [RepositoryAIFileReference] = []
     @Published private(set) var streamingRevision = 0
+    @Published private(set) var conversationPresentationID = UUID()
     @Published var pendingMutation: PendingRepositoryAIMutation?
-    @Published private(set) var isExecutingMutation = false
+    @Published private(set) var isExecutingMutation = false {
+        didSet { if !isExecutingMutation { persistConversation() } }
+    }
     @Published var pendingRemoteOperation: PendingRepositoryAIRemoteOperation?
-    @Published private(set) var isExecutingRemoteOperation = false
+    @Published private(set) var isExecutingRemoteOperation = false {
+        didSet { if !isExecutingRemoteOperation { persistConversation() } }
+    }
 
     private let repositoryURL: URL
     private let providerController: AIProviderController
@@ -67,8 +81,10 @@ final class RepositoryAIChatController: ObservableObject {
         remoteOperationContextProvider: (any RepositoryAIRemoteOperationContextProviding)? = nil,
         commitAllPreparer: (any RepositoryAICommitAllPreparing)? = nil,
         pullRequestContextLoader: ((Int?, URL) async throws -> RepositoryAIPullRequestContext)? = nil,
-        pullRequestFingerprintLoader: ((Int, URL) async throws -> String)? = nil
+        pullRequestFingerprintLoader: ((Int, URL) async throws -> String)? = nil,
+        historyStore: RepositoryAIChatHistoryStore = .shared
     ) {
+        self.historyStore = historyStore
         self.repositoryURL = repositoryURL
         self.providerController = providerController
         self.gitService = gitService
@@ -78,6 +94,69 @@ final class RepositoryAIChatController: ObservableObject {
         self.commitAllPreparer = commitAllPreparer
         self.pullRequestContextLoader = pullRequestContextLoader
         self.pullRequestFingerprintLoader = pullRequestFingerprintLoader
+    }
+
+    private var historyRepositoryPath: String {
+        repositoryURL.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    private func scheduleHistorySave() {
+        guard !isRestoringHistory else { return }
+        historyDebounceTask?.cancel()
+        historyDebounceTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+            self?.persistConversation()
+        }
+    }
+
+    private func persistConversation() {
+        historyDebounceTask?.cancel()
+        historyDebounceTask = nil
+        guard !isRestoringHistory, !messages.isEmpty else { return }
+        let snapshot = RepositoryAIConversation(
+            id: conversationSessionID, repositoryPath: historyRepositoryPath,
+            title: conversationTitle, updatedAt: .now, messages: messages
+        )
+        let previousWrite = historyWriteTask
+        let store = historyStore
+        historyWriteTask = Task { [weak self] in
+            await previousWrite?.value
+            do {
+                try await store.save(snapshot)
+                self?.historyError = nil
+            } catch {
+                self?.historyError = "Could not save conversation history: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func conversationHistory(matching query: String) async throws -> [RepositoryAIConversationSummary] {
+        await historyWriteTask?.value
+        return try await historyStore.search(repositoryPath: historyRepositoryPath, query: query)
+    }
+
+    func prepareConversationHistory() async {
+        persistConversation()
+        await historyWriteTask?.value
+    }
+
+    func restoreConversation(id: String) async throws {
+        guard !isInteractionDisabled else { throw RepositoryAIError.contextChanged }
+        await prepareConversationHistory()
+        guard let conversation = try await historyStore.load(id: id, repositoryPath: historyRepositoryPath) else {
+            throw RepositoryAIError.noRepositoryData("saved conversation")
+        }
+        guard !isInteractionDisabled else { throw RepositoryAIError.contextChanged }
+        historyDebounceTask?.cancel()
+        isRestoringHistory = true
+        defer { isRestoringHistory = false }
+        dismissSelection()
+        draft = ""
+        conversationSessionID = conversation.id
+        conversationTitle = conversation.title
+        messages = conversation.messages
+        conversationPresentationID = UUID()
+        streamingRevision += 1
     }
 
     var canSubmit: Bool {
@@ -275,11 +354,13 @@ final class RepositoryAIChatController: ObservableObject {
         guard !isRunning, !isExecutingMutation, !isExecutingRemoteOperation else { return }
         invalidatePendingMutation(reason: "Conversation reset.", appendTranscript: false)
         invalidatePendingRemoteOperation(reason: "Conversation reset.", appendTranscript: false)
+        persistConversation()
         draft = ""
         messages.removeAll()
         dismissSelection()
         conversationTitle = "New conversation"
         conversationSessionID = UUID().uuidString
+        conversationPresentationID = UUID()
     }
 
     func cancelActiveRequest() {

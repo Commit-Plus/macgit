@@ -41,14 +41,14 @@ nonisolated enum RepositoryAIQuickAction: String, CaseIterable, Equatable, Senda
     }
 }
 
-nonisolated struct RepositoryAIGeminiFunctionCallState: Equatable, Sendable {
+nonisolated struct RepositoryAIGeminiFunctionCallState: Codable, Equatable, Sendable {
     /// The model-owned values that must be replayed unchanged in Gemini's
     /// stateless generateContent function-calling history.
     let callID: String?
     let thoughtSignature: String?
 }
 
-nonisolated struct RepositoryAIAgentToolCall: Equatable, Sendable {
+nonisolated struct RepositoryAIAgentToolCall: Codable, Equatable, Sendable {
     let id: String
     let name: String
     let arguments: [String]
@@ -107,7 +107,7 @@ nonisolated struct RepositoryAIAgentTurn: Equatable, Sendable {
     let toolCalls: [RepositoryAIAgentToolCall]
 }
 
-nonisolated struct RepositoryAIAgentToolResult: Equatable, Sendable {
+nonisolated struct RepositoryAIAgentToolResult: Codable, Equatable, Sendable {
     let toolCall: RepositoryAIAgentToolCall
     let commandResult: RepositoryAIGitCommandResult
 }

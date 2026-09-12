@@ -229,7 +229,7 @@ nonisolated enum RepositoryAIAnswerDecoder {
     }
 }
 
-nonisolated struct RepositoryAIEvidence: Equatable, Sendable {
+nonisolated struct RepositoryAIEvidence: Codable, Equatable, Sendable {
     let id: String
     let reference: RepositoryAIFileReference
     let textRange: RepositoryAITextRange?
@@ -237,7 +237,7 @@ nonisolated struct RepositoryAIEvidence: Equatable, Sendable {
     let fingerprint: String
 }
 
-nonisolated struct RepositoryAIEvidenceManifest: Equatable, Sendable {
+nonisolated struct RepositoryAIEvidenceManifest: Codable, Equatable, Sendable {
     let evidence: [RepositoryAIEvidence]
 
     init(evidence: [RepositoryAIEvidence]) {

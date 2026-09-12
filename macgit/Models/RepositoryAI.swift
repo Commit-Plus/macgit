@@ -77,13 +77,13 @@ nonisolated struct RepositoryAIRequest: Sendable {
     }
 }
 
-nonisolated enum RepositoryAIMessageRole: Equatable, Sendable {
+nonisolated enum RepositoryAIMessageRole: Codable, Equatable, Sendable {
     case user
     case assistant
     case toolActivity
 }
 
-nonisolated struct RepositoryAIMessage: Identifiable, Sendable {
+nonisolated struct RepositoryAIMessage: Codable, Identifiable, Sendable {
     let id: UUID
     let role: RepositoryAIMessageRole
     let text: String
