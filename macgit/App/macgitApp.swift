@@ -240,7 +240,7 @@ struct macgitApp: App {
         Window("Welcome to Commit+", id: "welcome") {
             windowContent(request: nil, isWelcomeWindow: true)
         }
-        .defaultSize(width: 860, height: 680)
+        .defaultSize(width: 1180, height: 780)
         .defaultLaunchBehavior(.presented)
 
         WindowGroup(id: "main", for: RepositoryWindowRequest.self) { request in

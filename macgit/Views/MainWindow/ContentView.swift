@@ -26,6 +26,7 @@ struct ContentView: View {
     @ObservedObject var aiProviderController: AIProviderController
     let isWelcomeWindow: Bool
     let isShowingAppSettings: Bool
+    let initialShowsHistory: Bool?
 
     @State private var repositoryOpenError = ""
     @State private var showingRepositoryOpenError = false
@@ -48,6 +49,7 @@ struct ContentView: View {
         aiProviderController: AIProviderController,
         isShowingAppSettings: Bool = false
     ) {
+        self.initialShowsHistory = request?.showsHistory
         self.isWelcomeWindow = isWelcomeWindow
         self.accountController = accountController
         self.providerAccountController = providerAccountController
@@ -65,12 +67,13 @@ struct ContentView: View {
     var body: some View {
         Group {
             if isWelcomeWindow {
-                WelcomeView(onRepositoryOpened: { url in
+                WelcomeView(accountDisplayName: accountController.account?.displayLabel, onRepositoryOpened: { url in
                     openRepository(url, inNewWindow: true)
                 })
             } else if let url = repositoryURL {
                 MainWindowView(
                     repositoryURL: url,
+                    initialShowsHistory: initialShowsHistory,
                     providerAccountController: providerAccountController,
                     aiProviderController: aiProviderController,
                     onOpenConnections: accountController.presentConnections,

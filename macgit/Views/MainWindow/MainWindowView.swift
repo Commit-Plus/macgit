@@ -109,6 +109,7 @@ struct MainWindowView: View {
     let providerAccountPreferenceStore = GitProviderAccountPreferenceStore.shared
     private let fileService = RepositorySettingsFileService()
     let undoExecutor = GitUndoExecutor()
+    let initialShowsHistory: Bool?
     @State var selectedItem: SidebarSelection? = .item(.fileStatus)
     @State private var windowWidth: CGFloat = 0
     @State private var showingCommitSheet = false
@@ -187,12 +188,15 @@ struct MainWindowView: View {
 
     init(
         repositoryURL: URL,
+        initialShowsHistory: Bool? = nil,
         providerAccountController: GitProviderAccountController,
         aiProviderController: AIProviderController,
         onOpenConnections: @escaping () -> Void = {},
         windowContext: RepositoryWindowContext,
         operationProgress: RepositoryOperationProgress
     ) {
+        self.initialShowsHistory = initialShowsHistory
+        _selectedItem = State(initialValue: initialShowsHistory == true ? .item(.history) : .item(.fileStatus))
         self.repositoryURL = repositoryURL
         self.providerAccountController = providerAccountController
         self.aiProviderController = aiProviderController
@@ -1593,7 +1597,7 @@ struct MainWindowView: View {
         await refreshRemotePresentation(for: loadedSettings.defaultRemoteName)
 
         await MainActor.run {
-            if syncState.commitBadgeCount == 0, selectedItem == .item(.fileStatus) {
+            if initialShowsHistory == nil, syncState.commitBadgeCount == 0, selectedItem == .item(.fileStatus) {
                 selectedItem = .item(.history)
             }
         }
