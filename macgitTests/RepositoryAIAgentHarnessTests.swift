@@ -20,6 +20,99 @@ import XCTest
 @testable import macgit
 
 final class RepositoryAIAgentHarnessTests: XCTestCase {
+    @MainActor
+    func testStopCancelsProviderAndRestoresComposer() async throws {
+        let started = expectation(description: "Provider started")
+        let cancelled = expectation(description: "Provider cancelled")
+        let suiteName = "RepositoryAIStopTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let providerController = AIProviderController(
+            registry: AIProviderRegistry(providers: [WaitingRepositoryAIAgentProvider(
+                onStart: { started.fulfill() },
+                onCancel: { cancelled.fulfill() }
+            )]),
+            snapshotLoader: StubRepositoryAICommitChangeSnapshotLoader(),
+            repositoryAgentHarness: RepositoryAIAgentHarness(
+                commandExecutor: StubRepositoryAIGitCommandExecutor(),
+                stateProvider: StaticRepositoryAIStateProvider()
+            ),
+            defaults: defaults
+        )
+        let controller = RepositoryAIChatController(
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            providerController: providerController
+        )
+        controller.draft = "Explain this repository"
+        let request = Task { await controller.submitDraft() }
+        await fulfillment(of: [started], timeout: 3)
+        controller.cancelActiveRequest()
+        XCTAssertTrue(controller.isStopping)
+        XCTAssertTrue(controller.isRunning)
+        XCTAssertFalse(controller.canSubmit)
+        controller.cancelActiveRequest() // Repeated clicks must not start another stop.
+        await fulfillment(of: [cancelled], timeout: 3)
+        await request.value
+        XCTAssertFalse(controller.isStopping)
+        XCTAssertFalse(controller.isRunning)
+        XCTAssertFalse(providerController.isGenerating)
+        controller.draft = "Next question"
+        XCTAssertTrue(controller.canSubmit)
+        XCTAssertEqual(controller.messages.last?.text, "The AI request was cancelled.")
+    }
+
+    func testFreeChatStillExecutesGit() async throws {
+        let executor = StubRepositoryAIGitCommandExecutor()
+        let harness = RepositoryAIAgentHarness(
+            commandExecutor: executor,
+            stateProvider: StaticRepositoryAIStateProvider()
+        )
+        let result = try await harness.answer(
+            question: "Review staged files",
+            repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+            branchName: "main",
+            allowsBuiltInWorkflows: false,
+            provider: StagedReviewAgentProvider()
+        )
+        XCTAssertEqual(result.answer, "The staged diff updates App.swift.")
+        XCTAssertEqual(result.toolResults.count, 1)
+    }
+
+    func testFreeChatRejectsEveryBuiltInFunctionEvenIfProviderCallsIt() async throws {
+        for action in RepositoryAIQuickAction.allCases {
+            let executor = StubRepositoryAIGitCommandExecutor()
+            let harness = RepositoryAIAgentHarness(
+                commandExecutor: executor,
+                stateProvider: StaticRepositoryAIStateProvider()
+            )
+            do {
+                _ = try await harness.answer(
+                    question: "Start this workflow",
+                    repositoryURL: URL(fileURLWithPath: "/tmp/example"),
+                    branchName: "main",
+                    allowsBuiltInWorkflows: false,
+                    provider: QuickActionRepositoryAIAgentProvider(action: action)
+                )
+                XCTFail("Expected workflow denial for \(action)")
+            } catch let error as RepositoryAIAgentError {
+                XCTAssertEqual(error, .workflowAccessDenied)
+            }
+            let arguments = await executor.recordedArguments()
+            XCTAssertTrue(arguments.isEmpty)
+        }
+    }
+
+    func testFreeToolSchemaOmitsBuiltInWorkflows() {
+        for forGemini in [false, true] {
+            let declarations = RepositoryAIAgentToolSchema.declarations(
+                includingQuickActions: true,
+                allowsBuiltInWorkflows: false,
+                forGemini: forGemini
+            )
+            XCTAssertEqual(declarations.compactMap { $0["name"] as? String }, ["execute_git"])
+        }
+    }
+
     func testHarnessExecutesStagedDiffBeforeReturningAnswer() async throws {
         let executor = StubRepositoryAIGitCommandExecutor()
         let harness = RepositoryAIAgentHarness(
@@ -191,6 +284,7 @@ final class RepositoryAIAgentHarnessTests: XCTestCase {
             repositoryURL: URL(fileURLWithPath: "/tmp/example"),
             providerController: providerController
         )
+        controller.workflowAccessDecision = { .allowed }
         controller.draft = "review file"
 
         await controller.submitDraft()
@@ -639,5 +733,29 @@ private actor ChangingRepositoryAIStateProvider: RepositoryAIRepositoryStateProv
             stagedFingerprint: requestCount == 1 ? "index-1" : "index-2",
             workingTreeFingerprint: "worktree-1"
         )
+    }
+}
+
+private struct WaitingRepositoryAIAgentProvider: CommitMessageAIProvider {
+    let onStart: @Sendable () -> Void
+    let onCancel: @Sendable () -> Void
+    let descriptor = RepositoryAIAgentHarnessTestSupport.descriptor
+    var supportsRepositoryAgent: Bool { true }
+
+    func availability() async -> AIProviderAvailability { .available }
+
+    func generateCommitMessage(request: CommitMessageGenerationRequest) async throws -> GeneratedCommitMessage {
+        GeneratedCommitMessage(subject: "test: message", body: nil)
+    }
+
+    func generateRepositoryAgentTurn(request: RepositoryAIAgentRequest) async throws -> RepositoryAIAgentTurn {
+        onStart()
+        do {
+            try await Task.sleep(for: .seconds(30))
+            return RepositoryAIAgentTurn(text: "Unexpected completion", toolCalls: [])
+        } catch {
+            onCancel()
+            throw error
+        }
     }
 }

@@ -146,6 +146,46 @@ extension MainWindowView {
         }
     }
 
+    @MainActor
+    func generatePullRequestText(
+        field: PullRequestAIDraftField,
+        sourceBranch: String,
+        targetBranch: String
+    ) async throws -> String {
+        let remoteName = pullRequestController.createDraftSeed?.remoteName
+        let draftRepositoryURL = repositoryURL
+        let budget = aiProviderController.selectedDescriptor.inputCharacterBudget
+        let comparison = try await GitStatusService.shared.pullRequestComparison(
+            sourceBranch: sourceBranch,
+            targetBranch: targetBranch,
+            remoteName: remoteName,
+            in: draftRepositoryURL,
+            characterBudget: budget
+        )
+        let question: String
+        switch field {
+        case .title:
+            question = "Write one concise, human-readable pull request title that accurately summarizes these changes. Return only the title: no Markdown, quotes, label, or explanation."
+        case .description:
+            question = "Write a concise, reviewer-friendly pull request description for these changes. Use Markdown headings and bullets when useful. Include only details supported by the supplied changes; do not invent testing or behavior. Return only the description."
+        }
+        let answer = try await aiProviderController.answerRepositoryAnalysisQuestion(
+            repositoryURL: draftRepositoryURL,
+            branchName: sourceBranch,
+            question: question,
+            result: comparison.toolResult(characterBudget: budget),
+            currentFingerprint: {
+                try await GitStatusService.shared.pullRequestComparisonFingerprint(
+                    sourceBranch: sourceBranch,
+                    targetBranch: targetBranch,
+                    remoteName: remoteName,
+                    in: draftRepositoryURL
+                )
+            }
+        )
+        return answer.text
+    }
+
     func prepareRemoteBranchForPullRequest(branch: String) async throws -> String {
         let localBranch = branch.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !localBranch.isEmpty else {

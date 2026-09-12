@@ -41,14 +41,14 @@ nonisolated enum RepositoryAIQuickAction: String, CaseIterable, Equatable, Senda
     }
 }
 
-nonisolated struct RepositoryAIGeminiFunctionCallState: Equatable, Sendable {
+nonisolated struct RepositoryAIGeminiFunctionCallState: Codable, Equatable, Sendable {
     /// The model-owned values that must be replayed unchanged in Gemini's
     /// stateless generateContent function-calling history.
     let callID: String?
     let thoughtSignature: String?
 }
 
-nonisolated struct RepositoryAIAgentToolCall: Equatable, Sendable {
+nonisolated struct RepositoryAIAgentToolCall: Codable, Equatable, Sendable {
     let id: String
     let name: String
     let arguments: [String]
@@ -107,7 +107,7 @@ nonisolated struct RepositoryAIAgentTurn: Equatable, Sendable {
     let toolCalls: [RepositoryAIAgentToolCall]
 }
 
-nonisolated struct RepositoryAIAgentToolResult: Equatable, Sendable {
+nonisolated struct RepositoryAIAgentToolResult: Codable, Equatable, Sendable {
     let toolCall: RepositoryAIAgentToolCall
     let commandResult: RepositoryAIGitCommandResult
 }
@@ -119,6 +119,7 @@ nonisolated struct RepositoryAIAgentRequest: Sendable {
     let conversation: [RepositoryAIMessage]
     let previousToolResults: [RepositoryAIAgentToolResult]
     let isFirstTurn: Bool
+    let allowsBuiltInWorkflows: Bool
     let mutationContext: RepositoryAIMutationPlanningContext?
     let remoteOperationContext: RepositoryAIRemoteOperationPlanningContext?
 
@@ -129,6 +130,7 @@ nonisolated struct RepositoryAIAgentRequest: Sendable {
         conversation: [RepositoryAIMessage],
         previousToolResults: [RepositoryAIAgentToolResult],
         isFirstTurn: Bool,
+        allowsBuiltInWorkflows: Bool = true,
         mutationContext: RepositoryAIMutationPlanningContext? = nil,
         remoteOperationContext: RepositoryAIRemoteOperationPlanningContext? = nil
     ) {
@@ -138,6 +140,7 @@ nonisolated struct RepositoryAIAgentRequest: Sendable {
         self.conversation = conversation
         self.previousToolResults = previousToolResults
         self.isFirstTurn = isFirstTurn
+        self.allowsBuiltInWorkflows = allowsBuiltInWorkflows
         self.mutationContext = mutationContext
         self.remoteOperationContext = remoteOperationContext
     }
@@ -174,6 +177,7 @@ nonisolated enum RepositoryAIAgentError: LocalizedError, Equatable {
     case tooManyToolCalls
     case emptyResponse
     case unsupportedProvider(String)
+    case workflowAccessDenied
     case invalidQuickActionSelection
     case invalidMutationSelection
     case invalidRemoteOperationSelection
@@ -193,6 +197,8 @@ nonisolated enum RepositoryAIAgentError: LocalizedError, Equatable {
             "The AI provider returned an empty Repository AI response."
         case .unsupportedProvider(let provider):
             "\(provider) does not yet support Repository AI Git tools. Choose a tool-capable provider and try again."
+        case .workflowAccessDenied:
+            "This built-in Repository AI workflow is unavailable for your plan. You can continue chatting and using Git tools."
         case .invalidQuickActionSelection:
             "Repository AI returned an invalid quick action selection."
         case .invalidMutationSelection:

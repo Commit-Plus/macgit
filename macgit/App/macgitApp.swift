@@ -95,7 +95,14 @@ struct macgitApp: App {
                 }
             )
         )
-        _aiProviderController = StateObject(wrappedValue: AIProviderController())
+        _aiProviderController = StateObject(wrappedValue: AIProviderController(
+            restrictedProviderAccess: {
+                featureAccessController.decision(
+                    for: .aiBringYourOwnKey,
+                    entitlement: accountController.account == nil ? .free : accountController.entitlement
+                )
+            }
+        ))
         _repositoryVisibilityController = StateObject(
             wrappedValue: RepositoryVisibilityController(
                 services: [

@@ -62,6 +62,7 @@ nonisolated enum RepositoryAIAgentToolSchema {
 
     static func declarations(
         includingQuickActions: Bool,
+        allowsBuiltInWorkflows: Bool = true,
         forGemini: Bool = false,
         mutationContext: RepositoryAIMutationPlanningContext? = nil,
         remoteOperationContext: RepositoryAIRemoteOperationPlanningContext? = nil
@@ -72,7 +73,8 @@ nonisolated enum RepositoryAIAgentToolSchema {
             "parameters": forGemini ? geminiGitParameters : gitParameters,
         ]
         guard includingQuickActions else { return [executeGit] }
-        let quickActions = RepositoryAIQuickAction.allCases.map { action in
+        let actions = allowsBuiltInWorkflows ? RepositoryAIQuickAction.allCases : []
+        let quickActions = actions.map { action in
             [
                 "name": action.rawValue,
                 "description": action.toolDescription,

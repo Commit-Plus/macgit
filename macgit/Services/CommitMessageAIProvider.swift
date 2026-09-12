@@ -57,6 +57,7 @@ extension CommitMessageAIProvider {
         onTextDelta: @escaping @Sendable (String) async -> Void
     ) async throws -> RepositoryAIAnswer {
         let answer = try await generateRepositoryResponse(request: request)
+        try Task.checkCancellation()
         await onTextDelta(answer.text)
         return answer
     }

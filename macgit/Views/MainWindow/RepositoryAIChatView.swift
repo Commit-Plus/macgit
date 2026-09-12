@@ -16,17 +16,29 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+import AppKit
 import SwiftUI
 
 struct RepositoryAIChatView: View {
+    @EnvironmentObject private var featureAccessController: FeatureAccessController
+    @EnvironmentObject private var accountController: AccountSessionController
+
+    private var workflowAccess: FeatureAccessDecision {
+        featureAccessController.decision(for: .repositoryAIActions, entitlement: accountController.entitlement)
+    }
+
+    private var providerAccess: FeatureAccessDecision {
+        featureAccessController.decision(for: .aiBringYourOwnKey, entitlement: accountController.entitlement)
+    }
+
     @ObservedObject var controller: RepositoryAIChatController
     @ObservedObject var providerController: AIProviderController
     let accessDecision: FeatureAccessDecision
     let isSignedIn: Bool
     let onRequestAccess: () -> Void
     let onExecuteRemoteOperation: (RepositoryAIValidatedRemoteOperation) async throws -> RepositoryAIRemoteOperationExecutionResult
-    @State private var followsStreaming = true
     @State private var isShowingQuickActions = false
+    @State private var isShowingHistory = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -38,12 +50,12 @@ struct RepositoryAIChatView: View {
 
                 Spacer()
 
-                Button("Conversation history", systemImage: "clock.arrow.circlepath") { }
+                Button("Conversation history", systemImage: "clock.arrow.circlepath") { isShowingHistory = true }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .disabled(true)
-                    .help("Conversation History — Coming Soon")
+                    .disabled(controller.isInteractionDisabled)
+                    .help("Conversation History")
 
                 Button("New conversation", systemImage: "plus", action: controller.startNewConversation)
                     .labelStyle(.iconOnly)
@@ -71,11 +83,20 @@ struct RepositoryAIChatView: View {
                 transcript
             }
 
+            if let error = controller.historyError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
             composer
         }
         .padding(16)
         .task {
             await providerController.refreshAvailability()
+        }
+        .sheet(isPresented: $isShowingHistory) {
+            RepositoryAIChatHistorySheet(controller: controller)
         }
         .sheet(item: $controller.pendingMutation, onDismiss: controller.cancelPendingMutation) { pending in
             RepositoryAIMutationConfirmationSheet(
@@ -185,53 +206,9 @@ struct RepositoryAIChatView: View {
     }
 
     private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(controller.messages) { message in
-                        RepositoryAIMessageView(message: message)
-                            .id(message.id)
-                    }
-
-                    if controller.isRunning {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Thinking…")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            .onChange(of: controller.messages.count) {
-                guard followsStreaming,
-                      let lastID = controller.messages.last?.id else { return }
-                withAnimation(.snappy) {
-                    proxy.scrollTo(lastID, anchor: .bottom)
-                }
-            }
-            .onChange(of: controller.streamingRevision) {
-                guard followsStreaming,
-                      controller.isRunning,
-                      let lastID = controller.messages.last?.id else { return }
-                proxy.scrollTo(lastID, anchor: .bottom)
-            }
-            .onScrollPhaseChange { _, newPhase, context in
-                switch newPhase {
-                case .tracking, .interacting:
-                    followsStreaming = false
-                case .idle:
-                    followsStreaming = context.geometry.visibleRect.maxY
-                        >= context.geometry.contentSize.height - 24
-                case .decelerating, .animating:
-                    break
-                @unknown default:
-                    break
-                }
-            }
-        }
-        .frame(maxHeight: .infinity)
+        RepositoryAIChatTranscriptView(controller: controller)
+            .id(controller.conversationPresentationID)
+            .frame(maxHeight: .infinity)
     }
 
     private var composer: some View {
@@ -261,18 +238,40 @@ struct RepositoryAIChatView: View {
 
                 AIProviderMenu(
                     controller: providerController,
-                    restrictedProviderAccess: accessDecision,
+                    restrictedProviderAccess: providerAccess,
                     showsConfigureAction: true,
                     labelMode: .model
                 )
 
-                if controller.isRunning {
-                    Button("Stop generating", systemImage: "stop.fill", action: controller.cancelActiveRequest)
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.circle)
-                        .controlSize(.large)
-                        .help("Stop generating")
+                if controller.isRunning || controller.isStopping {
+                    Button(action: controller.cancelActiveRequest) {
+                        Image(systemName: "stop.fill")
+                            .opacity(controller.isStopping ? 0 : 1)
+                            .overlay {
+                                if controller.isStopping {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                            }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.circle)
+                    .controlSize(.large)
+                    .disabled(controller.isStopping)
+                    .accessibilityLabel(controller.isStopping ? "Stopping generation" : "Stop generating")
+                    .help(controller.isStopping ? "Stopping generation…" : "Stop generating")
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active:
+                            (controller.isStopping ? NSCursor.arrow : NSCursor.pointingHand).set()
+                        case .ended:
+                            NSCursor.arrow.set()
+                        }
+                    }
+                    .onChange(of: controller.isStopping) { _, stopping in
+                        if stopping { NSCursor.arrow.set() }
+                    }
+                    .onDisappear { NSCursor.arrow.set() }
                 } else {
                     Button("Send question", systemImage: "arrow.up", action: submitDraft)
                         .labelStyle(.iconOnly)
@@ -356,6 +355,11 @@ struct RepositoryAIChatView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
+                if !workflowAccess.isAllowed {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Requires Pro")
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -381,7 +385,7 @@ struct RepositoryAIChatView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Image(systemName: "chevron.right")
+            Image(systemName: workflowAccess.isAllowed ? "chevron.right" : "lock.fill")
                 .foregroundStyle(.tertiary)
         }
         .padding(10)

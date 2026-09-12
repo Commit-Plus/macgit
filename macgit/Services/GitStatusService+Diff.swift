@@ -231,6 +231,46 @@ extension GitStatusService {
         }
     }
 
+    func pullRequestComparison(
+        sourceBranch: String,
+        targetBranch: String,
+        remoteName: String?,
+        in repositoryURL: URL,
+        characterBudget: Int
+    ) async throws -> RepositoryAIRefComparison {
+        let references = try await pullRequestComparisonReferences(
+            sourceBranch: sourceBranch,
+            targetBranch: targetBranch,
+            remoteName: remoteName,
+            in: repositoryURL
+        )
+        guard let base = RepositoryAIRef(references.target),
+              let head = RepositoryAIRef(references.source) else {
+            throw RepositoryAIError.invalidRefReference
+        }
+        return try await compareRefs(
+            base: base,
+            head: head,
+            in: repositoryURL,
+            characterBudget: characterBudget
+        )
+    }
+
+    func pullRequestComparisonFingerprint(
+        sourceBranch: String,
+        targetBranch: String,
+        remoteName: String?,
+        in repositoryURL: URL
+    ) async throws -> String {
+        try await pullRequestComparison(
+            sourceBranch: sourceBranch,
+            targetBranch: targetBranch,
+            remoteName: remoteName,
+            in: repositoryURL,
+            characterBudget: 1_000
+        ).fingerprint
+    }
+
     func pullRequestDiff(
         for file: String,
         sourceBranch: String,

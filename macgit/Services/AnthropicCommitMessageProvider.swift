@@ -166,6 +166,7 @@ struct AnthropicCommitMessageProvider: CommitMessageAIProvider {
         let tools = RepositoryAIAgentToolSchema
             .declarations(
                 includingQuickActions: request.isFirstTurn,
+                allowsBuiltInWorkflows: request.allowsBuiltInWorkflows,
                 mutationContext: request.mutationContext,
                 remoteOperationContext: request.remoteOperationContext
             )

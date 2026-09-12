@@ -16,29 +16,25 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-import Foundation
+import AppKit
+import SwiftUI
 
-nonisolated struct RepositoryAIGitCommandResult: Codable, Equatable, Sendable {
-    let displayCommand: String
-    let output: String
-    let succeeded: Bool
-    let isTruncated: Bool
-}
+struct ScrollViewIndicatorController: NSViewRepresentable {
+    let showsIndicators: Bool
+    var controlSize: NSControl.ControlSize? = nil
+    let onScroll: () -> Void
 
-nonisolated enum RepositoryAIGitCommandError: LocalizedError, Equatable {
-    case emptyCommand
-    case unsupportedCommand(String)
-    case unsupportedArguments(String)
-    case commandFailed(String)
+    func makeNSView(context: Context) -> ScrollViewIndicatorBridgeView {
+        let view = ScrollViewIndicatorBridgeView()
+        view.configure(showsIndicators: showsIndicators, controlSize: controlSize, onScroll: onScroll)
+        return view
+    }
 
-    var errorDescription: String? {
-        switch self {
-        case .emptyCommand:
-            "Repository AI must provide a Git subcommand."
-        case .unsupportedCommand(let command):
-            "Repository AI cannot run git \(command) in read-only mode."
-        case .unsupportedArguments(let message), .commandFailed(let message):
-            message
-        }
+    func updateNSView(_ nsView: ScrollViewIndicatorBridgeView, context: Context) {
+        nsView.configure(showsIndicators: showsIndicators, controlSize: controlSize, onScroll: onScroll)
+    }
+
+    static func dismantleNSView(_ nsView: ScrollViewIndicatorBridgeView, coordinator: ()) {
+        nsView.detach()
     }
 }
