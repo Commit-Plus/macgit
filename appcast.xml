@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Commit+</title>
+        <item>
+            <title>1.1.1</title>
+            <pubDate>Sat, 12 Sep 2026 10:50:04 +0000</pubDate>
+            <sparkle:version>28</sparkle:version>
+            <sparkle:shortVersionString>1.1.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.2</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/Commit-Plus/commit-plus/releases/download/v1.1.1/Commit+-1.1.1-arm64.zip" length="25563946" type="application/octet-stream" sparkle:edSignature="kHYSd3r2VeGi9GNPHxZUXXKznmhN7g28/dRSaNY43Z5NOK/wdXVfdoKbKxDpQqmjoUxVw0y8SI3YQ86fySarBg=="/>
+        </item>
+    </channel>
+</rss>

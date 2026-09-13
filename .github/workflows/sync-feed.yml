@@ -1,0 +1,54 @@
+name: Sync legacy Sparkle feed
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17,47 * * * *'
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: legacy-feed
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch and validate canonical appcast
+        run: |
+          curl --fail --silent --show-error --location --retry 3 https://commit-plus.github.io/commit-plus/appcast.xml -o /tmp/appcast.xml
+          python3 - <<'PYTHON'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('/tmp/appcast.xml').getroot()
+          items = root.findall('channel/item')
+          assert items, 'Appcast has no releases'
+          for item in items:
+              enclosure = item.find('enclosure')
+              assert enclosure is not None
+              assert enclosure.attrib['url'].startswith('https://github.com/Commit-Plus/commit-plus/releases/download/')
+              assert enclosure.attrib.get('{http://www.andymatuschak.org/xml-namespaces/sparkle}edSignature')
+          PYTHON
+          cp /tmp/appcast.xml appcast.xml
+      - name: Save updated feed
+        run: |
+          if ! git diff --quiet -- appcast.xml; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add appcast.xml
+            git commit -m 'Update legacy Sparkle feed'
+            git push
+          fi
+      - name: Prepare Pages
+        run: |
+          mkdir _site
+          cp appcast.xml .nojekyll _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - uses: actions/deploy-pages@v4
+        id: deployment
