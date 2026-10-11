@@ -3,12 +3,12 @@
     <channel>
         <title>Commit+</title>
         <item>
-            <title>1.1.13</title>
-            <pubDate>Sat, 10 Oct 2026 15:46:01 +0000</pubDate>
-            <sparkle:version>40</sparkle:version>
-            <sparkle:shortVersionString>1.1.13</sparkle:shortVersionString>
+            <title>1.1.14</title>
+            <pubDate>Sun, 11 Oct 2026 09:57:06 +0000</pubDate>
+            <sparkle:version>41</sparkle:version>
+            <sparkle:shortVersionString>1.1.14</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.2</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/Commit-Plus/commit-plus/releases/download/v1.1.13/Commit+-1.1.13-arm64.zip" length="29683926" type="application/octet-stream" sparkle:edSignature="F4ugrLbB5Ryi6KpskXv0mLP1ZtSww7Ag3umUmE6roP+/che54dOd2EW2dO2Y0yjY44vZ2NrGKV/fP2umbcPGBw=="/>
+            <enclosure url="https://github.com/Commit-Plus/commit-plus/releases/download/v1.1.14/Commit+-1.1.14-arm64.zip" length="29842775" type="application/octet-stream" sparkle:edSignature="VqT2g1bPlYcuDT36Y+SZuVE9gPt8NmJ7t1CbfLG7gt3/HvIgfk3inn/dgXWnPccWROvr5HMjAdSO27wWQPCJAA=="/>
         </item>
     </channel>
 </rss>
