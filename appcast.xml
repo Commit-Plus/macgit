@@ -3,30 +3,20 @@
     <channel>
         <title>Commit+</title>
         <item>
-            <title>1.1.24</title>
-            <pubDate>Mon, 02 Nov 2026 00:54:37 +0000</pubDate>
-            <sparkle:version>53</sparkle:version>
-            <sparkle:shortVersionString>1.1.24</sparkle:shortVersionString>
+            <title>1.1.25</title>
+            <pubDate>Mon, 09 Nov 2026 04:24:01 +0000</pubDate>
+            <sparkle:version>54</sparkle:version>
+            <sparkle:shortVersionString>1.1.25</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.2</sparkle:minimumSystemVersion>
             <description sparkle:format="markdown"><![CDATA[
-Changes since `v1.1.23`.
-
-### Added
-
-- **SSH key management** — Choose **Configure SSH Keys…** from the Commit+ menu or **Settings → Git** to see the keys in `~/.ssh`, copy a public key for your Git provider, or show it in Finder. Generate a new Ed25519 or RSA 4096 key with an optional passphrase, and use **Add to Keychain…** to load a key into ssh-agent with its passphrase saved in the macOS Keychain, so Git can use it without a Terminal prompt.
+Changes since `v1.1.24`.
 
 ### Improved
 
-- The **Actions** menu is now the **Repository** menu, and Git Flow moved into it as a submenu. It adds **New Tag…** (`Cmd+Shift+T`), **Create Pull Request…**, and **Refresh** (`Cmd+R`).
-- Settings now has separate **Accounts** and **Profile** sections. Git provider accounts moved from Settings → Git to **Accounts**, and **Profile** holds your Commit+ account, plan, and settings sync. The toolbar account menu is now labeled **Profile**.
-- The remote editor rejects a remote name that already exists and a URL another remote already uses, treating URLs that differ only by a trailing slash, a `.git` suffix, or letter case as the same. Long remote lists in Repository Settings now scroll.
+- **Checkbox staging in File Status** — Each file's checkbox now stages or unstages it directly, replacing the separate selection checkbox and the `+`/`−` row buttons. A folder's checkbox in Tree mode stages or unstages all its files, and the **Changed** and **Staged** header checkboxes stage or unstage everything. **Stage selected** and **Unstage selected** appear in the section header when you `Cmd`- or `Shift`-click two or more files.
 
-### Fixed
-
-- Shift-Return inserts a new line in interactive rebase commit messages and the Repository AI chat box instead of ending editing.
-
-[Compare v1.1.23 to v1.1.24](https://github.com/Commit-Plus/commit-plus/compare/v1.1.23...v1.1.24)]]></description>
-            <enclosure url="https://github.com/Commit-Plus/commit-plus/releases/download/v1.1.24/Commit+-1.1.24-arm64.zip" length="34287259" type="application/octet-stream" sparkle:edSignature="A6XgYogLHlH7lEDkICrIcn+rAryzF5tOQkI84gAEaau8pLJGk72aI4quaH/Emz3PrpDBUU3iHWw6Bir0NI+QDg=="/>
+[Compare v1.1.24 to v1.1.25](https://github.com/Commit-Plus/commit-plus/compare/v1.1.24...v1.1.25)]]></description>
+            <enclosure url="https://github.com/Commit-Plus/commit-plus/releases/download/v1.1.25/Commit+-1.1.25-arm64.zip" length="34277658" type="application/octet-stream" sparkle:edSignature="X29c3GqpwW3XzPuhUf/Q51WT7mNjCpnz3bQJH1GVov8lSH21UHkwpuDgxmKfaiGuqTv76OVu0CcWrUuOzMKoAw=="/>
         </item>
     </channel>
 </rss>
